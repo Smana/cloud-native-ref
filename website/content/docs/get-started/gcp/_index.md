@@ -256,8 +256,8 @@ Secrets, Kyverno, Tailscale), the infrastructure layer (Cilium policies,
 Gateway API, both external-dns instances, ComputeClasses), the observability
 stack, tooling (Harbor) and the applications.
 
-What it does **not** run: `image-gallery` (not yet portable) and `flux-previews`
-(excluded by design — previews belong to one cluster). The full comparison,
+What it does **not** run: `flux-previews` (excluded by design — previews belong
+to one cluster). The full comparison,
 including what each gap needs, is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 

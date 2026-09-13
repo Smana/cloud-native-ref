@@ -205,7 +205,7 @@ spec:
             - OpenBao:
                 href: https://bao.${private_domain_name}:8200
                 description: Secrets Management & PKI
-                icon: vault.png
+                icon: openbao.png
 
         - LLM Platform:
             - Chatbot:

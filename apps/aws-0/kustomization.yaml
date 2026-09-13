@@ -15,3 +15,31 @@ resources:
   # the LLM umbrella Kustomization (clusters/aws-0/llm-platform.yaml).
   # They live in apps/llm/kustomization.yaml so the umbrella's child
   # apps Kustomization can target them independently.
+
+# image-gallery's object storage on aws-0: S3 through EKS Pod Identity. Explicit
+# values, not a ${var} whose shape differs per cloud: CI renders both clusters
+# with AWS-shaped fixtures and could not catch a GCP-shaped value.
+patches:
+  - target:
+      group: cloud.ogenki.io
+      kind: App
+      name: xplane-image-gallery
+    patch: |-
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_PROVIDER, value: s3}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_ENDPOINT, value: s3.eu-west-3.amazonaws.com}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_BUCKET, value: eu-west-3-ogenki-xplane-image-gallery}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_REGION, value: eu-west-3}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_USE_SSL, value: "true"}
+      - op: add
+        path: /spec/env/-
+        value: {name: OTEL_RESOURCE_ATTRIBUTES, value: cloud.provider=aws}
