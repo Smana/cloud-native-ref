@@ -181,6 +181,10 @@ spec:
                 {
                   "title": "View traces for this time range",
                   "url": "?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
+                },
+                {
+                  "title": "View error logs for this time range",
+                  "url": "?viewPanel=1001&$${__url_time_range}"
                 }
               ]
             }
@@ -365,6 +369,7 @@ spec:
           "collapsed": false
         },
         {
+          "id": 1001,
           "type": "logs",
           "title": "Application Error Logs (Click on log line to see ±7 lines of context)",
           "description": "Shows error-level logs from the application. Click any log line to view surrounding context (±7 lines before/after).",
