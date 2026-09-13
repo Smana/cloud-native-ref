@@ -108,44 +108,23 @@ spec:
           {
             "name": "operation",
             "label": "Route",
-            "type": "custom",
-            "query": "All : ,GET /api/images,GET /api/images/{id}/view,GET /api/images/{id}/thumbnail,GET /api/settings,POST /api/images,DELETE /api/images/{id}",
-            "current": {
-              "selected": true,
-              "text": "All",
-              "value": ""
-            },
+            "description": "Jaeger operation name, exactly as the span reports it -- GET /api/images, POST /api/images, GET /api/images/{id}/view, GET /api/images/{id}/thumbnail, GET /api/settings, DELETE /api/images/{id}. Empty means every route.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
             "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [
-              {"selected": true, "text": "All", "value": ""},
-              {"selected": false, "text": "GET /api/images", "value": "GET /api/images"},
-              {"selected": false, "text": "GET /api/images/{id}/view", "value": "GET /api/images/{id}/view"},
-              {"selected": false, "text": "GET /api/images/{id}/thumbnail", "value": "GET /api/images/{id}/thumbnail"},
-              {"selected": false, "text": "GET /api/settings", "value": "GET /api/settings"},
-              {"selected": false, "text": "POST /api/images", "value": "POST /api/images"},
-              {"selected": false, "text": "DELETE /api/images/{id}", "value": "DELETE /api/images/{id}"}
-            ],
+            "options": [],
             "skipUrlSync": false
           },
           {
             "name": "trace_tags",
             "label": "Trace filter",
-            "type": "custom",
-            "query": "All : ,Errors only : error=true",
-            "current": {
-              "selected": true,
-              "text": "All",
-              "value": ""
-            },
+            "description": "Jaeger tag filter in logfmt, which is what this datasource expects -- error=true for failures only, or http.response.status_code=503. Empty means every trace.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
             "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [
-              {"selected": true, "text": "All", "value": ""},
-              {"selected": false, "text": "Errors only", "value": "error=true"}
-            ],
+            "options": [],
             "skipUrlSync": false
           }
         ]
@@ -196,6 +175,10 @@ spec:
         {
           "type": "timeseries",
           "title": "Response Time (P95 latency)",
+          "links": [
+            {"title": "\ud83d\udd0d View traces for this time range", "url": "/d/app-all-in-one?viewPanel=1000&$${__url_time_range}"},
+            {"title": "\ud83d\udccb View error logs for this time range", "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"}
+          ],
           "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
