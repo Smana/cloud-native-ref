@@ -49,7 +49,7 @@ spec:
             "current": {
               "selected": false,
               "text": "VictoriaTraces",
-              "value": "VictoriaTraces"
+              "value": "victoriatraces"
             },
             "hide": 0,
             "includeAll": false,
@@ -68,7 +68,7 @@ spec:
             "current": {
               "selected": false,
               "text": "VictoriaLogs",
-              "value": "VictoriaLogs"
+              "value": "victorialogs"
             },
             "hide": 0,
             "includeAll": false,
