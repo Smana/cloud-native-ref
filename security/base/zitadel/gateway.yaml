@@ -14,7 +14,15 @@ spec:
       #
       # Leaving them in a shared base is the pattern that has bitten this repo
       # repeatedly: valid YAML on both clouds, meaningful on one.
-      external-dns.alpha.kubernetes.io/hostname: "auth.${public_domain_name}"
+      # NOTE the prefix. external-dns 0.22 made `external-dns.kubernetes.io/`
+      # the default and removed the `alpha` fallback entirely, so the older
+      # `external-dns.alpha.kubernetes.io/hostname` is now read by nothing.
+      # It fails silently and expensively: the Gateway still comes up healthy
+      # with a public IP, external-dns keeps logging "All records are already
+      # up to date", and the record is simply never created. Every SSO login
+      # then breaks, because this hostname IS the OIDC issuer. Do not revert
+      # to the alpha form.
+      external-dns.kubernetes.io/hostname: "auth.${public_domain_name}"
   listeners:
     - name: auth
       hostname: "auth.${public_domain_name}"
