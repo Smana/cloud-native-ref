@@ -58,6 +58,8 @@ spec:
                   value: http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces
                 - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
                   value: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics
+                - name: USER
+                  value: loadgen # required for OTEL resource detector; user.Current() needs $USER or cgo
               resources:
                 requests:
                   cpu: 100m

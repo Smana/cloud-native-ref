@@ -113,22 +113,43 @@ release silently kept — ×30 the intent — until the suffix was added on
 ```yaml
 # observability/base/victoria-traces/grafana-datasource.yaml
 datasource:
+  uid: victoriatraces            # pinned; see below
   type: jaeger
   url: http://victoria-traces-vt-single-server.observability:10428/select/jaeger
   jsonData:
-    tracesToLogs:
-      datasourceName: VictoriaLogs
-      tags: ['trace_id', 'traceId', 'traceID']
+    tracesToLogsV2:
+      datasourceUid: victorialogs
     tracesToMetrics:
-      datasourceName: VictoriaMetrics
+      datasourceUid: VictoriaMetrics
+      tags:
+        - key: service.name
     nodeGraph:
       enabled: true
 ```
 
-`tracesToLogs`/`tracesToMetrics` are what let a Grafana user pivot from a
-trace span straight to the matching log lines (via `log.trace_id`, per the
+`tracesToLogsV2`/`tracesToMetrics` are what let a Grafana user pivot from a
+trace span to the matching log lines (via `log.trace_id`, per the
 [LogsQL rules]({{< relref "/docs/platform/observability/logs.md#logsql-syntax-rules" >}}))
-or request-rate/latency panels, without re-typing a query by hand. The
+or request-rate/latency panels, without re-typing a query by hand.
+
+**Three details here are load-bearing, and all three were wrong until
+2026-09-13 — every cross-link silently did nothing from the day it was
+written:**
+
+- **`datasourceUid`, never `datasourceName`.** No Grafana schema has ever
+  accepted the latter. There is no error: the datasource loads and the link
+  simply never appears.
+- **`tracesToLogsV2`, not `tracesToLogs`.** v1 is superseded and current
+  Grafana reads v2, so correcting keys inside a v1 block changes nothing.
+- **A pinned `uid`.** Without one the operator assigns a random uid, so a
+  reference written as the literal string `VictoriaLogs` matches no
+  datasource. Note it is set at `spec.datasource.uid`, the field the CRD
+  marks deprecated, and deliberately: `spec.uid` is immutable and the API
+  server rejects it outright on an already-created object, which would fail
+  every Flux reconcile.
+
+None of this is caught by CI — `flux schema validate` sees a well-formed
+map, and no documentation claim pins these values. The
 manifest doesn't configure an explicit receiver protocol (no OTLP toggles) —
 VictoriaTraces' chart defaults apply unmodified, so which ingest protocols
 are actually enabled isn't determinable from this repo alone.
