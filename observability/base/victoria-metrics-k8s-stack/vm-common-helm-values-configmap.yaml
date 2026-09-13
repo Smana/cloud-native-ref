@@ -72,6 +72,41 @@ data:
           env: "${environment}"
           cloud: "${cloud}"
           region: "${region}"
+        # The Query button lands in vmui with the alert's own expression already
+        # in the box, not in Grafana Explore.
+        #
+        # Two Grafana links on one message is one too many -- the Dashboard
+        # button is already Grafana, and it is the one carrying the Grafana
+        # icon. Query is the "show me the data behind this alert" button, and
+        # VictoriaMetrics' own UI answers that directly: vmui reads
+        # `g0.expr` and executes it on load.
+        #
+        # Both keys are set EXPLICITLY because the chart only fills them when
+        # they are absent (`if not (index $output.extraArgs ...)`,
+        # _helpers.tpl:186-198). Setting them here wins over the Grafana Explore
+        # form the chart would otherwise compose from external.grafana.host.
+        #
+        # Verified against the running vmui (VictoriaMetrics 2.24.0, vmui
+        # v1.151.0) rather than assumed: loading
+        # `/vmui/#/?g0.expr=vault_autopilot_failure_tolerance&g0.range_input=1h`
+        # pre-fills the query box and returns the series. Guessing at this URL
+        # shape is what shipped a dead Query button in the first place.
+        #
+        # TWO ESCAPES, both load-bearing, both of which fail loudly rather than
+        # quietly -- which is the only reason they are easy to get right:
+        #
+        # 1. SINGLE QUOTES, because the value contains `#`. Unquoted, YAML reads
+        #    it as a comment and the argument truncates to `vmui/`.
+        # 2. `{{ "{{" }}` / `{{ "}}" }}`, because the chart pipes the whole
+        #    vmalert spec through Helm's `tpl` (_helpers.tpl:291). A bare
+        #    `{{.Expr|queryEscape}}` is therefore evaluated by HELM, which has no
+        #    `queryEscape` function -- the render dies with "invalid YAML" and no
+        #    hint as to which value caused it. These escapes make Helm emit the
+        #    literal braces so vmalert, which does have `queryEscape`, receives
+        #    `{{.Expr|queryEscape}}` and expands it per alert.
+        extraArgs:
+          external.url: "https://vm.${private_domain_name}"
+          external.alert.source: 'vmui/#/?g0.expr={{ "{{" }}.Expr|queryEscape{{ "}}" }}&g0.range_input=1h'
 
     # vmalert's `-external.url`, and the reason the Query button in every Slack
     # alert has been dead since the day it was added.
@@ -93,6 +128,10 @@ data:
     # Include the scheme: the helper prefixes `http://` to anything without one.
     # `private_domain_name` is defined in both clusters' ConfigMaps, so one value
     # is correct on aws-0 and gcp-0 alike.
+    # Kept, but it no longer decides the Query button -- see the vmalert
+    # extraArgs below. Its remaining job is the dashboard sync-job's
+    # `grafanaUrl` (sync-job/config.yaml:126), which reads the same helper and
+    # was equally empty before this key existed.
     external:
       grafana:
         host: "https://grafana.${private_domain_name}"

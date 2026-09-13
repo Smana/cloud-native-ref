@@ -437,12 +437,19 @@ config with `amtool check-config`; renders every templated string in the Slack r
 `amtool template render`, golden-comparing the result; and asserts every `VMAlert` carries an
 **absolute** `external.url`.
 
-That last assertion is not theoretical. vmalert shipped with `external.url: "http://"` — the chart
-derives it from `.Values.external.grafana.host`, which was unset, and only falls back to the Grafana
-*ingress* host, which this platform does not use. Every `generatorURL` was therefore `http:/explore?…`
-with no host, and Slack silently drops an attachment action whose URL is invalid, so the Query button
-never rendered on any alert on either cluster. It sat in the bundle the whole time and no gate could
-fail on it: `flux schema validate` sees a valid string, polaris never reads `extraArgs`.
+That last assertion is not theoretical. vmalert shipped with `external.url: "http://"`, so every
+`generatorURL` was `http:/explore?…` with no host, and Slack silently drops an attachment action
+whose URL is invalid — the Query button never rendered on any alert on either cluster. It sat in the
+bundle the whole time and no gate could fail on it: `flux schema validate` sees a valid string,
+polaris never reads `extraArgs`.
+
+Both of vmalert's URL args are now set **explicitly** in `vm-common-helm-values-configmap.yaml`, so
+the Query button lands in **vmui** with the alert's own expression pre-filled rather than in Grafana
+Explore — the Dashboard button is already the Grafana link, and two of them on one message is one too
+many. The chart only fills these when absent (`if not (index $output.extraArgs …)`), so an explicit
+value wins. Note the escaping trap: the chart pipes the whole vmalert spec through Helm's `tpl`
+(`_helpers.tpl:291`), so `{{.Expr|queryEscape}}` must be written `{{ "{{" }}…{{ "}}" }}` or Helm
+evaluates it, finds no `queryEscape` function, and the render dies with a bare "invalid YAML".
 
 It validates **structure, not semantics**. A typo'd `equal` label (`clustre`) is a syntactically
 valid label name and passes; so do a shadowing route and an over-broad inhibit rule. Rendering
