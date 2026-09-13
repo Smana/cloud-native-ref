@@ -229,6 +229,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
+              "legendFormat": "5xx rate",
               "refId": "A"
             }
           ],
@@ -262,6 +263,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "requests/sec",
               "refId": "A"
             }
           ],
@@ -286,6 +288,7 @@ spec:
           "targets": [
             {
               "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
+              "legendFormat": "p95",
               "refId": "A"
             }
           ],
@@ -319,6 +322,7 @@ spec:
           "targets": [
             {
               "expr": "sum(increase(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
+              "legendFormat": "5xx (5m)",
               "refId": "A"
             }
           ],
