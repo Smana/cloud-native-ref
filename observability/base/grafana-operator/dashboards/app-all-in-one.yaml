@@ -42,25 +42,6 @@ spec:
             "type": "datasource"
           },
           {
-            "name": "trace_datasource",
-            "label": "Trace Datasource",
-            "type": "datasource",
-            "query": "jaeger",
-            "current": {
-              "selected": false,
-              "text": "VictoriaTraces",
-              "value": "victoriatraces"
-            },
-            "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [],
-            "refresh": 1,
-            "regex": "",
-            "skipUrlSync": false,
-            "type": "datasource"
-          },
-          {
             "name": "logs_datasource",
             "label": "Logs Datasource",
             "type": "datasource",
@@ -219,6 +200,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
+              "legendFormat": "5xx rate",
               "refId": "A"
             }
           ],
@@ -252,6 +234,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "requests/sec",
               "refId": "A"
             }
           ],
@@ -276,6 +259,7 @@ spec:
           "targets": [
             {
               "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
+              "legendFormat": "p95",
               "refId": "A"
             }
           ],
@@ -309,6 +293,7 @@ spec:
           "targets": [
             {
               "expr": "sum(increase(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
+              "legendFormat": "5xx (5m)",
               "refId": "A"
             }
           ],
@@ -413,17 +398,17 @@ spec:
         },
         {
           "type": "row",
-          "title": "🔍 TRACES: Search & Service Map",
+          "title": "🔍 TRACES: Search",
           "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
           "collapsed": false
         },
         {
           "id": 1000,
-          "type": "traces",
-          "title": "Recent Traces (pick a slow one to open the waterfall)",
-          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces.",
-          "gridPos": {"x": 0, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
+          "type": "table",
+          "title": "Recent Traces (click a row to open the waterfall)",
+          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces. A table, not a Traces panel: the Traces visualization renders ONE trace from a traceID, while a search returns a list.",
+          "gridPos": {"x": 0, "y": 31, "w": 24, "h": 10},
+          "datasource": {"type": "jaeger", "uid": "victoriatraces"},
           "targets": [
             {
               "queryType": "search",
@@ -431,26 +416,6 @@ spec:
               "operation": "",
               "tags": "",
               "minDuration": "$${min_trace_duration}",
-              "maxDuration": "",
-              "limit": 20,
-              "refId": "A"
-            }
-          ],
-          "options": {}
-        },
-        {
-          "type": "nodeGraph",
-          "title": "Service Map",
-          "description": "Derived from the same trace search via the datasource's serviceMap/nodeGraph support.",
-          "gridPos": {"x": 12, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
-          "targets": [
-            {
-              "queryType": "search",
-              "service": "$${service}",
-              "operation": "",
-              "tags": "",
-              "minDuration": "",
               "maxDuration": "",
               "limit": 20,
               "refId": "A"
