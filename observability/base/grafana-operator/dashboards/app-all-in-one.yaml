@@ -11,6 +11,7 @@ spec:
       dashboards: "grafana"
   json: |
     {
+      "uid": "app-all-in-one",
       "title": "Observability Demo - All in One",
       "description": "RED metrics, trace search and service map, and log context",
       "tags": ["observability", "traces", "metrics", "demo"],
@@ -49,7 +50,7 @@ spec:
             "current": {
               "selected": false,
               "text": "VictoriaLogs",
-              "value": "victorialogs"
+              "value": "VictoriaLogs"
             },
             "hide": 0,
             "includeAll": false,
@@ -108,32 +109,43 @@ spec:
             "name": "operation",
             "label": "Route",
             "type": "custom",
-            "query": " : All,GET /api/images : GET /api/images,GET /api/images/{id}/view : GET /api/images/{id}/view,GET /api/images/{id}/thumbnail : GET /api/images/{id}/thumbnail,GET /api/settings : GET /api/settings,POST /api/images : POST /api/images,DELETE /api/images/{id} : DELETE /api/images/{id}",
+            "query": "All : ,GET /api/images,GET /api/images/{id}/view,GET /api/images/{id}/thumbnail,GET /api/settings,POST /api/images,DELETE /api/images/{id}",
             "current": {
               "selected": true,
               "text": "All",
-              "value": " "
+              "value": ""
             },
             "hide": 0,
             "includeAll": false,
             "multi": false,
-            "options": [],
+            "options": [
+              {"selected": true, "text": "All", "value": ""},
+              {"selected": false, "text": "GET /api/images", "value": "GET /api/images"},
+              {"selected": false, "text": "GET /api/images/{id}/view", "value": "GET /api/images/{id}/view"},
+              {"selected": false, "text": "GET /api/images/{id}/thumbnail", "value": "GET /api/images/{id}/thumbnail"},
+              {"selected": false, "text": "GET /api/settings", "value": "GET /api/settings"},
+              {"selected": false, "text": "POST /api/images", "value": "POST /api/images"},
+              {"selected": false, "text": "DELETE /api/images/{id}", "value": "DELETE /api/images/{id}"}
+            ],
             "skipUrlSync": false
           },
           {
             "name": "trace_tags",
-            "label": "Errors only",
+            "label": "Trace filter",
             "type": "custom",
-            "query": " : no,{\"error\":\"true\"} : yes",
+            "query": "All : ,Errors only : error=true",
             "current": {
               "selected": true,
-              "text": "no",
-              "value": " "
+              "text": "All",
+              "value": ""
             },
             "hide": 0,
             "includeAll": false,
             "multi": false,
-            "options": [],
+            "options": [
+              {"selected": true, "text": "All", "value": ""},
+              {"selected": false, "text": "Errors only", "value": "error=true"}
+            ],
             "skipUrlSync": false
           }
         ]
@@ -212,11 +224,11 @@ spec:
               "links": [
                 {
                   "title": "View traces for this time range",
-                  "url": "?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
+                  "url": "/d/app-all-in-one?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
                 },
                 {
                   "title": "View error logs for this time range",
-                  "url": "?viewPanel=1001&$${__url_time_range}"
+                  "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"
                 }
               ]
             }
@@ -443,7 +455,7 @@ spec:
           "title": "Recent Traces (click a row to open the waterfall)",
           "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces. A table, not a Traces panel: the Traces visualization renders ONE trace from a traceID, while a search returns a list.",
           "gridPos": {"x": 0, "y": 31, "w": 24, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "victoriatraces"},
+          "datasource": {"type": "jaeger", "uid": "VictoriaTraces"},
           "targets": [
             {
               "queryType": "search",
