@@ -222,6 +222,29 @@ GitOps patterns should not default to.
     drift; the remaining variant-specific values are still a diff to check
     by hand, not something CI enforces.
 
+- **The cross-signal linking named above was misconfigured from the day it
+  was written, and silently did nothing until 2026-09-13.** "One Grafana,
+  three signals, cross-linked out of the box" was the intent; the
+  implementation used a key — `datasourceName` — that appears in no Grafana
+  schema, inside a `tracesToLogs` block that current Grafana no longer reads
+  (it reads `tracesToLogsV2`), referencing datasources by a literal name when
+  neither had a pinned `uid`, so the reference resolved to nothing. The
+  logs-side `TraceID` derived field matched a regex against the rendered log
+  line, where the trace id has never appeared — it is a structured field, and
+  `_msg` carries only the message text. Trace-to-logs, trace-to-metrics,
+  log-to-trace and the service map were all inert, on both clusters, for the
+  life of the configuration.
+  - *Mitigation*: fixed in the datasource CRs, with the reasoning recorded at
+    the point of failure in each file and the corrected shape shown on the
+    [Dashboards and alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}})
+    page. The deeper lesson is not mitigated and is worth stating plainly:
+    **nothing in CI can catch this class of defect.** `flux schema validate`
+    sees a well-formed map, polaris does not read datasource config, and a
+    documentation claim only fails when it pins the exact value. The failure
+    is invisible at every layer — the datasource loads, the dashboard renders,
+    and the link simply never appears — so it is only ever found by using the
+    feature or by reading the vendor's schema.
+
 ### Neutral
 
 - Traces are not queried through a VictoriaMetrics-specific query
