@@ -154,11 +154,13 @@ spec:
                 icon: postgres.png
                 namespace: tooling
                 # Homepage matches on `app.kubernetes.io/name`, which the App
-                # composition sets to the CLAIM name — and this claim is
-                # `xplane-pev2`. Plain `pev2` matches 0 pods, so the card showed
-                # an unknown/degraded status while the workload was perfectly
-                # healthy. Entries whose claim carries the prefix must repeat it
-                # here (cf. xplane-podinfo, xplane-image-gallery below).
+                # composition sets to the CLAIM name verbatim -- so `app:` here
+                # must be spelled exactly as the claim is, prefix or not. This
+                # claim is `xplane-pev2`; plain `pev2` matched 0 pods and the
+                # card showed unknown/degraded while the workload was perfectly
+                # healthy. The composition adds `xplane-` only to IAM-bearing
+                # resources, so a claim named plainly (podinfo, image-gallery)
+                # is matched by its plain name.
                 app: xplane-pev2
 
         - Observability:
@@ -221,14 +223,14 @@ spec:
                 description: Demo Application
                 icon: mdi-cube
                 namespace: apps
-                app: xplane-podinfo
+                app: podinfo
 
             - Image Gallery:
                 href: https://image-gallery.${private_domain_name}
                 description: Demo Image Gallery
                 icon: mdi-image-multiple
                 namespace: apps
-                app: xplane-image-gallery
+                app: image-gallery
 
         - "Cluster: ${cluster_name}":
             - Flux UI:

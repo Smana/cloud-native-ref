@@ -652,32 +652,39 @@ GENERATABLE=(
     "observability-victoria-metrics-k8s-stack-grafana-envvars"
     "cnpg${_cnpg_sep}xplane-harbor${_cnpg_sep}roles${_cnpg_sep}harbor"
     "cnpg${_cnpg_sep}xplane-zitadel${_cnpg_sep}superuser"
+    "cnpg${_cnpg_sep}xplane-image-gallery${_cnpg_sep}roles${_cnpg_sep}image-gallery-app"
 )
 
-# image-gallery's role credential, AWS-ONLY -- appended rather than listed above
-# because it is the one entry here that does not exist on both clouds.
+# image-gallery's role credential is listed above unconditionally, like the two
+# cnpg entries beside it and for the reason the comment above GENERATABLE gives:
+# they are "seeded here so a rebuild does not depend on someone remembering".
 #
-# apps/base/complete is deliberately absent from apps/gcp-0/kustomization.yaml:
-# the application talks to S3 through an S3 SDK with the bucket hardcoded in its
-# container environment, so gcp-0 has no image-gallery, no SQLInstance for it,
-# and no ExternalSecret reading this key. Listing it unconditionally would make
-# `seed --cloud gcp` create a secret that cloud can never consume -- a paid,
-# permanently-unread entry, and a misleading one for anyone auditing the store.
+# It used to be appended under `if [ "$CLOUD" = "aws" ]`, and that was correct
+# when written: apps/platform/image-gallery was absent from apps/gcp-0/kustomization.yaml,
+# the application reached S3 with the bucket hardcoded in its container
+# environment, and so gcp-0 had no image-gallery, no SQLInstance for it and no
+# ExternalSecret reading this key. Seeding it there would have created a paid,
+# permanently-unread entry.
 #
-# It belongs here for exactly the reason the comment above GENERATABLE gives for
-# the other two cnpg entries: they are "seeded here so a rebuild does not depend
-# on someone remembering". This one was not, so it did. Nothing in this
-# repository creates it -- the SQLInstance Composition only ASKS for it -- so if
-# it were ever lost, a rebuild would fail the way that comment describes, naming
-# neither the key nor the cause: External Secrets reporting `could not get
-# secret data from provider` while the pod sits in CreateContainerConfigError
-# naming a Kubernetes Secret.
+# image-gallery v2 (#2022) made every clause of that false. apps/gcp-0 now
+# includes ../platform, the app selects its backend with
+# STORAGE_PROVIDER=gcs against a real GCS bucket, and gcp-0 does have both the
+# SQLInstance and the ExternalSecret. The stale gate then produced precisely the
+# failure the GENERATABLE comment warns about, observed on gcp-0 2026-09-13:
+# External Secrets could not read
+# `cnpg-xplane-image-gallery-roles-image-gallery-app` while both app replicas
+# AND the CNPG initdb pod sat in CreateContainerConfigError naming a Kubernetes
+# Secret.
 #
-# `if`, not `[ ... ] && ...`: under `set -o errexit` a trailing && test that
-# evaluates false makes the whole script exit here, on GCP, before doing anything.
-if [ "$CLOUD" = "aws" ]; then
-    GENERATABLE+=( "cnpg/xplane-image-gallery/roles/image-gallery-app" )
-fi
+# initdb needing it is what makes this a deadlock rather than an ordering
+# problem, and the distinction is worth keeping: CNPG cannot seed a credential
+# it requires in order to start, so nothing converges on its own.
+#
+# `seed_body` needed no change -- its case pattern is
+# `cnpg?xplane-image-gallery?roles?image-gallery-app`, where `?` matches either
+# separator, so the generator half was cloud-agnostic all along. Only this list
+# excluded GCP. Note the ORDER MATTERS warning in that arm: CNPG fixes the role
+# password when it CREATES the cluster, so seed before the claim reconciles.
 
 # 32 bytes of urandom, base64, punctuation removed so no consumer has to worry
 # about quoting it in a connection string or an env file.
@@ -729,7 +736,7 @@ seed_body() {
         cnpg?xplane-image-gallery?roles?image-gallery-app)
             # Same shape as harbor above, and the username is again load-bearing:
             # `image-gallery-app` is spec.sqlInstance.roles[].name in
-            # apps/base/complete/app.yaml, and also the `owner` of the
+            # apps/platform/image-gallery/app.yaml, and also the `owner` of the
             # image-gallery database there.
             #
             # GENERATED, not derived -- unlike the zitadel arm below, this

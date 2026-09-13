@@ -4,10 +4,49 @@
   "version": "4",
   "groupKey": "{}/{}:{alertname=\"TargetDown\", cluster=\"aws-0\"}",
   "externalURL": "https://vmalertmanager-aws-0.priv.aws.ogenki.io",
-  "groupLabels": {"alertname": "TargetDown", "cluster": "aws-0", "severity": "warning", "namespace": "kube-system"},
-  "commonLabels": {"alertname": "TargetDown", "cluster": "aws-0", "env": "dev", "cloud": "aws", "region": "eu-west-3", "severity": "warning", "namespace": "kube-system", "job": "core-dns"},
-  "commonAnnotations": {"summary": "One or more targets are unreachable.", "description": "100% of the core-dns/victoria-metrics-k8s-stack-core-dns targets in kube-system namespace are down.", "dashboard": "https://grafana.priv.aws.ogenki.io/dashboards"},
+  "groupLabels": {
+    "alertname": "TargetDown",
+    "cluster": "aws-0",
+    "severity": "warning",
+    "namespace": "kube-system"
+  },
+  "commonLabels": {
+    "alertname": "TargetDown",
+    "cluster": "aws-0",
+    "env": "dev",
+    "cloud": "aws",
+    "region": "eu-west-3",
+    "severity": "warning",
+    "namespace": "kube-system",
+    "job": "core-dns"
+  },
+  "commonAnnotations": {
+    "summary": "One or more targets are unreachable.",
+    "description": "100% of the core-dns/victoria-metrics-k8s-stack-core-dns targets in kube-system namespace are down.",
+    "dashboard": "https://grafana.priv.aws.ogenki.io/dashboards"
+  },
   "alerts": [
-    {"status": "resolved", "labels": {"alertname": "TargetDown", "cluster": "aws-0", "env": "dev", "cloud": "aws", "region": "eu-west-3", "severity": "warning", "namespace": "kube-system", "job": "core-dns"}, "annotations": {"summary": "One or more targets are unreachable.", "description": "100% of the core-dns/victoria-metrics-k8s-stack-core-dns targets in kube-system namespace are down.", "dashboard": "https://grafana.priv.aws.ogenki.io/dashboards"}, "startsAt": "2026-09-12T09:05:00Z", "endsAt": "2026-09-12T09:11:00Z", "generatorURL": "https://grafana.priv.aws.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22100+%2A+%28count+by+%28job%2C+namespace%2C+service%29+%28up+%3D%3D+0%29+%2F+count+by+%28job%2C+namespace%2C+service%29+%28up%29%29+%3E+10%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789203900000\",\"to\":\"now\"}}", "fingerprint": "c1"}
+    {
+      "status": "resolved",
+      "labels": {
+        "alertname": "TargetDown",
+        "cluster": "aws-0",
+        "env": "dev",
+        "cloud": "aws",
+        "region": "eu-west-3",
+        "severity": "warning",
+        "namespace": "kube-system",
+        "job": "core-dns"
+      },
+      "annotations": {
+        "summary": "One or more targets are unreachable.",
+        "description": "100% of the core-dns/victoria-metrics-k8s-stack-core-dns targets in kube-system namespace are down.",
+        "dashboard": "https://grafana.priv.aws.ogenki.io/dashboards"
+      },
+      "startsAt": "2026-09-12T09:05:00Z",
+      "endsAt": "2026-09-12T09:11:00Z",
+      "generatorURL": "https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=up%7Bjob%3D%22core-dns%22%7D%20%3D%3D%200&g0.range_input=1h",
+      "fingerprint": "c1"
+    }
   ]
 }

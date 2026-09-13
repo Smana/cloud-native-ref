@@ -66,10 +66,13 @@ queries that silently return nothing, not an error:
    ```
 2. **After `| unpack_json`, fields are prefixed `log.`** — `log.level`,
    `log.trace_id`, not the bare field name. Confirmed by the trace-correlation
-   derived field on the Grafana datasource:
+   derived field on the Grafana datasource, which matches the FIELD rather
+   than the rendered line — `_msg` holds only the message text, so a regex
+   over the line could never match it:
    ```yaml
    # observability/base/victoria-logs/grafana-datasource.yaml
-   matcherRegex: "\"log\\.trace_id\":\"([0-9a-f]+)\""
+   matcherType: "label"
+   matcherRegex: "log.trace_id"
    ```
 3. **Grafana dashboard JSON needs `$${var}` (double dollar), not `${var}`,**
    to survive Flux `postBuild` substitution — Flux collapses `$${` to `${`
@@ -79,7 +82,9 @@ queries that silently return nothing, not an error:
    url: "$${__value.raw}"
    ```
    and in VictoriaTraces' datasource (`tracesToMetrics` queries use
-   `rate(http_server_requests_total{$$__tags}[5m])`).
+   `sum(rate(http.server.request.duration_count{$$__tags}[5m]))` — dot-named,
+   because the app emits OTel semconv metrics; `http_server_requests_total`
+   never existed here).
 
 **Worked example**, combining rules 1 and 2:
 

@@ -44,7 +44,7 @@ spec:
               args:
                 - loadgen
                 - --target
-                - http://xplane-image-gallery.apps.svc.cluster.local:8080
+                - http://image-gallery.apps.svc.cluster.local:8080
                 - --scenario
                 - steady
                 - --duration
@@ -58,6 +58,8 @@ spec:
                   value: http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces
                 - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
                   value: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics
+                - name: USER
+                  value: loadgen # required for OTEL resource detector; user.Current() needs $USER or cgo
               resources:
                 requests:
                   cpu: 100m
@@ -98,7 +100,7 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: xplane-image-gallery
+            app.kubernetes.io/name: image-gallery
       toPorts:
         - ports:
             - port: "8080"

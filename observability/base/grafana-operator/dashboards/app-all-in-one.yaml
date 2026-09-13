@@ -12,8 +12,8 @@ spec:
   json: |
     {
       "title": "Observability Demo - All in One",
-      "description": "RED metrics with exemplar-based trace correlation and log context",
-      "tags": ["observability", "traces", "metrics", "exemplars", "demo"],
+      "description": "RED metrics, trace search and service map, and log context",
+      "tags": ["observability", "traces", "metrics", "demo"],
       "timezone": "browser",
       "editable": true,
       "graphTooltip": 1,
@@ -92,11 +92,11 @@ spec:
           {
             "name": "service",
             "type": "constant",
-            "query": "xplane-image-gallery",
+            "query": "image-gallery",
             "current": {
               "selected": true,
-              "text": "xplane-image-gallery",
-              "value": "xplane-image-gallery"
+              "text": "image-gallery",
+              "value": "image-gallery"
             },
             "hide": 0,
             "includeAll": false,
@@ -105,12 +105,25 @@ spec:
             "options": [
               {
                 "selected": true,
-                "text": "xplane-image-gallery",
-                "value": "xplane-image-gallery"
+                "text": "image-gallery",
+                "value": "image-gallery"
               }
             ],
             "skipUrlSync": false,
             "type": "constant"
+          },
+          {
+            "name": "min_trace_duration",
+            "label": "Min Trace Duration",
+            "type": "textbox",
+            "query": "",
+            "current": {
+              "selected": false,
+              "text": "",
+              "value": ""
+            },
+            "hide": 0,
+            "skipUrlSync": false
           }
         ]
       },
@@ -123,21 +136,19 @@ spec:
         },
         {
           "type": "timeseries",
-          "title": "HTTP Request Rate (requests/sec) [Click exemplar dots to view traces]",
+          "title": "HTTP Request Rate (requests/sec)",
           "gridPos": {"x": 0, "y": 1, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "Total requests/sec",
-              "refId": "A",
-              "exemplar": true
+              "refId": "A"
             },
             {
-              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "{{http.response.status_code}}",
-              "refId": "B",
-              "exemplar": true
+              "refId": "B"
             }
           ],
           "fieldConfig": {
@@ -151,13 +162,7 @@ spec:
                 "lineWidth": 2,
                 "showPoints": "auto"
               },
-              "unit": "reqps",
-              "links": [
-                {
-                  "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
-                }
-              ]
+              "unit": "reqps"
             }
           },
           "options": {
@@ -167,21 +172,19 @@ spec:
         },
         {
           "type": "timeseries",
-          "title": "Response Time (P95 latency) [Click exemplar dots to view traces]",
+          "title": "Response Time (P95 latency)",
           "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
               "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange, http.route))",
               "legendFormat": "P95 - {{http.route}}",
-              "refId": "A",
-              "exemplar": true
+              "refId": "A"
             },
             {
               "expr": "histogram_quantile(0.50, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
               "legendFormat": "P50 (median)",
-              "refId": "B",
-              "exemplar": true
+              "refId": "B"
             }
           ],
           "fieldConfig": {
@@ -197,8 +200,8 @@ spec:
               "unit": "s",
               "links": [
                 {
-                  "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
+                  "title": "View traces for this time range",
+                  "url": "?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
                 }
               ]
             }
@@ -215,7 +218,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
+              "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
               "refId": "A"
             }
           ],
@@ -248,7 +251,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "refId": "A"
             }
           ],
@@ -305,7 +308,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(increase(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
+              "expr": "sum(increase(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -331,15 +334,14 @@ spec:
         },
         {
           "type": "timeseries",
-          "title": "Request Count by Status Code [Click exemplar dots to view traces]",
+          "title": "Request Count by Status Code",
           "gridPos": {"x": 0, "y": 13, "w": 24, "h": 6},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "HTTP {{http.response.status_code}}",
-              "refId": "A",
-              "exemplar": true
+              "refId": "A"
             }
           ],
           "fieldConfig": {
@@ -351,13 +353,7 @@ spec:
                 "lineWidth": 2,
                 "stacking": {"mode": "normal"}
               },
-              "unit": "reqps",
-              "links": [
-                {
-                  "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
-                }
-              ]
+              "unit": "reqps"
             },
             "overrides": [
               {
@@ -414,6 +410,53 @@ spec:
               "custom": {}
             }
           }
+        },
+        {
+          "type": "row",
+          "title": "🔍 TRACES: Search & Service Map",
+          "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "id": 1000,
+          "type": "traces",
+          "title": "Recent Traces (pick a slow one to open the waterfall)",
+          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces.",
+          "gridPos": {"x": 0, "y": 31, "w": 12, "h": 10},
+          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
+          "targets": [
+            {
+              "queryType": "search",
+              "service": "$${service}",
+              "operation": "",
+              "tags": "",
+              "minDuration": "$${min_trace_duration}",
+              "maxDuration": "",
+              "limit": 20,
+              "refId": "A"
+            }
+          ],
+          "options": {}
+        },
+        {
+          "type": "nodeGraph",
+          "title": "Service Map",
+          "description": "Derived from the same trace search via the datasource's serviceMap/nodeGraph support.",
+          "gridPos": {"x": 12, "y": 31, "w": 12, "h": 10},
+          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
+          "targets": [
+            {
+              "queryType": "search",
+              "service": "$${service}",
+              "operation": "",
+              "tags": "",
+              "minDuration": "",
+              "maxDuration": "",
+              "limit": 20,
+              "refId": "A"
+            }
+          ],
+          "options": {}
         }
       ]
     }

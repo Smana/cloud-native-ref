@@ -8,7 +8,7 @@ warning
 :warning: FIRING · 3 — KubePodCrashLooping
 
 ==> title_link
-https://grafana.priv.gcp.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22max_over_time%28kube_pod_container_status_waiting_reason%7Breason%3D%5C%22CrashLoopBackOff%5C%22%2Cjob%3D%5C%22kube-state-metrics%5C%22%7D%5B5m%5D%29+%3E%3D+1%22,"refId":"A"}],"range":{"from":"1789204320000","to":"now"}}
+https://vm.priv.gcp.ogenki.io/vmui/#/?g0.expr=rate%28kube_pod_container_status_restarts_total%7Bpod%3D%22podinfo-7d8f%22%7D%5B10m%5D%29%20%3E%200&g0.range_input=1h
 
 ==> text
 `gcp-0 · dev`
@@ -37,7 +37,7 @@ https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping
 https://grafana.priv.cluster.local/dashboards
 
 ==> action:Query :mag:
-https://grafana.priv.gcp.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22max_over_time%28kube_pod_container_status_waiting_reason%7Breason%3D%5C%22CrashLoopBackOff%5C%22%2Cjob%3D%5C%22kube-state-metrics%5C%22%7D%5B5m%5D%29+%3E%3D+1%22,"refId":"A"}],"range":{"from":"1789204320000","to":"now"}}
+https://vm.priv.gcp.ogenki.io/vmui/#/?g0.expr=rate%28kube_pod_container_status_restarts_total%7Bpod%3D%22podinfo-7d8f%22%7D%5B10m%5D%29%20%3E%200&g0.range_input=1h
 
 ==> action:Silence :no_bell:
 https://vmalertmanager-gcp-0.priv.gcp.ogenki.io/#/silences/new?filter=%7Bcloud%3D"gcp"%2C%20cluster%3D"gcp-0"%2C%20env%3D"dev"%2C%20namespace%3D"apps"%2C%20region%3D"europe-west1"%2C%20severity%3D"warning"%2C%20alertname%3D"KubePodCrashLooping"%7D

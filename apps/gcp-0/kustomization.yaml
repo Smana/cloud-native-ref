@@ -2,11 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Applications on gcp-0: the same four sets as aws-0, from the same shared
-# directories. Only image-gallery (../base/complete) carries per-cloud values,
+# directories. Only image-gallery (../platform/image-gallery) carries per-cloud values,
 # in the patch below.
 resources:
-  - ../base/basic
-  - ../base/complete
   - ../demo
   - ../platform
 
@@ -29,14 +27,14 @@ patches:
   - target:
       group: cloud.ogenki.io
       kind: App
-      name: xplane-image-gallery
+      name: image-gallery
     patch: |-
       - op: add
         path: /spec/env/-
         value: {name: STORAGE_PROVIDER, value: gcs}
       - op: add
         path: /spec/env/-
-        value: {name: STORAGE_BUCKET, value: ogenki-435905-ogenki-xplane-image-gallery}
+        value: {name: STORAGE_BUCKET, value: ogenki-435905-ogenki-image-gallery}
       - op: add
         path: /spec/env/-
         value: {name: STORAGE_REGION, value: europe-west4}

@@ -8,7 +8,7 @@
 :question: FIRING · 7 — NodeFilesystemAlmostOutOfSpace
 
 ==> title_link
-https://grafana.priv.aws.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22node_filesystem_avail_bytes%7Bjob%3D%5C%22node-exporter%5C%22%2Cfstype%21%3D%5C%22%5C%22%7D+%2F+node_filesystem_size_bytes%7Bjob%3D%5C%22node-exporter%5C%22%2Cfstype%21%3D%5C%22%5C%22%7D+%2A+100+%3C+5%22,"refId":"A"}],"range":{"from":"1789196400000","to":"now"}}
+https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=node_filesystem_avail_bytes%7Binstance%3D%2210.0.1.11%3A9100%22%7D%20%2F%20node_filesystem_size_bytes%20%3C%200.05&g0.range_input=1h
 
 ==> text
 `aws-0`
@@ -40,7 +40,7 @@ https://cnref.ogenki.io/docs/platform/observability/dashboards-and-alerts/
 https://grafana.priv.cluster.local/dashboards
 
 ==> action:Query :mag:
-https://grafana.priv.aws.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22node_filesystem_avail_bytes%7Bjob%3D%5C%22node-exporter%5C%22%2Cfstype%21%3D%5C%22%5C%22%7D+%2F+node_filesystem_size_bytes%7Bjob%3D%5C%22node-exporter%5C%22%2Cfstype%21%3D%5C%22%5C%22%7D+%2A+100+%3C+5%22,"refId":"A"}],"range":{"from":"1789196400000","to":"now"}}
+https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=node_filesystem_avail_bytes%7Binstance%3D%2210.0.1.11%3A9100%22%7D%20%2F%20node_filesystem_size_bytes%20%3C%200.05&g0.range_input=1h
 
 ==> action:Silence :no_bell:
 https://vmalertmanager-aws-0.priv.aws.ogenki.io/#/silences/new?filter=%7Bcloud%3D""%2C%20cluster%3D"aws-0"%2C%20env%3D""%2C%20region%3D""%2C%20alertname%3D"NodeFilesystemAlmostOutOfSpace"%7D

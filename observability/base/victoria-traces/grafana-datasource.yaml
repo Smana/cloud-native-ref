@@ -6,31 +6,69 @@ metadata:
 spec:
   allowCrossNamespaceImport: true
   datasource:
+    # Pinned so the OTHER datasource can reference this one. Without it the
+    # operator assigns a random uid (this instance had
+    # 76f17555-0d1f-4012-b448-1a34896b7861), so every cross-reference written as
+    # the literal string "VictoriaTraces" resolved to nothing and every link
+    # silently did nothing.
+    #
+    # Deliberately the DEPRECATED `spec.datasource.uid` rather than `spec.uid`,
+    # which the CRD prefers: `spec.uid` is immutable, so setting it on these
+    # already-created objects is rejected outright --
+    #   The GrafanaDatasource "vt-datasource" is invalid: spec: Invalid value:
+    #   spec.uid is immutable
+    # and Flux would fail the same way on every reconcile. Server-side dry-run
+    # confirms the deprecated path applies cleanly in place. The alternative was
+    # renaming both objects so they are re-created; that churns live datasources
+    # for no gain. Revisit if the deprecated field is removed.
+    uid: victoriatraces
     access: proxy
     type: jaeger
     name: VictoriaTraces
     url: http://victoria-traces-vt-single-server.observability:10428/select/jaeger
     jsonData:
-      tracesToLogs:
-        datasourceName: VictoriaLogs
-        tags: ['trace_id', 'traceId', 'traceID']
-        mappedTags:
-          - key: service.name
-            value: service_name
+      # The key is `datasourceUid`, NEVER `datasourceName` -- no Grafana schema
+      # has ever accepted the latter, so these links silently did nothing on
+      # both clusters until 2026-09-13. A wrong key here fails invisibly: the
+      # datasource still loads, the link just never appears.
+      #
+      # `tracesToLogsV2`, not `tracesToLogs`: v1 is superseded and current
+      # Grafana (13.1.4 here) reads v2. Correcting keys inside the v1 block
+      # would have looked like a fix and changed nothing.
+      tracesToLogsV2:
+        datasourceUid: victorialogs
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
         filterByTraceID: true
         filterBySpanID: false
+        # UNVERIFIED against a live Grafana. VictoriaLogs speaks LogsQL, not
+        # LogQL, so `filterByTraceID` may not translate into a query it accepts;
+        # if this direction stays empty, the fix is `customQuery: true` plus a
+        # LogsQL `query` keyed on the span's trace id. The reverse direction
+        # (logs -> trace) is configured in the VictoriaLogs datasource and is
+        # the one the demo relies on.
       tracesToMetrics:
-        datasourceName: VictoriaMetrics
-        tags: ['service.name', 'http.method', 'http.status_code']
+        datasourceUid: VictoriaMetrics
+        # Objects, not bare strings -- the schema is Array<{key, value?}>. `key`
+        # is the span attribute; omit `value` when the metric label has the same
+        # name. These are OTel semconv v2 names, verified against live series:
+        # `http.method` / `http.status_code` do not exist.
+        tags:
+          - key: service.name
+          - key: http.request.method
+          - key: http.response.status_code
         queries:
+          # Real series names. `http_server_requests_total` and
+          # `http_server_duration_seconds_bucket` never existed here; the app
+          # emits dot-named OTel metrics and VictoriaMetrics stores histograms
+          # with `vmrange` labels, so a quantile must aggregate by vmrange --
+          # same shape as the VMRules in apps/platform/image-gallery/app.yaml.
           - name: 'Request rate'
-            query: 'rate(http_server_requests_total{$$__tags}[5m])'
-          - name: 'Request duration'
-            query: 'histogram_quantile(0.95, rate(http_server_duration_seconds_bucket{$$__tags}[5m]))'
+            query: 'sum(rate(http.server.request.duration_count{$$__tags}[5m]))'
+          - name: 'Request duration (p95)'
+            query: 'histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{$$__tags}[5m])) by (vmrange))'
       serviceMap:
-        datasourceName: VictoriaMetrics
+        datasourceUid: VictoriaMetrics
       nodeGraph:
         enabled: true
   instanceSelector:

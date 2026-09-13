@@ -23,7 +23,7 @@ name="image-gallery-loadgen-${scenario}-$(date +%s)"
 kubectl create job "$name" -n "$ns" --from=cronjob/image-gallery-loadgen --dry-run=client -o json |
   jq --arg s "$scenario" --arg d "$duration" --arg r "$rate" '
     .spec.template.spec.containers[0].args = [
-      "loadgen", "--target", "http://xplane-image-gallery.apps.svc.cluster.local:8080",
+      "loadgen", "--target", "http://image-gallery.apps.svc.cluster.local:8080",
       "--scenario", $s, "--duration", $d, "--rate", $r, "--concurrency", "10"]' |
   kubectl apply -f -
 echo "Started job/$name in $ns. Follow it with: kubectl logs -n $ns -f job/$name"
