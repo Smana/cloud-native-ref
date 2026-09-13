@@ -113,12 +113,12 @@ release silently kept — ×30 the intent — until the suffix was added on
 ```yaml
 # observability/base/victoria-traces/grafana-datasource.yaml
 datasource:
-  uid: victoriatraces            # pinned; see below
+  uid: VictoriaTraces            # pinned, and equal to the name; see below
   type: jaeger
   url: http://victoria-traces-vt-single-server.observability:10428/select/jaeger
   jsonData:
     tracesToLogsV2:
-      datasourceUid: victorialogs
+      datasourceUid: VictoriaLogs
     tracesToMetrics:
       datasourceUid: VictoriaMetrics
       tags:
@@ -141,15 +141,25 @@ written:**
   simply never appears.
 - **`tracesToLogsV2`, not `tracesToLogs`.** v1 is superseded and current
   Grafana reads v2, so correcting keys inside a v1 block changes nothing.
-- **A pinned `uid`.** Without one the operator assigns a random uid, so a
-  reference written as the literal string `VictoriaLogs` matches no
-  datasource. Note it is set at `spec.datasource.uid`, the field the CRD
-  marks deprecated, and deliberately: `spec.uid` is immutable and the API
-  server rejects it outright on an already-created object, which would fail
-  every Flux reconcile.
+- **A pinned `uid`, deliberately equal to the `name`.** Without a pin the
+  operator assigns a random uid, so a cross-reference written as the literal
+  string `VictoriaLogs` matched no datasource. Since 2026-09-13 the uid *is*
+  `VictoriaLogs`, following the convention the vmks chart already sets with
+  `VictoriaMetrics`/`VictoriaMetrics` and `Alertmanager`/`Alertmanager`: a
+  `datasourceUid` field takes a uid and rejects a name outright, so a
+  lowercase uid forces two spellings for one datasource. Note it is set at
+  `spec.datasource.uid`, the field the CRD marks deprecated, and
+  deliberately: `spec.uid` is immutable and the API server rejects it
+  outright on an already-created object, which would fail every Flux
+  reconcile.
 
-None of this is caught by CI — `flux schema validate` sees a well-formed
-map, and no documentation claim pins these values. The
+Only part of this is caught by CI. `flux schema validate` sees a well-formed
+map whichever key you use, so the two KEY choices above — `datasourceUid`
+over `datasourceName`, `tracesToLogsV2` over `tracesToLogs` — are gated by
+nothing but review. The uid VALUES are pinned: the `.doc-claims.yaml` claims
+`victoriatraces-datasource-uid` and `victorialogs-datasource-uid` read them
+from the two manifests and fail this page when it drifts from them, which it
+had already done once. The
 manifest doesn't configure an explicit receiver protocol (no OTLP toggles) —
 VictoriaTraces' chart defaults apply unmodified, so which ingest protocols
 are actually enabled isn't determinable from this repo alone.
