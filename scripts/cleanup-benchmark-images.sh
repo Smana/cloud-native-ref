@@ -18,7 +18,7 @@
 #
 # Options:
 #   --namespace NS    Kubernetes namespace (default: apps)
-#   --app NAME        App name (default: xplane-image-gallery)
+#   --app NAME        App name (default: image-gallery)
 #   --dry-run         Show what would be deleted without deleting
 #   -h, --help        Show this help message
 #
@@ -37,7 +37,7 @@ set -euo pipefail
 
 # Configuration
 NAMESPACE="${NAMESPACE:-apps}"
-APP_NAME="${APP_NAME:-xplane-image-gallery}"
+APP_NAME="${APP_NAME:-image-gallery}"
 DRY_RUN=false
 
 # Colors
