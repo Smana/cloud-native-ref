@@ -242,6 +242,6 @@ each gate actually checks.
 | `gcp-purge-dns-records.sh` | Empties a Cloud DNS zone of external-dns leftovers so `tofu destroy` can delete it |
 | `export-diagrams.sh` | Exports `.drawio` architecture diagrams to PNG |
 | `cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
-| `image-gallery-benchmark.sh` | Benchmarks the image-gallery demo path |
+| `demo-load.sh` | Runs an image-gallery load-generator scenario in-cluster (`browse`, `upload`, `mixed`, `steady`, `incident`) from the suspended `image-gallery-loadgen` CronJob |
 | `test-flux-schema.sh` | Exercises the Flux schema-validation setup |
 | `test-vector-vrl.sh` / `validate-vector-vrl.sh` / `vector-vrl-tests/` | Validate the Vector log-parsing configuration |

@@ -1,32 +1,57 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Applications on gcp-0.
-#
-# Three of aws-0's four, from the same shared directories. None of these
-# declares a single ${var}, so there is nothing per-cluster to substitute and
-# nothing that could resolve to empty here.
+# Applications on gcp-0: the same four sets as aws-0, from the same shared
+# directories. Only image-gallery (../base/complete) carries per-cloud values,
+# in the patch below.
 resources:
   - ../base/basic
+  - ../base/complete
   - ../demo
   - ../platform
 
-# ../base/complete is NOT here, and it is the one app that genuinely cannot be.
-#
-# image-gallery hardcodes its object storage in the container's environment:
-#   STORAGE_ENDPOINT  s3.eu-west-3.amazonaws.com
-#   STORAGE_BUCKET    eu-west-3-ogenki-xplane-image-gallery
-#   STORAGE_REGION    eu-west-3
-#
-# This is not a manifest that needs a per-cloud overlay — it is an application
-# talking to S3 through an S3 SDK. Pointing it at Cloud Storage means either
-# GCS's S3-compatible XML API with HMAC keys (static credentials, which this
-# platform avoids wherever a workload identity will do) or a GCS-native client
-# in the application itself. Both are changes to image-gallery, not to this
-# repository.
-#
-# ./llm is also absent, and deliberately: apps/gcp-0/llm is applied by
+# ./llm is absent, and deliberately: apps/gcp-0/llm is applied by
 # clusters/gcp-0-llm-platform/apps-llm.yaml under the suspended umbrella, so
 # listing it here would apply the LLM platform's claims regardless of that
 # suspend — exactly what keeping the umbrella a sibling of clusters/gcp-0/ was
 # meant to prevent.
+
+# image-gallery on gcp-0:
+#   - GCS through GKE Workload Identity: the composition provisions the bucket
+#     <projectID>-ogenki-<name> and a bucket-scoped identity; the app reads ADC.
+#   - The GKE metadata server serves the Workload Identity token. On GKE, Cilium
+#     does NOT classify 169.254.169.254 as the `host` entity (the composition's
+#     auto rule), so it needs this toCIDR, the rule runlore runs live here
+#     (observability/gcp-0/runlore/helmrelease.yaml).
+#   - CNPG backups go to the project-prefixed bucket, as ZITADEL's do
+#     (security/gcp-0/zitadel/kustomization.yaml): GCS bucket names are global.
+patches:
+  - target:
+      group: cloud.ogenki.io
+      kind: App
+      name: xplane-image-gallery
+    patch: |-
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_PROVIDER, value: gcs}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_BUCKET, value: ogenki-435905-ogenki-xplane-image-gallery}
+      - op: add
+        path: /spec/env/-
+        value: {name: STORAGE_REGION, value: europe-west4}
+      - op: add
+        path: /spec/env/-
+        value: {name: OTEL_RESOURCE_ATTRIBUTES, value: cloud.provider=gcp}
+      - op: add
+        path: /spec/networkPolicies/egress/-
+        value:
+          toCIDR:
+            - 169.254.169.254/32
+          toPorts:
+            - ports:
+                - port: "80"
+                  protocol: TCP
+      - op: replace
+        path: /spec/sqlInstance/backup/bucketName
+        value: ${project_id}-ogenki-cnpg-backups

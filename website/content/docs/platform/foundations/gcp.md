@@ -115,8 +115,7 @@ short version:
 ## What is excluded here, and why
 
 `gcp-0` reconciles the same layers as `aws-0` — observability, tooling and
-applications included. What it leaves out is deliberate and per-component:
-`image-gallery` (the application itself speaks S3) and `flux-previews`
+applications included. What it leaves out is deliberate: `flux-previews`
 (previews belong to one cluster by nature). The
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) page
 has the full map of what runs where, and what closing each exclusion would take.

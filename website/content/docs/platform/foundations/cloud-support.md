@@ -33,7 +33,7 @@ and torn down afterwards.
 | Infrastructure (Cilium, Gateway API, external-dns) | ✅ | ✅ |
 | Observability (VictoriaMetrics, Grafana, RunLore) | ✅ | ✅ same stack |
 | Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
-| Applications | ✅ | ✅ podinfo · basic · App Wizard — minus `image-gallery` |
+| Applications | ✅ | ✅ podinfo · basic · App Wizard · image-gallery (GCS through Workload Identity) |
 | LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
 | Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
 
@@ -180,12 +180,6 @@ gaps at all.
 
 ### Genuinely not portable yet
 
-- **`image-gallery`** — the only application excluded, and not for a manifest
-  reason. It hardcodes `STORAGE_ENDPOINT=s3.eu-west-3.amazonaws.com` in its
-  container environment and talks to it through an S3 SDK. Reaching Cloud
-  Storage means either GCS's S3-compatible XML API with HMAC keys — static
-  credentials this platform avoids wherever a workload identity will do — or a
-  GCS-native client. Both are changes to the *application*.
 - **Harbor's database has no backups on `gcp-0`.** The claim side is ready — the
   Composition renders barman's `ObjectStore` and a bucket-scoped identity as
   soon as `backup` is set. The cluster side is not: the barman plugin ships a
