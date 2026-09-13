@@ -11,6 +11,7 @@ spec:
       dashboards: "grafana"
   json: |
     {
+      "uid": "app-all-in-one",
       "title": "Observability Demo - All in One",
       "description": "RED metrics, trace search, and log context",
       "tags": ["observability", "traces", "metrics", "demo"],
@@ -174,6 +175,10 @@ spec:
         {
           "type": "timeseries",
           "title": "Response Time (P95 latency)",
+          "links": [
+            {"title": "\ud83d\udd0d View traces for this time range", "url": "/d/app-all-in-one?viewPanel=1000&$${__url_time_range}"},
+            {"title": "\ud83d\udccb View error logs for this time range", "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"}
+          ],
           "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
@@ -202,7 +207,11 @@ spec:
               "links": [
                 {
                   "title": "View traces for this time range",
-                  "url": "?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
+                  "url": "/d/app-all-in-one?viewPanel=1000&var-min_trace_duration=&$${__url_time_range}"
+                },
+                {
+                  "title": "View error logs for this time range",
+                  "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"
                 }
               ]
             }
