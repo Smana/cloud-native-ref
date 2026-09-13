@@ -224,7 +224,7 @@ spec:
               "links": [
                 {
                   "title": "View traces for this time range",
-                  "url": "/d/app-all-in-one?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
+                  "url": "/d/app-all-in-one?viewPanel=1000&var-min_trace_duration=&$${__url_time_range}"
                 },
                 {
                   "title": "View error logs for this time range",
