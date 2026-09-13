@@ -6,8 +6,10 @@ metadata:
 spec:
   allowCrossNamespaceImport: true
   datasource:
-    # Pinned so the OTHER datasource can reference this one. Without it the
-    # operator assigns a random uid (this instance had
+    # Pinned, and deliberately IDENTICAL to `name` below, so one spelling
+    # works everywhere -- a `datasourceUid` field takes a uid and rejects a
+    # name, so a lowercase uid would force two spellings for one datasource.
+    # Without a pin the operator assigns a random uid (this instance had
     # 76f17555-0d1f-4012-b448-1a34896b7861), so every cross-reference written as
     # the literal string "VictoriaTraces" resolved to nothing and every link
     # silently did nothing.
@@ -21,7 +23,7 @@ spec:
     # confirms the deprecated path applies cleanly in place. The alternative was
     # renaming both objects so they are re-created; that churns live datasources
     # for no gain. Revisit if the deprecated field is removed.
-    uid: victoriatraces
+    uid: VictoriaTraces
     access: proxy
     type: jaeger
     name: VictoriaTraces
@@ -36,7 +38,7 @@ spec:
       # Grafana (13.1.4 here) reads v2. Correcting keys inside the v1 block
       # would have looked like a fix and changed nothing.
       tracesToLogsV2:
-        datasourceUid: victorialogs
+        datasourceUid: VictoriaLogs
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
         filterByTraceID: true
