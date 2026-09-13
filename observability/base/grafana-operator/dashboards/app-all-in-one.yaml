@@ -103,6 +103,38 @@ spec:
             },
             "hide": 0,
             "skipUrlSync": false
+          },
+          {
+            "name": "operation",
+            "label": "Route",
+            "type": "custom",
+            "query": " : All,GET /api/images : GET /api/images,GET /api/images/{id}/view : GET /api/images/{id}/view,GET /api/images/{id}/thumbnail : GET /api/images/{id}/thumbnail,GET /api/settings : GET /api/settings,POST /api/images : POST /api/images,DELETE /api/images/{id} : DELETE /api/images/{id}",
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": " "
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "skipUrlSync": false
+          },
+          {
+            "name": "trace_tags",
+            "label": "Errors only",
+            "type": "custom",
+            "query": " : no,{\"error\":\"true\"} : yes",
+            "current": {
+              "selected": true,
+              "text": "no",
+              "value": " "
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "skipUrlSync": false
           }
         ]
       },
@@ -416,8 +448,8 @@ spec:
             {
               "queryType": "search",
               "service": "$${service}",
-              "operation": "",
-              "tags": "",
+              "operation": "$${operation}",
+              "tags": "$${trace_tags}",
               "minDuration": "$${min_trace_duration}",
               "maxDuration": "",
               "limit": 20,
