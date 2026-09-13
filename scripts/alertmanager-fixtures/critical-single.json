@@ -4,8 +4,22 @@
   "version": "4",
   "groupKey": "{}/{}:{alertname=\"OpenBaoRaftQuorumAtRisk\", cluster=\"aws-0\"}",
   "externalURL": "https://vmalertmanager-aws-0.priv.aws.ogenki.io",
-  "groupLabels": {"alertname": "OpenBaoRaftQuorumAtRisk", "cluster": "aws-0", "severity": "critical", "namespace": "security"},
-  "commonLabels": {"alertname": "OpenBaoRaftQuorumAtRisk", "cluster": "aws-0", "env": "dev", "cloud": "aws", "region": "eu-west-3", "severity": "critical", "namespace": "security", "job": "openbao"},
+  "groupLabels": {
+    "alertname": "OpenBaoRaftQuorumAtRisk",
+    "cluster": "aws-0",
+    "severity": "critical",
+    "namespace": "security"
+  },
+  "commonLabels": {
+    "alertname": "OpenBaoRaftQuorumAtRisk",
+    "cluster": "aws-0",
+    "env": "dev",
+    "cloud": "aws",
+    "region": "eu-west-3",
+    "severity": "critical",
+    "namespace": "security",
+    "job": "openbao"
+  },
   "commonAnnotations": {
     "summary": "OpenBao raft cluster cannot tolerate a node failure.",
     "description": "Failure tolerance has been below 1 for 15 minutes: losing one more\nnode loses quorum, and a cluster without quorum cannot issue a\ncertificate or read a secret. If OpenBaoRaftNodeLost fired first\nand was not acted on, this is that same dead peer plus a real one.",
@@ -15,7 +29,17 @@
   "alerts": [
     {
       "status": "firing",
-      "labels": {"alertname": "OpenBaoRaftQuorumAtRisk", "cluster": "aws-0", "env": "dev", "cloud": "aws", "region": "eu-west-3", "severity": "critical", "namespace": "security", "job": "openbao", "instance": "10.0.12.44:8200"},
+      "labels": {
+        "alertname": "OpenBaoRaftQuorumAtRisk",
+        "cluster": "aws-0",
+        "env": "dev",
+        "cloud": "aws",
+        "region": "eu-west-3",
+        "severity": "critical",
+        "namespace": "security",
+        "job": "openbao",
+        "instance": "10.0.12.44:8200"
+      },
       "annotations": {
         "summary": "OpenBao raft cluster cannot tolerate a node failure.",
         "description": "Failure tolerance has been below 1 for 15 minutes: losing one more\nnode loses quorum, and a cluster without quorum cannot issue a\ncertificate or read a secret. If OpenBaoRaftNodeLost fired first\nand was not acted on, this is that same dead peer plus a real one.",
@@ -24,7 +48,7 @@
       },
       "startsAt": "2026-09-12T09:06:00Z",
       "endsAt": "0001-01-01T00:00:00Z",
-      "generatorURL": "https://grafana.priv.aws.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22vault_autopilot_failure_tolerance+%3C+1%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789203960000\",\"to\":\"now\"}}",
+      "generatorURL": "https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=vault_autopilot_failure_tolerance%7Bjob%3D%22openbao%22%7D%20%3C%201&g0.range_input=1h",
       "fingerprint": "0000000000000001"
     }
   ]

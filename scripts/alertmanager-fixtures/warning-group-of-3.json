@@ -4,12 +4,91 @@
   "version": "4",
   "groupKey": "{}/{}:{alertname=\"KubePodCrashLooping\", cluster=\"gcp-0\"}",
   "externalURL": "https://vmalertmanager-gcp-0.priv.gcp.ogenki.io",
-  "groupLabels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "severity": "warning", "namespace": "apps"},
-  "commonLabels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps"},
-  "commonAnnotations": {"summary": "Pod is restarting repeatedly.", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"},
+  "groupLabels": {
+    "alertname": "KubePodCrashLooping",
+    "cluster": "gcp-0",
+    "severity": "warning",
+    "namespace": "apps"
+  },
+  "commonLabels": {
+    "alertname": "KubePodCrashLooping",
+    "cluster": "gcp-0",
+    "env": "dev",
+    "cloud": "gcp",
+    "region": "europe-west1",
+    "severity": "warning",
+    "namespace": "apps"
+  },
+  "commonAnnotations": {
+    "summary": "Pod is restarting repeatedly.",
+    "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"
+  },
   "alerts": [
-    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-7d8f"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "12 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "https://grafana.priv.gcp.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22max_over_time%28kube_pod_container_status_waiting_reason%7Breason%3D%5C%22CrashLoopBackOff%5C%22%2Cjob%3D%5C%22kube-state-metrics%5C%22%7D%5B5m%5D%29+%3E%3D+1%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789204320000\",\"to\":\"now\"}}", "fingerprint": "b1"},
-    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-9f2c"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "8 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "https://grafana.priv.gcp.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22max_over_time%28kube_pod_container_status_waiting_reason%7Breason%3D%5C%22CrashLoopBackOff%5C%22%2Cjob%3D%5C%22kube-state-metrics%5C%22%7D%5B5m%5D%29+%3E%3D+1%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789204320000\",\"to\":\"now\"}}", "fingerprint": "b2"},
-    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-b1a4"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "5 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "https://grafana.priv.gcp.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22max_over_time%28kube_pod_container_status_waiting_reason%7Breason%3D%5C%22CrashLoopBackOff%5C%22%2Cjob%3D%5C%22kube-state-metrics%5C%22%7D%5B5m%5D%29+%3E%3D+1%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789204320000\",\"to\":\"now\"}}", "fingerprint": "b3"}
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "KubePodCrashLooping",
+        "cluster": "gcp-0",
+        "env": "dev",
+        "cloud": "gcp",
+        "region": "europe-west1",
+        "severity": "warning",
+        "namespace": "apps",
+        "pod": "podinfo-7d8f"
+      },
+      "annotations": {
+        "summary": "Pod is restarting repeatedly.",
+        "description": "12 restarts in 10m",
+        "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"
+      },
+      "startsAt": "2026-09-12T09:12:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://vm.priv.gcp.ogenki.io/vmui/#/?g0.expr=rate%28kube_pod_container_status_restarts_total%7Bpod%3D%22podinfo-7d8f%22%7D%5B10m%5D%29%20%3E%200&g0.range_input=1h",
+      "fingerprint": "b1"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "KubePodCrashLooping",
+        "cluster": "gcp-0",
+        "env": "dev",
+        "cloud": "gcp",
+        "region": "europe-west1",
+        "severity": "warning",
+        "namespace": "apps",
+        "pod": "podinfo-9f2c"
+      },
+      "annotations": {
+        "summary": "Pod is restarting repeatedly.",
+        "description": "8 restarts in 10m",
+        "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"
+      },
+      "startsAt": "2026-09-12T09:12:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://vm.priv.gcp.ogenki.io/vmui/#/?g0.expr=rate%28kube_pod_container_status_restarts_total%7Bpod%3D%22podinfo-9f2c%22%7D%5B10m%5D%29%20%3E%200&g0.range_input=1h",
+      "fingerprint": "b2"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "KubePodCrashLooping",
+        "cluster": "gcp-0",
+        "env": "dev",
+        "cloud": "gcp",
+        "region": "europe-west1",
+        "severity": "warning",
+        "namespace": "apps",
+        "pod": "podinfo-b1a4"
+      },
+      "annotations": {
+        "summary": "Pod is restarting repeatedly.",
+        "description": "5 restarts in 10m",
+        "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"
+      },
+      "startsAt": "2026-09-12T09:12:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://vm.priv.gcp.ogenki.io/vmui/#/?g0.expr=rate%28kube_pod_container_status_restarts_total%7Bpod%3D%22podinfo-b1a4%22%7D%5B10m%5D%29%20%3E%200&g0.range_input=1h",
+      "fingerprint": "b3"
+    }
   ]
 }

@@ -8,7 +8,7 @@
 :information_source: FIRING · 2 — CPUThrottlingHigh
 
 ==> title_link
-https://grafana.priv.aws.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22sum+by+%28container%2C+pod%2C+namespace%29+%28increase%28container_cpu_cfs_throttled_periods_total%5B5m%5D%29%29+%2F+sum+by+%28container%2C+pod%2C+namespace%29+%28increase%28container_cpu_cfs_periods_total%5B5m%5D%29%29+%3E+0.25%22,"refId":"A"}],"range":{"from":"1789202400000","to":"now"}}
+https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=rate%28container_cpu_cfs_throttled_periods_total%7Bpod%3D%22xplane-harbor-valkey-0%22%7D%5B5m%5D%29%20%3E%200.25&g0.range_input=1h
 
 ==> text
 `aws-0 · dev`
@@ -36,7 +36,7 @@ https://cnref.ogenki.io/docs/platform/observability/dashboards-and-alerts/
 https://grafana.priv.cluster.local/dashboards
 
 ==> action:Query :mag:
-https://grafana.priv.aws.ogenki.io/explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":%22sum+by+%28container%2C+pod%2C+namespace%29+%28increase%28container_cpu_cfs_throttled_periods_total%5B5m%5D%29%29+%2F+sum+by+%28container%2C+pod%2C+namespace%29+%28increase%28container_cpu_cfs_periods_total%5B5m%5D%29%29+%3E+0.25%22,"refId":"A"}],"range":{"from":"1789202400000","to":"now"}}
+https://vm.priv.aws.ogenki.io/vmui/#/?g0.expr=rate%28container_cpu_cfs_throttled_periods_total%7Bpod%3D%22xplane-harbor-valkey-0%22%7D%5B5m%5D%29%20%3E%200.25&g0.range_input=1h
 
 ==> action:Silence :no_bell:
 https://vmalertmanager-aws-0.priv.aws.ogenki.io/#/silences/new?filter=%7Bcloud%3D"aws"%2C%20cluster%3D"aws-0"%2C%20env%3D"dev"%2C%20namespace%3D"tooling"%2C%20region%3D"eu-west-3"%2C%20severity%3D"info"%2C%20alertname%3D"CPUThrottlingHigh"%7D
