@@ -318,7 +318,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-access-matrix-sync.sh scripts/test-openbao-new-lineage.sh scripts/test-secret-store-migrate-keys.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-access-matrix-sync.sh scripts/test-openbao-new-lineage.sh scripts/test-secret-store-migrate-keys.sh scripts/test-cloud-secret-store.sh scripts/test-cnpg-promote-seed.sh scripts/test-secret-store-lint.sh scripts/test-tm-provisioner.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
@@ -366,7 +366,16 @@ jobs:
       # The ZITADEL suites are no longer among the unrun: the shellcheck job
       # runs every one, under a glob scoped to that one family. The reasoning
       # for why a NARROW glob is safe where this broad one is not is there.
-      # Everything else under scripts/test-*.sh is still hand-run only.
+      # Four more joined them: test-cloud-secret-store.sh and
+      # test-cnpg-promote-seed.sh (both stub aws/gcloud -- the latter stubs
+      # kubectl and sleep too, so neither needs a cluster or wall-clock time),
+      # test-secret-store-lint.sh and test-tm-provisioner.sh. The last is the
+      # truth table for the TM_CLOUD selector, which decides which cloud a
+      # deploy or a destroy touches -- untested until now.
+      #
+      # That leaves exactly two hand-run suites: test-flux-schema.sh and
+      # test-vector-vrl.sh, named above as needing tooling a bare runner
+      # lacks. Everything else under scripts/test-*.sh now runs in CI.
       - name: Run identity provider topology tests
         run: ./scripts/test-validate-idp-topology.sh
 
