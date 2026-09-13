@@ -12,7 +12,7 @@ spec:
   json: |
     {
       "title": "Observability Demo - All in One",
-      "description": "RED metrics, trace search and service map, and log context",
+      "description": "RED metrics, trace search, and log context",
       "tags": ["observability", "traces", "metrics", "demo"],
       "timezone": "browser",
       "editable": true,
@@ -31,25 +31,6 @@ spec:
               "selected": false,
               "text": "VictoriaMetrics",
               "value": "VictoriaMetrics"
-            },
-            "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [],
-            "refresh": 1,
-            "regex": "",
-            "skipUrlSync": false,
-            "type": "datasource"
-          },
-          {
-            "name": "trace_datasource",
-            "label": "Trace Datasource",
-            "type": "datasource",
-            "query": "jaeger",
-            "current": {
-              "selected": false,
-              "text": "VictoriaTraces",
-              "value": "VictoriaTraces"
             },
             "hide": 0,
             "includeAll": false,
@@ -121,6 +102,28 @@ spec:
               "value": ""
             },
             "hide": 0,
+            "skipUrlSync": false
+          },
+          {
+            "name": "operation",
+            "label": "Route",
+            "description": "Jaeger operation name, exactly as the span reports it -- GET /api/images, POST /api/images, GET /api/images/{id}/view, GET /api/images/{id}/thumbnail, GET /api/settings, DELETE /api/images/{id}. Empty means every route.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
+            "hide": 0,
+            "options": [],
+            "skipUrlSync": false
+          },
+          {
+            "name": "trace_tags",
+            "label": "Trace filter",
+            "description": "Jaeger tag filter in logfmt, which is what this datasource expects -- error=true for failures only, or http.response.status_code=503. Empty means every trace.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
+            "hide": 0,
+            "options": [],
             "skipUrlSync": false
           }
         ]
@@ -411,44 +414,24 @@ spec:
         },
         {
           "type": "row",
-          "title": "🔍 TRACES: Search & Service Map",
+          "title": "🔍 TRACES: Search",
           "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
           "collapsed": false
         },
         {
           "id": 1000,
-          "type": "traces",
-          "title": "Recent Traces (pick a slow one to open the waterfall)",
-          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces.",
-          "gridPos": {"x": 0, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
+          "type": "table",
+          "title": "Recent Traces (click a row to open the waterfall)",
+          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces. A table, not a Traces panel: the Traces visualization renders ONE trace from a traceID, while a search returns a list.",
+          "gridPos": {"x": 0, "y": 31, "w": 24, "h": 10},
+          "datasource": {"type": "jaeger", "uid": "VictoriaTraces"},
           "targets": [
             {
               "queryType": "search",
               "service": "$${service}",
-              "operation": "",
-              "tags": "",
+              "operation": "$${operation}",
+              "tags": "$${trace_tags}",
               "minDuration": "$${min_trace_duration}",
-              "maxDuration": "",
-              "limit": 20,
-              "refId": "A"
-            }
-          ],
-          "options": {}
-        },
-        {
-          "type": "nodeGraph",
-          "title": "Service Map",
-          "description": "Derived from the same trace search via the datasource's serviceMap/nodeGraph support.",
-          "gridPos": {"x": 12, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
-          "targets": [
-            {
-              "queryType": "search",
-              "service": "$${service}",
-              "operation": "",
-              "tags": "",
-              "minDuration": "",
               "maxDuration": "",
               "limit": 20,
               "refId": "A"
