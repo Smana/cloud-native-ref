@@ -72,8 +72,11 @@ spec:
           },
           {
             "name": "service",
-            "type": "constant",
-            "query": "image-gallery",
+            "label": "Service",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "query": {"query": "label_values(http.server.request.duration_count, service.name)", "refId": "service"},
+            "definition": "label_values(http.server.request.duration_count, service.name)",
             "current": {
               "selected": true,
               "text": "image-gallery",
@@ -82,16 +85,11 @@ spec:
             "hide": 0,
             "includeAll": false,
             "multi": false,
-            "name": "service",
-            "options": [
-              {
-                "selected": true,
-                "text": "image-gallery",
-                "value": "image-gallery"
-              }
-            ],
-            "skipUrlSync": false,
-            "type": "constant"
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "sort": 1,
+            "skipUrlSync": false
           },
           {
             "name": "min_trace_duration",
