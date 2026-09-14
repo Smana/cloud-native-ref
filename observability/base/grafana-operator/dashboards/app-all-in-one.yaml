@@ -11,8 +11,9 @@ spec:
       dashboards: "grafana"
   json: |
     {
+      "uid": "app-all-in-one",
       "title": "Observability Demo - All in One",
-      "description": "RED metrics, trace search and service map, and log context",
+      "description": "RED metrics, trace search, and log context",
       "tags": ["observability", "traces", "metrics", "demo"],
       "timezone": "browser",
       "editable": true,
@@ -31,25 +32,6 @@ spec:
               "selected": false,
               "text": "VictoriaMetrics",
               "value": "VictoriaMetrics"
-            },
-            "hide": 0,
-            "includeAll": false,
-            "multi": false,
-            "options": [],
-            "refresh": 1,
-            "regex": "",
-            "skipUrlSync": false,
-            "type": "datasource"
-          },
-          {
-            "name": "trace_datasource",
-            "label": "Trace Datasource",
-            "type": "datasource",
-            "query": "jaeger",
-            "current": {
-              "selected": false,
-              "text": "VictoriaTraces",
-              "value": "VictoriaTraces"
             },
             "hide": 0,
             "includeAll": false,
@@ -91,8 +73,11 @@ spec:
           },
           {
             "name": "service",
-            "type": "constant",
-            "query": "image-gallery",
+            "label": "Service",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "query": {"query": "label_values(http.server.request.duration_count, service.name)", "refId": "service"},
+            "definition": "label_values(http.server.request.duration_count, service.name)",
             "current": {
               "selected": true,
               "text": "image-gallery",
@@ -101,16 +86,11 @@ spec:
             "hide": 0,
             "includeAll": false,
             "multi": false,
-            "name": "service",
-            "options": [
-              {
-                "selected": true,
-                "text": "image-gallery",
-                "value": "image-gallery"
-              }
-            ],
-            "skipUrlSync": false,
-            "type": "constant"
+            "options": [],
+            "refresh": 1,
+            "regex": "/^(?!xplane-)/",
+            "sort": 1,
+            "skipUrlSync": false
           },
           {
             "name": "min_trace_duration",
@@ -123,6 +103,28 @@ spec:
               "value": ""
             },
             "hide": 0,
+            "skipUrlSync": false
+          },
+          {
+            "name": "operation",
+            "label": "Route",
+            "description": "Jaeger operation name, exactly as the span reports it -- GET /api/images, POST /api/images, GET /api/images/{id}/view, GET /api/images/{id}/thumbnail, GET /api/settings, DELETE /api/images/{id}. Empty means every route.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
+            "hide": 0,
+            "options": [],
+            "skipUrlSync": false
+          },
+          {
+            "name": "trace_tags",
+            "label": "Trace filter",
+            "description": "Jaeger tag filter in logfmt, which is what this datasource expects -- error=true for failures only, or http.response.status_code=503. Empty means every trace.",
+            "type": "textbox",
+            "query": "",
+            "current": {"selected": false, "text": "", "value": ""},
+            "hide": 0,
+            "options": [],
             "skipUrlSync": false
           }
         ]
@@ -173,6 +175,10 @@ spec:
         {
           "type": "timeseries",
           "title": "Response Time (P95 latency)",
+          "links": [
+            {"title": "\ud83d\udd0d View traces for this time range", "url": "/d/app-all-in-one?viewPanel=1000&$${__url_time_range}"},
+            {"title": "\ud83d\udccb View error logs for this time range", "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"}
+          ],
           "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
@@ -201,7 +207,11 @@ spec:
               "links": [
                 {
                   "title": "View traces for this time range",
-                  "url": "?viewPanel=1000&var-min_trace_duration=500ms&$${__url_time_range}"
+                  "url": "/d/app-all-in-one?viewPanel=1000&var-min_trace_duration=&$${__url_time_range}"
+                },
+                {
+                  "title": "View error logs for this time range",
+                  "url": "/d/app-all-in-one?viewPanel=1001&$${__url_time_range}"
                 }
               ]
             }
@@ -219,6 +229,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
+              "legendFormat": "5xx rate",
               "refId": "A"
             }
           ],
@@ -252,6 +263,7 @@ spec:
           "targets": [
             {
               "expr": "sum(rate(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "requests/sec",
               "refId": "A"
             }
           ],
@@ -276,6 +288,7 @@ spec:
           "targets": [
             {
               "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
+              "legendFormat": "p95",
               "refId": "A"
             }
           ],
@@ -309,6 +322,7 @@ spec:
           "targets": [
             {
               "expr": "sum(increase(http.server.request.duration_count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
+              "legendFormat": "5xx (5m)",
               "refId": "A"
             }
           ],
@@ -382,14 +396,15 @@ spec:
           "collapsed": false
         },
         {
+          "id": 1001,
           "type": "logs",
-          "title": "Application Error Logs (Click on log line to see ±7 lines of context)",
-          "description": "Shows error-level logs from the application. Click any log line to view surrounding context (±7 lines before/after).",
+          "title": "Application Warnings and Errors (click a line, then View Trace)",
+          "description": "Warning and error logs from BOTH containers of the app. It previously filtered on kubernetes.container_name, which matches only the web container -- every error here comes from the worker, so the panel was always empty. Scoped on log.service.name instead, and widened to warn because the retry attempts behind the red spans in traces log at warn; only the final give-up logs at error.",
           "gridPos": {"x": 0, "y": 20, "w": 24, "h": 10},
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
           "targets": [
             {
-              "expr": "{kubernetes.container_name=$$service} | unpack_json | log.level:error",
+              "expr": "{kubernetes.pod_namespace=\"apps\"} | unpack_json | log.service.name:~\"image-gallery.*\" | log.level:~\"error|warn\"",
               "refId": "A",
               "queryType": "raw"
             }
@@ -413,44 +428,24 @@ spec:
         },
         {
           "type": "row",
-          "title": "🔍 TRACES: Search & Service Map",
+          "title": "🔍 TRACES: Search",
           "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
           "collapsed": false
         },
         {
           "id": 1000,
-          "type": "traces",
-          "title": "Recent Traces (pick a slow one to open the waterfall)",
-          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces.",
-          "gridPos": {"x": 0, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
+          "type": "table",
+          "title": "Recent Traces (click a row to open the waterfall)",
+          "description": "Trace search against VictoriaTraces via the Jaeger-compatible API, filtered to this service. Linked from the P95 latency panel, which sets a minimum duration to land on the slow traces. A table, not a Traces panel: the Traces visualization renders ONE trace from a traceID, while a search returns a list.",
+          "gridPos": {"x": 0, "y": 31, "w": 24, "h": 10},
+          "datasource": {"type": "jaeger", "uid": "VictoriaTraces"},
           "targets": [
             {
               "queryType": "search",
               "service": "$${service}",
-              "operation": "",
-              "tags": "",
+              "operation": "$${operation}",
+              "tags": "$${trace_tags}",
               "minDuration": "$${min_trace_duration}",
-              "maxDuration": "",
-              "limit": 20,
-              "refId": "A"
-            }
-          ],
-          "options": {}
-        },
-        {
-          "type": "nodeGraph",
-          "title": "Service Map",
-          "description": "Derived from the same trace search via the datasource's serviceMap/nodeGraph support.",
-          "gridPos": {"x": 12, "y": 31, "w": 12, "h": 10},
-          "datasource": {"type": "jaeger", "uid": "$${trace_datasource}"},
-          "targets": [
-            {
-              "queryType": "search",
-              "service": "$${service}",
-              "operation": "",
-              "tags": "",
-              "minDuration": "",
               "maxDuration": "",
               "limit": 20,
               "refId": "A"

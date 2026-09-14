@@ -509,3 +509,33 @@ claims:
     pages:
       - path: website/content/docs/reference/ci-workflows.md
         must_contain: '`automerge: {value}`'
+
+  - id: victoriatraces-datasource-uid
+    why: >-
+      Both Victoria datasource uids were lowercase until 2026-09-13, when they
+      were renamed to equal their `name` so one spelling works in the
+      `datasourceUid` fields that reject a name. The page's example kept the
+      old values and every gate stayed green: flux schema validate sees a
+      well-formed map, and the page itself noted that no claim pinned these.
+      A reader copying the stale example writes a reference that resolves to
+      nothing, and a wrong datasourceUid fails silently -- the datasource
+      loads and the link simply never appears.
+    source:
+      file: observability/base/victoria-traces/grafana-datasource.yaml
+      pattern: '\n    uid: (\S+)'
+    pages:
+      - path: website/content/docs/platform/observability/dashboards-and-alerts.md
+        must_contain: 'uid: {value}'
+
+  - id: victorialogs-datasource-uid
+    why: >-
+      The other half of the same rename. The traces datasource cross-references
+      this one by uid, so the documented `datasourceUid` has to track it or the
+      trace-to-logs pivot the page describes cannot work for anyone following
+      the example.
+    source:
+      file: observability/base/victoria-logs/grafana-datasource.yaml
+      pattern: '\n    uid: (\S+)'
+    pages:
+      - path: website/content/docs/platform/observability/dashboards-and-alerts.md
+        must_contain: 'datasourceUid: {value}'

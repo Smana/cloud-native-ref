@@ -6,16 +6,22 @@ metadata:
 spec:
   allowCrossNamespaceImport: true
   datasource:
-    # Pinned so the traces datasource can reference this one; without it the
-    # operator assigns a random uid (this instance had
-    # 6ac62907-95e4-444c-972a-db2f0672bda4) and a reference written as the
-    # literal "VictoriaLogs" matched nothing.
+    # Pinned, and deliberately IDENTICAL to `name` below. Two reasons:
+    #
+    # 1. Without a pin the operator assigns a random uid (this instance had
+    #    6ac62907-95e4-444c-972a-db2f0672bda4), so a cross-reference written as
+    #    the literal "VictoriaLogs" matched nothing.
+    # 2. uid == name means one spelling works everywhere. A `datasourceUid`
+    #    field takes a uid and rejects a name outright, so a lowercase uid
+    #    forces two spellings for one datasource. The vmks chart already sets
+    #    this convention: VictoriaMetrics/VictoriaMetrics, VictoriaMetricsDS/
+    #    VictoriaMetricsDS, Alertmanager/Alertmanager.
     #
     # Deliberately the DEPRECATED `spec.datasource.uid` rather than `spec.uid`:
     # the latter is immutable and is rejected on an already-created object, so
     # Flux would fail every reconcile. See the same note in
     # victoria-traces/grafana-datasource.yaml.
-    uid: victorialogs
+    uid: VictoriaLogs
     access: proxy
     type: victoriametrics-logs-datasource
     name: VictoriaLogs
@@ -46,7 +52,7 @@ spec:
           matcherType: "label"
           matcherRegex: "log.trace_id"
           url: "$${__value.raw}"
-          datasourceUid: "victoriatraces"
+          datasourceUid: "VictoriaTraces"
           urlDisplayLabel: "View Trace"
   instanceSelector:
     matchLabels:
