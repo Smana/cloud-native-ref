@@ -17,7 +17,7 @@
     "extends": ["@headlamp-k8s", "prettier", "plugin:jsx-a11y/recommended"]
   },
   "overrides": {
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.14.0"
