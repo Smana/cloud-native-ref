@@ -121,7 +121,7 @@ jobs:
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Install Polaris
-        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.2
+        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.3
         with:
           version: '8.5.0'
 
