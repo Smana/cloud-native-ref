@@ -75,9 +75,12 @@ data "external" "flux_operator_release" {
 
 resource "helm_release" "flux_operator" {
   # Bootstrap only. Zero when Flux already has the release -- which is every
-  # deploy after the first, because the workflow drops it from state once the
-  # FluxInstance is Ready. This can never destroy the operator: terraform has
-  # already forgotten it, so count=0 has nothing in state to remove.
+  # deploy after the first, because the workflows drop it from state.
+  #
+  # count=0 is a skip ONLY while the resource is out of state; still in state, it
+  # is a DESTROY -- a real `helm uninstall`. So every apply of this stack must be
+  # followed by the `state rm`: this stack's own `deploy`, AND the init stack's
+  # stage-2 job, which applies this stack directly and bypasses that script.
   count = data.external.flux_operator_release.result.present == "true" ? 0 : 1
 
   depends_on = [

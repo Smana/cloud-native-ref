@@ -42,6 +42,14 @@ script "deploy" {
       # it so the apply updates the issuer in place.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh' --cluster-name '${global.eks_cluster_name}' --url '${global.openbao_url}' --root-token-secret-name '${global.root_token_secret_name}' --ca-file .tls/ca.pem --cloud aws --region '${global.region}' -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
+      # Forget flux-operator here, in the job that just created it -- NOT only in
+      # eks/configure's own `deploy`, which this job bypasses. Leaving it in state
+      # means the standalone eks/configure stack, running later in the same
+      # `terramate script run deploy`, plans count=0 against a resource that IS in
+      # state -- which is a destroy, i.e. a real `helm uninstall`. A whole-platform
+      # deploy uninstalled the operator that way on 2026-09-16 and still exited 0.
+      # Rationale for the forget itself: see eks/configure/workflows.tm.hcl.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && tofu state rm helm_release.flux_operator 2>/dev/null || true"],
     ]
   }
 
