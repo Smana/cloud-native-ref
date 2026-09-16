@@ -107,6 +107,12 @@ script "deploy" {
         cd ../configure
         ${global.provisioner} init -lock-timeout=5m
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # Forget flux-operator here, in the job that just created it -- NOT only
+        # in gke/configure's own `deploy`, which this job bypasses. Left in state,
+        # the standalone gke/configure stack plans count=0 against a resource that
+        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS lane
+        # had the identical gap and hit it on 2026-09-16.
+        ${global.provisioner} state rm helm_release.flux_operator 2>/dev/null || true
       BASH
       ],
     ]
