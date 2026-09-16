@@ -23,6 +23,25 @@ spec:
     # its CRDs in the main chart, so replace them on every upgrade.
     crds: CreateReplace
   values:
+    # COST DECISION, not a capacity finding. The chart defaults to 2, and the
+    # second replica is a warm standby: Karpenter leader-elects, so only one is
+    # ever reconciling. What it buys is failover in seconds instead of the lease
+    # duration -- worth paying for in production, not on a reference cluster
+    # that is torn down nightly.
+    #
+    # It also could not schedule here. Karpenter's node affinity keeps it off
+    # Karpenter-managed nodes (it must not manage the nodes it runs on), which
+    # pins it to the bootstrap managed node group -- `min 2 / desired 2` of
+    # 2-vCPU `.large` types (opentofu/aws/eks/init/main.tf). Both sat at 98% and
+    # 100% CPU requests, and pod anti-affinity forbids the two replicas sharing
+    # a node, so replica 2 stayed Pending indefinitely. A permanently Pending
+    # pod is worse than an absent one: it teaches you to ignore Pending pods.
+    #
+    # FOR PRODUCTION, revisit properly rather than just setting this to 2 --
+    # the node group has to have somewhere to put it. Either grow the bootstrap
+    # group (`max_size` is already 3) or give it one larger instance type, and
+    # size it from the controller's real usage rather than the chart default.
+    replicas: 1
     settings:
       clusterName: ${cluster_name}
       clusterEndpoint: ${cluster_endpoint_full}
