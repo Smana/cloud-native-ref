@@ -2,10 +2,23 @@ name: Vector Configuration Validation
 
 on:
   pull_request:
-    paths:
-      - 'observability/base/victoria-logs/helmrelease-*.yaml'
-      - 'observability/base/victoria-logs/vl-common-helm-values-configmap.yaml'
-      - '.github/workflows/vector-config-validation.yml'
+    # Scoped to `main`, matching every other PR workflow here. Without it this
+    # runs on pull requests targeting any branch, including ones whose base is
+    # itself a feature branch.
+    branches: ["main"]
+    # NO `paths:` FILTER, deliberately, and it is what lets this be a REQUIRED
+    # check. A path-filtered workflow simply does not run on a PR that misses the
+    # filter, and GitHub does not treat "did not run" as "passed" — the check sits
+    # at "Expected — waiting for status to be reported" and the PR is blocked
+    # forever. Every PR not touching VictoriaLogs would be unmergeable.
+    #
+    # The alternative is a companion job that always runs and reports this job's
+    # name when the paths are untouched. That is more machinery than the run costs:
+    # yq plus two `docker run`s against an alpine image, well under a minute, in
+    # parallel with a pipeline that takes two to three. So it just always runs.
+    #
+    # The `push` trigger below KEEPS its filter — there it is a notification, not
+    # a gate, and nothing waits on it.
   push:
     branches:
       - main
@@ -14,10 +27,46 @@ on:
       - 'observability/base/victoria-logs/helmrelease-*.yaml'
       - 'observability/base/victoria-logs/vl-common-helm-values-configmap.yaml'
 
+# Declared here rather than left to the repository default. The default is `read`
+# today, so this grants nothing new — it puts the guarantee in the file, which is
+# what gets read, forked and copied.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Vector the VictoriaLogs chart actually deploys — NOT the latest release.
+  #
+  # This was `timberio/vector:latest-alpine`, which makes the validator float
+  # underneath the thing it validates: the same pipeline config could pass today
+  # and fail tomorrow with no commit in between, and the VRL being checked was
+  # whatever upstream shipped rather than what runs in the cluster. A gate whose
+  # verdict moves on its own is not a gate.
+  #
+  # Keep this equal to the image in the rendered chart output:
+  #   ./scripts/validate-manifests.sh && grep -rhoP 'image:\s*"?\K\S*vector\S*' .bundle/
+  # It reads 0.57.0-distroless-libc as of chart vlsingle 0.13.9 / vlcluster 0.2.8.
+  # The `-alpine` variant of the same release is used here because the workflow
+  # invokes the binary through `docker run`, and alpine is the variant this job
+  # has always used — only the version is changing.
+  #
+  # DELIBERATELY NOT RENOVATE-ANNOTATED. An annotation here would track Vector's
+  # own releases, so Renovate would move it to 0.58.0 the week that ships and put
+  # the validator AHEAD of the cluster — the same class of defect as the `latest`
+  # tag it replaces, just slower. The version that matters is the chart's, and
+  # this follows it by hand: bump it in the PR that bumps
+  # observability/base/victoria-logs/helmrelease-*.yaml, whose chart version
+  # Renovate DOES track.
+  VECTOR_VERSION: "0.57.0"
+
 jobs:
   validate-vector-config:
     name: Validate Vector Log Parsing Configuration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -101,7 +150,7 @@ jobs:
 
           docker run --rm \
             -v /tmp/vector-config.yaml:/etc/vector/vector.yaml:ro \
-            timberio/vector:latest-alpine \
+            timberio/vector:${VECTOR_VERSION}-alpine \
             validate /etc/vector/vector.yaml --no-environment
 
           echo "✅ Configuration syntax is valid"
@@ -113,7 +162,7 @@ jobs:
 
           docker run --rm \
             -v /tmp/vector-config.yaml:/etc/vector/vector.yaml:ro \
-            timberio/vector:latest-alpine \
+            timberio/vector:${VECTOR_VERSION}-alpine \
             test /etc/vector/vector.yaml
 
           echo "✅ All unit tests passed"

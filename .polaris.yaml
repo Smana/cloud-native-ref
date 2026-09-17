@@ -1,3 +1,14 @@
+# A `checks:` map REPLACES Polaris's defaults rather than adding to them, so
+# anything absent from this file is not "left at its default" — it is OFF. That
+# is easy to miss and it cost this repo real coverage: the list below carried 18
+# of the 32 checks Polaris ships, and the 14 missing ones included `hostPathSet`
+# and `linuxHardening` (the seccompProfile check the platform constitution calls
+# mandatory under PSS=restricted).
+#
+# So the list is now explicit about BOTH halves: every check Polaris has appears
+# here, either enabled or with a written reason for `ignore`. Adding a check to
+# Polaris upstream will still default it off — `polaris audit --help` and the
+# upstream checks/ directory are the places to look on a version bump.
 checks:
   # Security
   hostIPCSet: danger
@@ -10,6 +21,30 @@ checks:
   insecureCapabilities: warning
   hostNetworkSet: warning
   hostPortSet: warning
+
+  # Security — enabled 2026-09-17, all at `warning` on purpose.
+  #
+  # None of these is a lower-stakes control than the block above; they enter at
+  # warning because they have never run against this repo, and a check that goes
+  # straight to `danger` turns the required Kubernetes job red on a backlog
+  # nobody has read yet. Promote each to `danger` as its findings reach zero.
+  hostPathSet: warning                 # host filesystem into a pod
+  linuxHardening: warning              # seccompProfile / AppArmor / dropped capabilities
+  automountServiceAccountToken: warning  # an API token in every pod that never calls the API
+  sensitiveContainerEnvVar: warning    # credential-shaped values inline in env
+  procMount: warning                   # masked /proc defeated
+  hostProcess: warning                 # Windows host-process containers; free to assert
+  clusterrolePodExecAttach: warning    # pods/exec and pods/attach are a shell on any pod
+
+  # Security — deliberately OFF, with reasons.
+  #
+  # missingNetworkPolicy resolves policies against a LIVE CLUSTER, not against
+  # the files it is handed. Measured 2026-09-17: it reports "missing" for a
+  # Deployment in an audit path that also contains a matching policy — a plain
+  # NetworkPolicy as well as a CiliumNetworkPolicy. Against `.bundle/` it is a
+  # 100% false positive, and this repo uses CiliumNetworkPolicy regardless.
+  # Default-deny coverage needs its own check over the bundle; it is not this one.
+  missingNetworkPolicy: ignore
 
   # Images
   tagNotSpecified: danger
@@ -24,6 +59,20 @@ checks:
   cpuLimitsMissing: warning
   memoryRequestsMissing: warning
   memoryLimitsMissing: warning
+
+  # Reliability — OFF, and the reason is scope rather than disagreement.
+  #
+  # These are availability opinions, not security controls, and most of the 156
+  # rendered controllers come from upstream charts whose replica counts, PDBs and
+  # spread constraints this repo does not set. Enabling them would add hundreds of
+  # warnings that no one here can act on, which is how a report stops being read.
+  # Revisit per-workload if an availability incident points at one of them.
+  deploymentMissingReplicas: ignore
+  missingPodDisruptionBudget: ignore
+  pdbMinAvailableGreaterThanHPAMinReplicas: ignore
+  priorityClassNotSet: ignore
+  topologySpreadConstraint: ignore
+  metadataAndInstanceMismatched: ignore
 
   # Networking
   # tlsSettingsMissing: ignore  # We handle TLS at ingress level
