@@ -3,6 +3,18 @@ name: CI
 on:
   pull_request:
     branches: ["main"]
+  # Post-merge validation. Nothing else re-checks `main`, and branch protection
+  # runs with `strict: false` — a PR need not be up to date to merge — so two
+  # pull requests that each render cleanly in isolation can produce a `main`
+  # that does not. A new Kustomization on one branch and a ConfigMap key
+  # removed on the other is enough. Neither PR is wrong; the merge is.
+  #
+  # This cannot PREVENT that (a merge queue would; see the audit). What it does
+  # is make it visible in two to three minutes, next to the commit that caused
+  # it, instead of surfacing whenever someone next looks at a failing Flux
+  # Kustomization on the cluster.
+  push:
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -16,9 +28,15 @@ permissions:
 # Keyed on the workflow AND the ref, not the ref alone: `docs-check.yml` uses the
 # same shape, and a shared group would have the two workflows cancelling each
 # other on every push.
+#
+# CANCELLATION IS PULL-REQUEST ONLY, and that condition is the whole point of
+# the post-merge trigger above. Every push to `main` is a DIFFERENT merge
+# result, so a plain `cancel-in-progress: true` would let a second merge kill
+# the run validating the first — and the commit that broke `main` would be
+# precisely the one whose validation was thrown away. On `main` the runs queue.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every job below carries `timeout-minutes: 15`. The whole pipeline runs in 2-3
 # minutes, so 15 is not a budget — it is the point at which a job has stopped
@@ -175,6 +193,11 @@ jobs:
     name: Rendered manifest diff 📝
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # PULL REQUESTS ONLY. This job is meaningless on a push and would fail
+    # outright: `github.base_ref` is empty outside a pull_request event, so the
+    # render step would resolve `origin/` as its base revision. A diff against
+    # `main` is also not a question a push TO `main` can ask.
+    if: github.event_name == 'pull_request'
     # Informational only — never gates. GitOps: git is the source of truth, so
     # this diffs the rendered DESIRED state (main vs this PR). Drift (cluster ≠
     # git) is Flux's concern and is alerted on separately, so no cluster access
@@ -382,3 +405,84 @@ jobs:
       # Everything else under scripts/test-*.sh now runs in CI.
       - name: Run identity provider topology tests
         run: ./scripts/test-validate-idp-topology.sh
+
+  # ---------------------------------------------------------------------------
+  # Post-merge only. A red run on `main` is already visible next to the commit,
+  # but only to someone looking at it -- and the whole point of the `push`
+  # trigger above is to catch a break that NOBODY is looking for, because every
+  # PR involved was green. So the failure has to come and find you.
+  #
+  # It files an issue rather than posting to Slack because this repository holds
+  # no Slack webhook secret (`gh secret list`: AWS, Tailscale, Dagger, two LLM
+  # keys -- no incoming webhook). An issue needs only the GITHUB_TOKEN that is
+  # already here, so this adds no credential and nothing to rotate. If a webhook
+  # is added later, notifying both is a two-line change; the point is that the
+  # notification path must not itself be a thing to set up before this works.
+  #
+  # ONE issue, reopened and commented rather than duplicated. `main` staying
+  # broken across several pushes is one incident, and a gate that files an issue
+  # per push is a gate someone mutes.
+  notify-main-broken:
+    name: Report a broken main 🚨
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [pre-commit, security-scan, kubernetes-validation, shellcheck, links]
+    # `failure()` is required: without it this inherits the default `success()`
+    # and never runs. `render-diff` is deliberately absent from `needs` -- it is
+    # pull-request-only and is always skipped here.
+    if: failure() && github.event_name == 'push'
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL: ci-main-broken
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          RESULTS: |
+            - Pre-commit: ${{ needs.pre-commit.result }}
+            - Security scanning: ${{ needs.security-scan.result }}
+            - Kubernetes validation: ${{ needs.kubernetes-validation.result }}
+            - Shell scripts: ${{ needs.shellcheck.result }}
+            - Documentation: ${{ needs.links.result }}
+        run: |
+          set -euo pipefail
+
+          body=$(cat <<EOF
+          CI failed on \`main\` after a merge, so this is a break that every
+          pull request involved reported as green.
+
+          - Commit: ${COMMIT_URL}
+          - Run: ${RUN_URL}
+
+          Job results:
+          ${RESULTS}
+
+          The usual cause is two pull requests that are each valid alone and
+          invalid together -- branch protection runs with \`strict: false\`, so
+          neither was rendered against the other. Reproduce locally with
+          \`./scripts/validate-manifests.sh\` on \`main\`.
+          EOF
+          )
+
+          # --force so a re-run is not a hard failure on "label already exists".
+          gh label create "$LABEL" \
+            --color b60205 \
+            --description "CI is failing on main" \
+            --force
+
+          existing=$(gh issue list \
+            --state open --label "$LABEL" --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            echo "main is already tracked as broken in #${existing}; commenting."
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create \
+              --title "CI is failing on main" \
+              --label "$LABEL" \
+              --body "$body"
+          fi
