@@ -21,7 +21,8 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location("check_substitution", HERE / "check-substitution.py")
+SUBJECT_DIR = HERE.parent.parent / "flux-schema"
+spec = importlib.util.spec_from_file_location("check_substitution", SUBJECT_DIR / "check-substitution.py")
 cs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cs)
 

@@ -161,7 +161,7 @@ FIXTURE_VARS = {
 KUBE_VERSION = "1.31.0"
 VAR_RE = re.compile(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # Render-only value overrides for charts whose templates call Helm's `lookup`
 # function to discover live cluster state (an existing Secret, a sibling

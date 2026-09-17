@@ -27,9 +27,10 @@ import pathlib
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+SUBJECT_DIR = HERE.parent.parent / "flux-schema"
 # render-bundle.py imports yamlcompat from beside it.
-sys.path.insert(0, str(HERE))
-spec = importlib.util.spec_from_file_location("render_bundle", HERE / "render-bundle.py")
+sys.path.insert(0, str(SUBJECT_DIR))
+spec = importlib.util.spec_from_file_location("render_bundle", SUBJECT_DIR / "render-bundle.py")
 rb = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rb)
 

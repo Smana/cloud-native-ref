@@ -16,7 +16,7 @@
 set -euo pipefail
 
 _PREFLIGHT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_PREFLIGHT_REPO_ROOT="$(cd "${_PREFLIGHT_DIR}/../.." && pwd)"
+_PREFLIGHT_REPO_ROOT="$(cd "${_PREFLIGHT_DIR}/../../.." && pwd)"
 
 # An explicit override that doesn't point at a real, executable file is
 # almost certainly a typo'd path or a deliberately-broken test fixture -

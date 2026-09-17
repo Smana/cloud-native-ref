@@ -300,7 +300,7 @@ rm -rf "$FIXTURE_DIR"
 trap - EXIT
 
 # ── the real scan ────────────────────────────────────────────────────────
-real_output="$(scan_dir_for_argv_leaks "$HERE" "scripts")"
+real_output="$(scan_dir_for_argv_leaks "$HERE/../.." "scripts")"
 real_rc=$?
 if [ "$real_rc" -ne 0 ]; then
     echo "$real_output"
