@@ -267,7 +267,24 @@ rel()  { printf '%s' "${1#"$MARKER_ROOT"/}"; }
 # AGENTS.md also sits in half the subdirectories.
 is_repo_root() { [ -f "$1/AGENTS.md" ] && [ -d "$1/opentofu" ]; }
 
+# The self-location idioms, held in VARIABLES and written without quotes.
+#
+# Variables because a literal ${BASH_SOURCE[0]} inside a ${var//pat/rep} ends the
+# expansion at its own closing brace: bash appends the remainder as text instead
+# of substituting, and every source check silently passes garbage. Measured, not
+# theorised.
+#
+# Without quotes because check 2 strips quotes from the line before matching --
+# see the comment there.
+P_D0='$(dirname $0)'
+P_DBS='$(dirname ${BASH_SOURCE[0]})'
+
 while IFS= read -r script; do
+  # This gate is itself a *.sh under SCRIPTS, and its own comments carry example
+  # idioms that match its own detectors. Scanning itself reports failures that
+  # exist only in its documentation.
+  case "$script" in */test-script-paths.sh) continue ;; esac
+
   dir="$(cd "$(dirname "$script")" && pwd)"
 
   # 1. Self-resolved repo roots.
@@ -284,26 +301,26 @@ while IFS= read -r script; do
   done < <(grep -nE 'dirname.*(BASH_SOURCE|\$0).*(/\.\.)+' "$script" 2>/dev/null || true)
 
   # 2. source / . targets.
+  #
+  # Nested quoting is the NORM here -- `. "$(dirname "$0")/lib/x.sh"` -- so any
+  # extraction delimited by the first pair of quotes truncates at the INNER quote
+  # and checks a fragment instead of a path. Strip every quote first, resolve the
+  # idioms against this script's directory, then take the last path on the line.
   while IFS=: read -r lineno line; do
-    target="$(printf '%s' "$line" | sed -nE 's/^[[:space:]]*(\.|source)[[:space:]]+"([^"]+)".*/\2/p')"
+    n="${line//\"/}"; n="${n//\'/}"
+    n="${n//"$P_D0"/$dir}"
+    n="${n//"$P_DBS"/$dir}"
+    n="${n//'${HERE}'/$dir}";       n="${n//'$HERE'/$dir}"
+    n="${n//'${SCRIPT_DIR}'/$dir}"; n="${n//'$SCRIPT_DIR'/$dir}"
+    n="${n//'${REPO_ROOT}'/$MARKER_ROOT}"; n="${n//'$REPO_ROOT'/$MARKER_ROOT}"
+    target="$(printf '%s' "$n" | grep -oE '/[A-Za-z0-9._/-]+\.(sh|py)' | tail -1)"
     [ -n "$target" ] || continue
-    # Two lines in test-cloud-secret-store.sh source through nested quoting --
-    # `. "'"$HERE"'/lib/…"` -- and the extraction above stops at the first closing
-    # quote, yielding a bare `'`. Checking that as a filename is a false failure.
-    # Anything not ending in .sh or .py is not a path this check can reason about.
-    case "$target" in *.sh|*.py) ;; *) continue ;; esac
-    e="$target"
-    e="${e//\$(dirname \"\$0\")/$dir}"
-    e="${e//\$(dirname \"\${BASH_SOURCE[0]}\")/$dir}"
-    e="${e//\$\{HERE\}/$dir}"; e="${e//\$HERE/$dir}"
-    e="${e//\$\{SCRIPT_DIR\}/$dir}"; e="${e//\$SCRIPT_DIR/$dir}"
-    e="${e//\$\{REPO_ROOT\}/$MARKER_ROOT}"; e="${e//\$REPO_ROOT/$MARKER_ROOT}"
     # Anything still holding a variable cannot be checked statically. Skipping is
     # honest; the counts printed at the end make a drop in coverage visible.
-    case "$e" in *'$'*) continue ;; esac
+    case "$target" in *'$'*) continue ;; esac
     n_sources=$((n_sources + 1))
-    [ -f "$e" ] || fail "$(rel "$script"):$lineno — sources a missing file: $e"
-  done < <(grep -nE '^[[:space:]]*(\.|source)[[:space:]]+"' "$script" 2>/dev/null || true)
+    [ -f "$target" ] || fail "$(rel "$script"):$lineno — sources a missing file: $target"
+  done < <(grep -nE '^[[:space:]]*(\.|source)[[:space:]]+' "$script" 2>/dev/null || true)
 
   # 3. Test-subject defaults: SRC="${OVERRIDE:-$HERE/subject.sh}" and friends.
   while IFS=: read -r lineno line; do
@@ -326,21 +343,30 @@ printf '%d roots, %d sources, %d subjects checked; %d failed\n' \
 - [ ] **Step 4: Run against the fixture to verify it FAILS**
 
 Run: `SCRIPT_PATHS_ROOT="$FIX/scripts" bash scripts/ci/tests/test-script-paths.sh; echo "exit=$?"`
-Expected: two `FAIL` lines — one naming `wrong-depth.sh` resolving to the fixture's `scripts`
-directory, one naming `missing-source.sh` and `lib/nope.sh` — then `exit=1`.
+Expected: **two** `FAIL` lines — one naming `wrong-depth.sh` resolving to the fixture's `scripts`
+directory, one naming `missing-source.sh` and a path ending `lib/nope.sh` — then `exit=1`.
 
-If it exits 0, the gate is not testing anything. Do not proceed.
+**Both must fire.** `missing-source.sh` uses `. "$(dirname "$0")/lib/nope.sh"` — the nested-quote
+form that is the norm in this repo — so one FAIL means check 1 works and check 2 is blind, which is
+worse than an obviously broken gate. If only one fires, or it exits 0, report BLOCKED. Do not adjust
+the fixture to suit the gate.
 
 - [ ] **Step 5: Run against the real tree to verify it PASSES**
 
 Run: `bash scripts/ci/tests/test-script-paths.sh; echo "exit=$?"`
-Expected: `12 roots, 19 sources, 15 subjects checked; 0 failed`, `exit=0`.
 
-Those three numbers were measured against this tree with the gate's own regexes, so treat them as
-exact. `12 roots` includes the gate counting its own `/../../..`. `19 sources` is the 21 matching
-lines minus the two in `test-cloud-secret-store.sh` that the suffix guard skips. If a count differs,
-something is genuinely different — investigate rather than adjusting the expectation. **`0 failed`
-is the assertion either way.**
+Three assertions, in priority order:
+
+1. **`0 failed`** and `exit=0`. Non-negotiable.
+2. **`sources` is at least 20.** The tree has 21 resolvable `source`/`.` lines. A low number here
+   means the resolver silently stopped resolving and the check is passing by not looking — the exact
+   failure this gate exists to prevent, turned on itself. A first draft of this gate reported
+   `5 sources` for precisely that reason.
+3. `roots` should be 11 and `subjects` 15. These are informational: report a difference, do not
+   chase it.
+
+Do not edit the expectation to match the output. If the numbers disagree, the tree or the gate has
+changed and that is the finding.
 
 If the real tree fails here, something is already broken — stop and report it rather than
 adjusting the gate to accommodate it.
