@@ -78,6 +78,7 @@ wording means `--update-golden`, then reading the diff — it *is* the Slack mes
 | Script | Checks |
 |---|---|
 | `validate-links.sh` | every relative Markdown link resolves. Run after **any** file move |
+| `verify-doc-paths.sh` | every **backticked** repository path in `website/content/` still exists. Runs in the website workflow, not in `validate-manifests.sh`, and catches what `validate-links.sh` cannot: a path in prose, or one linked by absolute GitHub URL. No allowlist by design — fix the path or drop the reference |
 | `validate-doc-claims.sh` | docs still agree with config, per `.doc-claims.yaml` |
 | `validate-idp-topology.sh` | exactly one cloud hosts ZITADEL (ADR-0027) |
 | `diagram-icons.py audit` | boxes naming a product that render without an icon. Advisory, never a CI gate |

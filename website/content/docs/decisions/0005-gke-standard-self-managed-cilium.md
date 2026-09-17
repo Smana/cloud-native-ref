@@ -138,7 +138,7 @@ datapath as of 2026-08. So this is not "disable Dataplane V2" — it is "do not 
 - One Gateway API implementation, one CNI, one `cilium_version` across both clouds.
 - Hubble-based network debugging (`hubble observe --verdict DROPPED`) works identically on both
   clouds, preserving the diagnostic order documented in
-  [`.claude/rules/cilium-network-policies.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/cilium-network-policies.md).
+  [`security/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/security/AGENTS.md).
 
 ### Negative
 

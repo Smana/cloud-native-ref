@@ -260,7 +260,7 @@ Gateway API controller and its Envoy L7 proxy; `hubble.relay.enabled` and
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — "Cilium Prefix Delegation", "Pod Subnet Tagging", and the Gateway API
   CRD startup-probe entry under Troubleshooting
-- [`.claude/rules/cilium-network-policies.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/cilium-network-policies.md)
+- [`security/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/security/AGENTS.md)
   — `CiliumNetworkPolicy` authoring traps and the Hubble-based diagnostic
   order
 - `opentofu/aws/eks/configure/cilium-cni-config.tf` — the CNI ConfigMap and

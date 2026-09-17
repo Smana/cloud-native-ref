@@ -12,6 +12,7 @@ numbers or an exit code. Not as prose.
 | Alerting rules parse | `./scripts/validate-vmrules.sh` → exit 0, skipped groups named |
 | Docs links resolve | `./scripts/validate-links.sh` → exit 0 (after **any** file move — a path grep cannot see relative-link rot) |
 | Docs still true | `./scripts/validate-doc-claims.sh` → exit 0 (after **any** config change a page describes) |
+| Docs name real paths | `./scripts/verify-doc-paths.sh` → exit 0 (after **any** move or rename — a backticked path in website prose, or an absolute GitHub link, is a claim the link checker cannot see) |
 | IdP topology intact | `./scripts/validate-idp-topology.sh` → exit 0 |
 | OpenTofu valid | `tofu validate` → exit 0, and `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .` |
 | KCL composition valid | `task check` in `Smana/crossplane-configuration` → exit 0 (compositions are not in this repo) |

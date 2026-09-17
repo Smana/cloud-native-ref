@@ -15,7 +15,7 @@ lastVerified: 2026-09-17
 ## Context
 
 The repository's agent configuration was entirely Claude Code-shaped: a 474-line `CLAUDE.md`, eight
-topic files under `.claude/rules/`, and six skills under `.claude/skills/`. None of those paths is
+topic files in a `rules/` directory under `.claude/`, and six skills under `.claude/skills/`. None of those paths is
 read by any other coding agent, so evaluating one meant re-authoring the configuration or working
 without it.
 
@@ -30,7 +30,7 @@ The measured consequence:
 | | Lines | Loaded |
 |---|---|---|
 | `CLAUDE.md` | 474 | every session |
-| `.claude/rules/*.md` (8 files) | 1,175 | every session — intended to be scoped, and were not |
+| the eight `rules/*.md` files under `.claude/` | 1,175 | every session — intended to be scoped, and were not |
 | **Total** | **1,649** | |
 
 Anthropic's own guidance is 200 lines per instruction file, "beyond which adherence drops". The
@@ -49,7 +49,7 @@ Author each layer once, in the open format, and symlink the Claude-specific path
 | Scoped instructions | nested `AGENTS.md` per directory | same — agents read the nearest file in the tree | `CLAUDE.md` symlink beside each |
 | Procedures | `.agents/skills/<name>/SKILL.md` | Codex, Cursor, Gemini CLI, Antigravity, OpenCode, 40+ tools | `.claude/skills` → `../.agents/skills` |
 
-The nested-directory form is what replaces `.claude/rules/`, and it is a strict improvement rather
+The nested-directory form is what replaces the `rules/` directory under `.claude/`, and it is a strict improvement rather
 than a compromise: **Claude Code loads a nested `CLAUDE.md` lazily, when it reads a file in that
 directory.** That is precisely the scoping the `globs:` field was reaching for, it is the
 `AGENTS.md` specification's own monorepo pattern, and it works in every agent instead of one.
@@ -75,7 +75,7 @@ rejected for the root file because there is no Claude-only content to add, and a
 second file to keep correct. It remains the right answer on Windows, where symlinks need
 Administrator privileges or Developer Mode.
 
-**A `.claude/rules/` symlinked to a shared directory.** Supported, but it keeps the Claude-only
+**A `rules/` directory under `.claude/`, symlinked to a shared location.** Supported, but it keeps the Claude-only
 path as the source of truth and inverts the dependency this decision is trying to establish.
 
 ## Consequences

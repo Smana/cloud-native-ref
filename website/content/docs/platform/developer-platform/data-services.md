@@ -41,7 +41,7 @@ this. Schema migrations are declared via `atlasSchema` (a Git `url`, `ref`,
 and `path` to migration files); the composition renders a
 `GitRepository` + `Kustomization` + `AtlasMigration` pipeline per database
 so Atlas Operator applies them declaratively
-(`apis/sqlinstance/kcl/main.k:477-539`). See `.claude/rules/database-migrations.md`
+(`apis/sqlinstance/kcl/main.k:477-539`). See `apps/AGENTS.md`
 for the migration-repository layout and Git-ref-to-tag/branch rules if you
 use it.
 

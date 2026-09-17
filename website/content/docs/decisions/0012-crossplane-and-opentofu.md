@@ -221,7 +221,7 @@ Crossplane; this ADR decides whether it belongs to Crossplane at all.
   `batch/jobs` — needs an aggregate ClusterRole granted explicitly, or the
   XR reconcile loop stalls on
   `Timeout: failed waiting for *unstructured.Unstructured Informer to sync`.
-  Source: [`.claude/rules/crossplane-validation.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/crossplane-validation.md).
+  Source: [`infrastructure/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/infrastructure/AGENTS.md).
 - **The composition split across repositories means two pins move
   together.** Compositions live in
   [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
@@ -282,7 +282,7 @@ schemas through `./scripts/validate-manifests.sh`.
 - [Glossary]({{< relref "/docs/reference/glossary.md" >}}) — Claim,
   Composition, Reconciliation, Drift, Managed resource, Configuration
   package
-- [`.claude/rules/crossplane-validation.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/crossplane-validation.md)
+- [`infrastructure/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/infrastructure/AGENTS.md)
   — the v2 namespacing, activation-policy, and aggregate-ClusterRole traps
 - `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
   — the pinned Configuration package
