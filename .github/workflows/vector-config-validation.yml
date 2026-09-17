@@ -78,10 +78,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up yq
-        uses: mikefarah/yq@v4
+        uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
 
       - name: Extract Vector configuration
         id: extract
