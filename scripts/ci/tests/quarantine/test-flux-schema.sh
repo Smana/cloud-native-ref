@@ -3,7 +3,7 @@
 # Test suite for the SPEC-007 flux-schema tooling.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a too-old
