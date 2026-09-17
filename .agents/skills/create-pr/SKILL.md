@@ -97,10 +97,13 @@ gh pr view "$PR_NUMBER" --json number,title,files,additions,deletions,baseRefNam
 gh pr diff "$PR_NUMBER"
 ```
 
-Generate a fresh body using the same template. Update:
+Generate a fresh body using the same template. Update through the REST endpoint — `gh pr edit`
+runs a GraphQL query that includes `projectCards`, which GitHub has sunset, and on this repo it
+fails outright while printing what looks like a deprecation warning. Verified 2026-09-17: the body
+was unchanged afterwards.
 
 ```bash
-gh pr edit "$PR_NUMBER" --body "$BODY"
+gh api --method PATCH "repos/{owner}/{repo}/pulls/$PR_NUMBER" -f body="$BODY" --jq '.number'
 ```
 
 Return `Updated PR #<N>: <url>`.
