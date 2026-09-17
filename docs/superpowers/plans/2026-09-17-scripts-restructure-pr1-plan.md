@@ -560,6 +560,78 @@ which tool was missing, so 'did not run' can never read as 'passed'."
 
 ---
 
+### Task 3b: Quarantine `test-flux-schema.sh`
+
+Added mid-run. Running the suites for the first time proved one of them has been dead for an unknown
+period — the failure is pre-existing, not caused by anything in this PR.
+
+**Files:**
+- Create: `scripts/ci/tests/quarantine/README.md`
+- Move: `scripts/test-flux-schema.sh` → `scripts/ci/tests/quarantine/test-flux-schema.sh`
+
+- [ ] **Step 1: Move it out of discovery**
+
+```bash
+mkdir -p scripts/ci/tests/quarantine
+git mv scripts/test-flux-schema.sh scripts/ci/tests/quarantine/
+```
+
+`run.sh` globs `"$TESTS"/test-*.sh` — non-recursive — so a subdirectory drops out of discovery with
+no change to the runner and, importantly, without a dishonest `# requires:` header claiming a
+missing tool is the reason.
+
+- [ ] **Step 2: Write `scripts/ci/tests/quarantine/README.md`**
+
+```markdown
+# Quarantine
+
+Suites that do not pass, kept here so they are impossible to mistake for coverage. `run.sh` globs
+`test-*.sh` non-recursively, so nothing here runs.
+
+## `test-flux-schema.sh`
+
+**Why it is here:** it asserts against hardcoded bundle filenames that the render's naming scheme
+has outgrown. It expects `.bundle/chart-observability-loggen.yaml`; the render produces
+`chart-observability-base-loggen-observability-loggen.yaml` and
+`chart-observability-aws-0-observability-loggen.yaml` — the scheme gained overlay and cluster
+segments. The chartRef assertions are stale in the same way.
+
+**What it is NOT:** it is not evidence of a gap in `validate-manifests.sh`. All six chartRef
+HelmReleases it names are present in the rendered bundle — karpenter, envoy-gateway,
+envoy-ai-gateway, atlas-operator, vllm-semantic-router, flux-operator. That was checked directly
+before quarantining it.
+
+**How it got here:** nothing ever ran it. Three mentions in `ci.yaml` and all three are comments.
+`ci.yaml:406` called it a suite that "does not pass in a bare environment", which read as *needs
+tooling* — it does not pass with the tooling either.
+
+**To revive it:** match the bundle files by glob rather than by exact name, and assert a non-zero
+match count so the repair cannot make the guard vacuous. Then move it back up one directory.
+```
+
+- [ ] **Step 3: Verify discovery drops to 19 and the run is green**
+
+Run: `task ci:test; echo "exit=$?"`
+Expected: 19 result lines, `0 failed`, `exit=0`. `test-flux-schema` must not appear at all — not as
+PASS, not as SKIP.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A scripts
+git commit -m "test(ci): quarantine test-flux-schema.sh, which has been dead
+
+It asserts against hardcoded bundle filenames the render's naming scheme
+outgrew. Nothing caught it because nothing ran it: all three mentions in
+ci.yaml are comments.
+
+Not repaired here. Fixing assertions inside a guard is not relocation, and
+a hasty fix risks making it vacuous -- which is worse than red, because a
+vacuous guard reports success forever."
+```
+
+---
+
 ### Task 4: Move the validators into `scripts/ci/`
 
 **Files:**
@@ -852,7 +924,8 @@ In `scripts/taskfile.yaml`, drop the override now that the suites sit beside the
 ```
 
 Run: `task ci:test; echo "exit=$?"`
-Expected: 21 result lines (20 suites plus `test-script-paths`), `0 failed`, `exit=0`.
+Expected: **20** result lines — 19 suites plus `test-script-paths`; `test-flux-schema` is
+quarantined in Task 3b and must not appear. `0 failed`, `exit=0`.
 
 - [ ] **Step 8: Commit**
 
@@ -1161,8 +1234,8 @@ A comparison against a stale local `origin/main` reports "up to date" on a branc
 task check
 ```
 
-Expected: `ci:validate` renders and passes all three gates; `ci:test` reports `21 passed, 0 failed`
-(or with skips named); `ci:links` passes. **Cite the rendered resource count and the test summary
+Expected: `ci:validate` renders and passes all three gates; `ci:test` reports **20** result lines
+with `0 failed` (19 suites plus `test-script-paths`; skips named); `ci:links` passes. **Cite the rendered resource count and the test summary
 line verbatim** — concurrent runs in one checkout race on `.bundle/` and a moving count is the tell.
 
 - [ ] **Step 3: Prove the discovery property**
@@ -1217,7 +1290,12 @@ untouched) → Task 7 Step 2's exclusions and Task 9 Step 2. Decision 5 (depths 
 **Known gaps, stated rather than hidden:**
 - `scripts/openbao-snapshot.sh` (symlink) and criterion 11 are unaffected by this PR — nothing
   moves relative to it. Task 10 does not re-verify it; PR 2 must.
-- Two suites (`test-flux-schema.sh`, `test-vector-vrl.sh`) may SKIP locally. CI installs their
-  tooling via mise, so they run there. Verify in the PR's CI run, not locally.
+- `test-vector-vrl.sh` may SKIP locally; CI installs `vector` via mise, so it runs there. Verify in
+  the PR's CI run, not locally.
+- **Spec criterion 4 is not met as written.** It asks for "all 20 suites, skipping only on a
+  declared-and-absent tool". PR 1 delivers 19 discovered and 1 quarantined, because running the
+  suites for the first time proved `test-flux-schema.sh` has been dead for an unknown period
+  (Task 3b). The mechanism is right; one input to it was already broken. The PR body must state
+  this rather than let the criterion read as met.
 - The 13 temporary `../../` subject paths are a deliberate intermediate state. They are correct
   for the tree as it exists at the end of this PR and are covered by `test-script-paths.sh`.
