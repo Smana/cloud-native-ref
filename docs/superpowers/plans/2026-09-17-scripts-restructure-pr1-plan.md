@@ -983,7 +983,29 @@ done
 wc -l /tmp/moved-pr1.txt
 ```
 
-Expected: 37 lines (16 + 21).
+Expected: **36** lines — 16 explicit entries plus 20 from the glob (19 suites and
+`test-script-paths.sh`). Task 3b quarantined `test-flux-schema.sh`, so it is **not** in
+`scripts/ci/tests/` and must not be in this list: its only live references are the three `ci.yaml`
+comments that Task 8 deletes, plus a bare filename in `website/content/docs/reference/commands.md`
+that Task 9 handles. A bare filename with no `/` is not a repo path, so `verify-doc-paths.sh` does
+not gate it.
+
+`test-script-paths.sh` is new in this PR, so no pre-existing reference to it can exist — harmless in
+the list.
+
+The 11 paths this step must fix are known. `./scripts/ci/verify-doc-paths.sh` currently reports
+exactly these, and they are the acceptance criterion for Step 5:
+
+```
+0023-portable-secret-store-names.md:59            scripts/verify-doc-paths.sh
+0032-workforce-identity-federation-for-gke-rbac.md:297  scripts/flux-schema/check-substitution.py
+add-a-cloud-provider.md:96                        scripts/flux-schema/check-substitution.py
+add-a-cloud-provider.md:125                       scripts/validate-idp-topology.sh
+openbao-cross-cloud-failover.md:246               scripts/flux-schema/check-substitution.py
+platform/gitops/_index.md:151                     scripts/flux-schema/check-substitution.py
+platform/security/per-user-rbac.md:65,168         scripts/flux-schema/check-substitution.py
+reference/ci-workflows.md:183,184,203             scripts/verify-doc-paths.sh
+```
 
 - [ ] **Step 2: Rewrite, anchored on `scripts/<basename>` only**
 
@@ -1217,6 +1239,16 @@ It must record, with the measurements from the design doc:
 - **Consequences**: `task check` is the same command locally and in CI; an adopter who does not
   want go-task copies a single `.sh`; one more pinned tool in `mise.toml`.
 
+- [ ] **Step 3b: Correct the commands reference for the quarantined suite**
+
+`website/content/docs/reference/commands.md:246` lists `test-flux-schema.sh` as exercising the Flux
+schema-validation setup. It no longer runs — Task 3b quarantined it. `verify-doc-paths.sh` does not
+flag it, because a bare filename with no `/` is not a repo path, so nothing else will catch this.
+
+Update the row to say it is quarantined and why, pointing at
+`scripts/ci/tests/quarantine/README.md`. Do not delete the row — a reader who remembers the script
+should find out what happened to it, not find silence.
+
 - [ ] **Step 4: Update `scripts/AGENTS.md`**
 
 Its opening line names `./scripts/validate-manifests.sh` as the entry point. Change to
@@ -1331,5 +1363,18 @@ untouched) → Task 7 Step 2's exclusions and Task 9 Step 2. Decision 5 (depths 
   suites for the first time proved `test-flux-schema.sh` has been dead for an unknown period
   (Task 3b). The mechanism is right; one input to it was already broken. The PR body must state
   this rather than let the criterion read as met.
-- The 13 temporary `../../` subject paths are a deliberate intermediate state. They are correct
-  for the tree as it exists at the end of this PR and are covered by `test-script-paths.sh`.
+- The temporary `../../` subject paths are a deliberate intermediate state, correct for the tree as
+  this PR leaves it and covered by `test-script-paths.sh`. **Counted after the fact: 17 `../../`
+  lines over 8 distinct subjects** — 13 subject references plus 4 `../../lib/` source lines.
+
+  **PR 3 should search for subject names, not for a count of suites.** The subjects that actually
+  move are `cnpg-promote-seed.sh` (PR 2), and `openbao-config.sh`, `tm-provisioner.sh`,
+  `zitadel-idp.sh`, `zitadel-oidc-clients.sh` (PR 3). `lib/cloud-secret-store.sh` and
+  `lib/zitadel-pat.sh` never move (`lib/` is unchanged by design).
+
+  `openbao-snapshot.sh` **does** carry a revisit comment, added deliberately: it is a symlink whose
+  final home is not settled — this plan says it does not move *in this PR*, and the design plans a
+  re-pointed link. A needless comment costs nothing; a missing one costs a broken path later.
+
+  Two earlier drafts of this note were wrong — "13 suites", then "14 lines, 5 moving, snapshot
+  carries none". The count is 17/13/8 and the snapshot pair is commented.
