@@ -48,7 +48,7 @@
 # Requires a rendered bundle. validate-manifests.sh runs this after the render;
 # standalone, run that script first or set BUNDLE_DIR to an existing bundle.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO_ROOT="$(pwd)"
 
 BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"

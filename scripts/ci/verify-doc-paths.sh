@@ -21,7 +21,7 @@
 #   ./scripts/verify-doc-paths.sh --list   # print every missing path, exit 0
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 MODE="${1:-check}"
 
