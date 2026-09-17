@@ -47,6 +47,8 @@ absent() {
     else printf '  ok   %s\n' "$1"; fi
 }
 
+# The subject is still at scripts/ root; it moves to scripts/provision/ in the
+# provision phase, and this path moves with it.
 SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/../../openbao-snapshot.sh}"
 body="$(sed -n '/^seal_status_raw() {/,/^}/p' "$SRC")"
 [ -n "$body" ] || { echo "could not extract seal_status_raw() from $SRC" >&2; exit 1; }

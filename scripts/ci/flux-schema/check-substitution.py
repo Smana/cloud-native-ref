@@ -61,7 +61,7 @@ import re
 import subprocess
 import sys
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 CLUSTERS_DIR = REPO_ROOT / "clusters"
 KUSTOMIZE_BIN = "kustomize"
 
