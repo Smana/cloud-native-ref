@@ -245,7 +245,16 @@ ships in PR 1, before anything moves**:
 - for every script, execute its self-location in a subshell and assert the resolved root contains
   a known repo marker (`AGENTS.md` and `opentofu/`);
 - for every `source`/`.` line, assert the target file exists;
+- for every suite's subject default — `SRC="${OPENBAO_CONFIG_SCRIPT:-$HERE/openbao-config.sh}"`
+  and the 15 others like it — assert the file exists;
 - fail naming the script, the line, and what the path resolved to.
+
+That third check matters more than it looks. **16 suites point at a subject that moves in a
+later phase**: `test-openbao-*` and `test-zitadel-*` read scripts that do not move until PR 3,
+`test-cnpg-promote-seed.sh` one that moves in PR 2. Their subject paths are therefore edited
+*twice* — once when the suite moves into `ci/tests/`, once when the subject moves — and only a
+gate makes the second edit reviewable. Nine of the sixteen already read
+`${VAR:-$HERE/…}`, so the override is the seam to edit.
 
 PRs 2 and 3 then move *underneath a gate that already passes*, which converts a silent 2am failure
 into a red check. Rejected: a shared `scripts/lib/repo-root.sh` (must itself be found by a
