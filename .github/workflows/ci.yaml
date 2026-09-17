@@ -245,7 +245,7 @@ jobs:
       # isolation) lives in the script so it is shellcheck-covered and
       # documented next to the renderer it drives.
       - name: Render head and base (concurrent)
-        run: ./scripts/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
+        run: ./scripts/ci/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
 
       # stdout (tee'd) is the size-capped PR comment; rendered-diff-full.md is
       # the full report (capped only by the job-summary limit, inside the

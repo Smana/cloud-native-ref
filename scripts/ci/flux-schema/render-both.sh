@@ -19,7 +19,7 @@ set -uo pipefail
 
 BASE_REF="${1:?usage: render-both.sh <base-ref> (e.g. origin/main)}"
 
-python3 scripts/flux-schema/render-bundle.py .bundle-head &
+python3 scripts/ci/flux-schema/render-bundle.py .bundle-head &
 head_pid=$!
 
 (
@@ -31,7 +31,7 @@ head_pid=$!
   cp -r "${HOME}/.cache/helm/." /tmp/helm-cache-base/
   cd /tmp/base
   HELM_REPOSITORY_CACHE=/tmp/helm-cache-base/repository \
-    python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base
+    python3 scripts/ci/flux-schema/render-bundle.py /tmp/base/.bundle-base
 ) &
 base_pid=$!
 
