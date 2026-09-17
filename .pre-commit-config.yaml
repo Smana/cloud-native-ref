@@ -66,6 +66,35 @@ repos:
   #     - id: markdownlint
   #       args: [--fix]
 
+  # Push-time guards. `stages: [pre-push]` keeps these out of `pre-commit run
+  # --all-files`, so CI does not run them -- a rebase check against the commit
+  # CI is already sitting on would be meaningless there.
+  - repo: local
+    hooks:
+      - id: check-rebased
+        name: Branch is rebased on origin/main
+        entry: scripts/check-rebased.sh
+        language: script
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
+
+# `pre-commit install` alone installs only the pre-commit hook, so a pre-push
+# hook added to this file would silently never run for anyone who had already
+# installed. Declaring both here makes a plain `pre-commit install` wire up
+# each one.
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+
+# Required, not cosmetic. A hook with no `stages` runs at EVERY stage, so the
+# moment a pre-push hook is installed, all 14 hooks above — terraform validate,
+# tflint, detect-secrets — start running on every `git push` as well. Measured
+# before this line was added: 15 hooks fired at push time instead of 1.
+# Pinning the default to pre-commit leaves push-time to the hooks that opt in.
+default_stages:
+  - pre-commit
+
 default_language_version:
   python: python3
 
