@@ -20,9 +20,13 @@ cd "$REPO_ROOT"
 # shellcheck source=./flux-schema/preflight.sh
 source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
 
+# Keep this version equal to the one .github/workflows/ci.yaml installs, in both
+# the action tag and its `version:` input. The three drifted once already — CI
+# audited with 8.5.0 while the action was on v10.2.x — and a local run that uses
+# a different Polaris than CI makes "polaris passes" mean two different things.
 if ! command -v polaris >/dev/null 2>&1; then
   echo "error: polaris not found on PATH." >&2
-  echo "       Fix: install Polaris v8.5.0 - https://github.com/FairwindsOps/polaris/releases/tag/8.5.0" >&2
+  echo "       Fix: install Polaris 10.2.4 - https://github.com/FairwindsOps/polaris/releases/tag/v10.2.4" >&2
   exit 1
 fi
 

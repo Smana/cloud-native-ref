@@ -9,10 +9,27 @@ permissions:
   security-events: write
   actions: read
 
+# One in-flight run per PR. A push that supersedes an earlier commit cancels the
+# run that was validating it — that run's verdict is about a commit nobody will
+# merge, and branch protection waits on the newest run either way.
+#
+# Keyed on the workflow AND the ref, not the ref alone: `docs-check.yml` uses the
+# same shape, and a shared group would have the two workflows cancelling each
+# other on every push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every job below carries `timeout-minutes: 15`. The whole pipeline runs in 2-3
+# minutes, so 15 is not a budget — it is the point at which a job has stopped
+# making progress (a hung `helm template`, a registry that accepts the connection
+# and never answers). Without it the ceiling is GitHub's default of SIX HOURS,
+# which holds a runner and leaves the PR showing a spinner rather than a failure.
 jobs:
   pre-commit:
     name: Pre-commit checks 🛃
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,6 +68,7 @@ jobs:
   security-scan:
     name: Security scanning 🔒
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -103,6 +121,7 @@ jobs:
   kubernetes-validation:
     name: Kubernetes validation ☸
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -120,10 +139,17 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
+      # The `version` input and the action tag must name the SAME release. They
+      # drifted: the action was on v10.2.x while this installed the binary from
+      # 8.5.0, so CI audited with a Polaris two majors behind the one a developer
+      # gets from the action's own repo — and behind what `.polaris.yaml` is now
+      # written against. Renovate bumps the tag; it cannot see this string, so
+      # the annotation below is what keeps them together.
       - name: Install Polaris
-        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.3
+        # renovate: datasource=github-releases depName=FairwindsOps/polaris
+        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.4
         with:
-          version: '8.5.0'
+          version: '10.2.4'
 
       # Charts are version-pinned, so only the download layer is cached (CL-2).
       # The bundle itself is always rendered fresh — a stale bundle is a
@@ -155,6 +181,7 @@ jobs:
   render-diff:
     name: Rendered manifest diff 📝
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Informational only — never gates. GitOps: git is the source of truth, so
     # this diffs the rendered DESIRED state (main vs this PR). Drift (cluster ≠
     # git) is Flux's concern and is alerted on separately, so no cluster access
@@ -214,6 +241,7 @@ jobs:
   shellcheck:
     name: Check the shell scripts 💻
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       # jq comes along here rather than in its own step: the test suites below
@@ -315,6 +343,7 @@ jobs:
   links:
     name: Check the documentation links 🔗
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Resolve every relative Markdown link

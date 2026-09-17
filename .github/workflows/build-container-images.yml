@@ -18,6 +18,22 @@ on:
         required: false
         default: 'all'
 
+# Declared here rather than left to the repository default. The default is `read`
+# today, so this grants nothing new — it puts the guarantee in the file, which is
+# what gets read, forked and copied. `build-and-push` keeps its own job-level
+# block, which is where `packages: write` belongs: the narrowest scope that needs
+# it, not the whole workflow.
+permissions:
+  contents: read
+
+# Superseded pushes stop building. NOT applied to `push` on main, where every
+# commit's images must be built and published — hence the ref in the key, which
+# is the PR ref on a pull request and `refs/heads/main` on a merge, so main's
+# runs queue behind each other rather than cancelling.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   REGISTRY_USER: ${{ github.actor }}
@@ -26,6 +42,7 @@ jobs:
   detect-changes:
     name: Detect Changed Images
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       images: ${{ steps.filter.outputs.images }}
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -126,6 +143,9 @@ jobs:
   build-and-push:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
+    # Wider than the 15 used elsewhere: this builds linux/arm64 under QEMU
+    # emulation, which is minutes rather than seconds per layer.
+    timeout-minutes: 45
     needs: [detect-changes]
     if: needs.detect-changes.outputs.images != '[]'
     strategy:
@@ -237,6 +257,7 @@ jobs:
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [detect-changes, build-and-push]
     if: always()
     steps:

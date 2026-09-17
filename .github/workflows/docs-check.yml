@@ -15,10 +15,17 @@ on:
 permissions:
   contents: read
 
+# Same shape as ci.yaml: one in-flight run per PR, keyed on workflow + ref so the
+# two do not cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build the documentation site 📚
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
