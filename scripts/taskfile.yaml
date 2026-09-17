@@ -7,7 +7,7 @@ tasks:
 
   test:
     desc: Run every shell test suite the environment can satisfy
-    cmds: ["TESTS_DIR=scripts ./scripts/ci/tests/run.sh"]
+    cmds: ["./scripts/ci/tests/run.sh"]
 
   links:
     desc: Resolve every relative Markdown link

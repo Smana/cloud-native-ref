@@ -47,7 +47,7 @@ for _h in check contains absent; do
     declare -F "$_h" >/dev/null || { echo "harness incomplete: $_h() is not defined" >&2; exit 2; }
 done
 
-SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/openbao-snapshot.sh}"
+SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/../../openbao-snapshot.sh}"
 body="$(sed -n '/^select_snapshot() {/,/^}/p' "$SRC")"
 [ -n "$body" ] || { echo "could not extract select_snapshot() from $SRC" >&2; exit 1; }
 eval "$body"

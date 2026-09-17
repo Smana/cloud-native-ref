@@ -15,7 +15,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."
 
 # shellcheck disable=SC2154  # LINT_JQ comes from the eval below
 eval "$(sed -n "/^LINT_JQ='/,/^'$/p" scripts/secret-store.sh)"

@@ -106,7 +106,7 @@ import yaml
 amtool, bundle_dir, mode = sys.argv[1], sys.argv[2], sys.argv[3]
 update = mode == "--update-golden"
 
-FIXTURE_DIR = pathlib.Path("scripts/alertmanager-fixtures")
+FIXTURE_DIR = pathlib.Path("scripts/ci/tests/alertmanager-fixtures")
 GOLDEN_DIR = FIXTURE_DIR / "golden"
 TEMPLATE_KEY = "ogenki.tmpl"
 RECEIVER = "slack-monitoring"

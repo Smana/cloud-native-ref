@@ -47,7 +47,7 @@ absent() {
     else printf '  ok   %s\n' "$1"; fi
 }
 
-SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/openbao-snapshot.sh}"
+SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/../../openbao-snapshot.sh}"
 body="$(sed -n '/^seal_status_raw() {/,/^}/p' "$SRC")"
 [ -n "$body" ] || { echo "could not extract seal_status_raw() from $SRC" >&2; exit 1; }
 eval "$body"

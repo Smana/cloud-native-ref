@@ -76,7 +76,7 @@ PATH="$STUB:$PATH"
 export STUB_LOG="$STUB/calls.log"
 
 # shellcheck source=scripts/lib/cloud-secret-store.sh
-. "$HERE/lib/cloud-secret-store.sh"
+. "$HERE/../../lib/cloud-secret-store.sh"
 
 CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
 check "aws read"    '{"token":"aws-secret"}' "$(store_read any)"
@@ -156,7 +156,7 @@ set +e
 PATH="$FAILSTUB:$PATH" TMPDIR="$FAILTMP" bash -c '
     set -o errexit -o nounset -o pipefail
     # shellcheck source=scripts/lib/cloud-secret-store.sh
-    . "'"$HERE"'/lib/cloud-secret-store.sh"
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
     CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
     printf "%s" "{\"pat\":\"should-never-survive-on-disk\"}" | store_write probe-secret
 '
@@ -178,7 +178,7 @@ set +e
 PATH="$FAILSTUB:$PATH" TMPDIR="$FAILTMP2" bash -c '
     set -o errexit -o nounset -o pipefail
     # shellcheck source=scripts/lib/cloud-secret-store.sh
-    . "'"$HERE"'/lib/cloud-secret-store.sh"
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
     CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
     store_write probe-secret <<< "{\"pat\":\"should-never-survive-on-disk\"}"
 '
