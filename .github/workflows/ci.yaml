@@ -128,12 +128,29 @@ jobs:
         with:
           sarif_file: checkov-results.sarif
 
+      # The scan range has to come from the event. `base: main` / `head: HEAD`
+      # is a real range on a pull request, where the two are different commits
+      # — but on a push to `main` both resolve to the SAME commit, and the
+      # action treats that as an error rather than a no-op:
+      #
+      #   BASE and HEAD commits are the same. TruffleHog won't scan anything.
+      #
+      # So this step failed on every merge while passing on every PR, which is
+      # the one shape that defeats a post-merge check: green before, red after,
+      # with nothing in the diff to explain it. It also kept the `ci-main-broken`
+      # issue below permanently open, making that signal worthless. Observed on
+      # 4e1f7523 and 36208b5e.
+      #
+      # `pull_request.base.sha` is empty on a push, so the fallback picks
+      # `event.before` — the previous tip of `main`, which bounds exactly the
+      # commits the merge introduced. `fetch-depth: 0` above is what makes both
+      # ends reachable in the local clone.
       - name: Detect secrets with TruffleHog
         uses: trufflesecurity/trufflehog@363923b901c911a9164f50b6c423f47c15372b1c # v3.97.4
         with:
           path: ./
-          base: main
-          head: HEAD
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.sha }}
           extra_args: --debug --only-verified
 
   kubernetes-validation:
