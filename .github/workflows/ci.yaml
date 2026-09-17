@@ -139,17 +139,10 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
-      # The `version` input and the action tag must name the SAME release. They
-      # drifted: the action was on v10.2.x while this installed the binary from
-      # 8.5.0, so CI audited with a Polaris two majors behind the one a developer
-      # gets from the action's own repo — and behind what `.polaris.yaml` is now
-      # written against. Renovate bumps the tag; it cannot see this string, so
-      # the annotation below is what keeps them together.
-      - name: Install Polaris
-        # renovate: datasource=github-releases depName=FairwindsOps/polaris
-        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.4
-        with:
-          version: '10.2.4'
+      # NOTE: there is no "Install Polaris" step. Polaris comes from mise.toml
+      # along with every other tool, because the upstream setup-polaris action
+      # cannot install any release newer than 8.5.0 — see the comment on the
+      # `polaris` pin in mise.toml for the naming change that broke it.
 
       # Charts are version-pinned, so only the download layer is cached (CL-2).
       # The bundle itself is always rendered fresh — a stale bundle is a
