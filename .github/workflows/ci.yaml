@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -54,7 +54,7 @@ jobs:
       # tflint — the same file a contributor runs `mise install` against, so
       # this keeps the CI/local parity the Dagger image was there to provide.
       - name: Install tools
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Validate Opentofu configuration
         run: pre-commit run --all-files --show-diff-on-failure
@@ -71,12 +71,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -86,7 +86,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -95,7 +95,7 @@ jobs:
         # Latest TAG, not latest RELEASE — the repo stopped cutting releases at
         # v12.1347.0 (whose old action.yml breaks on comma-separated framework)
         # but still tags every checkov bump.
-        uses: bridgecrewio/checkov-action@v12.3123.0
+        uses: bridgecrewio/checkov-action@a8664e3a0549367977f0cda990a34311835c87c0 # v12.3123.0
         with:
           directory: .
           quiet: true
@@ -105,13 +105,13 @@ jobs:
           output_file_path: checkov-results.sarif
 
       - name: Upload Checkov scan results
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         if: always()
         with:
           sarif_file: checkov-results.sarif
 
       - name: Detect secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@v3.97.4
+        uses: trufflesecurity/trufflehog@363923b901c911a9164f50b6c423f47c15372b1c # v3.97.4
         with:
           path: ./
           base: main
@@ -124,10 +124,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install tools
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       # Pinned: preflight.sh only enforces a version floor (>=0.10), so an
       # unpinned install silently floats to whatever upstream released.
@@ -148,7 +148,7 @@ jobs:
       # The bundle itself is always rendered fresh — a stale bundle is a
       # silently-wrong green, the exact failure class SPEC-007 removes.
       - name: Cache Helm chart downloads
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/helm
           # Glob every HelmRelease filename (helmrelease.yaml, helmrelease-*.yaml,
@@ -184,18 +184,18 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Cache Helm chart downloads
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/helm
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
@@ -218,7 +218,7 @@ jobs:
           cat rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload full diff artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rendered-diff
           path: rendered-diff-full.md
@@ -226,7 +226,7 @@ jobs:
 
       - name: Post/update PR comment
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: rendered-manifest-diff
           path: rendered-diff.md
@@ -236,7 +236,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # jq comes along here rather than in its own step: the test suites below
       # need it, and a second `apt-get update` in the same job is pure cost. It
       # is installed rather than assumed present on the runner image, the same
@@ -338,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Resolve every relative Markdown link
         run: ./scripts/validate-links.sh
 
