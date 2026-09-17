@@ -16,7 +16,7 @@ module:
     - path: github.com/imfing/hextra
   # The platform constitution is published here but NOT moved here. It has 50
   # inbound references, 37 of them in the read-only docs/specs/ archive, and it
-  # is the source of truth loaded by .claude/rules/platform-constitution.md — so
+  # is the source of truth loaded by docs/platform-constitution.md — so
   # its repository path has to stay stable. A single-file mount publishes it in
   # full without breaking one link. Verified working on Hugo 0.156.0.
   #

@@ -32,11 +32,19 @@ Diagnostic order when egress looks broken:
 list -o json` on that node's agent → check `rules.dns` on the kube-dns rule → check matchPattern
 subdomain depth → check link-local.
 
+Without the Hubble CLI relayed locally, go through an agent pod:
+
+```bash
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system $CILIUM_POD -- hubble observe --verdict DROPPED --from-pod <ns>/<pod> --last 100
+kubectl exec -n kube-system $CILIUM_POD -- hubble observe --from-label app.kubernetes.io/name=<app> --verdict DROPPED --last 100
+```
+
 ## OpenBao
 
 ```bash
 export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
-export VAULT_CACERT=../opentofu/aws/openbao/management/.tls/ca.pem   # prefer this over VAULT_SKIP_VERIFY
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # prefer this over VAULT_SKIP_VERIFY
 bao status
 bao login -method=userpass username=admin
 
@@ -46,7 +54,7 @@ aws secretsmanager get-secret-value \
 ```
 
 The operator login is userpass in the **root** namespace, managed by
-`../opentofu/aws/openbao/management/auth.tf`, carrying both the admin and pki-admin policies.
+`opentofu/aws/openbao/management/auth.tf`, carrying both the admin and pki-admin policies.
 
 **Namespace layout.** Shared platform services live in the **root** namespace: the PKI
 (`pki_private_issuer`), the per-cluster JWT auth mounts, the `oidc/` mount and its identity groups,
@@ -76,7 +84,7 @@ Offline root CA → intermediate CA → leaf certificates. The root signed each 
 offline, once; only the intermediate's cert+key bundle is imported into the `pki` mount, and that
 intermediate **is** the issuer. OpenBao never holds the root key — the `root-ca` Secrets Manager
 entry that used to carry it is deleted. One root for both clouds, so a tailnet client trusts one
-anchor. See `../opentofu/aws/openbao/management/pki.tf`.
+anchor. See `opentofu/aws/openbao/management/pki.tf`.
 
 cert-manager authenticates with a **projected ServiceAccount token** against the per-cluster JWT
 mount (`jwt/<cluster>`, role `cert-manager`) — not an AppRole, and no long-lived credential
@@ -98,4 +106,4 @@ enough on its own.
 
 Private EKS API endpoint, Tailscale VPN for private resources, Cilium policies for pod-to-pod,
 Gateway API for ingress with TLS termination. The two Tailscale gateways and their ACL split are
-documented in `../infrastructure/AGENTS.md`.
+documented in `infrastructure/AGENTS.md`.

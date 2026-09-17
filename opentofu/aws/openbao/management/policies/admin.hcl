@@ -40,7 +40,7 @@ path "identity/*"
 # login carries both.
 #
 # This policy used to grant `pki/*` and `int_pki/*`, and neither named a real
-# mount. It was reachable, though — CLAUDE.md documented a hand-created userpass
+# mount. It was reachable, though — the repo docs documented a hand-created userpass
 # admin, and both this policy and a stray `pki` mount created by the old
 # `openbao-config.sh pki` step happened to land in root, so the paths lined up
 # by accident. That mount held a duplicate copy of the root CA private key and

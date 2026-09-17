@@ -69,7 +69,7 @@ This PR contains changes that would benefit from a design document:
 - **Detected type**: <composition | infrastructure | security | platform>
 - **Affected paths**: <key paths>
 
-Consider brainstorming a design first (see `CLAUDE.md` → *Development Workflow*)
+Consider brainstorming a design first (see `docs/superpowers/AGENTS.md`)
 so the approach is agreed and checked against the platform constitution
 before implementation.
 ```

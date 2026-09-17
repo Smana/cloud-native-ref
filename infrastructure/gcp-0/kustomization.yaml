@@ -51,7 +51,7 @@ resources:
   #
   # Wired now because image-gallery needs it. A SQLInstance whose claim sets
   # `atlasSchema` makes the composition render a GitRepository, a Kustomization,
-  # a ConfigMap and an **AtlasMigration** (see .claude/rules/database-migrations.md),
+  # a ConfigMap and an **AtlasMigration** (see apps/AGENTS.md),
   # and apps/base/complete/app.yaml pins `atlasSchema.ref: v2.0.0`.
   #
   # gcp-0 had neither the operator nor the CRD, and the failure is a bad one to

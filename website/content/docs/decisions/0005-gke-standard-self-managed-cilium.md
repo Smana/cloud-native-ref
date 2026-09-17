@@ -170,11 +170,11 @@ Cluster creation must include `--enable-ip-alias`, an explicit `--cluster-ipv4-c
 `--services-ipv4-cidr`, and the agent-not-ready node taint. Cilium is then installed with
 `ipam.mode=kubernetes`, keeping `routingMode: native`.
 
-**`encryption.type: wireguard` is expected to be unnecessary on GCP.** CLAUDE.md currently
+**`encryption.type: wireguard` is expected to be unnecessary on GCP.** `opentofu/AGENTS.md` currently
 records WireGuard as load-bearing, but that is a workaround for
 [cilium#43493](https://github.com/cilium/cilium/issues/43493), which is specifically the BPF
 ipcache `hastunnel` flag under **ENI mode with prefix delegation**. With `ipam.mode=kubernetes`
-that code path is not taken. The cross-node L7 success criterion tests this empirically; CLAUDE.md's note is
+that code path is not taken. The cross-node L7 success criterion tests this empirically; `opentofu/AGENTS.md`'s note is
 rescoped to AWS only once that criterion passes, and not before.
 
 ---

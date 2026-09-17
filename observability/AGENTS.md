@@ -62,7 +62,7 @@ consider whether the source is continuous or event-driven.
 
 ## Alerting rules
 
-`../scripts/validate-vmrules.sh` runs `promtool check rules` over every repo-authored `VMRule`.
+`./scripts/validate-vmrules.sh` runs `promtool check rules` over every repo-authored `VMRule`.
 Nothing else parses an `expr`: to `flux schema validate` it is just a string in the right place,
 and Polaris never reads rules at all. An unbalanced paren or an unknown function used to validate
 clean and cost you the alert at runtime — vmalert logs a parse error, the group never evaluates,

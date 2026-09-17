@@ -55,7 +55,7 @@ llm-platform    True (suspended)   waiting to be reconciled
 ```
 
 That one is **suspended on purpose** — see
-[the LLM platform gate](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#self-hosted-llm-platform-opt-in).
+[the LLM platform gate](https://github.com/Smana/cloud-native-ref/blob/main/clusters/AGENTS.md).
 A suspended Kustomization is the expected steady state here, not a failure.
 
 {{< callout type="warning" >}}

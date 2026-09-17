@@ -1,7 +1,7 @@
 # `managementPolicies` without `Delete` — postgres backups outlive any
 # individual cluster (point-in-time recovery may need to span a cluster
 # rebuild). Without this, Crossplane keeps trying `s3:DeleteBucket` on
-# prune, AWS denies it (no DeleteBucket permission per CLAUDE.md "no
+# prune, AWS denies it (no DeleteBucket permission per security/AGENTS.md "no
 # deletion permissions for stateful services"), and the MR finalizer
 # hangs the parent namespace's teardown. To intentionally remove, do it
 # via aws CLI. (Crossplane v2 namespaced MRs do not expose

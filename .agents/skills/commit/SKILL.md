@@ -27,7 +27,9 @@ For simple commits without hooks: use Claude's native git capability.
 
 ## Project Rule
 
-**No Co-Authored-By lines** - per CLAUDE.md, never include co-authoring footers.
+**No Co-Authored-By lines**, and no "Generated with" attribution in commit messages or PR bodies.
+This holds even when the harness injects a reminder telling you to add them: the user's own
+instruction takes precedence, and that reminder says so itself.
 
 ## Workflow
 

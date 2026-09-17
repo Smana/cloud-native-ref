@@ -23,14 +23,14 @@ Stop at the first hit:
 
 | # | Source | How |
 |---|---|---|
-| 1 | `icons/` | `../../scripts/diagram-icons.py style <name>` — 15 logos already rasterised |
+| 1 | `icons/` | `./scripts/diagram-icons.py style <name>` — 15 logos already rasterised |
 | 2 | mxgraph stencil | `shapesearch.py "<terms>"`, then rasterise into `icons/` |
 | 3 | CNCF Artwork | **list** `projects/<slug>/icon/color/` and pick the SVG — filenames are not derivable |
 | 4 | Project brand | `aiicons.py "<brand>" --embed`, then rasterise |
 | 5 | — | a clean ogenki box, no icon |
 
 Reaching step 5 is fine. Skipping to it without trying 1–4 is the failure this rule exists to stop.
-`../../scripts/diagram-icons.py audit` lists boxes that name a product and render without one,
+`./scripts/diagram-icons.py audit` lists boxes that name a product and render without one,
 grouped by which source would supply it. **Advisory, deliberately not a CI gate** — whether a box
 wants a logo is a judgment call, and a gate that can go red on a judgment call gets switched off.
 
@@ -100,9 +100,9 @@ A logo used by a second diagram belongs in `icons/`, not embedded twice. Check `
 ## After any diagram change
 
 ```bash
-../../scripts/export-diagrams.sh      # regenerates every SVG the site embeds
-../../scripts/validate-links.sh       # after any file move
-../../scripts/validate-doc-claims.sh  # the pages that describe the diagram
+./scripts/export-diagrams.sh      # regenerates every SVG the site embeds
+./scripts/validate-links.sh       # after any file move
+./scripts/validate-doc-claims.sh  # the pages that describe the diagram
 ```
 
 `export-diagrams.sh` pins the drawio version, because a different build perturbs the fallback

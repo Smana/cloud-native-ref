@@ -52,7 +52,7 @@ kubectl logs -n infrastructure deployment/atlas-operator-controller-manager
 ## App Wizard
 
 `platform/app-wizard/app.yaml` clones a `crossplane-configuration` tag. **It must track the package
-pin** in `../infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` — bump
+pin** in `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` — bump
 both in the same change.
 
 Its image must ship the Crossplane **core** binary as well as the CLI: only the core implements

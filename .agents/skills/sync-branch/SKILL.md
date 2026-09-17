@@ -20,8 +20,13 @@ Stop and report, do not proceed, when any of these hold:
 | Condition | Check | Why |
 |---|---|---|
 | On the base branch itself | `git branch --show-current` is `main` | nothing to rebase |
-| Uncommitted changes | `git status --porcelain` is non-empty | a rebase would strand them |
-| Rebase already running | `.git/rebase-merge` or `.git/rebase-apply` exists | finish or abort it first |
+| Uncommitted changes | `git status --porcelain` is non-empty | a rebase would strand them. Commit first — `ship-it` does this before calling you |
+| Rebase already running | `test -d "$(git rev-parse --git-path rebase-merge)"`, same for `rebase-apply` | finish or abort it first |
+
+Resolve that third one through `git rev-parse --git-path`, never as a literal `.git/…`. **In a
+worktree `.git` is a file, not a directory** — it holds `gitdir: …/.git/worktrees/<name>` — so a
+literal path can never match and the guard silently passes. This repo mandates a worktree for every
+change, which would make the check dead everywhere it matters.
 
 ## 2. Fetch, then compare
 
@@ -61,17 +66,21 @@ If the conflicts are not mechanically resolvable — two branches changed the sa
 different reasons — `git rebase --abort` and ask. Guessing which side wins silently reverts
 someone's work.
 
-## 4. Push
+## 4. Push — only when asked
 
-A rebase rewrites history, so the push must be forced. Use `--force-with-lease`, never bare
-`--force`: it refuses when someone else has pushed to the branch since you last fetched, which is
-the entire failure it exists to prevent.
+**Rebasing does not imply pushing.** A rebase rewrites history, so publishing it force-pushes a
+branch someone may have checked out. Do that only when the caller has actually asked to push or to
+open a PR — not as a side effect of "sync with main" or of a review.
+
+When the push is wanted and the branch already exists on the remote, use `--force-with-lease`,
+never bare `--force`: it refuses when someone else has pushed since you last fetched, which is the
+entire failure it exists to prevent.
 
 ```bash
 git push --force-with-lease origin "$(git branch --show-current)"
 ```
 
-Skip this step when the branch has never been pushed — a plain `git push -u origin <branch>`
+A branch that has never been pushed needs no force at all — a plain `git push -u origin <branch>`
 belongs to whatever opens the PR.
 
 ## Report
@@ -79,5 +88,6 @@ belongs to whatever opens the PR.
 State the outcome in one line, with the number that backs it:
 
 - `already up to date with origin/main (a1b2c3d)`
-- `rebased 4 commits onto origin/main (a1b2c3d), force-pushed`
+- `rebased 4 commits onto origin/main (a1b2c3d), not pushed`
+- `rebased 4 commits onto origin/main (a1b2c3d), force-pushed with lease`
 - `rebase aborted — <file> conflicts on <what>, needs a decision`

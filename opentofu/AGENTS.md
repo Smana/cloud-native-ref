@@ -98,7 +98,7 @@ only `cilium.io/pod-subnet=true`.
 
 **Gateway API version pins move in pairs**: `gateway_api_version` in `config.tm.hcl`'s `globals`
 (one value for both clouds, passed by `-var` like `cilium_version`) and the `ref.tag` in
-`../flux/sources/gitrepo-gateway-api.yaml`. `../scripts/validate-doc-claims.sh` fails when they
+`flux/sources/gitrepo-gateway-api.yaml`. `./scripts/validate-doc-claims.sh` fails when they
 disagree.
 
 ## Two traps that cost a day each

@@ -34,7 +34,7 @@ spec:
     # Semantic Router → HuggingFace (BERT weights for semantic_cache).
     # The chart's downloader fetches sentence-transformers/all-MiniLM-L12-v2
     # at startup; the HF Xet CDN topology fans out (see
-    # .claude/rules/cilium-network-policies.md #2), so toFQDNs is a
+    # security/AGENTS.md #2), so toFQDNs is a
     # maintenance chase. world:443 acceptable here under PSS=restricted,
     # non-root, HTTPS-only, scoped IAM — and after first download the
     # weights are cached on the PVC so this rule is exercised once per

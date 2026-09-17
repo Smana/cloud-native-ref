@@ -112,7 +112,7 @@ Using KCL (Kusion Configuration Language) via `function-kcl` for composition log
 ### Negative
 
 - Team needs to learn KCL syntax and patterns
-- Must avoid mutation pattern (issue #285) - documented in CLAUDE.md
+- Must avoid mutation pattern (issue #285) - documented in `docs/platform-constitution.md`
 - Requires CI/CD pipeline for module publishing to GHCR
 - Mitigation: Comprehensive validation (`task check` in [Smana/crossplane-configuration](https://github.com/Smana/crossplane-configuration), where compositions now live)
 

@@ -1,6 +1,6 @@
 # Validators — what each one catches, and what none of them can
 
-`./validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
+`./scripts/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
 then applies three gates to the result.
@@ -28,10 +28,10 @@ Requires `flux` ≥ 2.9 with the schema plugin: `mise install && flux plugin ins
 
 ## The checks that run separately, and why
 
-**`flux-schema/check-substitution.py`** reads the Flux Kustomizations under `../clusters/` directly
+**`flux-schema/check-substitution.py`** reads the Flux Kustomizations under `clusters/` directly
 and fails on a `${var}` the cluster's ConfigMap does not define. Flux substitutes an empty string
 there — schema-valid and silently wrong — so the bundle looks perfect either way. Details in
-`../clusters/AGENTS.md`.
+`clusters/AGENTS.md`.
 
 Its two tests are `flux-schema/test-check-substitution.py` and `flux-schema/test-render-bundle.py`.
 The second pins `render-bundle.py`'s `spec.valuesFrom` resolution: six HelmReleases get most of
@@ -46,7 +46,7 @@ manifest validation. Run them directly: `python3 scripts/flux-schema/<file>`.
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream
 charts that we neither author nor can fix, and which are entitled to MetricsQL that promtool
 rejects. **A gate that can go red on something the repo cannot fix gets switched off.** See
-`../observability/AGENTS.md`.
+`observability/AGENTS.md`.
 
 **`validate-alertmanager-templates.sh`** pulls the rendered Alertmanager config and template
 ConfigMap out of `.bundle/` — **every copy, not the first found**, since the chart renders once per

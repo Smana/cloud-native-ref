@@ -10,36 +10,48 @@ One ordered pipeline from "implementation done" to "PR open". The order is the p
 feeds the next, and running them out of order wastes the work of the ones before it.
 
 ```
-1. sync-branch     rebase onto origin/main, so every later stage sees the real merge base
-2. simplify        quality cleanup, while the diff is still yours to reshape
-3. prune prose     comment + doc concision pass
-4. evidence gate   run the validators, cite the output
-5. review          the reviewer sees the final shape, not a draft
-6. act on findings fix, then re-run the evidence for whatever moved
-7. commit + PR
+1. commit          get the work onto the branch, so nothing can be stranded
+2. sync-branch     rebase onto origin/main, so every later stage sees the real merge base
+3. simplify        quality cleanup, while the diff is still yours to reshape
+4. prune prose     comment + doc concision pass
+5. evidence gate   run the validators, cite the output
+6. review          the reviewer sees the final shape, not a draft
+7. act on findings fix, then re-run the evidence for whatever moved
+8. commit + push + PR
 ```
 
 Stop at any stage that fails. A stage that cannot pass is a finding, not something to note and
 carry forward.
 
-## 1. Rebase
+## 1. Commit what exists
+
+Run the `commit` skill on whatever is uncommitted. This comes first for a mechanical reason:
+`sync-branch` refuses to rebase a dirty tree, so the pipeline cannot reach stage 2 from the state
+it is normally invoked in — implementation finished, nothing committed yet.
+
+If the work is already committed, skip straight to stage 2.
+
+## 2. Rebase
 
 Run the `sync-branch` skill. A review against a stale merge base reviews code that will not merge.
 
-## 2. Simplify
+**Do not let it push here.** Stages 3–7 will rewrite the branch again; publishing now would
+force-push twice and diverge anyone else's checkout for no reason. The push belongs to stage 8.
+
+## 3. Simplify
 
 Reuse, simplification, efficiency, altitude. Quality only — this is not the bug hunt.
 
 Host mapping: `/simplify` in Claude Code; otherwise review the diff yourself against those four
 axes. Keep it to code you actually changed.
 
-## 3. Prune prose
+## 4. Prune prose
 
 Apply the gauntlet in [`references/prose.md`](references/prose.md) to every comment, doc and
 message this branch adds or touches. The bar is asymmetric: deleting a real warning costs more
 than leaving a mediocre comment, so keep anything you are unsure about and flag it.
 
-## 4. Evidence gate
+## 5. Evidence gate
 
 **No "done / fixed / passing / ready" claim without a fresh command run in the same response.**
 Previous runs do not count — file and cluster state drift.
@@ -48,7 +60,7 @@ The claim-to-command table is in [`references/evidence.md`](references/evidence.
 which claims this branch makes, run those commands now, and cite the output inline as numbers or
 an exit code, never as prose.
 
-## 5. Review
+## 6. Review
 
 Match effort to blast radius, not to diff size:
 
@@ -63,25 +75,30 @@ Host mapping: `/code-review <effort>` in Claude Code. Elsewhere, dispatch a revi
 **crafted context** — the diff, the requirements, the base and head SHAs — never the session
 history. The reviewer should evaluate the work product, not your reasoning about it.
 
-## 6. Act on findings
+## 7. Act on findings
 
 Fix the real ones. Push back, with technical reasoning, on the ones that are wrong — a reviewer
 being confidently mistaken is common, and implementing a bad suggestion to seem agreeable is worse
 than arguing.
 
-Any file you touch here re-enters stage 4. Re-run its evidence command.
+**Check the reviewer's arithmetic before repeating it, and check your own.** A number in a commit
+message or an ADR is a permanent claim; re-derive it from the source rather than from an earlier
+summary of it.
 
-## 7. Commit and open the PR
+Any file you touch here re-enters stage 5. Re-run its evidence command.
 
-Run the `commit` skill, then `create-pr`. Both already carry the repo's conventions; do not
-restate them here.
+## 8. Commit, push, open the PR
+
+Run the `commit` skill for everything stages 3–7 produced, then `create-pr`, which pushes. Both
+already carry the repo's conventions; do not restate them here.
 
 ## Report
 
 One line per stage, with the evidence:
 
 ```
-rebased 4 commits onto origin/main (a1b2c3d)
+committed 3 files
+rebased 4 commits onto origin/main (a1b2c3d), not pushed
 simplify: 2 changes
 prune: 11 comments deleted, 1 flagged
 validate-manifests.sh: exit 0, Invalid: 0, Skipped: 0

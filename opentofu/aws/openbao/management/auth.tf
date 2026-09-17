@@ -18,7 +18,7 @@
 
 # Human operator login
 # --------------------
-# CLAUDE.md has always documented `bao auth -method=userpass username=admin`,
+# The repo docs have always documented `bao auth -method=userpass username=admin`,
 # but the backend and the user were created by hand — the same drift problem the
 # snapshot AppRole had, on the credential with the widest reach.
 #

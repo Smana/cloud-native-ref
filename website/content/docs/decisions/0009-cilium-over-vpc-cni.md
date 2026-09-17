@@ -257,7 +257,7 @@ Gateway API controller and its Envoy L7 proxy; `hubble.relay.enabled` and
 - [ADR-0005](0005-gke-standard-self-managed-cilium.md) — the GCP
   counterpart, where `ipam.mode=kubernetes` means the WireGuard
   workaround above is expected to be unnecessary
-- [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
+- [`opentofu/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/opentofu/AGENTS.md)
   — "Cilium Prefix Delegation", "Pod Subnet Tagging", and the Gateway API
   CRD startup-probe entry under Troubleshooting
 - [`security/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/security/AGENTS.md)

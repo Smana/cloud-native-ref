@@ -9,7 +9,7 @@ lastVerified: 2026-08-20
 
 This document defines the non-negotiable principles that govern all designs and implementations in this platform. Every design MUST comply with these principles.
 
-**Related**: [Architecture Decision Records](https://cnref.ogenki.io/docs/decisions/) | [Development workflow](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#development-workflow-superpowers)
+**Related**: [Architecture Decision Records](https://cnref.ogenki.io/docs/decisions/) | [Development workflow](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/AGENTS.md)
 
 ---
 
@@ -238,7 +238,7 @@ Every KCL composition MUST include:
 ### 8.2 Design documents
 
 Non-trivial changes are designed before they are built, using the
-[Superpowers](https://github.com/obra/superpowers) workflow (see `CLAUDE.md` →
+[Superpowers](https://github.com/obra/superpowers) workflow (see `docs/superpowers/AGENTS.md` →
 *Development Workflow*).
 
 | Artifact | Path | Produced by |

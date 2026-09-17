@@ -28,6 +28,9 @@ Run the `sync-branch` skill before reading the diff. A PR opened from a branch b
 `origin/${BASE:-main}` shows reviewers a diff against the wrong merge base, and its CI result
 describes code that will not merge.
 
+Opening a PR *is* explicit direction to publish the branch, so this is the one caller for which
+`sync-branch` may force-push. It pushes once, here — not again in step 4.
+
 ### 1. Gather diff information (parallel)
 
 ```bash
@@ -48,7 +51,7 @@ Changed paths → change type:
 | Multiple top-level dirs + HelmRelease/Kustomization | platform |
 
 Find the design document behind these changes, if one exists. Non-trivial work goes through the
-Superpowers flow (see `CLAUDE.md` → *Development Workflow*), which commits a design and a plan on
+Superpowers flow (see `docs/superpowers/AGENTS.md`), which commits a design and a plan on
 the branch:
 
 ```bash

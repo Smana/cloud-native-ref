@@ -12,7 +12,7 @@ after Stage 1's temporary VPC-CNI and kube-proxy have already gotten the
 nodes to `Ready`. Except where labelled otherwise, this page describes the
 AWS (`aws-0`) install — `gcp-0`'s deltas are collected
 [at the bottom](#on-gke-gcp-0). None of what follows has a source document anywhere else
-in the repository — it lives only in `CLAUDE.md`, Helm values comments, and
+in the repository — it lives only in `opentofu/AGENTS.md`, Helm values comments, and
 OpenTofu resource comments, and every item here has cost real debugging time
 at least once.
 

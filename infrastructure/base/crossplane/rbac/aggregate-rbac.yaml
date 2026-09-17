@@ -16,7 +16,7 @@
 # which names neither RBAC nor the Kind it could not watch. That symptom, and
 # the `kubectl auth can-i --as=system:serviceaccount:crossplane-system:crossplane`
 # diagnostic for it, are already documented in
-# .claude/rules/crossplane-validation.md — the rule existed, the manifest did
+# infrastructure/AGENTS.md — the rule existed, the manifest did
 # not.
 #
 # Everything here is cloud-neutral by construction: not one rule names an AWS

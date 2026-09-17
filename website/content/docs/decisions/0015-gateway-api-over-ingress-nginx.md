@@ -228,7 +228,7 @@ can run, not chosen freely.
   crash, no alert. Every `GatewayClass` then sits at `Accepted=Unknown`,
   every `Gateway` stays unprogrammed, every `HTTPRoute` gets no
   `status.parents`, and any `App` claim that owns a route is stuck
-  `READY=False` (`CLAUDE.md`, "Gateways stuck `Waiting for controller`").
+  `READY=False` (`infrastructure/AGENTS.md`, "Gateways stuck `Waiting for controller`").
   This already happened once: `backendtlspolicies` was absent from the
   hand-written CRD list and broke Gateway API on the 2026-08-19 rebuild. The
   list, and the comment that recorded the incident, are both gone — see
@@ -300,7 +300,7 @@ so the two clusters cannot present Cilium with different Gateway API surfaces.
   integration this ADR summarizes
 - [ADR-0009](0009-cilium-over-vpc-cni.md) — Cilium as the CNI and
   `GatewayClass` implementation this decision depends on
-- [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
+- [`infrastructure/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/infrastructure/AGENTS.md)
   — "Gateways stuck `Waiting for controller`" troubleshooting entry
 - `opentofu/shared/modules/gateway-api-crds` — the bundle install both
   clouds use, and the `backendtlspolicies` incident that motivated it

@@ -22,14 +22,14 @@ cannot find it. Sources live under `flux-sources`.
 
 ## Variable substitution
 
-`../scripts/flux-schema/check-substitution.py` reads these Kustomizations directly and fails when
+`./scripts/flux-schema/check-substitution.py` reads these Kustomizations directly and fails when
 one applies a `${var}` its own cluster's ConfigMap does not define. Flux substitutes an **empty
 string** for an undefined variable — schema-valid and silently wrong, so the rendered bundle looks
 perfect either way. It also fails when a Kustomization applies variables with no `postBuild` wired
 at all, where Flux would apply the literal `${var}`.
 
 Each cluster's real keys come from the `flux_cluster_vars` resource in
-`../opentofu/*/configure/kubernetes.tf`.
+`opentofu/*/configure/kubernetes.tf`.
 
 A `substituteFrom` entry may name a **Secret** as well as a ConfigMap. None does today. A Secret's
 keys are created in-cluster at runtime so they cannot be checked here — those variables are

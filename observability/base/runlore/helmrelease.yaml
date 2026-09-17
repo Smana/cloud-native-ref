@@ -244,7 +244,7 @@ spec:
           resources: ["apps", "sqlinstances", "inferenceservices", "kvstores", "epis", "gcpworkloadidentities"]
           verbs: ["get", "list"]
         # Policy is the first suspect for any timeout on this platform -- it is
-        # what .claude/rules tells a human to check first, and three separate
+        # what security/AGENTS.md tells a human to check first, and three separate
         # failures on 2026-08-28 were an allowlist naming the wrong cloud.
         - apiGroups: ["cilium.io"]
           resources: ["ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]

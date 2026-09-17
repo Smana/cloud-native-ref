@@ -151,7 +151,7 @@ spec:
     # its `gen_ai.*` OpenTelemetry metrics on the aigw-admin server, TCP 1064
     # (verified in envoyproxy/ai-gateway v1.0.0 gateway_mutator.go:
     # `-adminPort 1064`). Under default-deny this scrape is silently DROPPED
-    # without an explicit allow (see .claude/rules/cilium-network-policies.md).
+    # without an explicit allow (see security/AGENTS.md).
     # Paired with the VMPodScrape at
     # infrastructure/base/envoy-ai-gateway/vmscrape.yaml.
     - fromEndpoints:
