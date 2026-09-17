@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# requires: openssl
 # shellcheck disable=SC2034,SC2329
 # (file-wide: OPENBAO_URL/VAULT_CACERT/HTTP_CODE/PEM_BODY are read, and curl()
 # and log_message() are called, only from the body of verify_pki_present(),
