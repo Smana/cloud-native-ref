@@ -491,8 +491,8 @@ The assertion is that the skip did **not** count as a pass and did **not** set t
 
 - [ ] **Step 5: Add the `# requires:` headers**
 
-Insert as line 2 of each file (directly under the shebang). Only these four are non-empty — every
-other suite stubs its external calls onto `PATH` and needs nothing:
+Insert as line 2 of each file (directly under the shebang). Only these **three** are non-empty —
+every other suite stubs its external calls onto `PATH` and needs nothing beyond bash and jq:
 
 ```bash
 # scripts/test-flux-schema.sh
@@ -503,14 +503,23 @@ other suite stubs its external calls onto `PATH` and needs nothing:
 
 # scripts/test-openbao-pki-verify.sh
 # requires: openssl
-
-# scripts/test-validate-idp-topology.sh
-# requires: kustomize
 ```
 
-`test-openbao-pki-verify.sh` generates real throwaway CAs rather than stubbing `openssl` — a stub
-would be assuming the answer under test. `test-validate-idp-topology.sh` executes the real
-validator, which shells out to `kustomize`.
+Each was verified against the source, not inferred from a grep:
+
+- `test-flux-schema.sh:12` sources `preflight.sh` unconditionally, which resolves `FLUX_BIN` /
+  `HELM_BIN` / `KUSTOMIZE_BIN` and hard-fails on a missing or too-old binary.
+- `test-openbao-pki-verify.sh:51-70` generates real throwaway CAs and runs `openssl verify`. A stub
+  would be assuming the answer under test.
+- `test-vector-vrl.sh` drives the real `vector` binary against the extracted VRL.
+
+**Do not add `# requires: kustomize` to `test-validate-idp-topology.sh`.** An earlier draft of this
+plan did, on the strength of a grep hit — but that hit is the string
+`apiVersion: kustomize.toolkit.fluxcd.io/v1` written into a YAML fixture at line 38, and
+`validate-idp-topology.sh` never invokes `kustomize` at all. The header would cause a false SKIP on
+any machine without it, silently dropping the ADR-0027 gate — the precise failure this header
+system exists to prevent, introduced by the system itself. Verify a tool is actually executed
+before declaring it.
 
 - [ ] **Step 6: Run the runner against the real suites, still in their flat location**
 
