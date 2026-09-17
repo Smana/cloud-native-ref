@@ -79,5 +79,7 @@ single-file fixes never need one.
 | [0034]({{< relref "/docs/decisions/0034-openbao-oidc-via-zitadel-project-roles.md" >}}) | Human access to OpenBao is ZITADEL OIDC, authorised by project roles, with userpass kept as break-glass | Accepted | 2026-09-05 |
 | [0035]({{< relref "/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md" >}}) | An in-house Headlamp plugin gives the App abstraction its own view | Accepted | 2026-09-09 |
 | [0036]({{< relref "/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md" >}}) | An app's secrets are owned by its own ZITADEL group, and the policy for each app is generated rather than templated | Accepted | 2026-09-10 |
+| [0037]({{< relref "/docs/decisions/0037-alertmanager-native-slack-templates.md" >}}) | Slack notifications are rendered by Alertmanager's own templates, not by a Block Kit bridge | Accepted | 2026-09-12 |
+| [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

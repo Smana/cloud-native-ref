@@ -166,6 +166,7 @@ Check `aliases` too — `victorialogs` and `victoriatraces` alias the VictoriaMe
 because `platform-overview` used one logo for all three and the extracted files were byte-identical.
 Replacing them with the real upstream marks means two files added and two alias entries deleted.
 
-The authoring procedure agents follow is [`.claude/rules/diagrams.md`](../../.claude/rules/diagrams.md),
-which exists because the drawio skill's own preset-application steps cover colour, shape, edges and
-fonts but have no icon step at all.
+The authoring procedure agents follow is [`AGENTS.md`](AGENTS.md) in this directory, which exists
+because the drawio skill's own preset-application steps cover colour, shape, edges and fonts but
+have no icon step at all. It also records that **mermaid is the default for new diagrams** —
+`.drawio` is for the files already here, and for when it is asked for by name.

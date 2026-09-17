@@ -155,7 +155,7 @@ docs/apps-user-guide.md            # NEW (FR-013)
 
 ## Tasks
 
-> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../../../.claude/rules/process.md)).
+> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.agents/skills/ship-it/references/evidence.md`](../../../../../.agents/skills/ship-it/references/evidence.md)).
 
 ### Phase 1: Prerequisites
 

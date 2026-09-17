@@ -267,7 +267,7 @@ are documented in full on
 - [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}})
   — the three-tier certificate chain and the one offline root both clouds
   chain to
-- [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
+- [`security/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/security/AGENTS.md)
   — the OpenBao command reference and namespace-layout summary under
   "OpenBao"
 - `opentofu/aws/openbao/management/versions.tf` — the `hashicorp/vault`

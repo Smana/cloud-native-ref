@@ -51,7 +51,7 @@
 # (internal/metrics/genai.go), so it answers "did it fail", not "how".
 #
 # Variable substitution: Grafana variables use $${var} (double dollar) so
-# Flux postBuild substitutions don't strip them (.claude/rules/observability.md).
+# Flux postBuild substitutions don't strip them (observability/AGENTS.md).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:

@@ -204,7 +204,7 @@ GitOps patterns should not default to.
   that the field name was the problem. Every query written from Loki or
   general LogQL experience has to be translated, not just copy-pasted.
   - *Mitigation*: the syntax rules and worked examples are captured in
-    [`.claude/rules/observability.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/observability.md)
+    [`observability/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/observability/AGENTS.md)
     and on the [Logs]({{< relref "/docs/platform/observability/logs.md" >}})
     page, specifically because they are non-obvious enough to need writing
     down once rather than rediscovering per incident.
@@ -300,7 +300,7 @@ that the metrics-side `VMAlert` does not match.
 - [Observability]({{< relref "/docs/platform/observability/_index.md" >}}) —
   "Why VictoriaMetrics and VictoriaLogs", and the shared-operator/shared-Grafana
   rationale this record formalizes
-- [`.claude/rules/observability.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/observability.md)
+- [`observability/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/observability/AGENTS.md)
   — LogsQL field-naming rules and Grafana dashboard conventions
 - `observability/aws-0/victoria-metrics-k8s-stack/vmrules/karpenter.yaml`,
   `vmservicecrapes/karpenter.yaml` — `VMRule`/`VMServiceScrape` authored

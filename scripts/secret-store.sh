@@ -114,7 +114,7 @@ esac
 
 # kv-v2 reads and writes go through `bao kv`, which takes VAULT_ADDR,
 # VAULT_CACERT and a token from the environment -- exactly as the OpenBao
-# section of CLAUDE.md documents. This script never reads a token from a store.
+# section of security/AGENTS.md documents. This script never reads a token from a store.
 bao_kv() {
     bao kv "$@"
 }

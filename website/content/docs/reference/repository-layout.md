@@ -85,4 +85,4 @@ independently of the base/overlay mechanism above:
 
 On `aws-0` both LLM gates have to be released for an end-to-end deploy; on
 `gcp-0` the umbrella is the only LLM gate — see the
-[repository CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#self-hosted-llm-platform-opt-in).
+[`clusters/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/clusters/AGENTS.md).

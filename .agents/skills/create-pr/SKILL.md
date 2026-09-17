@@ -22,6 +22,15 @@ Parse `$ARGUMENTS`:
 
 ## Create Mode
 
+### 0. Rebase first
+
+Run the `sync-branch` skill before reading the diff. A PR opened from a branch behind
+`origin/${BASE:-main}` shows reviewers a diff against the wrong merge base, and its CI result
+describes code that will not merge.
+
+Opening a PR *is* explicit direction to publish the branch, so this is the one caller for which
+`sync-branch` may force-push. It pushes once, here — not again in step 4.
+
 ### 1. Gather diff information (parallel)
 
 ```bash
@@ -42,7 +51,7 @@ Changed paths → change type:
 | Multiple top-level dirs + HelmRelease/Kustomization | platform |
 
 Find the design document behind these changes, if one exists. Non-trivial work goes through the
-Superpowers flow (see `CLAUDE.md` → *Development Workflow*), which commits a design and a plan on
+Superpowers flow (see `docs/superpowers/AGENTS.md`), which commits a design and a plan on
 the branch:
 
 ```bash
@@ -91,10 +100,13 @@ gh pr view "$PR_NUMBER" --json number,title,files,additions,deletions,baseRefNam
 gh pr diff "$PR_NUMBER"
 ```
 
-Generate a fresh body using the same template. Update:
+Generate a fresh body using the same template. Update through the REST endpoint — `gh pr edit`
+runs a GraphQL query that includes `projectCards`, which GitHub has sunset, and on this repo it
+fails outright while printing what looks like a deprecation warning. Verified 2026-09-17: the body
+was unchanged afterwards.
 
 ```bash
-gh pr edit "$PR_NUMBER" --body "$BODY"
+gh api --method PATCH "repos/{owner}/{repo}/pulls/$PR_NUMBER" -f body="$BODY" --jq '.number'
 ```
 
 Return `Updated PR #<N>: <url>`.
@@ -108,9 +120,10 @@ Return `Updated PR #<N>: <url>`.
 
 ## Related skills
 
+- `ship-it` — the full pipeline; calls this skill as its last stage
+- `sync-branch` — the rebase preflight in step 0
 - `superpowers:brainstorming` — produces the design this PR references
-- `/commit` — commit with pre-commit validation before creating PR
-- `/improve-pr <number>` — security + quality review after PR exists
+- `/commit` — commit with pre-commit validation before creating the PR
 
 ## Supporting files
 

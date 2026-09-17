@@ -41,7 +41,7 @@ A repo-wide grep for `kind: GrafanaFolder` finds nine CRs. Eight reconcile onto
 the cluster by default, each defined in the namespace that owns its
 dashboards; the ninth (`llm`, `apps/base/ai/llm/grafana-folder.yaml`) only
 applies once the opt-in LLM platform's suspended umbrella Kustomization is
-resumed (see CLAUDE.md's *Self-Hosted LLM Platform* section) and is out of
+resumed (see `clusters/AGENTS.md`) and is out of
 scope for this always-on page:
 
 | Folder | Defined in | Holds |

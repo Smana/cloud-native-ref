@@ -1,6 +1,6 @@
 org_id = "519457084808"
 
-# This id is duplicated (not referenced via remote state -- see CLAUDE.md's
+# This id is duplicated (not referenced via remote state -- see opentofu/AGENTS.md's
 # per-stack-tfvars note) in Kubernetes RBAC group strings on the consuming
 # clusters: a group binding looks like
 # `principalSet://iam.googleapis.com/locations/global/workforcePools/ogenki-zitadel/group/<role>`.
