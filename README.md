@@ -108,8 +108,13 @@ The blog posts that explain several of these components in long form are collect
 
 ## AI-Assisted Development
 
-This repository leverages a coding agent for code generation, troubleshooting, and
-documentation. [CLAUDE.md](CLAUDE.md) provides project context and platform-specific knowledge.
+This repository leverages a coding agent for code generation, troubleshooting, and documentation.
+Its instructions are **agent-agnostic**: [AGENTS.md](AGENTS.md) carries the repo-wide context, each
+directory that needs its own rules carries a nested `AGENTS.md` loaded only when work touches it,
+and repeatable procedures live in [`.agents/skills/`](.agents/skills/) as
+[Agent Skills](https://agentskills.io). `CLAUDE.md` and `.claude/skills` are symlinks, so Claude
+Code, Codex, Cursor, Gemini CLI and Antigravity all read one copy.
+
 Non-trivial changes go through the [Superpowers](https://github.com/obra/superpowers) workflow —
 a design document is brainstormed and approved, turned into an implementation plan, then
 executed task by task, with every artifact committed under
@@ -128,7 +133,7 @@ We welcome contributions, feedback, and questions!
 - 📅 **[Project Board](https://github.com/users/Smana/projects/1)**: Task tracking and priorities
 
 **Before contributing**: Review [SECURITY.md](SECURITY.md) for security policy and
-[CLAUDE.md](CLAUDE.md) for development guidelines.
+[AGENTS.md](AGENTS.md) for development guidelines.
 
 ## License
 

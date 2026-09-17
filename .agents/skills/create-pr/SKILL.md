@@ -22,6 +22,12 @@ Parse `$ARGUMENTS`:
 
 ## Create Mode
 
+### 0. Rebase first
+
+Run the `sync-branch` skill before reading the diff. A PR opened from a branch behind
+`origin/${BASE:-main}` shows reviewers a diff against the wrong merge base, and its CI result
+describes code that will not merge.
+
 ### 1. Gather diff information (parallel)
 
 ```bash
@@ -108,9 +114,10 @@ Return `Updated PR #<N>: <url>`.
 
 ## Related skills
 
+- `ship-it` — the full pipeline; calls this skill as its last stage
+- `sync-branch` — the rebase preflight in step 0
 - `superpowers:brainstorming` — produces the design this PR references
-- `/commit` — commit with pre-commit validation before creating PR
-- `/improve-pr <number>` — security + quality review after PR exists
+- `/commit` — commit with pre-commit validation before creating the PR
 
 ## Supporting files
 

@@ -617,4 +617,4 @@ for a second cloud. Nothing past the gate task can be verified without it.
 - `crossplane render` succeeds for the basic and complete `GCPWorkloadIdentity` examples
 - `pre-commit run --all-files`
 - Live-cluster evidence cited for every success criterion above, per
-  [`.claude/rules/process.md`](../../../.claude/rules/process.md)
+  [`.agents/skills/ship-it/references/evidence.md`](../../../.agents/skills/ship-it/references/evidence.md)

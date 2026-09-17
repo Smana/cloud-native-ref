@@ -369,4 +369,4 @@ Falsifiable. AWS is verified by plan; GCP by apply.
 - `./scripts/validate-links.sh` and `./scripts/verify-doc-paths.sh` → exit 0
 - `pre-commit run --all-files`
 - `terramate list --run-order` and `--reverse` reviewed by eye
-- Success criteria 1–14 evidenced inline per [`.claude/rules/process.md`](../../../.claude/rules/process.md)
+- Success criteria 1–14 evidenced inline per [`.agents/skills/ship-it/references/evidence.md`](../../../.agents/skills/ship-it/references/evidence.md)
