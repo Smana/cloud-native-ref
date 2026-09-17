@@ -28,14 +28,14 @@
 # disk for `flux schema validate` to trust (SPEC-007 review I1/I2).
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a
 # too-old flux client or a missing schema plugin, instead of silently
 # picking up whatever stale binary happens to be first on PATH.
 # shellcheck source=./preflight.sh
-source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
+source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
 
@@ -194,7 +194,7 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 # GKE ComputeClass. Vendored rather than rendered: unlike the three above, GKE
 # installs this CRD itself and publishes no chart to render it from. See the
 # header of the file for how it was captured and when to refresh it.
-"${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
+"${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
 
 echo "==> Verifying the catalog is complete"
 for kind in app sqlinstance inferenceservice epi; do

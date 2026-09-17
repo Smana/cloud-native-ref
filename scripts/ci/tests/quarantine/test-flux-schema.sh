@@ -10,7 +10,7 @@ cd "$REPO_ROOT"
 # flux client, instead of letting a stale binary earlier on PATH silently
 # misbehave. Exported so render-bundle.py (invoked below) picks them up.
 # shellcheck source=./flux-schema/preflight.sh
-source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
+source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 fail=0
 check() {
