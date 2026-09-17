@@ -40,7 +40,7 @@ spec:
     # name is a literal and the credential is a projected ServiceAccount token
     # minted at request time. There is now no `kind: Secret` in any
     # substituteFrom anywhere in the repo -- see the note in
-    # scripts/flux-schema/check-substitution.py, which can only check the keys
+    # scripts/ci/flux-schema/check-substitution.py, which can only check the keys
     # of a ConfigMap.
   dependsOn:
     - name: security

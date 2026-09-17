@@ -213,9 +213,9 @@ gcloud secrets versions access latest \
 ```bash
 tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-./scripts/validate-manifests.sh   # renders the repo the way Flux does, then gates it
-./scripts/validate-links.sh       # resolves every relative Markdown link
-./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
+./scripts/ci/validate-manifests.sh   # renders the repo the way Flux does, then gates it
+./scripts/ci/validate-links.sh       # resolves every relative Markdown link
+./scripts/ci/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```

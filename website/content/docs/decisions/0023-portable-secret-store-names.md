@@ -56,7 +56,7 @@ that failed.
 in both stores, so one name works on both clouds:
 
 Old keys are written unquoted below on purpose: they are store keys, never
-repository paths, and `scripts/verify-doc-paths.sh` reads a backticked
+repository paths, and `scripts/ci/verify-doc-paths.sh` reads a backticked
 slash-string beginning with a top-level directory as a claim that the path
 exists. That check earning a false positive here is a fair trade for the one it
 exists to catch.

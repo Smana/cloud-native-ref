@@ -15,7 +15,7 @@ echo "OpenBao init"
 export DEBIAN_FRONTEND=noninteractive
 
 # The IMDSv2 session token below is marked `argv-ok` for
-# scripts/test-no-secret-argv.sh. It is credential-SHAPED but not a credential
+# scripts/ci/tests/test-no-secret-argv.sh. It is credential-SHAPED but not a credential
 # worth hiding here: it only authorises reads of THIS instance's metadata, and
 # anyone able to read another process's argv on this host can mint their own with
 # a single PUT. Hiding it would buy nothing and cost legibility in a boot script.

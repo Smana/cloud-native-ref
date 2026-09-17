@@ -9,7 +9,7 @@ on:
       # Renovate bumps hugo-extended here on its own; without this the
       # site is never built against the new version before it reaches main.
       - "mise.toml"
-      - "scripts/verify-doc-paths.sh"
+      - "scripts/ci/verify-doc-paths.sh"
       - ".github/workflows/docs-check.yml"
 
 permissions:
@@ -48,4 +48,4 @@ jobs:
         run: hugo --minify --gc
 
       - name: Verify every referenced repository path exists
-        run: ./scripts/verify-doc-paths.sh
+        run: ./scripts/ci/verify-doc-paths.sh

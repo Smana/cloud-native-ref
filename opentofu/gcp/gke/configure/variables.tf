@@ -158,7 +158,7 @@ variable "route53_region" {
 #      which every consumer reads.
 #   2. clusters/gcp-0/security/zitadel.yaml `spec.suspend` -- committed Flux
 #      state, which Terramate cannot reach. VERIFIED against primary_cloud by
-#      ./scripts/validate-idp-topology.sh in CI.
+#      ./scripts/ci/validate-idp-topology.sh in CI.
 #
 # The default stays false so that a bare `tofu apply` run in this directory,
 # outside the Terramate workflow, cannot stand up a second directory by

@@ -5,7 +5,7 @@
 # by hand.
 #
 # `tag` must equal globals.gateway_api_version in opentofu/config.tm.hcl.
-# ./scripts/validate-doc-claims.sh fails when they disagree.
+# ./scripts/ci/validate-doc-claims.sh fails when they disagree.
 #
 # interval is 1h, not minutes: the ref is a PINNED TAG, so there is nothing for a
 # faster poll to discover. Bumping the tag edits this file, which Flux's own sync

@@ -7,7 +7,7 @@
 # ${workforce_pool_id} comes from the gke-gcp-0-vars ConfigMap. If it were
 # undefined Flux would substitute an EMPTY STRING, producing a binding for
 # .../workforcePools//group/admin -- schema-valid, matching nobody, denying
-# silently. scripts/flux-schema/check-substitution.py is what makes that
+# silently. scripts/ci/flux-schema/check-substitution.py is what makes that
 # impossible.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

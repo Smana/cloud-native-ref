@@ -20,10 +20,10 @@ Branch protection on `main` requires these six contexts, and nothing else:
 |---|---|---|
 | **Pre-commit checks** 🛃 | Terraform hooks across every OpenTofu stack | ✅ |
 | **Security scanning** 🔒 | Trivy, Checkov, TruffleHog → SARIF | ✅ |
-| **Kubernetes validation** ☸ | `./scripts/validate-manifests.sh` | ✅ |
+| **Kubernetes validation** ☸ | `./scripts/ci/validate-manifests.sh` | ✅ |
 | **Rendered manifest diff** 📝 | renders head vs merge-base, posts a PR comment | ✅ the *job* must succeed; the diff's **content** never fails it |
 | **Check the shell scripts** 💻 | `shellcheck -x -S warning` over `scripts/**/*.sh` | ✅ |
-| **Check the documentation links** 🔗 | `./scripts/validate-links.sh`, then `./scripts/validate-doc-claims.sh` | ✅ |
+| **Check the documentation links** 🔗 | `./scripts/ci/validate-links.sh`, then `./scripts/ci/validate-doc-claims.sh` | ✅ |
 
 Two protection settings matter as much as the list:
 
@@ -139,7 +139,7 @@ Three scanners, all uploading SARIF to the GitHub Security tab:
 
 ### `kubernetes-validation` ☸
 
-The hard manifest gate — `./scripts/validate-manifests.sh`. It renders the
+The hard manifest gate — `./scripts/ci/validate-manifests.sh`. It renders the
 repository the way Flux does (every Kustomize overlay with its `postBuild`
 vars substituted, every `HelmRelease` through `helm template` with its own
 values and `postRenderers`), then applies two gates to the *rendered* output:
@@ -163,13 +163,13 @@ change rather than the YAML that produced it.
 
 ### `links` 🔗
 
-`./scripts/validate-links.sh` resolves every relative Markdown link target in
+`./scripts/ci/validate-links.sh` resolves every relative Markdown link target in
 the repository: `git ls-files '*.md'`, then each `](target)` checked relative
 to the file holding it. `.linkcheck-allow` exists for known pre-existing
 breaks and is **currently empty** — the goal state. Never add an entry to
 route around a break your own change introduced.
 
-The same job then runs `./scripts/validate-doc-claims.sh`, which checks the
+The same job then runs `./scripts/ci/validate-doc-claims.sh`, which checks the
 specific claims pinned in `.doc-claims.yaml` against the configuration they
 describe — it lives in this job rather than its own so the required-check
 list on `main` does not have to change.
@@ -180,8 +180,8 @@ None of these is a required check. They run only when their paths change.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `docs-check.yml` | PR touching `website/**`, `docs/architecture/**`, `mise.toml`, `scripts/verify-doc-paths.sh`, or itself | `hugo --minify --gc`, then `./scripts/verify-doc-paths.sh` |
-| `docs.yml` | push to `main` touching `website/**`, `docs/architecture/**`, `mise.toml` (a narrower set than `docs-check.yml` — no `scripts/verify-doc-paths.sh`), or manual dispatch | same build, then publishes to GitHub Pages at `cnref.ogenki.io` |
+| `docs-check.yml` | PR touching `website/**`, `docs/architecture/**`, `mise.toml`, `scripts/ci/verify-doc-paths.sh`, or itself | `hugo --minify --gc`, then `./scripts/ci/verify-doc-paths.sh` |
+| `docs.yml` | push to `main` touching `website/**`, `docs/architecture/**`, `mise.toml` (a narrower set than `docs-check.yml` — no `scripts/ci/verify-doc-paths.sh`), or manual dispatch | same build, then publishes to GitHub Pages at `cnref.ogenki.io` |
 | `vector-config-validation.yml` | PR or push touching `observability/base/victoria-logs/helmrelease-*.yaml` | validates the Vector VRL log-parsing rules |
 | `build-container-images.yml` | PR or push touching `container-images/**`, or manual dispatch | builds a dynamic matrix over changed image directories |
 
@@ -193,14 +193,14 @@ that build a real gate even though it is not a required check:
 - **`refLinksErrorLevel: ERROR`** in `website/hugo.yaml` turns any unresolved
   internal `relref` into a build failure, so a renamed page cannot silently
   404.
-- **`./scripts/verify-doc-paths.sh`** asserts that every backticked
+- **`./scripts/ci/verify-doc-paths.sh`** asserts that every backticked
   repository path written in the site's prose still exists. It walks
   `git ls-files`, so it only sees tracked files — run it after `git add`, or
   a brand-new page passes without ever being checked.
 
 `docs.yml` runs the same build on push and publishes Hugo's output, but its
 path filter is narrower than `docs-check.yml`'s — a change to
-`scripts/verify-doc-paths.sh` alone triggers the PR check but not a deploy.
+`scripts/ci/verify-doc-paths.sh` alone triggers the PR check but not a deploy.
 Its `concurrency` group never cancels an in-flight deploy: a half-published
 site is worse than a slightly stale one.
 

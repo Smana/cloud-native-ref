@@ -16,7 +16,7 @@
 # accepts it because `data` preserves arbitrary JSON.
 #
 # GCPWorkloadIdentity handles this with `str()` — see `_projectNumber` in that
-# module. The fixture in scripts/flux-schema/render-bundle.py keeps the same
+# module. The fixture in scripts/ci/flux-schema/render-bundle.py keeps the same
 # unquoted shape so CI exercises the real value rather than a friendlier one.
 apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig

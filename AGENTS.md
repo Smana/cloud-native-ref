@@ -88,12 +88,12 @@ bootstrap. Read it before running anything destructive.
 ## Validating
 
 ```bash
-./scripts/validate-manifests.sh      # renders the repo as Flux would, then gates it
-./scripts/validate-vmrules.sh        # promtool over every repo-authored VMRule
-./scripts/validate-links.sh          # every relative Markdown link
-./scripts/validate-doc-claims.sh     # docs still agree with config
-./scripts/verify-doc-paths.sh        # every backticked repo path in the docs site exists
-./scripts/validate-idp-topology.sh   # exactly one cloud hosts ZITADEL (ADR-0027)
+./scripts/ci/validate-manifests.sh      # renders the repo as Flux would, then gates it
+./scripts/ci/validate-vmrules.sh        # promtool over every repo-authored VMRule
+./scripts/ci/validate-links.sh          # every relative Markdown link
+./scripts/ci/validate-doc-claims.sh     # docs still agree with config
+./scripts/ci/verify-doc-paths.sh        # every backticked repo path in the docs site exists
+./scripts/ci/validate-idp-topology.sh   # exactly one cloud hosts ZITADEL (ADR-0027)
 tofu validate && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ```
 
