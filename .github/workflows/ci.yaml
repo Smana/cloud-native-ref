@@ -455,6 +455,15 @@ jobs:
       - name: Open or update the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
+          # REQUIRED, because this job deliberately has no checkout step -- it
+          # needs no code. Without it every `gh` call tries to infer the
+          # repository from a local git remote, finds no `.git`, and dies with
+          # `failed to run git: fatal: not a git repository`. Measured on the
+          # first post-merge run: the notify job itself failed, which means a
+          # broken `main` would have gone unreported -- the one outcome this job
+          # exists to prevent. GH_REPO covers every gh invocation at once, so a
+          # call added later cannot forget it the way a per-command --repo can.
+          GH_REPO: ${{ github.repository }}
           LABEL: ci-main-broken
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
