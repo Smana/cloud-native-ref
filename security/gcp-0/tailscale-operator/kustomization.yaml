@@ -10,7 +10,7 @@ namespace: tailscale
 #
 # Referencing the chart by file keeps a version bump landing on both clouds at
 # once. Flux builds with LoadRestrictionsNone, as does
-# scripts/flux-schema/render-bundle.py, so a cross-directory file reference is
+# scripts/ci/flux-schema/render-bundle.py, so a cross-directory file reference is
 # supported rather than tolerated.
 #
 # NO proxygroup.yaml. AWS runs `ts-proxies`, two EGRESS replicas; nothing on

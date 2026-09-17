@@ -302,7 +302,7 @@ alerts shows five bullets and ` … showing 5 of N`.
 
 ### The annotation contract
 
-`./scripts/validate-vmrules.sh` enforces the first line of this on every
+`./scripts/ci/validate-vmrules.sh` enforces the first line of this on every
 repo-authored alert:
 
 | Annotation | Required | Rendered as |
@@ -322,9 +322,9 @@ agent to the one thing that explains the alert.
 Edit `templateFiles.ogenki.tmpl`, then:
 
 ```bash
-./scripts/validate-alertmanager-templates.sh --update-golden
+./scripts/ci/validate-alertmanager-templates.sh --update-golden
 git diff scripts/alertmanager-fixtures/golden/   # read it — it IS the message
-./scripts/validate-alertmanager-templates.sh
+./scripts/ci/validate-alertmanager-templates.sh
 ```
 
 Two traps bind that block. **Never write a literal `${`** — Flux post-build

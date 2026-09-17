@@ -9,6 +9,6 @@ spec:
   ref:
     # Pinned to the release contemporary with CNPG operator 1.30.0 (SPEC-010
     # migrates to the plugin *before* the 1.31.0 bump). Bump this tag together
-    # with the operator upgrade; scripts/flux-schema/gen-catalog.sh reads it as
+    # with the operator upgrade; scripts/ci/flux-schema/gen-catalog.sh reads it as
     # the single source of truth for the ObjectStore CRD schema.
     tag: v0.15.0

@@ -103,15 +103,16 @@ extract_hit_varname() {
     sed -E 's/.*\$\{?([A-Za-z_][A-Za-z0-9_]*).*/\1/' <<< "$1"
 }
 
-# Scan one directory tree (its *.sh, non-recursive, plus its lib/*.sh --
-# the same shape scripts/ itself has) for a credential-shaped variable
-# reaching jq's, curl's or a cloud CLI's argv. Prints one "FAIL file:line:
-# ..." line per hit to stdout; returns 1 if it found anything, 0 if clean.
+# Scan one directory tree, recursively, for *.sh files -- reaching any
+# nested subdirectory (scripts/lib/, scripts/ci/, ...) without a separate
+# pass -- for a credential-shaped variable reaching jq's, curl's or a cloud
+# CLI's argv. Prints one "FAIL file:line: ..." line per hit to stdout;
+# returns 1 if it found anything, 0 if clean.
 #
-# Used for BOTH the real scan (against $HERE, i.e. scripts/) and the
-# self-test below (against a throwaway fixture) -- the self-test is only
-# proof of anything because it exercises this exact function, not a
-# reimplementation of its logic.
+# Used for BOTH the real scan (rooted at the scripts/ tree resolved from
+# $HERE below) and the self-test below (against a throwaway fixture) --
+# the self-test is only proof of anything because it exercises this exact
+# function, not a reimplementation of its logic.
 scan_dir_for_argv_leaks() {
     local dir="$1" label="$2" found=0 file rel lineno line hit varname
 

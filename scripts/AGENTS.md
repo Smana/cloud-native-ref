@@ -1,6 +1,6 @@
 # Validators — what each one catches, and what none of them can
 
-`./scripts/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
+`./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
 then applies three gates to the result.
@@ -40,7 +40,7 @@ the build checks.
 
 Both run in CI as their own step **before** the render, because they test the scripts that do the
 rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
-manifest validation. Run them directly: `python3 scripts/flux-schema/<file>`.
+manifest validation. Run them directly: `python3 scripts/ci/flux-schema/<file>`.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream

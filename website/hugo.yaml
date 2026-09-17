@@ -6,7 +6,7 @@ enableGitInfo: true
 
 # Drift guard: any unresolved internal ref (relref/ref) fails the build rather
 # than shipping a silent 404. This is the site's internal-link gate; the
-# repository-wide gate stays scripts/validate-links.sh.
+# repository-wide gate stays scripts/ci/validate-links.sh.
 refLinksErrorLevel: ERROR
 
 module:

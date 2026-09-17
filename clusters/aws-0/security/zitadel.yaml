@@ -11,7 +11,7 @@ spec:
   # on both clusters: THE SECONDARY CLOUD IS SUSPENDED, THE PRIMARY IS NOT.
   # An omitted field means the same thing to Flux, but it makes the pair look
   # asymmetric and leaves a reader guessing whether the omission is a decision.
-  # ./scripts/validate-idp-topology.sh checks the pair against primary_cloud.
+  # ./scripts/ci/validate-idp-topology.sh checks the pair against primary_cloud.
   suspend: false
   prune: true
   interval: 1m0s

@@ -148,7 +148,7 @@ The rendered-bundle gate cannot catch this: `render-bundle.py` substitutes its
 fixtures unconditionally, so the bundle shows what Flux *would* render given a
 correct ConfigMap — never whether the ConfigMap has the key, nor whether
 `postBuild` is wired at all. So there is a separate check,
-`scripts/flux-schema/check-substitution.py`, which reads the Kustomizations
+`scripts/ci/flux-schema/check-substitution.py`, which reads the Kustomizations
 under `clusters/` directly, builds each path with `kustomize build`, and fails
 when a Kustomization applies a `${var}` its own cluster's ConfigMap does not
 define — reading those keys out of the `flux_cluster_vars` resource in each

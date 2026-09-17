@@ -21,7 +21,7 @@ filesystem, no privilege escalation, capabilities dropped to `[ALL]`,
 Constitution's security context
 rule]({{< relref "/docs/reference/platform-constitution.md#33-security-context" >}}).
 A rule that lives only in a document is a hope, not a gate: something
-has to act on a manifest that violates it. `./scripts/validate-manifests.sh`
+has to act on a manifest that violates it. `./scripts/ci/validate-manifests.sh`
 already audits the *rendered* bundle with Polaris before merge, but that is
 a pre-merge check against Git content — it says nothing about a `kubectl
 apply` run from a live session, or a Pod spec a controller generates at
@@ -52,7 +52,7 @@ regardless of where it originated.
 ## Decision Drivers
 
 - **Enforcement at the API server, not only in CI.**
-  `./scripts/validate-manifests.sh` runs against rendered Git content; it
+  `./scripts/ci/validate-manifests.sh` runs against rendered Git content; it
   has no visibility into a manifest applied directly or a Pod spec a
   controller generates at runtime.
 - **Policy language reviewability.** A policy written as a Kubernetes

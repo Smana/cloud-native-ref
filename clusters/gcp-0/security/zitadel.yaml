@@ -28,7 +28,7 @@
 #   1. tofu:  deploy_identity_provider -- DERIVED from global.primary_cloud in
 #             workflows.tm.hcl; no longer a literal anyone can set out of step
 #   2. flux:  spec.suspend             -- committed below, and CHECKED against
-#             primary_cloud by ./scripts/validate-idp-topology.sh
+#             primary_cloud by ./scripts/ci/validate-idp-topology.sh
 #
 # The failures this prevents are both silent. Hosting here while AWS also hosts
 # gives two user directories, where a grant means nothing without knowing which
@@ -48,7 +48,7 @@ spec:
   # This is the half that cannot be derived: kustomize-controller owns the
   # field and re-asserts the committed value on its next apply, and Flux never
   # sees Terramate globals. `flux suspend` therefore does not flip it durably.
-  # ./scripts/validate-idp-topology.sh checks it against primary_cloud instead.
+  # ./scripts/ci/validate-idp-topology.sh checks it against primary_cloud instead.
   #
   # To make GCP primary: set primary_cloud = "gcp" in opentofu/config.tm.hcl,
   # flip this to false in the same commit, and MIGRATE the database seed, the

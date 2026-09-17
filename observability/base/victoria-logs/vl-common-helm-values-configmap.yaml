@@ -4,7 +4,7 @@
 # scale-out would have dropped the whole PostgreSQL plan-history pipeline.
 #
 # What deliberately does NOT live here:
-#   - securityContext blocks — scripts/flux-schema/render-bundle.py resolves
+#   - securityContext blocks — scripts/ci/flux-schema/render-bundle.py resolves
 #     spec.values only, so Polaris-audited fields must stay inline per variant;
 #   - retention — the two charts spell it differently (server.* vs vlstorage.*);
 #   - sink endpoints — the shared config carries only the two PG sinks, whose
