@@ -73,6 +73,19 @@ It validates **structure, not semantics**. A typo'd `equal` label (`clustre`) is
 valid label name and passes; so does a shadowing route or an over-broad inhibit rule. Changing
 wording means `--update-golden`, then reading the diff — it *is* the Slack message.
 
+**`test-ci-notify-main-broken.sh`** is the only thing that exercises the `notify-main-broken` job
+while the repository is healthy. That job runs `if: failure() && github.event_name == 'push'`, so
+its first run that matters is also its first run ever — and it shipped broken: no checkout step, so
+every `gh` call died with `fatal: not a git repository` and a red `main` went unreported.
+
+The suite takes the step's **`env:` from the workflow**, not from itself, and that is the whole
+design. Two earlier versions exported `GH_REPO` themselves and asserted only the branch logic
+(open an issue vs comment on the open one) — both passed against a workflow that supplied no
+`GH_REPO` at all, which is the same "tested the logic, not the invocation context" gap as the
+defect they were meant to catch. **Deleting the `GH_REPO` line from `ci.yaml` must fail this
+suite**; if a change stops that being true, it has regressed to testing nothing. It runs in the
+`links` job because it parses YAML and needs the pyyaml installed there.
+
 ## The rest
 
 | Script | Checks |
