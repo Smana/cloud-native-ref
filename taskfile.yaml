@@ -1,0 +1,17 @@
+version: "3"
+
+includes:
+  ci:
+    taskfile: scripts/taskfile.yaml
+    dir: .
+
+tasks:
+  default:
+    cmds: [{task: "--list"}]
+
+  check:
+    desc: Everything CI gates, run locally
+    cmds:
+      - {task: "ci:validate"}
+      - {task: "ci:test"}
+      - {task: "ci:links"}

@@ -1,0 +1,34 @@
+version: "3"
+
+tasks:
+  validate:
+    desc: Render the repo as Flux would, then gate it (schema + polaris)
+    cmds: ["./scripts/validate-manifests.sh"]
+
+  test:
+    desc: Run every shell test suite the environment can satisfy
+    cmds: ["./scripts/test-runner-placeholder.sh"]
+
+  links:
+    desc: Resolve every relative Markdown link
+    cmds: ["./scripts/validate-links.sh"]
+
+  vmrules:
+    desc: Parse the PromQL in every repo-authored VMRule
+    cmds: ["./scripts/validate-vmrules.sh"]
+
+  alertmanager:
+    desc: Render the Slack templates against the fixture payloads
+    cmds: ["./scripts/validate-alertmanager-templates.sh"]
+
+  doc-claims:
+    desc: Check documentation claims against configuration
+    cmds: ["./scripts/validate-doc-claims.sh"]
+
+  doc-paths:
+    desc: Check every backticked repository path in the docs site exists
+    cmds: ["./scripts/verify-doc-paths.sh"]
+
+  idp-topology:
+    desc: Assert exactly one cloud hosts ZITADEL (ADR-0027)
+    cmds: ["./scripts/validate-idp-topology.sh"]
