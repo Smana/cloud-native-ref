@@ -214,8 +214,15 @@ scan_dir_for_argv_leaks() {
     # guard never saw .github/workflows or the per-stack scripts under opentofu/,
     # both of which handle credentials -- which is how an ID-token request header
     # on curl's argv reached main unnoticed.
-    done < <(find "$dir" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; \
-             find "$dir/lib" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; \
+    #
+    # The first root is NOT maxdepth-1: every script under scripts/ used to sit
+    # at its top level, so a flat scan and a full one covered the same set. This
+    # PR splits scripts/ into subdirectories (scripts/ci/, scripts/ci/tests/, …)
+    # -- a maxdepth-1 scan silently stopped covering any of them, which is the
+    # same "guard passes over nothing" failure class this file exists to catch,
+    # just aimed at itself. A dedicated lib/ root is no longer needed either:
+    # scripts/lib/ is inside scripts/, so the recursive scan already reaches it.
+    done < <(find "$dir" -name '*.sh' -print0 2>/dev/null; \
              find "$dir/../.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -print0 2>/dev/null; \
              find "$dir/../opentofu" -name '*.sh' -print0 2>/dev/null)
 
@@ -248,8 +255,9 @@ FIXTURE_FILE="$FIXTURE_DIR/planted-leak.sh"
     printf 'aws ssm put-parameter --%s "$%s"\n' "value" "release_channel"
     # The five planted leaks -- MUST be flagged. Each is assembled from
     # fragments via printf rather than written as one literal line: this
-    # FILE lives under scripts/ too, so the real scan below reads its own
-    # source, and a leak shape written out whole here would flag ITSELF as
+    # FILE lives somewhere under scripts/ too (wherever this suite currently
+    # sits), and the real scan below is recursive, so it reads its own
+    # source -- a leak shape written out whole here would flag ITSELF as
     # a repo finding. Splitting the flag/value apart with %s defeats the
     # very regex this line exists to exercise -- which is the point.
     printf 'curl -H "Authorization: Bearer ${%s}" "$%s"\n' "PAT" "URL"
