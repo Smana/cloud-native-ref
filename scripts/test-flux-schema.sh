@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# requires: flux helm kustomize python3
 # Test suite for the SPEC-007 flux-schema tooling.
 set -euo pipefail
 
