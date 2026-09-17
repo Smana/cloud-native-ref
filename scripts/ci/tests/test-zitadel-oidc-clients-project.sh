@@ -32,7 +32,9 @@ load_functions() {
     eval "$body"
 }
 
-load_functions "${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/zitadel-oidc-clients.sh}"
+# The subject is still at scripts/ root; it moves to scripts/provision/ in the
+# provision phase, and this path moves with it.
+load_functions "${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
 
 # Read only by ensure_project()'s eval'd body above -- shellcheck can't see
 # that use through the eval.

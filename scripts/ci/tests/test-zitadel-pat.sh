@@ -7,7 +7,7 @@ check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
           else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
 
 # shellcheck source=scripts/lib/zitadel-pat.sh
-. "$HERE/lib/zitadel-pat.sh"
+. "$HERE/../../lib/zitadel-pat.sh"
 
 CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
 check "aws secret name" "zitadel/iam-admin-pat" "$(zitadel_pat_secret_name)"

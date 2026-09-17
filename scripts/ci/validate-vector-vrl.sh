@@ -6,7 +6,7 @@ set -euo pipefail
 # Usage: ./scripts/validate-vector-vrl.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VRL_DIR="${SCRIPT_DIR}/vector-vrl-tests"
+VRL_DIR="${SCRIPT_DIR}/tests/vector-vrl-tests"
 DOCKER_IMAGE="timberio/vector:latest-alpine"
 
 # Colors for output
