@@ -990,32 +990,55 @@ Expected: 37 lines (16 + 21).
 Never on the bare token `scripts/` — `opentofu/{aws,gcp}/openbao/cluster/scripts/` are
 module-local directories that must not be touched.
 
+Select by **what actually references a moved script**, not by a file glob. A glob selects ~180 files
+to rewrite 56, and the 124 it touches for nothing are where the damage is:
+
 ```bash
-TARGETS=$(git ls-files \
-  '.github/workflows/*' '*.md' '.doc-claims.yaml' 'mise.toml' \
-  'website/content/**' '.agents/**' '.claude/agents/*' \
-  | grep -v '^docs/superpowers/plans/' \
-  | grep -v '^docs/superpowers/specs/' \
-  | grep -v '^docs/specs/')
+TARGETS=$(git grep -l -E \
+  'scripts/(validate-[a-z-]+|verify-doc-paths|test-[a-z-]+)\.sh|scripts/flux-schema/[a-z-]+\.(sh|py)' \
+  -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs' ':!scripts')
+
+printf '%s\n' "$TARGETS" | wc -l   # expect 56
 
 while IFS='|' read -r base dest; do
   # shellcheck disable=SC2086
-  sed -i "s|scripts/${base}|scripts/${dest}${base}|g" $TARGETS
+  sed -i --follow-symlinks "s|scripts/${base}|scripts/${dest}${base}|g" $TARGETS
 done < /tmp/moved-pr1.txt
 ```
+
+**`--follow-symlinks` is not optional.** `sed -i` replaces a symlink with a regular file **even when
+the pattern matches nothing** — measured: a `lrwxrwxrwx` became `-rw-r--r--` on a no-match run. The
+repo has ten symlinked `CLAUDE.md` files (`CLAUDE.md`, `apps/`, `clusters/`, `docs/architecture/`,
+`docs/superpowers/`, `infrastructure/`, `observability/`, `opentofu/`, `scripts/`, `security/`),
+each pointing at its sibling `AGENTS.md`. A bare `sed -i` over a `*.md` glob would convert all ten
+into regular files and silently undo ADR-0038, which merged on 2026-09-17. None of the 56 selected
+files is currently a symlink, so this is belt-and-braces here — and load-bearing for PRs 2 and 3.
 
 Note the `flux-schema/*` entries produce `scripts/ci/flux-schema/render-bundle.py` — correct —
 and the loop must run the `flux-schema/` lines **before** any bare-basename line that could also
 match. The file above is already ordered that way; do not sort it.
 
-- [ ] **Step 3: Verify nothing module-local was touched**
+- [ ] **Step 3: Verify no module-local path and no symlink was touched**
 
-Run: `git diff --stat -- opentofu`
-Expected: **no output.** No file under `opentofu/` changes in this step; its three references
-(`validate-idp-topology.sh` ×2, `validate-doc-claims.sh` ×1) are handled in Step 4 by hand.
+`opentofu/**/*.md` legitimately holds references and may change. What must **not** change is any
+`.tf`, `.tm.hcl` or `.tfvars` — those are where `${path.module}/scripts/` lives:
 
-If `opentofu/` appears here, the rewrite hit a module-local path — `git checkout -- opentofu` and
-redo with a tighter anchor.
+```bash
+git diff --name-only -- opentofu | grep -E '\.(tf|tm\.hcl|tfvars)$'
+```
+Expected: **no output.** The three terramate references are handled by hand in Step 4.
+
+Then confirm every symlink survived as a symlink:
+
+```bash
+git diff --name-only | while read -r f; do
+  git ls-files -s -- "$f" | awk '$1=="120000"{print "WAS A SYMLINK: " $4}'
+done
+[ -L CLAUDE.md ] && echo "root CLAUDE.md still a symlink" || echo "BROKEN: root CLAUDE.md"
+```
+Expected: no `WAS A SYMLINK` line, and `root CLAUDE.md still a symlink`.
+
+If either check trips, `git checkout --` the affected paths and redo with a tighter selection.
 
 - [ ] **Step 4: Update the three terramate references by hand**
 
@@ -1149,9 +1172,14 @@ Directories for day-2 operations and apply-time provisioning land in later phase
 restructure; until then those scripts remain at the root of `scripts/`.
 ```
 
-- [ ] **Step 2: Write the two archive notes**
+- [ ] **Step 2: Write the archive notes — create one, append to the other**
 
-`docs/superpowers/plans/README.md` and `docs/specs/README.md`, same body:
+**`docs/specs/README.md` already exists** and opens with "# Spec archive (retired workflow)" plus a
+read-only banner and a table of what is archived there. **Do not overwrite it.** Append the
+paragraph below to the end of that file instead.
+
+`docs/superpowers/plans/README.md` does not exist — create it with the same paragraph under a
+`# Archive` heading.
 
 ```markdown
 # Archive
@@ -1205,6 +1233,12 @@ Run: `task ci:doc-paths`
 Expected: exit 0.
 
 - [ ] **Step 6: Commit**
+
+Confirm first that the existing archive notice survived the append:
+
+```bash
+head -3 docs/specs/README.md   # must still be "# Spec archive (retired workflow)"
+```
 
 ```bash
 git add scripts/README.md scripts/AGENTS.md docs/superpowers/plans/README.md \
