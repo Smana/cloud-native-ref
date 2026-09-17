@@ -52,6 +52,7 @@ that out by giving the decision an ADR instead of a comment.
 | 2 | **`taskfile.yaml`** (go-task v3) as the index | a bespoke `./scripts/run` dispatcher; Make; Dagger |
 | 3 | Suites declare `# requires:`; the runner globs and skips | two-tier directories; per-suite `exit 77` self-skip |
 | 4 | Rewrite live refs; **leave the dated archive** | rewrite all 1246; symlink shims at old paths |
+| 5 | Correct each script's `/..` depth by hand, **under a gate that proves it** | a shared `repo-root.sh` resolver; `git rev-parse --show-toplevel` |
 
 ## Target layout
 
@@ -212,6 +213,46 @@ Every rewrite anchors on the repo-root form — `./scripts/<name>` or `scripts/<
 from an enumerated list of moved files — never on `scripts/` alone. The plan carries the
 enumerated list; `tofu validate` on both clouds is the check that it held.
 
+## Internal self-location — the larger hazard
+
+External references are the visible risk. The quiet one is that **42 of 55 scripts compute paths
+from where they sit**, so a `git mv` breaks them whether or not every external reference is
+rewritten correctly.
+
+| Pattern | Count | What a move does |
+|---|---|---|
+| `cd "$(dirname "$0")/.."` — "my parent is the repo root" | 11 | resolves to `scripts/`. The `cd` *succeeds*; every relative path after it is wrong |
+| `HERE=` / `SCRIPT_DIR=` / `ROOT=`, then paths built from it | 25 | a test suite loses the script it tests |
+| `. "$(dirname "$0")/lib/…"` | 14 lines in 9 scripts | `source` fails on line 6 |
+
+The idiom is already depth-coupled, and the repo proves it: `flux-schema/gen-catalog.sh:31` uses
+`/../..` rather than `/..` purely because it sits one level deeper than its siblings.
+
+**Six of the nine `lib/`-sourcing scripts are deploy-time invoked** — `openbao-config.sh`
+(2 sources), `zitadel-idp.sh` (3), `zitadel-oidc-clients.sh` (3), `secret-store.sh`. A wrong depth
+there fails during an apply, which is the PR-3 failure mode arriving through a door the reference
+rewrite does not cover.
+
+### The fix, and the gate that proves it
+
+Each moved script gets its `/..` count corrected in the same commit that moves it — the plain
+idiom stays, because `cd "$(dirname "$0")/../.."` is legible to an adopter in a way a resolver
+helper is not, and constraint 1 says the scripts must stay liftable.
+
+Hand-correcting 42 depths is not something to trust to review, so **`scripts/ci/tests/test-script-paths.sh`
+ships in PR 1, before anything moves**:
+
+- for every script, execute its self-location in a subshell and assert the resolved root contains
+  a known repo marker (`AGENTS.md` and `opentofu/`);
+- for every `source`/`.` line, assert the target file exists;
+- fail naming the script, the line, and what the path resolved to.
+
+PRs 2 and 3 then move *underneath a gate that already passes*, which converts a silent 2am failure
+into a red check. Rejected: a shared `scripts/lib/repo-root.sh` (must itself be found by a
+relative path, so it relocates the problem rather than removing it) and `git rev-parse
+--show-toplevel` (no `.git` in the `openbao-snapshot` container image, and `scripts/openbao-snapshot.sh`
+is a symlink into exactly that image).
+
 ## Risk and sequencing
 
 The measurement that redrew this: **deploy-time invocation does not follow the directory split.**
@@ -230,7 +271,7 @@ wrong, and the sequence names the risk rather than pretending a directory bounda
 
 | PR | Moves | Live refs | Evidence required before merge |
 |---|---|---|---|
-| 1 | `ci/`, `ci/tests/`, `taskfile.yaml`, `run.sh`, ADR | 126 | `task check`; `validate-links.sh`; `verify-doc-paths.sh`; the 3 terramate refs rewritten and `terramate list` clean |
+| 1 | `ci/`, `ci/tests/`, `taskfile.yaml`, `run.sh`, **`test-script-paths.sh`**, ADR | 126 | `task check`; `validate-links.sh`; `verify-doc-paths.sh`; the 3 terramate refs rewritten and `terramate list` clean |
 | 2 | `ops/`, `docs/` | 77 | the above **plus `terramate script run preview`**, both clouds |
 | 3 | `provision/` | 125 | the above; `tofu validate` per stack; `terramate script run preview`, both clouds |
 
@@ -263,6 +304,9 @@ its own review, with a preview run cited.
 8. The required-check list on `main` is unchanged — no job renamed.
 9. `grep -rn 'scripts/[a-z]' opentofu --include='*.tf' --include='*.tm.hcl'` resolves to an
    existing file for every hit, module-local paths included.
+10. `test-script-paths.sh` passes after every phase: each script's self-resolved root holds
+    `AGENTS.md` and `opentofu/`, and all 14 `source` targets exist.
+11. `scripts/openbao-snapshot.sh` still resolves — `test -f "$(readlink -f scripts/openbao-snapshot.sh)"`.
 
 ## Gate
 
