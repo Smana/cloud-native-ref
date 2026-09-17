@@ -24,7 +24,7 @@
 #   ./scripts/validate-doc-claims.sh --list   # print every claim and its current value
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 CLAIMS_FILE=".doc-claims.yaml"
 MODE="${1:-check}"

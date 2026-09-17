@@ -33,7 +33,7 @@
 # thing: no relative link may resolve outside `website/content/`.
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 MODE="${1:-check}"
 ALLOW=".linkcheck-allow"

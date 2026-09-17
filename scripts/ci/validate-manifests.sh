@@ -11,14 +11,14 @@
 #   6. render the Alertmanager Slack notification templates against fixtures
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a too-old
 # flux client or a missing schema plugin, instead of silently picking up
 # whatever stale binary happens to be first on PATH.
 # shellcheck source=./flux-schema/preflight.sh
-source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
+source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 # Keep this version equal to the one .github/workflows/ci.yaml installs, in both
 # the action tag and its `version:` input. The three drifted once already — CI
@@ -37,7 +37,7 @@ BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"
 # missing postBuild renders correctly in the bundle and lands as literal
 # `${var}` text on the cluster. Measured 2026-08-25; see the script's docstring.
 echo "==> [1/6] Checking Flux variable substitution wiring"
-python3 scripts/flux-schema/check-substitution.py
+python3 scripts/ci/flux-schema/check-substitution.py
 
 # Also runs before the render, and on source files rather than the bundle: a
 # VMRule expression is opaque to both gates below — `flux schema validate`
@@ -45,14 +45,14 @@ python3 scripts/flux-schema/check-substitution.py
 # rules at all. See the script's header for why it reads committed VMRules
 # instead of ${BUNDLE_DIR}, and which groups it skips.
 echo "==> [2/6] Checking PromQL expressions in repo-authored VMRules"
-./scripts/validate-vmrules.sh
+./scripts/ci/validate-vmrules.sh
 
 echo "==> [3/6] Generating schema catalog"
-./scripts/flux-schema/gen-catalog.sh > /dev/null
+./scripts/ci/flux-schema/gen-catalog.sh > /dev/null
 
 echo "==> [4/6] Rendering manifests into ${BUNDLE_DIR}/"
 rm -rf "${BUNDLE_DIR}"
-python3 scripts/flux-schema/render-bundle.py "${BUNDLE_DIR}"
+python3 scripts/ci/flux-schema/render-bundle.py "${BUNDLE_DIR}"
 
 echo "==> [5/6] Gate 1 — flux schema validate (structure + CEL)"
 "${FLUX_BIN}" schema validate "${BUNDLE_DIR}" --config .fluxschema.yml
@@ -65,6 +65,6 @@ polaris audit \
   --only-show-failed-tests
 
 echo "==> [6/6] Gate 3 — Alertmanager Slack templates render"
-./scripts/validate-alertmanager-templates.sh
+./scripts/ci/validate-alertmanager-templates.sh
 
 echo "==> All gates passed"

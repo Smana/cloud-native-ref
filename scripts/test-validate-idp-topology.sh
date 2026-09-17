@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VALIDATOR="${SCRIPT_DIR}/validate-idp-topology.sh"
+VALIDATOR="$SCRIPT_DIR/ci/validate-idp-topology.sh"
 failures=0
 
 # Build a fixture tree: primary cloud, then "<cluster>:<suspend>" pairs where
