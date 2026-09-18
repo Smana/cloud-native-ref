@@ -27,31 +27,18 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKFLOW="${SCRIPT_DIR}/../.github/workflows/ci.yaml"
+WORKFLOW="${SCRIPT_DIR}/../../../.github/workflows/ci.yaml"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
 NOTIFY="${WORKDIR}/notify.sh"
 STEP_ENV="${WORKDIR}/step-env.sh"
 failures=0
 
-# A missing pyyaml is a skip, not a failure: this suite is wired into the job
-# that installs it, and anywhere else it is an optional dependency rather than a
-# broken test. Exiting non-zero here would redden CI over a dependency the
-# environment never promised.
-#
-# `# requires:` above cannot express this. That header is tested with
-# `command -v`, and pyyaml is a PYTHON MODULE, not a binary -- `command -v
-# python3` succeeds on a machine that lacks it. So the header covers the
-# interpreter and this guard covers the module.
-#
-# KNOWN GAP, and it is the one scripts/ci/tests/run.sh explicitly warns about:
-# exit 0 makes a skipped run indistinguishable from a passed one in that
-# runner's summary. Fixing it properly needs a skip exit code the runner
-# understands (77 is the usual spelling) -- that belongs in the runner, not
-# here, so this exits 0 and says SKIP loudly on stdout until then.
+# A missing pyyaml is a skip: exit 77, which run.sh reports as SKIP. `# requires:`
+# cannot say it -- that header checks binaries, and pyyaml is a Python module.
 if ! python3 -c 'import yaml' 2>/dev/null; then
   echo "SKIP  test-ci-notify-main-broken: python3 pyyaml not installed, nothing was verified"
-  exit 0
+  exit 77
 fi
 
 # ---------------------------------------------------------------------------

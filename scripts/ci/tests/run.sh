@@ -38,9 +38,14 @@ for t in "$TESTS"/test-*.sh "$TESTS"/*/test-*.py; do
   fi
 
   SECONDS=0
-  if out="$("$interpreter" "$t" 2>&1)"; then
+  out="$("$interpreter" "$t" 2>&1)"
+  code=$?
+  if [ "$code" -eq 0 ]; then
     printf 'PASS  %-42s (%ds)\n' "$name" "$SECONDS"
     pass=$((pass + 1))
+  elif [ "$code" -eq 77 ]; then
+    printf 'SKIP  %-42s %s\n' "$name" "${out##*$'\n'}"
+    skip=$((skip + 1))
   else
     printf 'FAIL  %-42s (%ds)\n' "$name" "$SECONDS"
     # The output, not just the name: a red check whose body is one word costs a
