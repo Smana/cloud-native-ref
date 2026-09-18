@@ -32,8 +32,7 @@ fail=0
 check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
           else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
 
-# The subject is still at scripts/ root; it moves to scripts/provision/ in the
-# provision phase, and this path moves with it.
+# The subject is still at scripts/ root. When it moves, this path moves with it.
 SRC="${OPENBAO_CONFIG_SCRIPT:-$HERE/../../openbao-config.sh}"
 body="$(sed -n '/^verify_pki_present() {/,/^}/p' "$SRC")"
 [ -n "$body" ] || {
