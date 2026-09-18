@@ -243,5 +243,5 @@ each gate actually checks.
 | `export-diagrams.sh` | Exports `.drawio` architecture diagrams to PNG |
 | `cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
 | `demo-load.sh` | Runs an image-gallery load-generator scenario in-cluster (`browse`, `upload`, `mixed`, `steady`, `incident`) from the suspended `image-gallery-loadgen` CronJob |
-| `test-flux-schema.sh` | Exercises the Flux schema-validation setup |
+| `test-flux-schema.sh` | Quarantined, never run: it asserts bundle filenames the render has outgrown. See `scripts/ci/tests/quarantine/README.md` |
 | `test-vector-vrl.sh` / `validate-vector-vrl.sh` / `vector-vrl-tests/` | Validate the Vector log-parsing configuration |
