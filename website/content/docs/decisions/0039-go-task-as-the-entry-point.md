@@ -2,7 +2,7 @@
 title: go-task is the entry point to the scripts, locally and in CI, and no script depends on it
 linkTitle: 0039 · go-task as the entry point
 weight: 390
-description: A root taskfile.yaml (go-task v3, pinned in mise.toml) indexes the scripts, and CI calls the same tasks a contributor runs. Every task is a one-line call, so any script still lifts out of the repository without the runner. A bespoke dispatcher is rejected as code nobody else knows, Make for its tab-sensitive recipes, and Dagger for its engine startup cost and a client that hangs silently when the engine is down. This record is also where the 2026-07 decision to take Dagger out of CI now lives.
+description: A root taskfile.yaml (go-task v3, pinned in mise.toml) indexes the scripts, and task check runs every scripts/ci gate CI runs. Every task is a one-line call, so any script still lifts out of the repository without the runner. A bespoke dispatcher is rejected as code nobody else knows, Make for its tab-sensitive recipes, and Dagger for its engine startup cost and a client that hangs silently when the engine is down. This record is also where the 2026-07 decision to take Dagger out of CI now lives.
 lastVerified: 2026-09-18
 ---
 
@@ -38,13 +38,15 @@ you *find* a gate, never how you *run* one:
 ```mermaid
 flowchart LR
   dev["contributor"] -->|task check| T["taskfile.yaml"]
-  ci["ci.yaml"] -->|task ci:test, task ci:validate| T
+  wf["CI workflows"] -->|task ci:test, task ci:validate| T
   T -->|one-line call| S["scripts/ci/*.sh"]
+  wf -->|links, doc-claims, idp-topology, doc-paths| S
   adopter["another repository"] -->|copies one file| S
 ```
 
-`task check` aggregates `ci:validate`, `ci:test` and `ci:links`, the same `check:` idiom as
-`Smana/cilium-gateway-api` and `Smana/crossplane-configuration`.
+`task check` runs every `scripts/ci` gate CI runs. It is the same `check:` idiom as
+`Smana/cilium-gateway-api`, and `Smana/crossplane-configuration`, whose compositions this
+repository pins, already uses `task check`.
 
 ## Alternatives rejected
 
@@ -56,23 +58,24 @@ flowchart LR
 
 ### Dagger
 
-This is the decision's only durable record. Before it, the repository held three comments in
-`ci.yaml` that mention Dagger, and none says why it left.
+This is the only durable record of the decision to take Dagger out of CI: why it was made, and
+that it covers every job. The comments in `ci.yaml` explain one step's removal, not the decision.
 
 | Date | Event |
 |---|---|
-| 2026-07-20 | Decided to take Dagger out of CI: engine startup overhead, and the upkeep of the `Smana/daggerverse` modules |
-| 2026-08-23 | The last Dagger step left `ci.yaml` ([#1810](https://github.com/Smana/cloud-native-ref/pull/1810)). The `pre-commit-tf` module could not take a secret, so `tflint --init` fetched its ruleset unauthenticated and hit the API rate limit |
-| 2026-09-12 | Reaffirmed. A crash-looping engine hung a `make lint` in `Smana/image-gallery` for 8 minutes with no output: the client blocks in its own retry loop rather than erroring when the engine is down |
+| 2026-07-20 | **Decided.** Engine startup took about 2m of a ~2m37s pre-commit run, and every `Smana/daggerverse` module is code to maintain |
+| 2026-08-23 | **Completed** ([#1810](https://github.com/Smana/cloud-native-ref/pull/1810)). The `pre-commit-tf` module could not take a token, so its tflint hit GitHub's anonymous rate limit. Because of the 07-20 decision, a fix to the module was dropped and the step moved to plain workflow steps, the last Dagger step in CI |
+| 2026-09-12 | **Reaffirmed**, after an incident the owner recorded. A headless `make lint` in `Smana/image-gallery` hung 8 minutes with no output while the engine sat in a crash-restart loop. The CLI blocks in its own connect/retry loop rather than erroring when the engine is down, and `docker stop` on the engine did not free it; only `kill -9` did |
 
 An entry point exists to tell you what broke. One that can hang with no output fails at exactly
 that.
 
 ## Consequences
 
-- **CI and a contributor run the same commands.** CI's test and validation steps are `task ci:test`
-  and `task ci:validate`; `task check` runs both plus `ci:links` before a push. Job names are
-  unchanged, so the required-check list on `main` is untouched.
+- **`task check` is every `scripts/ci` gate CI runs, in one command.** CI runs the same gates one
+  per job, because a required check is a job: two as `task ci:test` and `task ci:validate`, the
+  rest by calling the script. Job names are unchanged, so the required-check list on `main` is
+  untouched.
 - **The suite list is gone.** `task ci:test` calls `scripts/ci/tests/run.sh`, which discovers
   suites instead of listing them, so a new suite is covered by the commit that adds it.
 - **An adopter who does not want go-task copies a single `.sh`.** No script calls `task`.

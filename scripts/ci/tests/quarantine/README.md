@@ -1,7 +1,8 @@
 # Quarantine
 
-Suites that do not pass, kept here so they are impossible to mistake for coverage. `run.sh` globs
-`test-*.sh` non-recursively, so nothing here runs.
+Suites that do not pass, kept here so they are impossible to mistake for coverage. Nothing here
+runs: `run.sh` discovers `test-*.sh` only at the top level of `tests/` (it looks one level down
+only for `test-*.py`), and every suite here is `.sh`.
 
 ## `test-flux-schema.sh`
 

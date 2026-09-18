@@ -9,9 +9,14 @@ tasks:
   default:
     cmds: [{task: "--list"}]
 
+  # Keep in step with every scripts/ci gate in .github/workflows/. CI calls them
+  # one per job instead, because a required check is a job.
   check:
-    desc: Everything CI gates, run locally
+    desc: Every scripts/ci gate CI runs, in one command
     cmds:
       - {task: "ci:validate"}
       - {task: "ci:test"}
       - {task: "ci:links"}
+      - {task: "ci:doc-claims"}
+      - {task: "ci:idp-topology"}
+      - {task: "ci:doc-paths"}
