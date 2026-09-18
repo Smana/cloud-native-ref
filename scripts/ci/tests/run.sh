@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs every suite in this directory, honouring each one's `# requires:` header.
+# Runs every suite in this directory, plus every .py suite one level down (e.g.
+# flux-schema/test-*.py), honouring each one's `# requires:` header.
 #
 # Discovery rather than a list, because the list was the bug: seven ZITADEL
 # suites existed and went unrun for months, since writing a suite and getting CI
@@ -15,13 +16,18 @@ TESTS="${TESTS_DIR:-$HERE}"
 
 pass=0 skip=0 fail=0 rc=0
 
-for t in "$TESTS"/test-*.sh; do
+for t in "$TESTS"/test-*.sh "$TESTS"/*/test-*.py; do
   [ -e "$t" ] || continue
-  name="$(basename "$t" .sh)"
+  case "$t" in
+    "$TESTS"/test-*.sh) name="$(basename "$t" .sh)"; interpreter=bash ;;
+    *)                  name="$(basename "$(dirname "$t")")/$(basename "$t" .py)"; interpreter=python3 ;;
+  esac
 
-  # First `# requires:` line only. Absent or empty means bash and jq, which CI
-  # and every developer machine already have.
+  # First `# requires:` line only. Absent or empty means bash and jq (or, for a
+  # .py suite, python3), which CI and every developer machine already have.
+  # `#` is a comment in both languages, so the same sed line parses either.
   missing=""
+  command -v "$interpreter" >/dev/null 2>&1 || missing="$missing $interpreter"
   for tool in $(sed -n 's/^# requires:[[:space:]]*//p' "$t" | head -1); do
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
   done
@@ -32,7 +38,7 @@ for t in "$TESTS"/test-*.sh; do
   fi
 
   SECONDS=0
-  if out="$(bash "$t" 2>&1)"; then
+  if out="$("$interpreter" "$t" 2>&1)"; then
     printf 'PASS  %-42s (%ds)\n' "$name" "$SECONDS"
     pass=$((pass + 1))
   else
