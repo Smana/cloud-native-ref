@@ -26,3 +26,9 @@ an approximation of the merge quarter — **git history is the authority on when
 
 The platform constitution these specs cite now lives at
 [`docs/platform-constitution.md`](../platform-constitution.md).
+
+## `scripts/` paths predate the 2026-09-17 restructure
+
+Specs here are **not** updated when the repository moves around them — a 2026-08 spec citing a
+2026-09 path would be a retcon a reviewer could not distinguish from a real edit. For current
+locations see [`scripts/README.md`](../../scripts/README.md).

@@ -1,5 +1,7 @@
 # Validators — what each one catches, and what none of them can
 
+Layout: [`README.md`](README.md). CI calls the entry point below as `task ci:validate`.
+
 `./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
