@@ -3,32 +3,36 @@ version: "3"
 tasks:
   validate:
     desc: Render the repo as Flux would, then gate it (schema + polaris)
-    cmds: ["./scripts/ci/validate-manifests.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-manifests.sh"]
 
   test:
-    desc: Run every shell test suite the environment can satisfy
-    cmds: ["./scripts/ci/tests/run.sh"]
+    desc: Run every shell and Python test suite the environment can satisfy
+    cmds: ["{{.TASKFILE_DIR}}/ci/tests/run.sh"]
 
   links:
     desc: Resolve every relative Markdown link
-    cmds: ["./scripts/ci/validate-links.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-links.sh"]
 
   vmrules:
     desc: Parse the PromQL in every repo-authored VMRule
-    cmds: ["./scripts/ci/validate-vmrules.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-vmrules.sh"]
 
   alertmanager:
     desc: Render the Slack templates against the fixture payloads
-    cmds: ["./scripts/ci/validate-alertmanager-templates.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-alertmanager-templates.sh"]
 
   doc-claims:
     desc: Check documentation claims against configuration
-    cmds: ["./scripts/ci/validate-doc-claims.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-doc-claims.sh"]
 
   doc-paths:
     desc: Check every backticked repository path in the docs site exists
-    cmds: ["./scripts/ci/verify-doc-paths.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/verify-doc-paths.sh"]
 
   idp-topology:
     desc: Assert exactly one cloud hosts ZITADEL (ADR-0027)
-    cmds: ["./scripts/ci/validate-idp-topology.sh"]
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-idp-topology.sh"]
+
+  vector-vrl:
+    desc: Test the CNPG auto_explain VRL in the timberio/vector image (needs docker)
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-vector-vrl.sh"]

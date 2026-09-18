@@ -73,8 +73,9 @@ hugo-extended = "0.166.0"
 kustomize = "5.8.1"
 
 # Task runner (taskfile.yaml). Pinned here rather than installed separately so
-# the jdx/mise-action already in every CI job picks it up with no new action.
-task = "3"
+# the jdx/mise-action already in the job that calls `task`
+# (kubernetes-validation) installs it with no new action.
+task = "3.53.1"
 
 # Google Cloud SDK — required by the GCP stacks (opentofu/gcp/**) for cluster
 # credentials and for the gcloud-based evidence commands in the GCP runbook.
