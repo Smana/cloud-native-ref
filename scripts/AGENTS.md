@@ -83,8 +83,8 @@ design. Two earlier versions exported `GH_REPO` themselves and asserted only the
 (open an issue vs comment on the open one) — both passed against a workflow that supplied no
 `GH_REPO` at all, which is the same "tested the logic, not the invocation context" gap as the
 defect they were meant to catch. **Deleting the `GH_REPO` line from `ci.yaml` must fail this
-suite**; if a change stops that being true, it has regressed to testing nothing. It runs in the
-`links` job because it parses YAML and needs the pyyaml installed there.
+suite**; if a change stops that being true, it has regressed to testing nothing. It runs under
+`task ci:test`, and says SKIP (exit 77) without pyyaml.
 
 ## The rest
 

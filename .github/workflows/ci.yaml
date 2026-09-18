@@ -319,18 +319,6 @@ jobs:
       - name: Check identity provider topology
         run: ./scripts/ci/validate-idp-topology.sh
 
-      # Here for the same reason as the two checks above: it parses YAML, so it
-      # needs the pyyaml installed in this job rather than the shellcheck one.
-      #
-      # It tests the `notify-main-broken` job at the bottom of this file, which
-      # is the only job here that a green repository never runs -- `if:
-      # failure()` means the first run that matters is also the first run ever.
-      # It shipped broken, and the break was invisible until `main` was already
-      # red and went unreported. This suite is the only thing that exercises it
-      # while the repository is healthy.
-      - name: Run the broken-main notifier tests
-        run: ./scripts/test-ci-notify-main-broken.sh
-
   # ---------------------------------------------------------------------------
   # Post-merge only. A red run on `main` is already visible next to the commit,
   # but only to someone looking at it -- and the whole point of the `push`
