@@ -346,6 +346,16 @@ def main():
         )
         return 1
 
+    # Zero checked means CLUSTERS_DIR moved or the parse found nothing, and a
+    # green "consistent" over nothing is the failure this file exists to stop.
+    if checked == 0:
+        print(
+            f"FAIL: no Flux Kustomization under {CLUSTERS_DIR} could be checked "
+            f"({len(skipped)} skipped). Nothing was verified.",
+            file=sys.stderr,
+        )
+        return 1
+
     print(f"==> {checked} Flux Kustomization(s) checked; substitution wiring is consistent")
     return 0
 

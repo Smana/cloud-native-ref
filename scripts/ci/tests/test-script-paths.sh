@@ -10,6 +10,9 @@
 #
 # SCRIPT_PATHS_ROOT exists so this suite can be aimed at a fixture tree and
 # proved to fail. Without a negative case a green gate means nothing.
+#
+# The floors at the end are what make a drop in coverage visible. The printed
+# counts cannot: run.sh discards a passing suite's output.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,7 +78,7 @@ while IFS= read -r script; do
     target="$(printf '%s' "$n" | grep -oE '/[A-Za-z0-9._/-]+\.(sh|py)' | tail -1)"
     [ -n "$target" ] || continue
     # Anything still holding a variable cannot be checked statically. Skipping is
-    # honest; the counts printed at the end make a drop in coverage visible.
+    # honest; the floor on n_sources at the end catches a drop in coverage.
     case "$target" in *'$'*) continue ;; esac
     n_sources=$((n_sources + 1))
     [ -f "$target" ] || fail "$(rel "$script"):$lineno — sources a missing file: $target"
@@ -96,4 +99,14 @@ done < <(find "$SCRIPTS" \( -type f -o -type l \) -name '*.sh' | sort)
 
 printf '%d roots, %d sources, %d subjects checked; %d failed\n' \
   "$n_roots" "$n_sources" "$n_subjects" "$fails"
+
+# A gate that checked nothing has not passed. 20 sources is the floor measured
+# when this gate was written (21 at the time). Below it, suspect a broken
+# extraction or a moved scan root first; lower the floor only in the commit that
+# really removes the source lines.
+if [ "$n_roots" -eq 0 ] || [ "$n_subjects" -eq 0 ] || [ "$n_sources" -lt 20 ]; then
+  printf 'FAIL  coverage below floor: %d roots (need >0), %d subjects (need >0), %d sources (need >=20) under %s\n' \
+    "$n_roots" "$n_subjects" "$n_sources" "$SCRIPTS" >&2
+  exit 1
+fi
 [ "$fails" -eq 0 ]

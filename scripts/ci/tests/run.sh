@@ -9,6 +9,12 @@
 #
 # A skip is printed, never silent. "It didn't run" and "it passed" are the two
 # outcomes a CI log must never conflate.
+#
+# Exit 77 is also a SKIP, and its last output line is the reason. `# requires:`
+# stays the way to skip; 77 is only for a prerequisite `command -v` cannot test,
+# such as a Python module. The design rejected per-suite 77 self-skips (Decision
+# 3 in docs/superpowers/specs/2026-09-17-scripts-restructure-design.md); this
+# narrow exception is deliberate, so do not remove it.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,10 +22,11 @@ TESTS="${TESTS_DIR:-$HERE}"
 
 pass=0 skip=0 fail=0 rc=0
 
-for t in "$TESTS"/test-*.sh "$TESTS"/*/test-*.py; do
+for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
   [ -e "$t" ] || continue
   case "$t" in
     "$TESTS"/test-*.sh) name="$(basename "$t" .sh)"; interpreter=bash ;;
+    "$TESTS"/test-*.py) name="$(basename "$t" .py)"; interpreter=python3 ;;
     *)                  name="$(basename "$(dirname "$t")")/$(basename "$t" .py)"; interpreter=python3 ;;
   esac
 
@@ -44,7 +51,8 @@ for t in "$TESTS"/test-*.sh "$TESTS"/*/test-*.py; do
     printf 'PASS  %-42s (%ds)\n' "$name" "$SECONDS"
     pass=$((pass + 1))
   elif [ "$code" -eq 77 ]; then
-    printf 'SKIP  %-42s %s\n' "$name" "${out##*$'\n'}"
+    reason="${out##*$'\n'}"
+    printf 'SKIP  %-42s %s\n' "$name" "${reason:-no reason given}"
     skip=$((skip + 1))
   else
     printf 'FAIL  %-42s (%ds)\n' "$name" "$SECONDS"
@@ -57,4 +65,10 @@ for t in "$TESTS"/test-*.sh "$TESTS"/*/test-*.py; do
 done
 
 printf '%d passed, %d skipped, %d failed\n' "$pass" "$skip" "$fail"
+
+# Zero suites is a wrong TESTS path or a broken glob, never a pass.
+if [ $((pass + skip + fail)) -eq 0 ]; then
+  echo "no suites found under $TESTS" >&2
+  exit 1
+fi
 exit "$rc"

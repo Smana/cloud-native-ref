@@ -37,7 +37,7 @@ failures=0
 # A missing pyyaml is a skip: exit 77, which run.sh reports as SKIP. `# requires:`
 # cannot say it -- that header checks binaries, and pyyaml is a Python module.
 if ! python3 -c 'import yaml' 2>/dev/null; then
-  echo "SKIP  test-ci-notify-main-broken: python3 pyyaml not installed, nothing was verified"
+  echo "python3 pyyaml not installed, nothing was verified"
   exit 77
 fi
 
