@@ -6,7 +6,7 @@ lastVerified: 2026-08-30
 ---
 
 "Git is the source of truth" only holds if what merges to `main` is actually
-what Flux is about to apply. `./scripts/validate-manifests.sh` is what keeps
+what Flux is about to apply. `./scripts/ci/validate-manifests.sh` is what keeps
 that claim honest: it renders every Kustomize overlay and every `HelmRelease`
 the same way Flux does, then gates the *rendered* result — not the source
 tree — before a PR can merge. See [CI Workflows]({{< relref "/docs/reference/ci-workflows.md" >}})

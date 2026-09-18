@@ -47,7 +47,7 @@ env:
   # verdict moves on its own is not a gate.
   #
   # Keep this equal to the image in the rendered chart output:
-  #   ./scripts/validate-manifests.sh && grep -rhoP 'image:\s*"?\K\S*vector\S*' .bundle/
+  #   ./scripts/ci/validate-manifests.sh && grep -rhoP 'image:\s*"?\K\S*vector\S*' .bundle/
   # It reads 0.57.0-distroless-libc as of chart vlsingle 0.13.9 / vlcluster 0.2.8.
   # The `-alpine` variant of the same release is used here because the workflow
   # invokes the binary through `docker run`, and alpine is the variant this job

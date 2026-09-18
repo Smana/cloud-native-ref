@@ -62,7 +62,7 @@ different spelling.
 `${workforce_pool_id}` in the GCP binding comes from the cluster vars ConfigMap.
 Were it undefined, Flux would substitute an **empty string** and produce a
 binding for `.../workforcePools//group/admin` — schema-valid, matching nobody,
-denying silently. `scripts/flux-schema/check-substitution.py` exists to make that
+denying silently. `scripts/ci/flux-schema/check-substitution.py` exists to make that
 impossible.
 {{< /callout >}}
 
@@ -165,7 +165,7 @@ cannot be recreated until then; re-running `deploy` does not undo it. The
 stack's `destroy` script says so loudly before it runs.
 
 The value reaches manifests as `${workforce_pool_id}` from the cluster vars
-ConfigMap, which is what makes `scripts/flux-schema/check-substitution.py` able to
+ConfigMap, which is what makes `scripts/ci/flux-schema/check-substitution.py` able to
 catch an undefined variable — Flux would otherwise substitute an empty string and
 produce `workforcePools//group/admin`.
 

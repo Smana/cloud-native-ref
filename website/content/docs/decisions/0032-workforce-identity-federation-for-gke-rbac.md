@@ -294,7 +294,7 @@ presents the user's token and needs no service account of its own.
 - `workforce_pool_id` is threaded into `gke/configure`'s `flux_cluster_vars`
   (`opentofu/gcp/gke/configure/kubernetes.tf`) so
   `security/gcp-0/rbac/admin.yaml` can substitute it into the
-  `principalSet://` group name; `scripts/flux-schema/check-substitution.py`
+  `principalSet://` group name; `scripts/ci/flux-schema/check-substitution.py`
   fails the build if that wiring is missing, rather than letting Flux
   silently substitute an empty string.
 - `tooling/gcp-0/headlamp/token-exchange.yaml` — the shim Deployment +

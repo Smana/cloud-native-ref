@@ -1,6 +1,8 @@
 # Validators — what each one catches, and what none of them can
 
-`./scripts/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
+Layout: [`README.md`](README.md). CI calls the entry point below as `task ci:validate`.
+
+`./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
 then applies three gates to the result.
@@ -33,14 +35,14 @@ and fails on a `${var}` the cluster's ConfigMap does not define. Flux substitute
 there — schema-valid and silently wrong — so the bundle looks perfect either way. Details in
 `clusters/AGENTS.md`.
 
-Its two tests are `flux-schema/test-check-substitution.py` and `flux-schema/test-render-bundle.py`.
-The second pins `render-bundle.py`'s `spec.valuesFrom` resolution: six HelmReleases get most of
-their values that way, and a regression there does not break the build — it quietly shrinks what
-the build checks.
+Its two tests are `tests/flux-schema/test-check-substitution.py` and
+`tests/flux-schema/test-render-bundle.py`. The second pins `render-bundle.py`'s `spec.valuesFrom`
+resolution: six HelmReleases get most of their values that way, and a regression there does not
+break the build — it quietly shrinks what the build checks.
 
-Both run in CI as their own step **before** the render, because they test the scripts that do the
-rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
-manifest validation. Run them directly: `python3 scripts/flux-schema/<file>`.
+Both run inside `task ci:test`, alongside the other suites, because they test the scripts that do
+the rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
+manifest validation. Run them directly: `python3 scripts/ci/tests/flux-schema/<file>`.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream
@@ -83,8 +85,8 @@ design. Two earlier versions exported `GH_REPO` themselves and asserted only the
 (open an issue vs comment on the open one) — both passed against a workflow that supplied no
 `GH_REPO` at all, which is the same "tested the logic, not the invocation context" gap as the
 defect they were meant to catch. **Deleting the `GH_REPO` line from `ci.yaml` must fail this
-suite**; if a change stops that being true, it has regressed to testing nothing. It runs in the
-`links` job because it parses YAML and needs the pyyaml installed there.
+suite**; if a change stops that being true, it has regressed to testing nothing. It runs under
+`task ci:test`, and says SKIP (exit 77) without pyyaml.
 
 ## The rest
 

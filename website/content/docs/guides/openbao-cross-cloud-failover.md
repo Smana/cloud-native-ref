@@ -243,9 +243,9 @@ provisioner defaults to `aws` and prints `[skip]`.
      stack's `variables.tfvars`, apply, then check the ConfigMap actually
      carries it (`kubectl -n flux-system get cm eks-aws-0-vars -o yaml`).
    - **The missing-key half is gated.**
-     `scripts/flux-schema/check-substitution.py` fails the build when a
+     `scripts/ci/flux-schema/check-substitution.py` fails the build when a
      Kustomization applies a `${var}` its own cluster's ConfigMap does not
-     define, so `./scripts/validate-manifests.sh` catches that regression in CI
+     define, so `./scripts/ci/validate-manifests.sh` catches that regression in CI
      rather than at 3am. It cannot catch an empty value; only the check above
      can.
 

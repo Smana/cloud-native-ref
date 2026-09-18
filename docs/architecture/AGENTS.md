@@ -101,8 +101,8 @@ A logo used by a second diagram belongs in `icons/`, not embedded twice. Check `
 
 ```bash
 ./scripts/export-diagrams.sh      # regenerates every SVG the site embeds
-./scripts/validate-links.sh       # after any file move
-./scripts/validate-doc-claims.sh  # the pages that describe the diagram
+./scripts/ci/validate-links.sh       # after any file move
+./scripts/ci/validate-doc-claims.sh  # the pages that describe the diagram
 ```
 
 `export-diagrams.sh` pins the drawio version, because a different build perturbs the fallback

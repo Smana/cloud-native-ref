@@ -83,7 +83,7 @@ themselves:
 ```python
 # python3, from the repo root
 import importlib.util
-spec = importlib.util.spec_from_file_location("cs", "scripts/flux-schema/check-substitution.py")
+spec = importlib.util.spec_from_file_location("cs", "scripts/ci/flux-schema/check-substitution.py")
 cs = importlib.util.module_from_spec(spec); spec.loader.exec_module(cs)
 aws, gcp = map(set, (cs.configmap_keys("eks-aws-0-vars"), cs.configmap_keys("gke-gcp-0-vars")))
 print(sorted(aws & gcp))          # the portability interface
@@ -93,7 +93,7 @@ print(sorted(aws ^ gcp))          # cloud-shaped, stays in overlays
 {{< callout type="warning" >}}
 **Flux substitutes an undefined variable to the empty string.** A `base/`
 manifest reading a key your cloud does not define does not fail — it renders a
-hostname with a hole in it. `scripts/flux-schema/check-substitution.py` runs in
+hostname with a hole in it. `scripts/ci/flux-schema/check-substitution.py` runs in
 CI against this: it reads each cluster's real keys from the `flux_cluster_vars`
 resource in `opentofu/*/configure/kubernetes.tf` and fails when a Kustomization
 applies a variable **its own cluster** never defines.
@@ -122,7 +122,7 @@ three or it half-works:
 |---|---|
 | `global.stack_cloud` in `opentofu/config.tm.hcl` | which lane a stack belongs to, from its tags |
 | `--tm-check` in `scripts/tm-provisioner.sh` | whether `TM_CLOUD` selects that lane |
-| `KNOWN_CLOUDS` in `scripts/validate-idp-topology.sh` | which values `primary_cloud` may take |
+| `KNOWN_CLOUDS` in `scripts/ci/validate-idp-topology.sh` | which values `primary_cloud` may take |
 
 The third is the one that surprises: a new lane that is *not* primary must also
 have `spec.suspend: true` on its own `clusters/<cluster>/security/zitadel.yaml`,

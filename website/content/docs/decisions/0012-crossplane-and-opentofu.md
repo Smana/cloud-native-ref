@@ -263,7 +263,7 @@ behaves, not code owned in this repository: compositions themselves are
 edited, tested with `task check`, and released from
 `Smana/crossplane-configuration`. This repository only pins the resulting
 package version and validates claims against that pinned release's XRD
-schemas through `./scripts/validate-manifests.sh`.
+schemas through `./scripts/ci/validate-manifests.sh`.
 
 ---
 

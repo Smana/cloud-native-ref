@@ -174,6 +174,11 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
+      # The test suites below need jq. Installed rather than assumed present on
+      # the runner image, for the same reason as pyyaml above.
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       # NOTE: there is no "Install Polaris" step. Polaris comes from mise.toml
       # along with every other tool, because the upstream setup-polaris action
       # cannot install any release newer than 8.5.0 — see the comment on the
@@ -192,19 +197,19 @@ jobs:
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
 
-      # Before the render, because these test the scripts that DO the render.
-      # A broken resolve_values does not fail validate-manifests.sh -- it
-      # quietly shrinks what that script checks, which no gate downstream can
-      # report. Kept as their own step rather than folded into
-      # validate-manifests.sh: that script's contract is manifest validation,
-      # and script unit tests do not belong inside it.
-      - name: Unit tests for the validation scripts
-        run: |
-          python3 scripts/flux-schema/test-check-substitution.py
-          python3 scripts/flux-schema/test-render-bundle.py
+      # Every suite run.sh discovers, before the render: some of them test the
+      # scripts that DO the render, and a broken resolve_values does not fail
+      # validate-manifests.sh -- it quietly shrinks what that script checks.
+      # Kept as their own step rather than folded into validate-manifests.sh,
+      # whose contract is manifest validation.
+      - name: Test suites
+        run: task ci:test
 
+      # Runs even when a suite failed, so the manifest verdict is never hidden
+      # behind it. The job still fails.
       - name: Validate manifests (flux schema + polaris)
-        run: ./scripts/validate-manifests.sh
+        if: ${{ !cancelled() }}
+        run: task ci:validate
 
   render-diff:
     name: Rendered manifest diff 📝
@@ -245,7 +250,7 @@ jobs:
       # isolation) lives in the script so it is shellcheck-covered and
       # documented next to the renderer it drives.
       - name: Render head and base (concurrent)
-        run: ./scripts/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
+        run: ./scripts/ci/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
 
       # stdout (tee'd) is the size-capped PR comment; rendered-diff-full.md is
       # the full report (capped only by the job-summary limit, inside the
@@ -254,7 +259,7 @@ jobs:
       # truncation link points at — and as a downloadable artifact.
       - name: Compute rendered diff
         run: |
-          python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head rendered-diff-full.md | tee rendered-diff.md
+          python3 scripts/ci/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head rendered-diff-full.md | tee rendered-diff.md
           cat rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload full diff artifact
@@ -277,12 +282,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # jq comes along here rather than in its own step: the test suites below
-      # need it, and a second `apt-get update` in the same job is pure cost. It
-      # is installed rather than assumed present on the runner image, the same
-      # reason the links job installs pyyaml rather than assuming it.
-      - name: Install ShellCheck and jq
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run ShellCheck
         run: |
           # `-type l` as well as `-type f`, and it is load-bearing rather than
@@ -293,86 +294,6 @@ jobs:
           # Do not "simplify" this back to `-type f`.
           find ./scripts \( -type f -o -type l \) -name "*.sh" -print0 | xargs -0 shellcheck -x -S warning
 
-      # The ZITADEL suites, which until now CI ran none of.
-      #
-      # They are worth gating on precisely because what they cover fails
-      # QUIETLY: a redirect URI that no longer matches, a consumer with no
-      # branch in the payload jq (which strands a client secret ZITADEL returns
-      # exactly once), an app that stops converging, a groups claim that comes
-      # back empty because a role assertion defaults to false. Every one of
-      # those reports success somewhere and breaks a login somewhere else, which
-      # is the worst shape of bug to leave to a hand-run script nobody remembers
-      # to run.
-      #
-      # A NARROW glob, and the distinction from the broad one matters. The links
-      # job warns against globbing scripts/test-*.sh, because that silently
-      # activates ~8 unrelated suites and two of them (test-flux-schema.sh,
-      # test-vector-vrl.sh) need tooling a bare runner does not have. This glob
-      # is scoped to one homogeneous family that is offline by construction --
-      # every API call is stubbed, so they need bash and jq and nothing else --
-      # and all seven pass here. Scoping it this way also means the NEXT
-      # zitadel suite is covered by default instead of being forgotten, which is
-      # exactly how the seven existing ones ended up unrun.
-      # scripts/test-openbao-fallback-address.sh joins them by name rather than
-      # by widening the glob: it covers the pre-destroy snapshot's fallback
-      # address, which is a different subsystem that happens to be testable the
-      # same way (offline, every call stubbed, bash and jq only).
-      # scripts/test-openbao-seal-status-tls.sh is the fourth, and pairs with the
-      # fallback-address suite above: that one covers the SNAPSHOT following
-      # --fallback-address, this one the seal-status probe that runs first. On
-      # 2026-09-08 the fallback reached the node and the probe then asked for the
-      # bare IP, which the certificate cannot match -- so a teardown refused,
-      # left a node billing, and pushed the operator toward the escape hatch that
-      # discards an obtainable snapshot. Two correct-looking halves that did not
-      # meet.
-      # scripts/test-no-secret-argv.sh is the third named addition, and the one
-      # that most needed to be here: it scans every script for a credential-
-      # shaped variable passed on argv, where `ps` reads it. It existed, it
-      # worked, and nothing ran it -- so it was failing on two live calls in
-      # scripts/openbao-adopt-jwt-mount.sh that put the OpenBao ROOT token in
-      # the process table. A guard nobody runs is how that ships.
-      # scripts/test-openbao-snapshot-key.sh is the fourth, and covers which
-      # object a restore takes. Until OPENBAO_SNAPSHOT_KEY existed the answer was
-      # always "the newest", which cannot express "today's secret is wrong, give
-      # me yesterday's" -- the disaster Stage 2 introduces by making OpenBao the
-      # store of record for application secrets. A selector that silently
-      # returns the newest anyway would make point-in-time recovery a lie that
-      # only shows up during an incident, so it is tested offline like the rest.
-      # scripts/test-openbao-root-token-probe.sh is the fifth, and guards the
-      # single function two branches now use to decide whether a deploy says
-      # "restored, continue" or "destroy the cluster with
-      # TM_OPENBAO_SKIP_SNAPSHOT=true". The second discards every write since the
-      # restore AND suppresses the pre-destroy snapshot, so a false negative here
-      # is unrecoverable data loss. Those branches are only reachable on a real
-      # cluster in a state that takes a full bootstrap to produce, which is
-      # precisely how their predecessor shipped: the claim was asserted in prose
-      # and never once executed.
-      # scripts/test-openbao-pki-verify.sh is the sixth, and pins the three-way
-      # contract those branches read: 0 present-and-chains, 2 a clean 404, 1
-      # everything else. The case it exists for is an issuer that parses
-      # perfectly but chains to a DIFFERENT root -- a node holding the wrong
-      # lineage's data, invisible to every other signal, because the node is up,
-      # unsealed, serving a valid certificate, and the stored root token
-      # authenticates against it. It needs openssl, which the runner image
-      # already has; it generates its own throwaway CAs rather than stubbing the
-      # verify, since a stub would be assuming the very answer under test.
-      - name: Run the shell test suites
-        run: |
-          set -uo pipefail
-          rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-cloud-secret-store.sh scripts/test-cnpg-promote-seed.sh scripts/test-secret-store-lint.sh scripts/test-tm-provisioner.sh; do
-            if bash "$t" > /tmp/zitadel-test.log 2>&1; then
-              echo "PASS  $t"
-            else
-              echo "FAIL  $t"
-              # The log, not just the name: a red check whose output is one word
-              # costs a local re-run to learn anything from.
-              sed 's/^/      /' /tmp/zitadel-test.log
-              rc=1
-            fi
-          done
-          exit "$rc"
-
   links:
     name: Check the documentation links 🔗
     runs-on: ubuntu-latest
@@ -380,7 +301,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Resolve every relative Markdown link
-        run: ./scripts/validate-links.sh
+        run: ./scripts/ci/validate-links.sh
 
       # Runs in this job rather than its own so the required-check list on
       # `main` does not have to change. The job name stays "documentation
@@ -389,7 +310,7 @@ jobs:
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Check documentation claims against configuration
-        run: ./scripts/validate-doc-claims.sh
+        run: ./scripts/ci/validate-doc-claims.sh
 
       # Folded into this job for the same reason as the claims check above: the
       # required-check list on `main` does not have to change.
@@ -399,41 +320,7 @@ jobs:
       # this repo does not treat "it happens to be in the runner image" as a
       # dependency declaration.
       - name: Check identity provider topology
-        run: ./scripts/validate-idp-topology.sh
-
-      # Named explicitly, NOT globbed over scripts/test-*.sh. A glob here would
-      # silently activate every other suite as a side effect of this change, and
-      # two of them (test-flux-schema.sh, test-vector-vrl.sh) do not pass in a
-      # bare environment.
-      #
-      # The ZITADEL suites are no longer among the unrun: the shellcheck job
-      # runs all seven, under a glob scoped to that one family. The reasoning
-      # for why a NARROW glob is safe where this broad one is not is there.
-      # Four more joined them: test-cloud-secret-store.sh and
-      # test-cnpg-promote-seed.sh (both write their own aws/gcloud stubs onto
-      # PATH, and the latter stubs kubectl and sleep too, so neither needs a
-      # cluster, credentials or wall-clock time), test-secret-store-lint.sh and
-      # test-tm-provisioner.sh, which make no external calls at all. The last is
-      # the truth table for the TM_CLOUD selector -- the variable deciding which
-      # cloud a deploy or a destroy touches -- and nothing gated it until now.
-      #
-      # That leaves exactly two hand-run suites: test-flux-schema.sh and
-      # test-vector-vrl.sh, named above as needing tooling a bare runner lacks.
-      # Everything else under scripts/test-*.sh now runs in CI.
-      - name: Run identity provider topology tests
-        run: ./scripts/test-validate-idp-topology.sh
-
-      # Here for the same reason as the two checks above: it parses YAML, so it
-      # needs the pyyaml installed in this job rather than the shellcheck one.
-      #
-      # It tests the `notify-main-broken` job at the bottom of this file, which
-      # is the only job here that a green repository never runs -- `if:
-      # failure()` means the first run that matters is also the first run ever.
-      # It shipped broken, and the break was invisible until `main` was already
-      # red and went unreported. This suite is the only thing that exercises it
-      # while the repository is healthy.
-      - name: Run the broken-main notifier tests
-        run: ./scripts/test-ci-notify-main-broken.sh
+        run: ./scripts/ci/validate-idp-topology.sh
 
   # ---------------------------------------------------------------------------
   # Post-merge only. A red run on `main` is already visible next to the commit,
@@ -501,7 +388,7 @@ jobs:
           The usual cause is two pull requests that are each valid alone and
           invalid together -- branch protection runs with \`strict: false\`, so
           neither was rendered against the other. Reproduce locally with
-          \`./scripts/validate-manifests.sh\` on \`main\`.
+          \`./scripts/ci/validate-manifests.sh\` on \`main\`.
           EOF
           )
 

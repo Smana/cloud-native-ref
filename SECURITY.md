@@ -29,7 +29,7 @@ generic caveats a template would list.
 | Admin services unreachable, not merely unlisted | Two Tailscale gateways split by ACL tag (`tag:k8s`, `tag:admin`) | `infrastructure/base/gapi/` |
 | TLS on internal traffic | A private PKI issues every certificate through cert-manager | [ADR-0011](website/content/docs/decisions/0011-openbao-over-vault.md), `security/base/cert-manager/` |
 | No secrets in Git | External Secrets Operator pulls from AWS Secrets Manager and OpenBao at runtime | `security/base/external-secrets/` |
-| Restricted pod security context | Kyverno at admission, Polaris on the rendered bundle before merge | [ADR-0016](website/content/docs/decisions/0016-kyverno-over-gatekeeper.md), `scripts/validate-manifests.sh` |
+| Restricted pod security context | Kyverno at admission, Polaris on the rendered bundle before merge | [ADR-0016](website/content/docs/decisions/0016-kyverno-over-gatekeeper.md), `scripts/ci/validate-manifests.sh` |
 
 ## Supply chain
 

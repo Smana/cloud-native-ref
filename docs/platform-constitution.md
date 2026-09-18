@@ -173,7 +173,7 @@ gated before merge:
 | `flux schema validate` | Success, `skipMissingSchemas: false` | Structure + CEL, against the repo's XRDs and the Flux/CNCF catalogs |
 | `polaris audit --set-exit-code-on-danger` | No danger-level findings | Workload best practices |
 
-**Validation**: `./scripts/validate-manifests.sh`, the single entry point CI runs. It renders the
+**Validation**: `./scripts/ci/validate-manifests.sh`, the single entry point CI runs. It renders the
 repository the way Flux does — every Kustomize overlay and `HelmRelease` — then applies both
 gates to the rendered bundle.
 

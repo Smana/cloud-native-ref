@@ -213,9 +213,9 @@ gcloud secrets versions access latest \
 ```bash
 tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-./scripts/validate-manifests.sh   # renders the repo the way Flux does, then gates it
-./scripts/validate-links.sh       # resolves every relative Markdown link
-./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
+./scripts/ci/validate-manifests.sh   # renders the repo the way Flux does, then gates it
+./scripts/ci/validate-links.sh       # resolves every relative Markdown link
+./scripts/ci/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```
@@ -243,5 +243,5 @@ each gate actually checks.
 | `export-diagrams.sh` | Exports `.drawio` architecture diagrams to PNG |
 | `cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
 | `demo-load.sh` | Runs an image-gallery load-generator scenario in-cluster (`browse`, `upload`, `mixed`, `steady`, `incident`) from the suspended `image-gallery-loadgen` CronJob |
-| `test-flux-schema.sh` | Exercises the Flux schema-validation setup |
+| `test-flux-schema.sh` | Quarantined, never run: it asserts bundle filenames the render has outgrown. See `scripts/ci/tests/quarantine/README.md` |
 | `test-vector-vrl.sh` / `validate-vector-vrl.sh` / `vector-vrl-tests/` | Validate the Vector log-parsing configuration |

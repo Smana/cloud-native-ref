@@ -181,7 +181,7 @@ data:
       #    toUpper trimSpace tz urlUnescape, plus Go builtins (len index slice
       #    printf urlquery eq ne lt gt and or not with range).
       #
-      # ./scripts/validate-alertmanager-templates.sh renders every string below
+      # ./scripts/ci/validate-alertmanager-templates.sh renders every string below
       # against five fixture payloads and golden-compares the output. A template
       # that fails to execute makes Alertmanager DROP the notification, so this
       # is the difference between a formatting bug and silent total alert loss.

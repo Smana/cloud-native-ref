@@ -1,0 +1,27 @@
+version: "3"
+
+includes:
+  # Not scripts/taskfile.yaml: go-task stops its upward search at the first
+  # taskfile it finds, so run from under scripts/ that name would shadow this
+  # file and no ci:* task would exist.
+  ci:
+    taskfile: scripts/tasks.yaml
+
+tasks:
+  default:
+    silent: true
+    cmds: ["task --list"]
+
+  # A hand-kept mirror: keep it in step with every scripts/ci gate in
+  # .github/workflows/. CI spreads the same gates over several jobs, since a
+  # required check is a job: two in kubernetes-validation, three in links, and
+  # doc-paths in docs-check.yml.
+  check:
+    desc: Every scripts/ci gate CI runs, in one command
+    cmds:
+      - {task: "ci:validate"}
+      - {task: "ci:test"}
+      - {task: "ci:links"}
+      - {task: "ci:doc-claims"}
+      - {task: "ci:idp-topology"}
+      - {task: "ci:doc-paths"}

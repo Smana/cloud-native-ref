@@ -41,7 +41,7 @@ globals {
   # half-works in silence -- which is why placement is stated here once and
   # never derived from TM_CLOUD, whose value changes per invocation.
   #
-  # Enforced by ./scripts/validate-idp-topology.sh.
+  # Enforced by ./scripts/ci/validate-idp-topology.sh.
   primary_cloud = "aws"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
@@ -97,7 +97,7 @@ globals {
   # gateway-api-crds. This must equal flux/sources/gitrepo-gateway-api.yaml's
   # ref.tag -- Flux re-applies the same directory after bootstrap, so a skew
   # installs one CRD set at bootstrap and a different one on reconcile.
-  # ./scripts/validate-doc-claims.sh fails when the two disagree.
+  # ./scripts/ci/validate-doc-claims.sh fails when the two disagree.
   gateway_api_version = "v1.6.2"
 
   # Flux sync configuration

@@ -25,7 +25,7 @@ Configuration package. This repo pins a version in
 
 Two things in this repo gate on that pin:
 
-- `./scripts/validate-manifests.sh` validates every claim against the XRD schemas fetched from the
+- `./scripts/ci/validate-manifests.sh` validates every claim against the XRD schemas fetched from the
   pinned release, so a pin bump that changes a schema fails here if a claim no longer matches.
 - The App Wizard clones the same tag (see `apps/platform/app-wizard/app.yaml`). **Bump both
   together.**

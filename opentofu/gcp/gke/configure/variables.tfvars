@@ -45,7 +45,7 @@ route53_role_arn       = "arn:aws:iam::396740644681:role/gcp-0-route53-dns"
 #
 # The variable's own default is false, so a bare `tofu apply` in this directory
 # does not silently stand up a second identity directory.
-# ./scripts/validate-idp-topology.sh fails if the Flux half disagrees.
+# ./scripts/ci/validate-idp-topology.sh fails if the Flux half disagrees.
 
 # AWS SDK region hint for the route53 solver -- NOT gcp-0's GCP region (see the
 # comment on var.route53_region). Matches opentofu/shared/aws-gcp-federation's
