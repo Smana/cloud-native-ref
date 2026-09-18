@@ -46,8 +46,9 @@
 # leaks went unnoticed while the other two scripts were being fixed: the
 # guard only ever looked at the file someone had already opened.
 #
-# This is the pattern-level guard instead: it scans every scripts/*.sh for a
-# jq --arg/--argjson, a curl -H/-u, or a cloud-CLI value flag whose VALUE is a
+# This is the pattern-level guard instead: it scans every *.sh under scripts/
+# and opentofu/, and every workflow in .github/workflows/, for a jq
+# --arg/--argjson, a curl -H/-u, or a cloud-CLI value flag whose VALUE is a
 # variable with a credential-shaped NAME, so a script making the same mistake
 # with a differently-named variable is still caught -- not just a
 # byte-for-byte repeat of a site already found.
@@ -103,18 +104,44 @@ extract_hit_varname() {
     sed -E 's/.*\$\{?([A-Za-z_][A-Za-z0-9_]*).*/\1/' <<< "$1"
 }
 
-# Scan one directory tree, recursively, for *.sh files -- reaching any
-# nested subdirectory (scripts/lib/, scripts/ci/, ...) without a separate
-# pass -- for a credential-shaped variable reaching jq's, curl's or a cloud
-# CLI's argv. Prints one "FAIL file:line: ..." line per hit to stdout;
-# returns 1 if it found anything, 0 if clean.
+# The scan roots, given the scripts/ tree $1. They matter as much as the
+# patterns. Rooted at scripts/ alone, this guard never saw .github/workflows or
+# the per-stack scripts under opentofu/, both of which handle credentials --
+# which is how an ID-token request header on curl's argv reached main unnoticed.
+#
+# The scripts root is recursive, never maxdepth-1: scripts/ has subdirectories
+# (lib/, ci/, ci/tests/), and a flat scan would silently stop covering them --
+# the same "guard passes over nothing" failure this file exists to catch, aimed
+# at itself.
+ROOTS="scripts workflows opentofu"
+list_root() { # $1: scripts dir, $2: one of $ROOTS
+    case "$2" in
+        scripts)   find "$1" -name '*.sh' -print0 2>/dev/null ;;
+        workflows) find "$1/../.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -print0 2>/dev/null ;;
+        opentofu)  find "$1/../opentofu" -name '*.sh' -print0 2>/dev/null ;;
+    esac
+}
+
+# Scan every root of the tree whose scripts/ is $1 for a credential-shaped
+# variable reaching jq's, curl's or a cloud CLI's argv. Prints one
+# "FAIL file:line: ..." line per hit to stdout; returns 1 if it found
+# anything, 0 if clean.
 #
 # Used for BOTH the real scan (rooted at the scripts/ tree resolved from
 # $HERE below) and the self-test below (against a throwaway fixture) --
 # the self-test is only proof of anything because it exercises this exact
 # function, not a reimplementation of its logic.
 scan_dir_for_argv_leaks() {
-    local dir="$1" label="$2" found=0 file rel lineno line hit varname
+    local dir="$1" label="$2" found=0 file rel lineno line hit varname root
+
+    # A root that yields no files fails rather than passing: a moved or renamed
+    # directory would otherwise turn this guard green by shrinking what it reads.
+    for root in $ROOTS; do
+        if [ "$(list_root "$dir" "$root" | tr -cd '\0' | wc -c)" -eq 0 ]; then
+            printf '  FAIL scan root %s (from %s) yields zero files\n' "$root" "$dir"
+            found=1
+        fi
+    done
 
     while IFS= read -r -d '' file; do
         rel="${label}/${file#"$dir"/}"
@@ -211,21 +238,7 @@ scan_dir_for_argv_leaks() {
                 "(${VALUE_FLAGS})(=|[[:space:]]+)\"?\\\$\\{?[A-Za-z_][A-Za-z0-9_]*" \
                 <<< "$line")
         done < <(grep -nE -- "(${VALUE_FLAGS})(=|[[:space:]])" "$file")
-    # Scan roots matter as much as the patterns. Rooted at scripts/ alone, this
-    # guard never saw .github/workflows or the per-stack scripts under opentofu/,
-    # both of which handle credentials -- which is how an ID-token request header
-    # on curl's argv reached main unnoticed.
-    #
-    # The first root is NOT maxdepth-1: every script under scripts/ used to sit
-    # at its top level, so a flat scan and a full one covered the same set. This
-    # PR splits scripts/ into subdirectories (scripts/ci/, scripts/ci/tests/, …)
-    # -- a maxdepth-1 scan silently stopped covering any of them, which is the
-    # same "guard passes over nothing" failure class this file exists to catch,
-    # just aimed at itself. A dedicated lib/ root is no longer needed either:
-    # scripts/lib/ is inside scripts/, so the recursive scan already reaches it.
-    done < <(find "$dir" -name '*.sh' -print0 2>/dev/null; \
-             find "$dir/../.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -print0 2>/dev/null; \
-             find "$dir/../opentofu" -name '*.sh' -print0 2>/dev/null)
+    done < <(for root in $ROOTS; do list_root "$dir" "$root"; done)
 
     return "$found"
 }
@@ -242,7 +255,12 @@ fail=0
 # "repo is clean".
 FIXTURE_DIR="$(mktemp -d -t no-secret-argv-fixture.XXXXXX)"
 trap 'rm -rf "$FIXTURE_DIR"' EXIT
-FIXTURE_FILE="$FIXTURE_DIR/planted-leak.sh"
+# The real tree's shape, with a clean file in each of the other two roots, so
+# the zero-files check passes here and cannot stand in for a finding.
+mkdir -p "$FIXTURE_DIR/scripts" "$FIXTURE_DIR/.github/workflows" "$FIXTURE_DIR/opentofu"
+echo 'echo ok' > "$FIXTURE_DIR/opentofu/clean.sh"
+echo 'on: push' > "$FIXTURE_DIR/.github/workflows/clean.yaml"
+FIXTURE_FILE="$FIXTURE_DIR/scripts/planted-leak.sh"
 {
     echo '#!/usr/bin/env bash'
     # Three clean lines -- must NOT be flagged. Assembled the same fragmented
@@ -270,7 +288,7 @@ FIXTURE_FILE="$FIXTURE_DIR/planted-leak.sh"
     printf 'gcloud sql users set-password u --%s=$%s\n' "password" "db_password"
 } > "$FIXTURE_FILE"
 
-fixture_output="$(scan_dir_for_argv_leaks "$FIXTURE_DIR" "planted-leak")"
+fixture_output="$(scan_dir_for_argv_leaks "$FIXTURE_DIR/scripts" "planted-leak")"
 fixture_rc=$?
 fixture_count="$(grep -c '^  FAIL' <<< "$fixture_output")"
 if [ "$fixture_rc" -eq 0 ]; then
@@ -315,7 +333,7 @@ if [ "$real_rc" -ne 0 ]; then
     echo "$real_output"
     fail=1
 else
-    echo "  ok   no scripts/*.sh passes a credential-shaped variable to jq --arg/--argjson, curl -H/--header, curl -u/--user, or a cloud CLI value flag"
+    echo "  ok   no *.sh under scripts/ or opentofu/, and no workflow, passes a credential-shaped variable to jq --arg/--argjson, curl -H/--header, curl -u/--user, or a cloud CLI value flag"
 fi
 
 exit "$fail"
