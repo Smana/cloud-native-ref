@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for check-substitution.py's undefined-variable gate.
 
-The first test harness any script in scripts/flux-schema/ has had.
+The first test harness any script in scripts/ci/flux-schema/ has had.
 render-bundle.py's `top_most_overlays` docstring cited a `test-flux-schema.sh`
 as "a safety net" pinning known nested cases; that file has never existed here.
 A docstring asserting protection that is absent reads as covered and nobody
@@ -13,7 +13,7 @@ so without these they rot silently: an extractor that returns an empty set on a
 changed file would report every variable as undefined, and one that skips the
 file would report every variable as fine. Both look like a working gate.
 
-Run: python3 scripts/flux-schema/test-check-substitution.py
+Run: python3 scripts/ci/tests/flux-schema/test-check-substitution.py
 """
 import importlib.util
 import pathlib

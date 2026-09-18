@@ -130,7 +130,7 @@ fi
 # `-H "X-Vault-Token: $TOKEN"` puts the OpenBao ROOT token in the process
 # table, where any local user's `ps` reads it -- on the single
 # highest-value credential in this design, in a script whose whole purpose is
-# to run during a deploy on a shared machine. scripts/test-no-secret-argv.sh
+# to run during a deploy on a shared machine. scripts/ci/tests/test-no-secret-argv.sh
 # catches exactly this and was failing on these two calls.
 #
 # Same construction as api() in zitadel-oidc-clients.sh: mode 600 by umask

@@ -415,7 +415,7 @@ check_openbao_status() {
 # --cli-input-json. Both branches also lose the old `2>&1`, so a failed write
 # now reaches the operator with the CLI's own error text -- the same reason
 # secret_read below does not use store_read.
-# scripts/test-no-secret-argv.sh greps for these value flags, so the old shape
+# scripts/ci/tests/test-no-secret-argv.sh greps for these value flags, so the old shape
 # cannot come back silently.
 # Usage: secret_write <name> <value>
 secret_write() {

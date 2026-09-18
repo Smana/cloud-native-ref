@@ -7,9 +7,9 @@ set -euo pipefail
 # ============================================================================
 # Purpose: Test Vector VRL configuration locally without deploying to cluster
 # Usage:
-#   ./scripts/test-vector-vrl.sh                    # Run all tests
-#   ./scripts/test-vector-vrl.sh --validate-only    # Only validate syntax
-#   ./scripts/test-vector-vrl.sh --test-only        # Only run unit tests
+#   ./scripts/ci/tests/test-vector-vrl.sh                    # Run all tests
+#   ./scripts/ci/tests/test-vector-vrl.sh --validate-only    # Only validate syntax
+#   ./scripts/ci/tests/test-vector-vrl.sh --test-only        # Only run unit tests
 # ============================================================================
 
 # Colors for output

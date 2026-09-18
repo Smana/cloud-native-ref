@@ -8,8 +8,8 @@
 # resolves link *targets* instead.
 #
 # Usage:
-#   ./scripts/validate-links.sh            # fail on any broken link not in the allowlist
-#   ./scripts/validate-links.sh --list     # print every broken link, exit 0 (for refreshing the allowlist)
+#   ./scripts/ci/validate-links.sh            # fail on any broken link not in the allowlist
+#   ./scripts/ci/validate-links.sh --list     # print every broken link, exit 0 (for refreshing the allowlist)
 #
 # Allowlist: .linkcheck-allow — one `<file><TAB><target>` per line, `#` comments allowed.
 # It exists so pre-existing breakage does not block unrelated work; entries should be

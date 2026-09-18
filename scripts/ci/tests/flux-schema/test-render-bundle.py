@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for render-bundle.py's `spec.valuesFrom` resolution.
 
-The second test harness in scripts/flux-schema/, and it exists for the same
+The second test harness in scripts/ci/flux-schema/, and it exists for the same
 reason as the first: `resolve_values` is what stands between the repo and a
 SILENT skip.
 
@@ -18,7 +18,7 @@ a Secret -- unresolvable by construction -- is named on every run rather than
 skipped. A `resolve_values` that returned `{}` and swallowed its notes would
 still render every chart, still pass every gate, and undo the whole fix.
 
-Run: python3 scripts/flux-schema/test-render-bundle.py
+Run: python3 scripts/ci/tests/flux-schema/test-render-bundle.py
 """
 import contextlib
 import importlib.util

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Vector VRL Configuration Validator
 # Tests Vector VRL transformations locally before deployment
-# Usage: ./scripts/validate-vector-vrl.sh
+# Usage: ./scripts/ci/validate-vector-vrl.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VRL_DIR="${SCRIPT_DIR}/tests/vector-vrl-tests"

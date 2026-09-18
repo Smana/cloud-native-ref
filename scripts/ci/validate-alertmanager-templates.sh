@@ -24,8 +24,8 @@
 # own timestamps. Everything else is byte-compared. See VOLATILE_FIELD below for
 # why keeping that half matters.
 #
-#   ./scripts/validate-alertmanager-templates.sh                 # check
-#   ./scripts/validate-alertmanager-templates.sh --update-golden # rewrite goldens
+#   ./scripts/ci/validate-alertmanager-templates.sh                 # check
+#   ./scripts/ci/validate-alertmanager-templates.sh --update-golden # rewrite goldens
 #
 # It also asserts two things that are NOT templates at all.
 #
@@ -56,7 +56,7 @@ MODE="${1:-check}"
 
 if [ ! -d "${BUNDLE_DIR}" ]; then
   echo "error: no bundle at ${BUNDLE_DIR}." >&2
-  echo "       Fix: ./scripts/validate-manifests.sh  (renders it), or set BUNDLE_DIR." >&2
+  echo "       Fix: ./scripts/ci/validate-manifests.sh  (renders it), or set BUNDLE_DIR." >&2
   exit 2
 fi
 

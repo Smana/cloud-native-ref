@@ -20,8 +20,8 @@
 # few lines of YAML.
 #
 # Usage:
-#   ./scripts/validate-doc-claims.sh          # fail on any violated claim
-#   ./scripts/validate-doc-claims.sh --list   # print every claim and its current value
+#   ./scripts/ci/validate-doc-claims.sh          # fail on any violated claim
+#   ./scripts/ci/validate-doc-claims.sh --list   # print every claim and its current value
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
