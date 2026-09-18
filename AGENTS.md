@@ -88,6 +88,7 @@ bootstrap. Read it before running anything destructive.
 ## Validating
 
 ```bash
+task check                              # every scripts/ci gate CI runs, in one command
 ./scripts/ci/validate-manifests.sh      # renders the repo as Flux would, then gates it
 ./scripts/ci/validate-vmrules.sh        # promtool over every repo-authored VMRule
 ./scripts/ci/validate-links.sh          # every relative Markdown link
