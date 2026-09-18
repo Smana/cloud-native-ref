@@ -323,7 +323,7 @@ Edit `templateFiles.ogenki.tmpl`, then:
 
 ```bash
 ./scripts/ci/validate-alertmanager-templates.sh --update-golden
-git diff scripts/alertmanager-fixtures/golden/   # read it — it IS the message
+git diff scripts/ci/tests/alertmanager-fixtures/golden/   # read it — it IS the message
 ./scripts/ci/validate-alertmanager-templates.sh
 ```
 

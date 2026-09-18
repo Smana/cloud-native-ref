@@ -3,7 +3,7 @@
 # verify-doc-paths.sh — assert that every repository path named in the docs site
 # still exists.
 #
-# scripts/validate-links.sh resolves Markdown *links*. It cannot see the far more
+# scripts/ci/validate-links.sh resolves Markdown *links*. It cannot see the far more
 # common failure in this repository's prose: a backticked path in running text
 # ("configured in `opentofu/aws/eks/configure/locals.tf`") that silently stops being
 # true after a refactor. This closes that gap, and is what makes the design's
@@ -17,8 +17,8 @@
 # `git add`, or a brand-new page passes without ever being checked.
 #
 # Usage:
-#   ./scripts/verify-doc-paths.sh          # fail on the first missing path
-#   ./scripts/verify-doc-paths.sh --list   # print every missing path, exit 0
+#   ./scripts/ci/verify-doc-paths.sh          # fail on the first missing path
+#   ./scripts/ci/verify-doc-paths.sh --list   # print every missing path, exit 0
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."

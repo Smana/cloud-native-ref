@@ -33,14 +33,14 @@ and fails on a `${var}` the cluster's ConfigMap does not define. Flux substitute
 there — schema-valid and silently wrong — so the bundle looks perfect either way. Details in
 `clusters/AGENTS.md`.
 
-Its two tests are `flux-schema/test-check-substitution.py` and `flux-schema/test-render-bundle.py`.
-The second pins `render-bundle.py`'s `spec.valuesFrom` resolution: six HelmReleases get most of
-their values that way, and a regression there does not break the build — it quietly shrinks what
-the build checks.
+Its two tests are `tests/flux-schema/test-check-substitution.py` and
+`tests/flux-schema/test-render-bundle.py`. The second pins `render-bundle.py`'s `spec.valuesFrom`
+resolution: six HelmReleases get most of their values that way, and a regression there does not
+break the build — it quietly shrinks what the build checks.
 
-Both run in CI as their own step **before** the render, because they test the scripts that do the
-rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
-manifest validation. Run them directly: `python3 scripts/ci/flux-schema/<file>`.
+Both run inside `task ci:test`, alongside the other suites, because they test the scripts that do
+the rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
+manifest validation. Run them directly: `python3 scripts/ci/tests/flux-schema/<file>`.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream

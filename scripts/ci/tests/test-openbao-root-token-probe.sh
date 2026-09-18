@@ -125,7 +125,7 @@ check "bao token lookup, nothing more" "token lookup" "$(cat "$TMP/bao.argv")"
 check "token reached bao by ENV"     "hvs.good" "$(cat "$TMP/bao.env")"
 
 echo "== the token never lands on bao's argv"
-# Same class of leak scripts/test-no-secret-argv.sh guards repo-wide: anything
+# Same class of leak scripts/ci/tests/test-no-secret-argv.sh guards repo-wide: anything
 # on argv is readable via /proc/<pid>/cmdline by any process on the box for as
 # long as the command runs. VAULT_TOKEN= as a command prefix keeps it in the
 # environment, which is per-process.

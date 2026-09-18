@@ -10,7 +10,7 @@ The VRL tests validate the Vector transformations used to parse CloudNativePG au
 
 - **`cnpg-auto-explain.vrl`**: VRL transformation for parsing CNPG auto_explain logs
 - **`test-samples.json`**: Test cases with input/expected output
-- **`../validate-vector-vrl.sh`**: Validation script (run locally or in CI)
+- **`../../validate-vector-vrl.sh`**: Validation script (run locally or in CI)
 
 ## Quick Start
 
@@ -23,7 +23,7 @@ The VRL tests validate the Vector transformations used to parse CloudNativePG au
 
 ```bash
 # From repository root
-./scripts/validate-vector-vrl.sh
+./scripts/ci/validate-vector-vrl.sh
 ```
 
 Expected output:
@@ -109,7 +109,7 @@ Add test cases to `test-samples.json`:
 ### 3. Run Validation
 
 ```bash
-./scripts/validate-vector-vrl.sh
+./scripts/ci/validate-vector-vrl.sh
 ```
 
 ### 4. Debug Failures
@@ -130,7 +130,7 @@ Once validation passes, update `observability/base/victoria-logs/helmrelease-vls
 ### 6. Commit
 
 ```bash
-git add scripts/vector-vrl-tests/ observability/base/victoria-logs/
+git add scripts/ci/tests/vector-vrl-tests/ observability/base/victoria-logs/
 git commit -m "feat(vector): improve CNPG log parsing"
 git push
 ```
@@ -233,9 +233,9 @@ Add to `.pre-commit-config.yaml`:
   hooks:
     - id: validate-vector-vrl
       name: Validate Vector VRL
-      entry: ./scripts/validate-vector-vrl.sh
+      entry: ./scripts/ci/validate-vector-vrl.sh
       language: script
-      files: '^(scripts/vector-vrl-tests/.*|observability/base/victoria-logs/helmrelease-vlsingle\.yaml)$'
+      files: '^(scripts/ci/tests/vector-vrl-tests/.*|observability/base/victoria-logs/helmrelease-vlsingle\.yaml)$'
       pass_filenames: false
 ```
 
@@ -249,7 +249,7 @@ validate-vrl:
   steps:
     - uses: actions/checkout@v4
     - name: Validate Vector VRL
-      run: ./scripts/validate-vector-vrl.sh
+      run: ./scripts/ci/validate-vector-vrl.sh
 ```
 
 ## Troubleshooting

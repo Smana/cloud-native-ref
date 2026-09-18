@@ -115,7 +115,7 @@ cd "$(dirname "$0")/../.."
 REPO_ROOT="$(pwd)"
 MODE="${1:-check}"
 
-# Resolution precedence matches scripts/flux-schema/preflight.sh: explicit
+# Resolution precedence matches scripts/ci/flux-schema/preflight.sh: explicit
 # override > mise scoped to this repo's mise.toml > bare PATH. A stale promtool
 # from some other install must not be picked up silently — the pin in mise.toml
 # is what makes "it parses" reproducible between a laptop and CI.
@@ -343,7 +343,7 @@ if failures:
         "vmalert would log a parse error and never evaluate the group, so the\n"
         "alert would silently never fire. Fix the expression.\n"
         "If the expression is deliberate MetricsQL, read the header of\n"
-        "scripts/validate-vmrules.sh — do not delete the gate."
+        "scripts/ci/validate-vmrules.sh — do not delete the gate."
         % len(failures)
     )
     sys.exit(1)
