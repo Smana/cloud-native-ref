@@ -103,8 +103,7 @@ check "headlamp-proxy: cookie secret preserved across runs" "$first_cookie" "$(j
 # the source distinguishes them, so that's what this checks, against the real
 # file rather than a restatement of it.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# The subject is still at scripts/ root; it moves to scripts/provision/ in the
-# provision phase, and this path moves with it.
+# The subject is still at scripts/ root. When it moves, this path moves with it.
 code_grep() { grep -n -- "$1" "$HERE/../../zitadel-oidc-clients.sh" | grep -v '^[0-9]\+:[[:space:]]*#' || true; }
 
 check "no existing-blob passed as jq --argjson"    "" "$(code_grep '--argjson[[:space:]]\+base\b')"

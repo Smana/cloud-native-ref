@@ -9,7 +9,7 @@ cd "$REPO_ROOT"
 # Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a too-old
 # flux client, instead of letting a stale binary earlier on PATH silently
 # misbehave. Exported so render-bundle.py (invoked below) picks them up.
-# shellcheck source=./flux-schema/preflight.sh
+# shellcheck source=scripts/ci/flux-schema/preflight.sh
 source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 fail=0
@@ -32,7 +32,7 @@ check() {
 
 echo "== gen-catalog =="
 rm -rf .schemas
-./scripts/flux-schema/gen-catalog.sh >/dev/null
+./scripts/ci/flux-schema/gen-catalog.sh >/dev/null
 
 for kind in app sqlinstance inferenceservice epi; do
   if [[ -f ".schemas/cloud.ogenki.io/${kind}_v1alpha1.json" ]]; then
@@ -69,7 +69,7 @@ EOF
 chmod +x "${stub_old_flux}"
 
 guard_status=0
-guard_out="$(FLUX_BIN="${stub_old_flux}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || guard_status=$?
+guard_out="$(FLUX_BIN="${stub_old_flux}" ./scripts/ci/flux-schema/gen-catalog.sh 2>&1)" || guard_status=$?
 rm -f "${stub_old_flux}"
 
 if [[ "${guard_status}" -ne 0 ]]; then
@@ -86,7 +86,7 @@ good_catalog_sum="$(find .schemas -type f -name '*.json' | sort | xargs sha256su
 # I2: an unresolvable toolchain override must fail before the on-disk
 # catalog is touched at all — not leave it emptied or half-built.
 broken_status=0
-broken_out="$(HELM_BIN=/nonexistent/helm ./scripts/flux-schema/gen-catalog.sh 2>&1)" || broken_status=$?
+broken_out="$(HELM_BIN=/nonexistent/helm ./scripts/ci/flux-schema/gen-catalog.sh 2>&1)" || broken_status=$?
 
 if [[ "${broken_status}" -ne 0 ]]; then
   echo "  PASS  gen-catalog.sh fails when HELM_BIN does not exist"
@@ -125,7 +125,7 @@ EOF
 chmod +x "${stub_empty_helm}"
 
 empty_status=0
-empty_out="$(HELM_BIN="${stub_empty_helm}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || empty_status=$?
+empty_out="$(HELM_BIN="${stub_empty_helm}" ./scripts/ci/flux-schema/gen-catalog.sh 2>&1)" || empty_status=$?
 rm -f "${stub_empty_helm}"
 
 if [[ "${empty_status}" -ne 0 ]]; then
@@ -146,7 +146,7 @@ fi
 
 echo "== render-bundle =="
 rm -rf .bundle
-render_out="$(python3 scripts/flux-schema/render-bundle.py .bundle)"
+render_out="$(python3 scripts/ci/flux-schema/render-bundle.py .bundle)"
 echo "${render_out}"
 
 check "renders with no failures" "failed=0" "${render_out}"

@@ -22,8 +22,7 @@
 # for why that run could not happen in this session, and what it still owes.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# The subject is still at scripts/ root; it moves to scripts/provision/ in the
-# provision phase, and this path moves with it.
+# The subject is still at scripts/ root. When it moves, this path moves with it.
 SCRIPT="$HERE/../../cnpg-promote-seed.sh"
 STUB="$(mktemp -d)"; FIX="$(mktemp -d)"
 trap 'rm -rf "$STUB" "$FIX"' EXIT

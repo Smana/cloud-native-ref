@@ -33,8 +33,7 @@ fail=0
 check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
           else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
 
-# The subject is still at scripts/ root; it moves to scripts/provision/ in the
-# provision phase, and this path moves with it.
+# The subject is still at scripts/ root. When it moves, this path moves with it.
 SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
 # BOTH halves. reconcile_workforce_audience calls reconcile_consumer_audience,
 # so lifting only the first gives exit 127 -- which is how this harness caught

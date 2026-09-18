@@ -17,9 +17,10 @@ HelmReleases it names are present in the rendered bundle — karpenter, envoy-ga
 envoy-ai-gateway, atlas-operator, vllm-semantic-router, flux-operator. That was checked directly
 before quarantining it.
 
-**How it got here:** nothing ever ran it. Three mentions in `ci.yaml` and all three are comments.
-`ci.yaml:406` called it a suite that "does not pass in a bare environment", which read as *needs
+**How it got here:** nothing ever ran it. The old `ci.yaml` mentioned it three times, all in
+comments, one calling it a suite that "does not pass in a bare environment", which read as *needs
 tooling* — it does not pass with the tooling either.
 
 **To revive it:** match the bundle files by glob rather than by exact name, and assert a non-zero
-match count so the repair cannot make the guard vacuous. Then move it back up one directory.
+match count so the repair cannot make the guard vacuous. Then move it up to `tests/` and correct its
+`REPO_ROOT` depth from `/../../../..` to `/../../..`.
