@@ -6,7 +6,7 @@ directly — none of them depend on the task runner.
 
 | Directory | Audience |
 |---|---|
-| `ci/` | the gates CI runs, and you before pushing. `task check` runs `ci:validate`, `ci:test` and `ci:links` |
+| `ci/` | the gates CI runs, and you before pushing. `task check` runs every one CI runs |
 | `ci/tests/` | suites `run.sh` discovers: `test-*.sh` here, `*/test-*.py` one level down. A `# requires:` tool that is absent, or an exit 77, reports `SKIP` |
 | `lib/` | sourced by the others, never run directly |
 
