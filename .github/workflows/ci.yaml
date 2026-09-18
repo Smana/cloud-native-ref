@@ -174,6 +174,11 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
+      # The test suites below need jq. Installed rather than assumed present on
+      # the runner image, for the same reason as pyyaml above.
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       # NOTE: there is no "Install Polaris" step. Polaris comes from mise.toml
       # along with every other tool, because the upstream setup-polaris action
       # cannot install any release newer than 8.5.0 — see the comment on the
@@ -192,16 +197,18 @@ jobs:
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
 
-      # Before the render, because these test the scripts that DO the render.
-      # A broken resolve_values does not fail validate-manifests.sh -- it
-      # quietly shrinks what that script checks, which no gate downstream can
-      # report. Kept as their own step rather than folded into
-      # validate-manifests.sh: that script's contract is manifest validation,
-      # and script unit tests do not belong inside it.
-      - name: Unit tests for the validation scripts
+      # Every suite run.sh discovers, before the render: some of them test the
+      # scripts that DO the render, and a broken resolve_values does not fail
+      # validate-manifests.sh -- it quietly shrinks what that script checks.
+      # Kept as their own step rather than folded into validate-manifests.sh,
+      # whose contract is manifest validation.
+      - name: Test suites
         run: task ci:test
 
+      # Runs even when a suite failed, so the manifest verdict is never hidden
+      # behind it. The job still fails.
       - name: Validate manifests (flux schema + polaris)
+        if: ${{ !cancelled() }}
         run: task ci:validate
 
   render-diff:
@@ -275,12 +282,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # jq comes along here rather than in its own step: the test suites below
-      # need it, and a second `apt-get update` in the same job is pure cost. It
-      # is installed rather than assumed present on the runner image, the same
-      # reason the links job installs pyyaml rather than assuming it.
-      - name: Install ShellCheck and jq
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run ShellCheck
         run: |
           # `-type l` as well as `-type f`, and it is load-bearing rather than

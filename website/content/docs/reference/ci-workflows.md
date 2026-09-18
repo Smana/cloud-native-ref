@@ -20,7 +20,7 @@ Branch protection on `main` requires these six contexts, and nothing else:
 |---|---|---|
 | **Pre-commit checks** 🛃 | Terraform hooks across every OpenTofu stack | ✅ |
 | **Security scanning** 🔒 | Trivy, Checkov, TruffleHog → SARIF | ✅ |
-| **Kubernetes validation** ☸ | `./scripts/ci/validate-manifests.sh` | ✅ |
+| **Kubernetes validation** ☸ | every test suite (`task ci:test`), then `./scripts/ci/validate-manifests.sh` (`task ci:validate`) | ✅ |
 | **Rendered manifest diff** 📝 | renders head vs merge-base, posts a PR comment | ✅ the *job* must succeed; the diff's **content** never fails it |
 | **Check the shell scripts** 💻 | `shellcheck -x -S warning` over `scripts/**/*.sh` | ✅ |
 | **Check the documentation links** 🔗 | `./scripts/ci/validate-links.sh`, then `./scripts/ci/validate-doc-claims.sh` | ✅ |
@@ -139,10 +139,15 @@ Three scanners, all uploading SARIF to the GitHub Security tab:
 
 ### `kubernetes-validation` ☸
 
-The hard manifest gate — `./scripts/ci/validate-manifests.sh`. It renders the
-repository the way Flux does (every Kustomize overlay with its `postBuild`
-vars substituted, every `HelmRelease` through `helm template` with its own
-values and `postRenderers`), then applies two gates to the *rendered* output:
+First `task ci:test`, which runs every suite `scripts/ci/tests/run.sh`
+discovers and fails the job on any failing suite. The manifest gate runs even
+then, so a failing suite never hides its verdict.
+
+Then the hard manifest gate — `./scripts/ci/validate-manifests.sh`, as
+`task ci:validate`. It renders the repository the way Flux does (every
+Kustomize overlay with its `postBuild` vars substituted, every `HelmRelease`
+through `helm template` with its own values and `postRenderers`), then applies
+two gates to the *rendered* output:
 `flux schema validate` with `skipMissingSchemas: false`, so an unknown Kind
 fails the build rather than being skipped, and `polaris audit`. See
 [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}) for why
