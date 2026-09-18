@@ -28,7 +28,7 @@ never become a dependency of them.
 
 ## Decision
 
-go-task v3, as a lowercase `taskfile.yaml` at the root that includes `scripts/taskfile.yaml` under
+go-task v3, as a lowercase `taskfile.yaml` at the root that includes `scripts/tasks.yaml` under
 the `ci:` namespace. It is pinned in `mise.toml` as `task = "3"`, so the `jdx/mise-action` every
 CI job already runs installs it with no new action.
 

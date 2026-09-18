@@ -2,7 +2,7 @@ version: "3"
 
 includes:
   ci:
-    taskfile: scripts/taskfile.yaml
+    taskfile: scripts/tasks.yaml
     dir: .
 
 tasks:
