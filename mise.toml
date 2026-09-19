@@ -48,7 +48,7 @@ helm = "4.3.0"
 # it follows the rename; it also verifies GitHub attestations and SLSA
 # provenance on install, which the action did not. (`ubi:` also works but mise
 # now deprecates it in favour of `github:`.)
-"github:FairwindsOps/polaris" = "10.2.4"
+"github:FairwindsOps/polaris" = "10.2.5"
 
 # promtool parses the PromQL inside every repo-authored VMRule
 # (scripts/validate-vmrules.sh). Pinned, not `latest`: the PromQL parser IS the
