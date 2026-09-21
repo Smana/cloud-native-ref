@@ -1,7 +1,10 @@
 version: "3"
 
 # The three helpers beside teardown.sh are not indexed: terramate destroy
-# scripts call them. teardown.sh is the entry point.
+# scripts call them. teardown.sh is the entry point. k8s/reclaim-csi-volumes.sh
+# is the same kind of destroy-time helper -- gke destroy and
+# eks-prepare-destroy.sh call it -- and is excluded for the same reason: no
+# prompt, and it deletes every PVC and CNPG cluster in the current context.
 tasks:
   teardown:
     desc: Tear the platform down — destroy past failures, sweep controller orphans, retry, verify against the cloud
@@ -30,9 +33,6 @@ tasks:
   gcp:sweep-orphaned-disks:
     desc: Delete Persistent Disks GKE's CSI driver created that nothing uses
     cmds: ["{{.TASKFILE_DIR}}/gcp/sweep-orphaned-disks.sh {{.CLI_ARGS}}"]
-  k8s:reclaim-csi-volumes:
-    desc: Reclaim CSI-provisioned volumes before a cluster destroy (cloud-neutral)
-    cmds: ["{{.TASKFILE_DIR}}/k8s/reclaim-csi-volumes.sh {{.CLI_ARGS}}"]
   k8s:cnpg-prepare-restore:
     desc: Clear a CNPG cluster's live WAL archive so a new cluster can start (off the normal path)
     cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-prepare-restore.sh {{.CLI_ARGS}}"]
