@@ -14,6 +14,5 @@ directly — none of them depend on the task runner.
 | `docs/` | docs-site generators, run by hand. `build-og-card.html` opens in a browser |
 | `lib/` | sourced by the others, never run directly |
 
-Apply-time provisioning scripts move to `provision/` in a later phase. Most still sit at the root
-of `scripts/`; `eks-recycle-bootstrap-nodes.sh` and `adopt-workforce-pool.sh` already moved to
-`ops/`, since they also run on every deploy.
+Apply-time provisioning scripts still sit at the root of `scripts/`; they move to `provision/` in
+a later phase.
