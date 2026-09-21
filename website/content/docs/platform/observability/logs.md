@@ -98,7 +98,7 @@ queries that silently return nothing, not an error:
 Watches Kubernetes Events cluster-wide (`clusterName: "${cluster_name}"` tag)
 and pushes every event to the deployed vlsingle's Loki-compatible endpoint —
 `victoria-logs-victoria-logs-single-server` on port 9428
-(`observability/base/kubernetes-event-exporter/configmap.yaml`). That is
+(`observability/base/kubernetes-event-exporter/config.yaml`). That is
 the **only** path events take, and it works as of 2026-08-29.
 
 Both halves of that sentence earn their date. From 2025-08-23 to 2026-08-29
@@ -112,11 +112,11 @@ was never a fallback (if the informer stops, no receiver gets anything). The
 exporter's own operational logs are structured now as well
 (`logFormat: json`, `logLevel: info`).
 
-Its metrics are real for the first time: `metrics.enabled: true` — it was
-`false`, silently discarding the `serviceMonitor.enabled: true` nested under
-it — with a `ServiceMonitor` in `observability` and one repaired alert,
-`KubernetesEventExporterWatchErrors` (`severity: warning`, sustained
-`rate > 0` for 15m), authored as a standalone `VMRule`
+Its metrics are real for the first time: the old chart's `metrics.enabled: false`
+silently discarded the `serviceMonitor.enabled: true` nested under it, so nothing
+ever scraped it. A `ServiceMonitor` now ships directly in `observability`, plus
+one repaired alert, `KubernetesEventExporterWatchErrors` (`severity: warning`,
+sustained `rate > 0` for 15m), authored as a standalone `VMRule`
 (`observability/base/kubernetes-event-exporter/vmrule.yaml`) like every other
 alert in this repository. The alert's message
 deliberately names no namespace: the fork registers `WatchErrors` as a
