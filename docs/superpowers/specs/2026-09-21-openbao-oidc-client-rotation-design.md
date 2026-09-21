@@ -27,7 +27,7 @@ Paths below predate PR #2061 in one respect: test suites now live under `scripts
 | 4 | `aws/eks/init` runs `after` `aws/openbao/management` | `stack.tm.hcl`, `terramate list --run-order` |
 | 5 | The workaround changes **two** resources: the backend (id and secret) **and** the role's `bound_audiences`. Writing only `auth/oidc/config` leaves logins failing on audience | `oidc.tf:160` |
 | 6 | In OpenBao v2.6.2, a config write **replaces** the whole config (only `namespace_in_state` is kept) and validates discovery, failing without `skip_jwks_validation`. A read returns every field except `oidc_client_secret`, plus `status` | `openbao@v2.6.2 builtin/credential/jwt/path_config.go` |
-| 7 | Role writes **merge**; omitted fields stay as they are | `path_role.go` |
+| 7 | Role writes **merge**, except four fields that reset to their defaults when omitted: `role_type`, `bound_claims_type`, `callback_mode` and `oidc_disable_confirmation`. The reconcile sends `role_type`, and `oidc.tf` sets none of the other three | `openbao@v2.6.2 path_role.go` |
 | 8 | The vault provider **never refreshes `oidc_client_secret`**. B without `ignore_changes` makes the next management apply plan a secret write, which fails discovery while ZITADEL is down | `terraform-provider-vault vault/resource_jwt_auth_backend.go` |
 | 9 | Precedent for "Terraform creates, the script rotates": `reconcile_workforce_audience`, paired with `ignore_changes = [oidc[0].client_id]` | `opentofu/gcp/workforce-identity/main.tf:75-81` |
 | 10 | The churn comes from the ZITADEL database restoring from a **frozen seed** that predates the `openbao` app, so every rebuild creates a new app with a new id | `scripts/cnpg-promote-seed.sh` |

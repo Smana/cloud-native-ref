@@ -810,9 +810,9 @@ openbao_oidc_config_payload() {
     jq -n '
         input as $cfg | input as $s |
         if (($cfg.provider_config // {}) | length) > 0 then
-            "openbao: auth/oidc/config has a provider_config, whose sensitive keys a read strips; not writing it back\n" | halt_error(1)
+            "[FAILED ] openbao -- auth/oidc/config has a provider_config, whose sensitive keys a read strips; not writing it back\n" | halt_error(1)
         elif ($s.client_id // "") == "" or ($s.client_secret // "") == "" then
-            "openbao: the store payload has no client_id or client_secret\n" | halt_error(1)
+            "[FAILED ] openbao -- the store payload has no client_id or client_secret\n" | halt_error(1)
         else
             ($cfg | del(.status)) + {oidc_client_id: $s.client_id, oidc_client_secret: $s.client_secret}
         end' || return 1
@@ -841,7 +841,13 @@ reconcile_openbao_oidc() {
     local payload body out
 
     [ -n "${OPENBAO_URL:-}" ] || exit 0
+    # A dry run of a create has no client id yet. Under --apply the consumer loop
+    # always yields one, so its absence is a wiring bug, not a skip.
     if [ -z "$key" ] || [ -z "$want_id" ]; then
+        if [ "${APPLY:-false}" = "true" ]; then
+            echo "[FAILED ] openbao -- called without a store key or client id (key '${key}', id '${want_id}')" >&2
+            exit 1
+        fi
         echo "[skip   ] openbao -- no client id from ZITADEL this run"
         exit 0
     fi
@@ -878,18 +884,24 @@ reconcile_openbao_oidc() {
         exit 1
     fi
 
-    # An unreadable mount list is not "no mount": skipping on it would pass a
-    # stale client off as a first bootstrap.
-    if ! auth_json="$(openbao_req GET sys/auth 2>&1)" \
-        || ! mount="$(jq -r '(.data // .) | has("oidc/")' <<< "$auth_json")"; then
+    # Only a mount map that lacks oidc/ means "no mount". An error, an empty body,
+    # `null` or `{}` says nothing, and skipping on it would pass a stale client
+    # off as a first bootstrap.
+    if ! auth_json="$(openbao_req GET sys/auth 2>&1)"; then
         echo "[FAILED ] openbao -- cannot list the auth mounts at ${OPENBAO_URL}: ${auth_json}" >&2
         exit 1
     fi
-    if [ "$mount" != "true" ]; then
-        echo "[skip   ] openbao -- no oidc/ auth mount yet. First bootstrap: with ZITADEL up, apply the management stack once:"
-        echo "           terramate -C opentofu/aws/openbao/management script run deploy"
-        exit 0
-    fi
+    mount="$(jq -r '.data | objects | has("oidc/")' <<< "$auth_json" 2>/dev/null)" || mount=""
+    case "$mount" in
+        true) ;;
+        false)
+            echo "[skip   ] openbao -- no oidc/ auth mount yet. First bootstrap: with ZITADEL up, apply the management stack once:"
+            echo "           terramate -C opentofu/aws/openbao/management script run deploy"
+            exit 0 ;;
+        *)
+            echo "[FAILED ] openbao -- no auth mount map from ${OPENBAO_URL}/v1/sys/auth: ${auth_json:-<empty body>}" >&2
+            exit 1 ;;
+    esac
 
     want_aud="$(jq -cn --arg id "$want_id" '[$id]')" || exit 1
     # Both reads, for the comparison now and for the read-back after the writes.
@@ -934,11 +946,16 @@ reconcile_openbao_oidc() {
     fi
 
     if [ "$need_role" = true ]; then
-        # Partial: a role write merges (fact 7), so the fields Terraform owns
-        # stay as they are.
+        # Partial: a role write merges (fact 7), except for four fields that an
+        # omission resets. role_type is sent; oidc.tf leaves bound_claims_type,
+        # callback_mode and oidc_disable_confirmation at those same defaults.
         body="$(jq -cn --arg id "$want_id" '{role_type: "oidc", bound_audiences: [$id]}')" || exit 1
         if ! out="$(printf '%s' "$body" | openbao_req POST "auth/oidc/role/${role}" --data-binary @- 2>&1)"; then
             echo "[FAILED ] openbao -- auth/oidc/role/${role} not written: ${out}" >&2
+            if [ "$need_cfg" = true ]; then
+                echo "           The config has already moved to client ${want_id}, so logins fail on" >&2
+                echo "           audience until the role follows. Re-running sync --apply finishes it." >&2
+            fi
             exit 1
         fi
         echo "[reconciled] openbao -- auth/oidc/role/${role} bound_audiences ${have_aud} -> ${want_aud}"

@@ -20,8 +20,9 @@
 # functions: a function is bypassed by `command curl` or `env curl`, and a jq
 # wrapper that logs argv before exec-ing the real jq is what proves the client
 # secret reached jq on stdin rather than through --arg. The curl stub is a
-# small fake OpenBao: a config write replaces, a role write merges, and a read
-# drops the secret and adds `status` (design facts 6 and 7).
+# small fake OpenBao: a config write replaces; a role write merges, except four
+# fields an omission resets; a read drops the secret and adds `status` (design
+# facts 6 and 7).
 #
 # APPLY and the OPENBAO_* globals are read only by function bodies lifted out
 # of the script with sed, which shellcheck cannot see through.
@@ -139,9 +140,12 @@ case "$method $path" in
     "GET auth/oidc/config")       "$REAL_JQ" -c '{data: (del(.oidc_client_secret) + {status: "valid"})}' "$st/config.json" ;;
     "GET auth/oidc/role/default") "$REAL_JQ" -c '{data: .}' "$st/role.json" ;;
     "POST auth/oidc/config")      [ -e "$st/ignore_writes" ] || cp "$body" "$st/config.json" ;;
+    # OpenBao v2.6.2 path_role.go: omitting any of these four resets it.
     "POST auth/oidc/role/default")
         if [ ! -e "$st/ignore_writes" ]; then
-            "$REAL_JQ" -s '.[0] + .[1]' "$st/role.json" "$body" > "$st/role.new" && mv "$st/role.new" "$st/role.json"
+            "$REAL_JQ" -s '.[0] + {role_type: "oidc", bound_claims_type: "string", callback_mode: "client",
+                                  oidc_disable_confirmation: false} + .[1]' \
+                "$st/role.json" "$body" > "$st/role.new" && mv "$st/role.new" "$st/role.json"
         fi ;;
 esac
 exit 0
@@ -320,11 +324,14 @@ for f in openbao_oidc_config_payload reconcile_openbao_oidc; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     if [ -n "$body" ]; then
         eval "$body"
+        printf '%s\n' "$body" >> "$WORK/lifted.sh"
     else
         echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC"; fail=1
         eval "${f}() { return 127; }"
     fi
 done
+# The reconcile pipes the payload, and with it the secret, through printf.
+check "the reconcile calls printf only as the builtin" "" "$(printf_not_builtin "$WORK/lifted.sh")"
 
 # The store, file-backed: the reconcile runs in a subshell, so an in-memory
 # stub could not count reads across the retry. <key>.stale_reads makes the
@@ -366,7 +373,7 @@ BAO_CONFIG="$(rjq -cn --arg iss "$IDP" --arg id "$OLD_ID" --arg prev "OLD-SECRET
     oidc_client_secret: $prev, default_role: "default", bound_issuer: $iss,
     namespace_in_state: true, provider_config: {}, jwks_url: "", jwks_ca_pem: "",
     jwt_validation_pubkeys: [], jwt_supported_algs: [], oidc_response_mode: "",
-    oidc_response_types: []}')"
+    oidc_response_types: [], override_allowed_server_names: []}')"
 
 # The rebuild: ZITADEL issued NEW_ID and the store holds it. $1 and $2 are the
 # ids OpenBao's config and role still hold (default OLD_ID).
@@ -378,6 +385,7 @@ world() {
     rjq -c --arg id "${1:-$OLD_ID}" '.oidc_client_id = $id' <<< "$BAO_CONFIG" > "$CURL_STATE/config.json"
     rjq -cn --arg id "${2:-$OLD_ID}" --arg cb "$BAO_URL/ui/vault/auth/oidc/oidc/callback" '{
         role_type: "oidc", bound_audiences: [$id], user_claim: "email", groups_claim: "groups",
+        bound_claims_type: "string", callback_mode: "client", oidc_disable_confirmation: false,
         oidc_scopes: ["profile","email","groups"], token_ttl: 3600,
         allowed_redirect_uris: [$cb, "http://localhost:8250/oidc/callback"]}' > "$CURL_STATE/role.json"
     store_put "$KEY" "$(printf '{"client_id":"%s","client_secret":"%s","endpoint":"%s"}' "$NEW_ID" "$CS" "$IDP")"
@@ -390,7 +398,8 @@ fail_next() { # METHOD path count [error body]
     echo "$3" > "$k.count"
     printf '%s' "$body" > "$k.body"
 }
-DISCOVERY_ERROR='{"errors":["error checking oidc discovery URL: Get \"https://auth.cloud.ogenki.io/.well-known/openid-configuration\": EOF"]}'
+# Exactly what the server sends: no detail after the message.
+DISCOVERY_ERROR='{"errors":["error checking oidc discovery URL"]}'
 recon() { out="$(reconcile_openbao_oidc "$@" 2>&1)"; rc=$?; }
 reqs()      { awk '$1 == "REQ:" { print $3 " " $4 }' "$CURL_LOG"; }
 posts()     { reqs | grep '^POST' || true; }
@@ -426,6 +435,9 @@ payload="$(printf '%s\n%s\n' "$(rjq -c '.provider_config = {provider: "gsuite"}'
 rc=$?
 check "a non-empty provider_config: returns 1" "1" "$rc"
 check "a non-empty provider_config: emits nothing" "" "$payload"
+err="$(printf '%s\n%s\n' "$(rjq -c '.provider_config = {provider: "gsuite"}' <<< "$cfg_in")" "$store_in" \
+       | openbao_oidc_config_payload 2>&1 >/dev/null)"
+contains "$err" "[FAILED ]" "a non-empty provider_config: says [FAILED ]"
 
 payload="$(printf '%s\n%s\n' "$(rjq -c 'del(.provider_config)' <<< "$cfg_in")" "$store_in" | openbao_oidc_config_payload)"
 check "no provider_config at all: merges" "new" "$(rjq -r '.oidc_client_id' <<< "$payload" 2>/dev/null)"
@@ -433,6 +445,8 @@ check "no provider_config at all: merges" "new" "$(rjq -r '.oidc_client_id' <<< 
 payload="$(printf '%s\n%s\n' "$cfg_in" '{"client_id":"new","client_secret":""}' | openbao_oidc_config_payload 2>/dev/null)"
 rc=$?
 check "an empty secret: returns 1, so no config is written without one" "1" "$rc"
+err="$(printf '%s\n%s\n' "$cfg_in" '{"client_id":"new","client_secret":""}' | openbao_oidc_config_payload 2>&1 >/dev/null)"
+contains "$err" "[FAILED ]" "an empty secret: says [FAILED ]"
 
 echo
 echo "-- no-op paths --"
@@ -442,15 +456,23 @@ check "no URL: says nothing"       ""  "$out"
 check "no URL: no OpenBao call"    ""  "$(reqs)"
 check "no URL: no store call"      ""  "$(cat "$STORE/calls.log")"
 
-world; recon "" "$NEW_ID"
-check "no store key: returns 0"       "0" "$rc"
-contains "$out" "[skip   ]"           "no store key: says [skip   ]"
-check "no store key: no OpenBao call" ""  "$(reqs)"
-
+# A dry run of a create has no client id yet. Under --apply the loop always
+# yields one, so a missing one is a wiring bug, and must not pass as a skip.
+world; APPLY=false; recon "" "$NEW_ID"
+check "dry run, no store key: returns 0"       "0" "$rc"
+contains "$out" "[skip   ]"                    "dry run, no store key: says [skip   ]"
+check "dry run, no store key: no OpenBao call" ""  "$(reqs)"
+world; APPLY=false; recon "$KEY" ""
+check "dry run, no client id: returns 0"       "0" "$rc"
+contains "$out" "[skip   ]"                    "dry run, no client id: says [skip   ]"
+check "dry run, no client id: no OpenBao call" ""  "$(reqs)"
 world; recon "$KEY" ""
-check "no client id: returns 0"       "0" "$rc"
-contains "$out" "[skip   ]"           "no client id: says [skip   ]"
-check "no client id: no OpenBao call" ""  "$(reqs)"
+check "apply, no client id: returns 1"         "1" "$rc"
+contains "$out" "[FAILED ]"                    "apply, no client id: says [FAILED ]"
+check "apply, no client id: no OpenBao call"   ""  "$(reqs)"
+world; recon "" "$NEW_ID"
+check "apply, no store key: returns 1"         "1" "$rc"
+contains "$out" "[FAILED ]"                    "apply, no store key: says [FAILED ]"
 
 world; rm -f "$(store_file "$KEY")"; recon "$KEY" "$NEW_ID"
 check "key not in the store: returns 0"       "0" "$rc"
@@ -462,6 +484,17 @@ check "no oidc/ mount: returns 0"                 "0" "$rc"
 contains "$out" "[skip   ]"                       "no oidc/ mount: says [skip   ]"
 contains "$out" "opentofu/aws/openbao/management" "no oidc/ mount: names the management apply"
 check "no oidc/ mount: only lists the mounts"     "GET sys/auth" "$(reqs)"
+
+# A 200 that is not a mount map says nothing about the mount. Reading it as "no
+# oidc/" would report a stale client as a first bootstrap.
+for resp in "" "null" "{}"; do
+    world; printf '%s' "$resp" > "$CURL_STATE/sys_auth.json"; recon "$KEY" "$NEW_ID"
+    label="sys/auth answers ${resp:-an empty body}"
+    check "${label}: returns 1"            "1" "$rc"
+    contains "$out" "[FAILED ]"            "${label}: says [FAILED ]"
+    absent "$out" "[skip   ]"              "${label}: never says [skip   ]"
+    check "${label}: no write"             ""  "$(posts)"
+done
 
 echo
 echo "-- idempotency --"
@@ -624,6 +657,7 @@ check "an unreadable role: returns 1"   "1" "$rc"
 check "an unreadable role: no write"    ""  "$(posts)"
 world; rjq -c '.provider_config = {provider: "gsuite"}' <<< "$BAO_CONFIG" > "$CURL_STATE/config.json"; recon "$KEY" "$NEW_ID"
 check "a provider_config: returns 1"    "1" "$rc"
+contains "$out" "[FAILED ]"             "a provider_config: says [FAILED ]"
 check "a provider_config: no write"     ""  "$(posts)"
 
 echo
@@ -631,6 +665,15 @@ echo "-- the role write, and the read-back --"
 world; fail_next POST auth/oidc/role/default 1; recon "$KEY" "$NEW_ID"
 check "role write refused: returns 1"   "1" "$rc"
 contains "$out" "[FAILED ]"             "role write refused: says [FAILED ]"
+check "role write refused: the config's [reconciled] line comes first" "yes" \
+    "$(awk '/^\[reconciled\] openbao -- auth\/oidc\/config/ { c = NR }
+            /^\[FAILED \] openbao -- auth\/oidc\/role/     { f = NR }
+            END { print (c && f && c < f) ? "yes" : "no" }' <<< "$out")"
+contains "$out" "config has already moved" "role write refused: says the config has already moved"
+contains "$out" "sync --apply"          "role write refused: says re-running sync --apply finishes it"
+world "$NEW_ID" "$OLD_ID"; fail_next POST auth/oidc/role/default 1; recon "$KEY" "$NEW_ID"
+check "only the role, refused: returns 1" "1" "$rc"
+absent "$out" "already moved"           "only the role, refused: claims no config move"
 world; touch "$CURL_STATE/ignore_writes"; recon "$KEY" "$NEW_ID"
 check "writes that do not stick: returns 1" "1" "$rc"
 contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED ]"
