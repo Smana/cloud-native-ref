@@ -2,11 +2,14 @@
 # requires:
 #
 # Two things break silently when a script moves, and neither is an external
-# reference. The "/.." depth it uses to reach the repo root: a wrong count makes
-# `cd` SUCCEED at the wrong directory, so every relative path after it is quietly
-# wrong. And the relative path it sources a library, or reaches its test subject,
-# through. Six of the nine lib/-sourcing scripts run during a terramate apply, so
-# that failure lands mid-deploy with no CI gate in front of it.
+# reference. The "/.." depth it uses: to reach the repo root, or to reach a
+# sibling path (an exec target, a sourced file). A wrong count makes `cd`
+# SUCCEED at the wrong directory, or makes an exec/source target resolve to
+# nothing -- either way quietly. Root climbs are checked against two markers;
+# sibling climbs are checked for existence. And the relative path it sources a
+# library, or reaches its test subject, through. Six of the nine
+# lib/-sourcing scripts run during a terramate apply, so that failure lands
+# mid-deploy with no CI gate in front of it.
 #
 # SCRIPT_PATHS_ROOT exists so this suite can be aimed at a fixture tree and
 # proved to fail. Without a negative case a green gate means nothing.
@@ -20,7 +23,7 @@ REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 SCRIPTS="${SCRIPT_PATHS_ROOT:-$REPO_ROOT/scripts}"
 MARKER_ROOT="$(cd "$SCRIPTS/.." && pwd)"
 
-fails=0 n_roots=0 n_sources=0 n_subjects=0
+fails=0 n_roots=0 n_rels=0 n_sources=0 n_subjects=0
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; fails=$((fails + 1)); }
 rel()  { printf '%s' "${1#"$MARKER_ROOT"/}"; }
@@ -49,10 +52,27 @@ while IFS= read -r script; do
 
   dir="$(cd "$(dirname "$script")" && pwd)"
 
-  # 1. Self-resolved repo roots.
+  # 1. Self-resolved paths: a repo-root climb, or a climb into a sibling path.
+  #
+  # The "/.." run alone does not say which: `cd "$(dirname "$0")/.."` climbs to
+  # the root, but `"$(dirname "$0")/../k8s/x.sh"` climbs to a SIBLING directory
+  # and was never meant to land on the root at all. Classify by what follows
+  # the climb: a named path segment means "sibling" (checked for existence,
+  # since it is not the repo root by design); anything else -- the climb ends
+  # the path, or a variable follows it -- means "root" (checked against the two
+  # markers, which fails loudly on a variable it cannot resolve).
   while IFS=: read -r lineno line; do
     ups="$(printf '%s' "$line" | grep -oE '(/\.\.)+' | head -1)"
     [ -n "$ups" ] || continue
+    after="${line#*"$ups"}"
+    case "$after" in
+      /[A-Za-z0-9_]*)
+        seg="$(printf '%s' "$after" | grep -oE '^(/[A-Za-z0-9._-]+)+')"
+        n_rels=$((n_rels + 1))
+        [ -e "$dir$ups$seg" ] \
+          || fail "$(rel "$script"):$lineno — reaches a missing path: $dir$ups$seg"
+        continue ;;
+    esac
     n_roots=$((n_roots + 1))
     if ! resolved="$(cd "$dir$ups" 2>/dev/null && pwd)"; then
       fail "$(rel "$script"):$lineno — '$dir$ups' resolves nowhere"
@@ -97,8 +117,8 @@ while IFS= read -r script; do
 
 done < <(find "$SCRIPTS" \( -type f -o -type l \) -name '*.sh' | sort)
 
-printf '%d roots, %d sources, %d subjects checked; %d failed\n' \
-  "$n_roots" "$n_sources" "$n_subjects" "$fails"
+printf '%d roots, %d relative paths, %d sources, %d subjects checked; %d failed\n' \
+  "$n_roots" "$n_rels" "$n_sources" "$n_subjects" "$fails"
 
 # A gate that checked nothing has not passed. 20 sources is the floor measured
 # when this gate was written (21 at the time). Below it, suspect a broken
