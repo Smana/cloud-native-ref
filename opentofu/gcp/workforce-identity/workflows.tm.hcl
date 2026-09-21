@@ -25,6 +25,8 @@
 # (sync_deployment / sync_preview), which are command-level annotations that do
 # not compose with a single bash heredoc. Accepted while the gate is temporary;
 # removing the gate restores the global scripts and their cloud sync.
+# `drift detect` reports drift via a banner instead of `sync_drift_status`, and
+# still finishes the walk.
 
 script "deploy" {
   name        = "GCP Workforce Identity Deployment (opt-in)"
@@ -82,7 +84,9 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
-        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
+        rc=0
+        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' || rc=$?
+        ${global.drift_verdict}
       BASH
       ],
     ]

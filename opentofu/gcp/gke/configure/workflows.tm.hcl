@@ -218,10 +218,12 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
+        rc=0
         # deploy_identity_provider is passed here too, unlike the version vars:
         # without it drift compares against the variable's default (false) and
         # reports a difference that does not exist whenever GCP is primary.
-        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
+        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' || rc=$?
+        ${global.drift_verdict}
       BASH
       ],
     ]

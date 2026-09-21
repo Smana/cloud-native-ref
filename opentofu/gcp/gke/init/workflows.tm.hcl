@@ -548,7 +548,9 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
-        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+        rc=0
+        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars || rc=$?
+        ${global.drift_verdict}
       BASH
       ],
     ]
