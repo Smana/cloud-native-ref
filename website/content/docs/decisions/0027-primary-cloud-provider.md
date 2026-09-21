@@ -98,7 +98,7 @@ about the handful of things that cannot be two.
 `primary_cloud` in `opentofu/config.tm.hcl`. The OpenTofu gate that decides
 whether a cluster hosts ZITADEL is derived from it at every invocation site; the
 Flux gate, which cannot be derived because Flux never sees Terramate globals, is
-checked against it by `./scripts/validate-idp-topology.sh` in CI. The third state
+checked against it by `./scripts/ci/validate-idp-topology.sh` in CI. The third state
 this record rules out — two clouds each hosting a singleton — now fails a
 required check rather than depending on someone remembering the rule.
 

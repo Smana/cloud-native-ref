@@ -172,7 +172,7 @@ Two traps bind anyone editing that block:
   template calling one fails to execute, and Alertmanager then drops the
   notification silently.
 
-`./scripts/validate-alertmanager-templates.sh` renders every templated string in
+`./scripts/ci/validate-alertmanager-templates.sh` renders every templated string in
 every rendered receiver against the fixtures, checks each rendered Alertmanager
 config with `amtool check-config`, and asserts every VMAlert carries an absolute
 `external.url`.

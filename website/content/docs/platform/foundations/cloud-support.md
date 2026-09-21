@@ -233,7 +233,7 @@ Placement has two halves, and only one of them is typed:
 
 Gate 1 cannot disagree with the declaration, because it is the declaration.
 Gate 2 is committed Flux state — Flux never reads Terramate globals — so it is
-verified instead, by `./scripts/validate-idp-topology.sh` in CI. Changing which
+verified instead, by `./scripts/ci/validate-idp-topology.sh` in CI. Changing which
 cloud hosts is a [migration]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}),
 not a toggle: the database seed, admin credential and OIDC clients travel with
 it.

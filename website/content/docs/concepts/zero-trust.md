@@ -55,7 +55,7 @@ The distinction that matters is between a rule written down and a rule that
 fails a build. In this repository:
 
 - Kyverno rejects non-compliant workloads at admission
-- `./scripts/validate-manifests.sh` audits the *rendered* bundle for
+- `./scripts/ci/validate-manifests.sh` audits the *rendered* bundle for
   privilege escalation, capabilities and image tags before anything merges
 - the `App` composition emits the security context rather than trusting
   each author to include it

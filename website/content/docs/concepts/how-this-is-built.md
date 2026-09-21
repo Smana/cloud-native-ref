@@ -65,10 +65,10 @@ enforcement here:
 
 | Gate | What it catches |
 |---|---|
-| `./scripts/validate-manifests.sh` | Renders every overlay and HelmRelease as Flux would, then validates structure and CEL against the repo's own XRDs, and audits the rendered bundle with Polaris |
-| `./scripts/validate-links.sh` | Every relative Markdown link in the repository, resolved rather than grepped |
-| `./scripts/validate-doc-claims.sh` | Pinned prose claims still match the configuration they describe — sources and patterns in `.doc-claims.yaml`; runs inside the links CI job |
-| `./scripts/verify-doc-paths.sh` | Every repository path named in the documentation still exists |
+| `./scripts/ci/validate-manifests.sh` | Renders every overlay and HelmRelease as Flux would, then validates structure and CEL against the repo's own XRDs, and audits the rendered bundle with Polaris |
+| `./scripts/ci/validate-links.sh` | Every relative Markdown link in the repository, resolved rather than grepped |
+| `./scripts/ci/validate-doc-claims.sh` | Pinned prose claims still match the configuration they describe — sources and patterns in `.doc-claims.yaml`; runs inside the links CI job |
+| `./scripts/ci/verify-doc-paths.sh` | Every repository path named in the documentation still exists |
 | `trivy config` | Infrastructure-as-code misconfiguration |
 | pre-commit | Formatting, secret detection, Terraform validation |
 

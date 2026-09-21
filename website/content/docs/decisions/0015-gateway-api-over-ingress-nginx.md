@@ -219,7 +219,7 @@ can run, not chosen freely.
   stay at or above the 1.19.5 floor.
   - *Mitigation*: those two pins are checked against each other by the
     `gateway-api-version` claim in `.doc-claims.yaml`
-    (`./scripts/validate-doc-claims.sh`), so a bump that misses one fails
+    (`./scripts/ci/validate-doc-claims.sh`), so a bump that misses one fails
     CI. The Cilium floor is still a manual check on every upgrade of either
     component.
 - **CRDs must exist before `cilium-operator` starts.** It probes for the

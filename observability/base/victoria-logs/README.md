@@ -94,19 +94,19 @@ Run the test script:
 
 ```bash
 # Run all checks (validation + unit tests)
-./scripts/test-vector-vrl.sh
+./scripts/ci/tests/test-vector-vrl.sh
 
 # Only validate configuration syntax
-./scripts/test-vector-vrl.sh --validate-only
+./scripts/ci/tests/test-vector-vrl.sh --validate-only
 
 # Only run unit tests
-./scripts/test-vector-vrl.sh --test-only
+./scripts/ci/tests/test-vector-vrl.sh --test-only
 
 # Show test coverage details
-./scripts/test-vector-vrl.sh --show-tests
+./scripts/ci/tests/test-vector-vrl.sh --show-tests
 
 # Create sample logs for manual testing
-./scripts/test-vector-vrl.sh --create-samples
+./scripts/ci/tests/test-vector-vrl.sh --create-samples
 ```
 
 ### CI/CD Validation
@@ -137,7 +137,7 @@ Six comprehensive test cases validate:
 
 Use the [VRL Playground](https://playground.vrl.dev/) for interactive testing:
 
-1. Create sample log (see `scripts/test-vector-vrl.sh --create-samples`)
+1. Create sample log (see `scripts/ci/tests/test-vector-vrl.sh --create-samples`)
 2. Copy VRL code from `parse_pg_auto_explain` transform
 3. Paste both into VRL Playground
 4. Test and debug transformations
@@ -274,9 +274,9 @@ Edit `helmrelease-vlsingle.yaml`:
 
 1. Add field extraction in `parse_pg_auto_explain` transform
 2. Add field to `victorialogs_pg_plans` sink `only_fields` list
-3. Run validation: `./scripts/test-vector-vrl.sh --validate-only`
+3. Run validation: `./scripts/ci/tests/test-vector-vrl.sh --validate-only`
 4. Add test case for new field
-5. Run tests: `./scripts/test-vector-vrl.sh`
+5. Run tests: `./scripts/ci/tests/test-vector-vrl.sh`
 
 ### Debugging New VRL Code
 
@@ -348,7 +348,7 @@ sinks:
 
 For issues or questions:
 
-1. Check test results: `./scripts/test-vector-vrl.sh`
+1. Check test results: `./scripts/ci/tests/test-vector-vrl.sh`
 2. Review Vector logs: `kubectl logs -n observability <vector-pod>`
 3. Check failures stream: `{metadata.dropped.component="*"}` in VictoriaLogs
 4. Validate configuration: `.github/workflows/vector-config-validation.yml`

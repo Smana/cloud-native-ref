@@ -628,7 +628,7 @@ save() {
 # one -- see the variable's comment for why that option exists.
 #
 # Chosen key on stdout, diagnostics on stderr, non-zero when the named object is
-# not in the bucket. Split out of restore() so scripts/test-openbao-snapshot-key.sh
+# not in the bucket. Split out of restore() so scripts/ci/tests/test-openbao-snapshot-key.sh
 # can exercise it: everything around it in restore() needs a live node and real
 # credentials, and a selector that can silently pick the wrong object is worth
 # testing without either.

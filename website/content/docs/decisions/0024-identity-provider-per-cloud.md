@@ -61,7 +61,7 @@ from `global.primary_cloud` (see
 every invocation site, so it cannot disagree with the declared topology. Gate 2
 remains committed Flux state — Flux never sees Terramate globals, and `postBuild`
 substitution cannot reach a Kustomization's own `spec` — so it is verified
-instead, by `./scripts/validate-idp-topology.sh` in CI.
+instead, by `./scripts/ci/validate-idp-topology.sh` in CI.
 
 "Neither can enforce the other" is now **one derived, one verified**. The
 prediction above was borne out twice before that: this record's own gates were

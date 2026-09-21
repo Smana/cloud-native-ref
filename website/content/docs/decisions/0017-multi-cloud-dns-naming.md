@@ -280,8 +280,8 @@ Applied in one commit across 61 files. Public reference count was used as the co
 `cloud.ogenki.io` occurrences went from 320 to 173, exactly `320 − 137 − 10`, confirming that
 only private references were rewritten.
 
-Gates: `./scripts/validate-manifests.sh` → `Valid: 1187, Invalid: 0, Skipped: 0`;
-`./scripts/validate-links.sh` → all relative links resolve; `tofu fmt` clean.
+Gates: `./scripts/ci/validate-manifests.sh` → `Valid: 1187, Invalid: 0, Skipped: 0`;
+`./scripts/ci/validate-links.sh` → all relative links resolve; `tofu fmt` clean.
 
 The `.drawio` diagram sources and their rendered `.svg` counterparts are both text and were
 renamed together so they do not drift.

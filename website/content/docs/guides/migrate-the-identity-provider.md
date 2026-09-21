@@ -103,7 +103,7 @@ has no gate: whenever an `aws-0` cluster exists, it hosts ZITADEL.
 
 **Do not set `deploy_identity_provider` in `variables.tfvars`.** It is derived
 from `primary_cloud` and passed as a `-var`, which wins over the file — adding
-it there changes nothing and reports no error. `./scripts/validate-idp-topology.sh`
+it there changes nothing and reports no error. `./scripts/ci/validate-idp-topology.sh`
 fails in CI if the two gates disagree.
 
 **6. Deploy:**

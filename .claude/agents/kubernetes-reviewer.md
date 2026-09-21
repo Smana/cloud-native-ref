@@ -26,7 +26,7 @@ You review Kubernetes manifests for production readiness and best practices.
 
 - `polaris audit --audit-path <file> --format=pretty` for security scoring
 - `kube-linter lint <file>` for best practices
-- `flux schema validate <file>` for schema + CEL validation (SPEC-007 replaced kubeconform; the whole repo is gated by `./scripts/validate-manifests.sh`)
+- `flux schema validate <file>` for schema + CEL validation (SPEC-007 replaced kubeconform; the whole repo is gated by `./scripts/ci/validate-manifests.sh`)
 
 ## Output
 
