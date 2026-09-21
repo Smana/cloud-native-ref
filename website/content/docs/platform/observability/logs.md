@@ -98,7 +98,7 @@ queries that silently return nothing, not an error:
 Watches Kubernetes Events cluster-wide (`clusterName: "${cluster_name}"` tag)
 and pushes every event to the deployed vlsingle's Loki-compatible endpoint —
 `victoria-logs-victoria-logs-single-server` on port 9428
-(`observability/base/kubernetes-event-exporter/helmrelease.yaml`). That is
+(`observability/base/kubernetes-event-exporter/configmap.yaml`). That is
 the **only** path events take, and it works as of 2026-08-29.
 
 Both halves of that sentence earn their date. From 2025-08-23 to 2026-08-29
@@ -114,16 +114,18 @@ exporter's own operational logs are structured now as well
 
 Its metrics are real for the first time: `metrics.enabled: true` — it was
 `false`, silently discarding the `serviceMonitor.enabled: true` nested under
-it — with a chart-native `ServiceMonitor` in `observability` and one repaired
-alert, `KubernetesEventExporterWatchErrors` (`severity: warning`, sustained
+it — with a `ServiceMonitor` in `observability` and one repaired alert,
+`KubernetesEventExporterWatchErrors` (`severity: warning`, sustained
 `rate > 0` for 15m), authored as a standalone `VMRule`
 (`observability/base/kubernetes-event-exporter/vmrule.yaml`) like every other
 alert in this repository. The alert's message
 deliberately names no namespace: the fork registers `WatchErrors` as a
 labelless counter, so the previous per-namespace grouping could never have
-matched anything. Image stays overridden to
-`ghcr.io/civitatis/kubernetes-event-exporter:1.8`, a community fork, not the
-Bitnami-published image the chart normally pulls.
+matched anything. Image stays `ghcr.io/civitatis/kubernetes-event-exporter:1.8`,
+a community fork. The chart that pulled it is gone entirely: Bitnami's is
+dropped, and its rendered output is vendored as plain manifests under
+`observability/base/kubernetes-event-exporter/`
+([ADR-0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}})).
 
 ## loggen
 

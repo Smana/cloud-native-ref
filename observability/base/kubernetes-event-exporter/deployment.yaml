@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubernetes-event-exporter
+  labels:
+    app.kubernetes.io/instance: kubernetes-event-exporter
+    app.kubernetes.io/name: kubernetes-event-exporter
+    app.kubernetes.io/component: kubernetes-event-exporter
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kubernetes-event-exporter
+      app.kubernetes.io/name: kubernetes-event-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: kubernetes-event-exporter
+        app.kubernetes.io/name: kubernetes-event-exporter
+        app.kubernetes.io/component: kubernetes-event-exporter
+    spec:
+      serviceAccountName: kubernetes-event-exporter
+      automountServiceAccountToken: true
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: kubernetes-event-exporter
+                    app.kubernetes.io/name: kubernetes-event-exporter
+                    app.kubernetes.io/component: kubernetes-event-exporter
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      containers:
+        - name: event-exporter
+          # Renovate: kubernetes manager tracks this tag (.github/renovate.json).
+          image: ghcr.io/civitatis/kubernetes-event-exporter:1.8
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          args:
+            - -conf=/data/config.yaml
+          livenessProbe:
+            failureThreshold: 5
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 2
+            httpGet:
+              path: /-/healthy
+              port: http
+          readinessProbe:
+            failureThreshold: 1
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 2
+            httpGet:
+              path: /-/ready
+              port: http
+          resources:
+            limits:
+              cpu: 150m
+              ephemeral-storage: 2Gi
+              memory: 192Mi
+            requests:
+              cpu: 100m
+              ephemeral-storage: 50Mi
+              memory: 128Mi
+          ports:
+            - name: http
+              containerPort: 2112
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /data
+              name: cfg
+      volumes:
+        - name: cfg
+          configMap:
+            name: kubernetes-event-exporter
