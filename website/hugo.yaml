@@ -70,7 +70,7 @@ params:
   # Social card. Consumed by layouts/_partials/opengraph.html and
   # layouts/_partials/twitter_cards.html, both of which absolute-ise it against
   # baseURL — so it has to stay a site-root path, not a relative one.
-  # Regenerate from scripts/build-og-card.html; see that file's header.
+  # Regenerate from scripts/docs/build-og-card.html; see that file's header.
   images:
     - /images/og-card.png
   navbar:

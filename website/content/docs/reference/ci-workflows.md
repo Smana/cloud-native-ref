@@ -242,7 +242,7 @@ pre-commit run --all-files
 | Secrets | `detect-secrets` (baseline: `.secrets.baseline`) |
 
 `check-added-large-files` caps a file at 1000 KB, which is the constraint the
-diagram export budget in `scripts/export-diagrams.sh` is set below.
+diagram export budget in `scripts/docs/export-diagrams.sh` is set below.
 
 ## Self-hosted GitHub runners
 

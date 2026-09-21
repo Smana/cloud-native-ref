@@ -1,5 +1,5 @@
 {
-  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value. Prefer ./scripts/diagram-icons.py style <name> over hand-rolling one.",
+  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value. Prefer ./scripts/docs/diagram-icons.py style <name> over hand-rolling one.",
   "_aliases_note": "victorialogs and victoriatraces currently render the VictoriaMetrics mark -- platform-overview used one logo for all three, and the three extracted files were byte-identical. Both projects have their own upstream logo; fetch the real marks, add them as files, and drop the alias.",
   "aliases": {
     "envoy": "envoy-ai-gateway",
