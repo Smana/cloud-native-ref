@@ -3,8 +3,8 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the day-2 operations scripts into `scripts/ops/<area>/` and the docs-site generators
-into `scripts/docs/`, delete the two dead scripts the design names, and move `check-rebased.sh` to
-`scripts/ci/`. All of it happens under a new gate that proves every script path opentofu and
+into `scripts/docs/`, and move `check-rebased.sh` to `scripts/ci/`. `teardown.sh` and its orphan sweep
+move too: the design listed them for deletion, but they are live human tools (see Task 2). All of it happens under a new gate that proves every script path opentofu and
 terramate execute still resolves.
 
 **Architecture:** This PR has the same shape as PR 1: the gate ships first, on the unmoved tree,
@@ -66,6 +66,7 @@ the reference-rewrite recipe this plan reuses.
 | `export-diagrams.sh`, `diagram-icons.py`, `build-og-card.html` | `docs/` (names unchanged) | 3 |
 | `aws-sweep-orphaned-volumes.sh` | `ops/aws/sweep-orphaned-volumes.sh` | 4 |
 | `aws-sweep-teardown-blockers.sh` | `ops/aws/sweep-teardown-blockers.sh` | 4 |
+| `aws-sweep-controller-orphans.sh` | `ops/aws/sweep-controller-orphans.sh` | 4 |
 | `eks-prepare-destroy.sh`, `eks-recycle-bootstrap-nodes.sh` | `ops/aws/` (names unchanged) | 4 |
 | `gcp-adopt-workforce-pool.sh` | `ops/gcp/adopt-workforce-pool.sh` | 4 |
 | `gcp-purge-dns-records.sh` | `ops/gcp/purge-dns-records.sh` | 4 |
@@ -75,10 +76,11 @@ the reference-rewrite recipe this plan reuses.
 | `demo-load.sh` | `ops/demo/load.sh` | 4 |
 | `cleanup-benchmark-images.sh` | `ops/demo/` (name unchanged) | 4 |
 | `destroy-stage2.sh`, `tofu-destroy-contained.sh`, `terramate-destroy-confirm.sh` | `ops/teardown/` (names unchanged) | 5 |
+| `teardown.sh` | `ops/teardown/teardown.sh` | 5 |
 | `check-rebased.sh` | `ci/check-rebased.sh` | 6 |
 
-**Deleted:** `scripts/teardown.sh`, `scripts/aws-sweep-controller-orphans.sh` (Task 2). The design's
-Deletions table covers both; neither has an external caller.
+**Deleted:** nothing. The design's Deletions table listed `teardown.sh` and
+`aws-sweep-controller-orphans.sh`; the owner overruled it on 2026-09-21 (Task 2).
 
 **Modified:** `taskfile.yaml`, `.pre-commit-config.yaml`, `scripts/README.md`, `scripts/AGENTS.md`,
 `scripts/ci/tests/test-cnpg-promote-seed.sh`, plus every file `git grep -l` selects in Tasks 3–6.
@@ -225,71 +227,21 @@ test-script-paths.sh nor verify-doc-paths.sh reads a .tf or .tm.hcl."
 
 ---
 
-### Task 2: Delete the two dead scripts
+### Task 2: Dropped — `teardown.sh` and its orphan sweep are kept
 
-`teardown.sh` calls itself "the supported way to tear the platform down", but nothing calls it. The
-supported path is `terramate script run --reverse destroy`, whose confirmation step is
-`terramate-destroy-confirm.sh`. `aws-sweep-controller-orphans.sh` has exactly one caller, and that
-caller is `teardown.sh`.
+The design's Deletions table listed both as "no caller in CI, opentofu, manifests or docs". That is
+true, and it misses the point: **a human is the caller.**
 
-**Files:**
-- Delete: `scripts/teardown.sh`, `scripts/aws-sweep-controller-orphans.sh`
-- Modify: `scripts/eks-prepare-destroy.sh` (the comment block around line 30 that names
-  `aws-sweep-controller-orphans.sh`)
+- `teardown.sh` calls itself "the supported way to tear the platform down" (#1970, #1976). It exists
+  because bare `terramate script run --reverse destroy` stops at the first failing stack and can
+  report success having destroyed nothing. It continues past failures, sweeps what controllers left,
+  retries, then verifies against the cloud.
+- `aws-sweep-controller-orphans.sh` is that sweep. It exists for the teardown that fails partway,
+  when `eks/init`'s own destroy-time sweeps can no longer run.
 
-**Interfaces:**
-- Consumes: nothing. Produces: a smaller rename surface for Tasks 4–5.
-
-- [ ] **Step 1: Confirm there is no caller**
-
-```bash
-git grep -n -E 'teardown\.sh|aws-sweep-controller-orphans' \
-  -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs'
-```
-Expected: only lines inside the two files themselves, plus `scripts/eks-prepare-destroy.sh:30`, a
-comment that mentions the sweep but does not invoke it. Any other hit is a caller: **stop and report
-it** rather than deleting.
-
-- [ ] **Step 2: Confirm nothing is lost that the destroy path needs**
-
-Read the header of `scripts/aws-sweep-controller-orphans.sh` and list what it sweeps. Then read
-`scripts/aws-sweep-teardown-blockers.sh` and `scripts/eks-prepare-destroy.sh`, which the terramate
-destroy path does call, and say in the report whether they cover each item.
-
-This step decides nothing on its own. The deletion is the design's call. Its job is to put in
-front of the reviewer any capability that disappears with the file. If an item is not covered, say
-so plainly in the report and the commit body.
-
-- [ ] **Step 3: Delete, and fix the comment that names a deleted file**
-
-```bash
-git rm scripts/teardown.sh scripts/aws-sweep-controller-orphans.sh
-```
-
-Rewrite the `eks-prepare-destroy.sh` comment near line 30 ("WHY NOT IN eks-prepare-destroy.sh") so
-it no longer names a script that does not exist. Keep the *why* if it still holds. If it only made
-sense next to the deleted file, delete the comment too.
-
-- [ ] **Step 4: Verify**
-
-```bash
-bash -n scripts/eks-prepare-destroy.sh; echo "syntax=$?"
-bash scripts/ci/tests/test-no-secret-argv.sh >/dev/null; echo "argv=$?"
-task ci:test | tail -1
-```
-Expected: `syntax=0`, `argv=0`, `23 passed, 1 skipped, 0 failed`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A scripts/
-git commit -m "chore(scripts): delete teardown.sh and the sweep only it called
-
-Neither has a caller: terramate script run --reverse destroy is the
-teardown path. Named in the design's Deletions table."
-```
-
-If Step 2 found an uncovered capability, add one line to the commit body naming it.
+The owner decided on 2026-09-21 to keep both. They move with their audience instead:
+`aws-sweep-controller-orphans.sh` in Task 4, `teardown.sh` in Task 5. Both are indexed in Task 7.
+Nothing is deleted in this PR.
 
 ---
 
@@ -388,12 +340,12 @@ git commit -m "refactor(scripts): move the docs-site generators to scripts/docs/
 
 ### Task 4: Move the day-2 operations scripts into `scripts/ops/{aws,gcp,k8s,demo}/`
 
-12 files, 43 reference lines across 18 files. 11 of those lines are in `.tf`/`.tm.hcl`, and 8 of
+13 files, 44 reference lines across 18 files. 11 of those lines are in `.tf`/`.tm.hcl`, and 8 of
 those 11 are executed; the other 3 are comments. Seven
 files also change name, so bare-name mentions go stale as well as paths.
 
 **Files:**
-- Move: the 12 files in the File Structure table marked Task 4
+- Move: the 13 files in the File Structure table marked Task 4
 - Modify: four internal paths (Step 3), `scripts/ci/tests/test-cnpg-promote-seed.sh:25-26`, and
   every file Step 4 selects
 
@@ -407,6 +359,7 @@ files also change name, so bare-name mentions go stale as well as paths.
 mkdir -p scripts/ops/{aws,gcp,k8s,demo}
 git mv scripts/aws-sweep-orphaned-volumes.sh   scripts/ops/aws/sweep-orphaned-volumes.sh
 git mv scripts/aws-sweep-teardown-blockers.sh  scripts/ops/aws/sweep-teardown-blockers.sh
+git mv scripts/aws-sweep-controller-orphans.sh scripts/ops/aws/sweep-controller-orphans.sh
 git mv scripts/eks-prepare-destroy.sh          scripts/ops/aws/eks-prepare-destroy.sh
 git mv scripts/eks-recycle-bootstrap-nodes.sh  scripts/ops/aws/eks-recycle-bootstrap-nodes.sh
 git mv scripts/gcp-adopt-workforce-pool.sh     scripts/ops/gcp/adopt-workforce-pool.sh
@@ -426,8 +379,7 @@ bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1
 bash scripts/ci/tests/test-script-paths.sh | tail -1
 ```
 Expected: `87 … checked; 8 failed` (the executed references, which Step 4 fixes), then
-`10 roots, 21 sources, 16 subjects checked; 4 failed` (10, not 11: Task 2 deleted `teardown.sh`,
-which was one of the roots): the three `lib/` sources and
+`11 roots, 21 sources, 16 subjects checked; 4 failed`: the three `lib/` sources and
 `test-cnpg-promote-seed.sh`'s subject, all fixed in Step 3. Both counts were measured by simulating
 this move. A different number means the measurement is stale: report it.
 
@@ -438,7 +390,7 @@ this move. A different number means the measurement is stale: report it.
 | `scripts/ops/gcp/sweep-orphaned-disks.sh:53` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
 | `scripts/ops/gcp/purge-dns-records.sh:38` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
 | `scripts/ops/k8s/cnpg-prepare-restore.sh:60` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
-| `scripts/ops/aws/eks-prepare-destroy.sh` (~`:115`; Task 2's comment edit shifts it, so find it by content) | `"$(dirname "$0")/k8s-reclaim-csi-volumes.sh" \|\| true` | `"$(dirname "$0")/../k8s/reclaim-csi-volumes.sh" \|\| true` |
+| `scripts/ops/aws/eks-prepare-destroy.sh` (~`:115`; find it by content) | `"$(dirname "$0")/k8s-reclaim-csi-volumes.sh" \|\| true` | `"$(dirname "$0")/../k8s/reclaim-csi-volumes.sh" \|\| true` |
 
 The last row is the one no gate sees. Both files move into *different* directories, and the target
 is renamed. It is a path passed to `exec`, not a `source`, so `test-script-paths.sh` cannot check
@@ -457,6 +409,7 @@ SCRIPT="$HERE/../../ops/k8s/cnpg-promote-seed.sh"
 cat > /tmp/moved-pr2-ops.txt <<'EOF'
 aws-sweep-orphaned-volumes.sh|ops/aws/sweep-orphaned-volumes.sh
 aws-sweep-teardown-blockers.sh|ops/aws/sweep-teardown-blockers.sh
+aws-sweep-controller-orphans.sh|ops/aws/sweep-controller-orphans.sh
 eks-prepare-destroy.sh|ops/aws/eks-prepare-destroy.sh
 eks-recycle-bootstrap-nodes.sh|ops/aws/eks-recycle-bootstrap-nodes.sh
 gcp-adopt-workforce-pool.sh|ops/gcp/adopt-workforce-pool.sh
@@ -468,9 +421,9 @@ cnpg-promote-seed.sh|ops/k8s/cnpg-promote-seed.sh
 demo-load.sh|ops/demo/load.sh
 cleanup-benchmark-images.sh|ops/demo/cleanup-benchmark-images.sh
 EOF
-RE='scripts/(aws-sweep-orphaned-volumes|aws-sweep-teardown-blockers|eks-prepare-destroy|eks-recycle-bootstrap-nodes|gcp-adopt-workforce-pool|gcp-purge-dns-records|gcp-sweep-orphaned-disks|k8s-reclaim-csi-volumes|cnpg-prepare-restore|cnpg-promote-seed|demo-load|cleanup-benchmark-images)\.sh'
+RE='scripts/(aws-sweep-orphaned-volumes|aws-sweep-teardown-blockers|aws-sweep-controller-orphans|eks-prepare-destroy|eks-recycle-bootstrap-nodes|gcp-adopt-workforce-pool|gcp-purge-dns-records|gcp-sweep-orphaned-disks|k8s-reclaim-csi-volumes|cnpg-prepare-restore|cnpg-promote-seed|demo-load|cleanup-benchmark-images)\.sh'
 TARGETS=$(git grep -l -E "$RE" -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs')
-printf '%s\n' "$TARGETS" | wc -l      # expect 17 (18 before Task 2 deleted teardown.sh)
+printf '%s\n' "$TARGETS" | wc -l      # expect 18
 while IFS='|' read -r old new; do
   # shellcheck disable=SC2086
   sed -i --follow-symlinks "s|scripts/${old}|scripts/${new}|g" $TARGETS
@@ -481,15 +434,15 @@ No new path contains an old `scripts/<name>` substring, so the loop is idempoten
 
 - [ ] **Step 5: Fix the bare-name mentions the path rewrite cannot reach**
 
-Seven files were renamed, and 12 mentions name them without a `scripts/` prefix. Prose, usage
+Eight files were renamed, and 13 mentions name them without a `scripts/` prefix. Prose, usage
 strings and error messages would name a file that no longer exists:
 
 ```bash
-git grep -n -E '(^|[^/a-z-])(aws-sweep-orphaned-volumes|aws-sweep-teardown-blockers|gcp-adopt-workforce-pool|gcp-purge-dns-records|gcp-sweep-orphaned-disks|k8s-reclaim-csi-volumes|demo-load)\.sh' \
+git grep -n -E '(^|[^/a-z-])(aws-sweep-orphaned-volumes|aws-sweep-teardown-blockers|aws-sweep-controller-orphans|gcp-adopt-workforce-pool|gcp-purge-dns-records|gcp-sweep-orphaned-disks|k8s-reclaim-csi-volumes|demo-load)\.sh' \
   -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs'
 ```
 
-Before Step 4 this returned 12 lines. Change each remaining hit to the new name, or to the new
+Before Step 4 this returned 13 lines. Change each remaining hit to the new name, or to the new
 path where the text names a location. A script's own `Usage:` line should give its new path from
 the repo root, e.g. `scripts/ops/gcp/purge-dns-records.sh`. Re-run the grep; expected: no output.
 
@@ -537,18 +490,19 @@ passed to exec."
 
 ### Task 5: Move the teardown scripts into `scripts/ops/teardown/`
 
-Three files, 30 reference lines across 21 files, and **22 of those lines are in `.tm.hcl`**. This
+Four files, 34 reference lines across 22 files, and **22 of those lines are in `.tm.hcl`**. This
 is the destroy path: `terramate script run --reverse destroy` calls these from every stack. The task
 is kept separate from Task 4 because a reviewer can reject one while approving the other.
 
 **Files:**
 - Move: `scripts/{destroy-stage2.sh,tofu-destroy-contained.sh,terramate-destroy-confirm.sh}` →
-  `scripts/ops/teardown/`
+  `scripts/ops/teardown/`, and `scripts/teardown.sh` → `scripts/ops/teardown/teardown.sh`
+- Modify: `teardown.sh`'s root depth (line 38)
 - Modify: every file Step 3 selects
 
 **Interfaces:**
-- Consumes: Task 1's gate. Produces: `scripts/ops/teardown/`, which Task 7 documents but does not
-  index.
+- Consumes: Task 1's gate. Produces: `scripts/ops/teardown/`. Task 7 indexes `teardown.sh` and
+  documents the other three.
 
 - [ ] **Step 1: Move, and watch the gate fail**
 
@@ -556,16 +510,28 @@ is kept separate from Task 4 because a reviewer can reject one while approving t
 mkdir -p scripts/ops/teardown
 git mv scripts/destroy-stage2.sh scripts/tofu-destroy-contained.sh \
        scripts/terramate-destroy-confirm.sh scripts/ops/teardown/
+git mv scripts/teardown.sh scripts/ops/teardown/teardown.sh
 bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1
+bash scripts/ci/tests/test-script-paths.sh | tail -1
 ```
-Expected: `87 … checked; 22 failed`.
+Expected: `87 … checked; 22 failed`, then `11 roots, 21 sources, 16 subjects checked; 1 failed`. That
+one is `teardown.sh:38`, which resolves to `scripts/ops` instead of the repo root. Both counts were
+measured by simulating this move.
 
-- [ ] **Step 2: Check for internal paths**
+- [ ] **Step 2: Correct `teardown.sh`'s depth, and check the other three**
+
+| File:line | From | To |
+|---|---|---|
+| `scripts/ops/teardown/teardown.sh:38` | `ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` | `ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"` |
+
+Its `${ROOT}/scripts/aws-sweep-*.sh` calls were already rewritten to `${ROOT}/scripts/ops/aws/…` by
+Task 4, since the file was still at `scripts/` root then. With `ROOT` corrected they resolve
+unchanged.
 
 ```bash
-grep -nE 'BASH_SOURCE|dirname|source |^\s*\. |\.\./|scripts/' scripts/ops/teardown/*.sh
+grep -nE 'BASH_SOURCE|dirname|source |^\s*\. |\.\./' scripts/ops/teardown/{destroy-stage2,tofu-destroy-contained,terramate-destroy-confirm}.sh
 ```
-The inventory found no self-resolved path in these three. If this grep shows one, correct its depth
+The inventory found no self-resolved path in those three. If this grep shows one, correct its depth
 as in Task 4 Step 3, and say so in the report.
 
 - [ ] **Step 3: Rewrite the references**
@@ -575,10 +541,11 @@ cat > /tmp/moved-pr2-teardown.txt <<'EOF'
 destroy-stage2.sh|ops/teardown/destroy-stage2.sh
 tofu-destroy-contained.sh|ops/teardown/tofu-destroy-contained.sh
 terramate-destroy-confirm.sh|ops/teardown/terramate-destroy-confirm.sh
+teardown.sh|ops/teardown/teardown.sh
 EOF
-TARGETS=$(git grep -l -E 'scripts/(destroy-stage2|tofu-destroy-contained|terramate-destroy-confirm)\.sh' \
+TARGETS=$(git grep -l -E 'scripts/(destroy-stage2|tofu-destroy-contained|terramate-destroy-confirm|teardown)\.sh' \
   -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs')
-printf '%s\n' "$TARGETS" | wc -l      # expect 21
+printf '%s\n' "$TARGETS" | wc -l      # expect 22
 while IFS='|' read -r old new; do
   # shellcheck disable=SC2086
   sed -i --follow-symlinks "s|scripts/${old}|scripts/${new}|g" $TARGETS
@@ -591,14 +558,22 @@ Run the same block as Task 4 Step 6, plus:
 
 ```bash
 for f in scripts/ops/teardown/*.sh; do bash -n "$f" || echo "SYNTAX: $f"; done
-git grep -n -E 'scripts/(destroy-stage2|tofu-destroy-contained|terramate-destroy-confirm)\.sh' \
+bash scripts/ci/tests/test-script-paths.sh | tail -1
+for s in sweep-teardown-blockers sweep-controller-orphans sweep-orphaned-volumes; do
+  test -e "scripts/ops/teardown/../../../scripts/ops/aws/$s.sh" && echo "teardown -> $s ok"; done
+git grep -n -E 'scripts/(destroy-stage2|tofu-destroy-contained|terramate-destroy-confirm|teardown)\.sh' \
   -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs'
 ```
 Expected:
 - the terramate gate: `87 … checked; 0 failed`;
 - `terramate ok`;
 - no `SYNTAX:` line;
+- the paths gate: `11 roots, … 0 failed`;
+- three `teardown -> … ok` lines: `teardown.sh`'s corrected `ROOT` still reaches the sweeps;
 - the final `git grep`: no output.
+
+The `scripts/teardown.sh` → `scripts/ops/teardown/teardown.sh` substitution is idempotent: the new
+path does not contain the substring `scripts/teardown.sh`.
 
 - [ ] **Step 5: Commit**
 
@@ -606,7 +581,8 @@ Expected:
 git add -A
 git commit -m "refactor(scripts): move the teardown scripts to scripts/ops/teardown/
 
-22 of their 30 references are terramate destroy calls. The terramate
+teardown.sh is the supported teardown entry point; the other three are
+what terramate destroy calls (22 of the 34 references). The terramate
 reference gate went from 22 failed to 0."
 ```
 
@@ -654,9 +630,9 @@ git commit -m "refactor(scripts): move check-rebased.sh to scripts/ci/"
 
 ### Task 7: Index `ops/` and `docs/` in `task --list`, and document the layout
 
-Spec criterion 2: `task --list` names every entry point with a one-line description. The
-`ops/teardown/` scripts are not entry points: terramate destroy scripts call them. They are
-documented but not indexed.
+Spec criterion 2: `task --list` names every entry point with a one-line description. In
+`ops/teardown/`, only `teardown.sh` is an entry point. Terramate destroy scripts call the other three,
+so they are documented but not indexed.
 
 **Files:**
 - Create: `scripts/ops/tasks.yaml`, `scripts/docs/tasks.yaml`
@@ -676,15 +652,21 @@ And every command is `{{.TASKFILE_DIR}}`-relative, so tasks work from any direct
 ```yaml
 version: "3"
 
-# ops/teardown/ is not indexed: terramate destroy scripts call it. Run
-# `terramate script run --reverse destroy` instead.
+# The three helpers beside teardown.sh are not indexed: terramate destroy
+# scripts call them. teardown.sh is the entry point.
 tasks:
+  teardown:
+    desc: Tear the platform down — destroy past failures, sweep controller orphans, retry, verify against the cloud
+    cmds: ["{{.TASKFILE_DIR}}/teardown/teardown.sh {{.CLI_ARGS}}"]
   aws:sweep-orphaned-volumes:
     desc: Delete EBS volumes the CSI driver created that nothing uses, after a cluster destroy
     cmds: ["{{.TASKFILE_DIR}}/aws/sweep-orphaned-volumes.sh {{.CLI_ARGS}}"]
   aws:sweep-teardown-blockers:
     desc: Clear the two things that reliably block tofu destroy on AWS
     cmds: ["{{.TASKFILE_DIR}}/aws/sweep-teardown-blockers.sh {{.CLI_ARGS}}"]
+  aws:sweep-controller-orphans:
+    desc: Sweep what in-cluster controllers left in AWS after a partial teardown (refuses while the cluster exists)
+    cmds: ["{{.TASKFILE_DIR}}/aws/sweep-controller-orphans.sh {{.CLI_ARGS}}"]
   aws:eks-prepare-destroy:
     desc: Prepare an EKS cluster for destruction — suspends Flux, deletes every PVC
     cmds: ["{{.TASKFILE_DIR}}/aws/eks-prepare-destroy.sh {{.CLI_ARGS}}"]
@@ -758,7 +740,7 @@ Replace the table and the closing sentence with:
 | `ci/` | the gates CI runs, and you before pushing. `task check` runs every one CI runs |
 | `ci/tests/` | suites `run.sh` discovers: `test-*.sh` and `test-*.py` here, `*/test-*.py` one level down. A `# requires:` tool that is absent, or an exit 77, reports `SKIP` |
 | `ops/aws/`, `ops/gcp/`, `ops/k8s/` | day-2 operations, run by a human. Some are also called from terramate destroy scripts |
-| `ops/teardown/` | called by `terramate script run --reverse destroy`, not run by hand |
+| `ops/teardown/` | `teardown.sh` is the supported way to tear the platform down (`task ops:teardown`). The other three are called by terramate destroy scripts |
 | `ops/demo/` | demo load generation and cleanup |
 | `docs/` | docs-site generators, run by hand. `build-og-card.html` opens in a browser |
 | `lib/` | sourced by the others, never run directly |
@@ -776,7 +758,7 @@ task docs:diagram-icons -- audit 2>&1 | grep -E '^ +[0-9]+ (local|none)'
 task ci:links
 ```
 Expected:
-- `14`;
+- `16`;
 - the `--help` call: exit 0, or the script's own usage exit code. Confirm by reading its argument
   parsing that `--help` only prints usage. If it does anything else, use a different read-only
   proof and say which;
@@ -790,7 +772,7 @@ git add -A
 git commit -m "feat(task): index ops/ and docs/ in task --list
 
 Spec criterion 2: every entry point has a one-line description.
-ops/teardown/ is documented but not indexed; terramate calls it."
+Only teardown.sh is indexed in ops/teardown/; terramate calls the rest."
 ```
 
 ---
@@ -872,7 +854,8 @@ Follow `.agents/skills/create-pr/SKILL.md`. The body must carry:
 - the cited output from Steps 2–4;
 - the preview merge checkbox from Step 5;
 - a statement that PR 3 (`provision/`) is still pending;
-- Task 2's finding about any capability that left with `aws-sweep-controller-orphans.sh`.
+- a note that the design's Deletions table was overruled for `teardown.sh` and
+  `aws-sweep-controller-orphans.sh`: they moved instead (owner decision, 2026-09-21).
 
 ---
 
@@ -880,10 +863,11 @@ Follow `.agents/skills/create-pr/SKILL.md`. The body must carry:
 
 - **Spec coverage.** The design's PR 2 row names `ops/` and `docs/`: Tasks 3–5. Its evidence column
   names a preview on both clouds: Task 8 Step 5, as a merge gate with the owner's decision, backed
-  in CI by Task 1. Its Deletions table: Task 2. Criterion 2: Task 7. `check-rebased.sh` post-dates
+  in CI by Task 1. Its Deletions table: overruled for two live tools (owner, 2026-09-21, Task 2); its other two
+  entries are already absent. Criterion 2: Task 7. `check-rebased.sh` post-dates
   the design; Task 6 carries the owner's placement.
 - **Measured, not copied.** The design says PR 2 has 77 live references. Measured: 147 matches
   across the 18 moving files, 123 excluding a script's mention of itself. Each task's rewrite
-  expects its own measured count (9, 18, 21 files), not the design's.
+  expects its own measured count (9, 18, 22 files), not the design's.
 - **Exact values are consistent across tasks:** 87 references checked, floor 80; failure counts
   8 (Task 4) and 22 (Task 5), both measured by simulating the move; suite count 23.
