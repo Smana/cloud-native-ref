@@ -49,12 +49,26 @@ check "tfvars key matches, uncommented"    "$consumers_key" "$tfvars_key"
 
 echo
 echo "== contract: the role's UI callback is /ui/vault/auth/oidc/oidc/callback =="
-if grep -qF '${local.openbao_address}/ui/vault/auth/oidc/oidc/callback' "$OIDC_TF_SRC"; then
+# Anchored to an ACTIVE list element, not `grep -qF`: the plain substring match
+# this replaced was satisfied by the literal sitting after a `#`, so commenting
+# the whole redirect_uris entry out (oidc.tf:82) still reported "pins the UI
+# callback path" -- the exact shape the tfvars guard above was written to
+# reject for #2011, just not applied here yet. Requiring the line to start
+# (after indentation) with the opening quote and end with the closing quote
+# and an optional trailing comma is what makes a comment fail to match.
+if grep -qE '^[[:space:]]*"\$\{local\.openbao_address\}/ui/vault/auth/oidc/oidc/callback",?[[:space:]]*$' "$OIDC_TF_SRC"; then
     callback_found=yes
 else
     callback_found=no
 fi
 check "oidc.tf pins the UI callback path" "yes" "$callback_found"
+
+# The other side of the same agreement: this header claims the guard protects
+# oidc.tf against CONSUMERS drifting apart, but until now nothing here ever
+# read the CONSUMERS side for this path -- only for the store key above. A
+# CONSUMERS callback edited to a different mount, or the plain substring lost
+# entirely, must fail here rather than only failing against a live ZITADEL.
+contains "$consumers_line" '/ui/vault/auth/oidc/oidc/callback' "CONSUMERS registers the same UI callback path"
 
 # ── library: scripts/lib/openbao-api.sh ─────────────────────────────────────
 echo
