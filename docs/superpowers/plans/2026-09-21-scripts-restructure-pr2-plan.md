@@ -426,7 +426,8 @@ bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1
 bash scripts/ci/tests/test-script-paths.sh | tail -1
 ```
 Expected: `87 … checked; 8 failed` (the executed references, which Step 4 fixes), then
-`11 roots, 21 sources, 16 subjects checked; 4 failed`: the three `lib/` sources and
+`10 roots, 21 sources, 16 subjects checked; 4 failed` (10, not 11: Task 2 deleted `teardown.sh`,
+which was one of the roots): the three `lib/` sources and
 `test-cnpg-promote-seed.sh`'s subject, all fixed in Step 3. Both counts were measured by simulating
 this move. A different number means the measurement is stale: report it.
 
@@ -437,7 +438,7 @@ this move. A different number means the measurement is stale: report it.
 | `scripts/ops/gcp/sweep-orphaned-disks.sh:53` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
 | `scripts/ops/gcp/purge-dns-records.sh:38` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
 | `scripts/ops/k8s/cnpg-prepare-restore.sh:60` | `. "$(dirname "$0")/lib/gcloud-adc.sh"` | `. "$(dirname "$0")/../../lib/gcloud-adc.sh"` |
-| `scripts/ops/aws/eks-prepare-destroy.sh:115` | `"$(dirname "$0")/k8s-reclaim-csi-volumes.sh" \|\| true` | `"$(dirname "$0")/../k8s/reclaim-csi-volumes.sh" \|\| true` |
+| `scripts/ops/aws/eks-prepare-destroy.sh` (~`:115`; Task 2's comment edit shifts it, so find it by content) | `"$(dirname "$0")/k8s-reclaim-csi-volumes.sh" \|\| true` | `"$(dirname "$0")/../k8s/reclaim-csi-volumes.sh" \|\| true` |
 
 The last row is the one no gate sees. Both files move into *different* directories, and the target
 is renamed. It is a path passed to `exec`, not a `source`, so `test-script-paths.sh` cannot check
@@ -469,7 +470,7 @@ cleanup-benchmark-images.sh|ops/demo/cleanup-benchmark-images.sh
 EOF
 RE='scripts/(aws-sweep-orphaned-volumes|aws-sweep-teardown-blockers|eks-prepare-destroy|eks-recycle-bootstrap-nodes|gcp-adopt-workforce-pool|gcp-purge-dns-records|gcp-sweep-orphaned-disks|k8s-reclaim-csi-volumes|cnpg-prepare-restore|cnpg-promote-seed|demo-load|cleanup-benchmark-images)\.sh'
 TARGETS=$(git grep -l -E "$RE" -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs')
-printf '%s\n' "$TARGETS" | wc -l      # expect 18
+printf '%s\n' "$TARGETS" | wc -l      # expect 17 (18 before Task 2 deleted teardown.sh)
 while IFS='|' read -r old new; do
   # shellcheck disable=SC2086
   sed -i --follow-symlinks "s|scripts/${old}|scripts/${new}|g" $TARGETS
