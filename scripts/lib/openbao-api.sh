@@ -40,9 +40,15 @@
 # would otherwise reach the caller as a confusing 403 from OpenBao rather than
 # "the secret was unreadable or empty".
 openbao_token_config_write() {
+    # A caller under `bash -x` would otherwise trace the token into its log.
+    # `local -` hands the caller its xtrace back on return.
+    local -
+    set +x
     local file="$1" secret_name="$2" raw token escaped
-    raw="$(store_read "$secret_name")"
-    token="$(printf '%s' "$raw" | jq -r '.token // .root_token // empty' 2>/dev/null)"
+    # `|| return 1` on both: under the caller's `set -e`, a failing assignment
+    # would abort with store_read's or jq's own status instead of this 1.
+    raw="$(store_read "$secret_name")" || return 1
+    token="$(printf '%s' "$raw" | jq -r '.token // .root_token // empty' 2>/dev/null)" || return 1
     [ -n "$token" ] || return 1
 
     escaped="${token//\\/\\\\}"
@@ -52,9 +58,13 @@ openbao_token_config_write() {
 
 # GET/POST/LIST/... OpenBao's API. Reads OPENBAO_URL, OPENBAO_CA_FILE and
 # OPENBAO_TOKEN_CONFIG from the caller. TLS is always verified: never `-k`.
+#
+# --fail-with-body, not -f: both exit 22 on an HTTP error, but -f throws the
+# body away, and OpenBao's error message is how reconcile_openbao_oidc tells a
+# discovery failure worth retrying from one that is not. curl >= 7.76.
 openbao_req() {
     local method="$1" path="$2"
     shift 2
-    curl -fsS --cacert "$OPENBAO_CA_FILE" -K "$OPENBAO_TOKEN_CONFIG" \
+    curl -sS --fail-with-body --cacert "$OPENBAO_CA_FILE" -K "$OPENBAO_TOKEN_CONFIG" \
         -X "$method" "${OPENBAO_URL}/v1/${path}" "$@"
 }
