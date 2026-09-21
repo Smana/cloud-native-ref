@@ -80,7 +80,7 @@ while IFS= read -r script; do
         first_seg="${seg#/}"; first_seg="${first_seg%%/*}"
         climbed="$(cd "$dir$ups" 2>/dev/null && pwd)"
         if [ -e "$MARKER_ROOT/$first_seg" ] && { [ -z "$climbed" ] || ! is_repo_root "$climbed"; }; then
-          fail "$(rel "$script"):$lineno — '$first_seg' also exists at the repo root; this climb stops at ${climbed:-$dir$ups}, not the root. If you meant the root, climb to it; if you meant this sibling, compute it from a REPO_ROOT/SCRIPTS variable instead"
+          fail "$(rel "$script"):$lineno — '$first_seg' also exists at the repo root; this climb stops at ${climbed:-$dir$ups}, not the root. Either way, climb to the repo root (REPO_ROOT) and name the path from there"
         else
           [ -e "$dir$ups$seg" ] \
             || fail "$(rel "$script"):$lineno — reaches a missing path: $dir$ups$seg"
