@@ -93,7 +93,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
 
         # Empty the private Cloud DNS zone first. external-dns wrote a record for

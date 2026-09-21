@@ -26,16 +26,16 @@
 # finished when the provider says there is nothing left.
 #
 # Usage:
-#   scripts/teardown.sh                 # aws (the TM_CLOUD default)
-#   TM_CLOUD=gcp     scripts/teardown.sh
-#   TM_CLOUD=all     scripts/teardown.sh
-#   scripts/teardown.sh --verify-only   # skip the destroy, just report what is left
+#   scripts/ops/teardown/teardown.sh                 # aws (the TM_CLOUD default)
+#   TM_CLOUD=gcp     scripts/ops/teardown/teardown.sh
+#   TM_CLOUD=all     scripts/ops/teardown/teardown.sh
+#   scripts/ops/teardown/teardown.sh --verify-only   # skip the destroy, just report what is left
 #
 # TM_DESTROY_CONFIRMED=true skips the interactive prompt, for unattended runs.
 set -o nounset
 set -o pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CLOUDS="${TM_CLOUD:-aws}"
 VERIFY_ONLY=0
 [ "${1:-}" = "--verify-only" ] && VERIFY_ONLY=1

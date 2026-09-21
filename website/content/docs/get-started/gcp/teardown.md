@@ -25,7 +25,7 @@ TM_CLOUD=gcp terramate script run destroy
 
 Six jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
 
-1. **confirm + init** — `scripts/terramate-destroy-confirm.sh`, then `tofu init`.
+1. **confirm + init** — `scripts/ops/teardown/terramate-destroy-confirm.sh`, then `tofu init`.
    Init runs *before* anything is destroyed on purpose: a lock file predating a
    new provider must fail here, not once resources have started disappearing.
 2. **`stage2-reclaim-volumes`** — reclaims CSI-provisioned PD disks while the

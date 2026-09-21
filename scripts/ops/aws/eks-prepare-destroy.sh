@@ -40,7 +40,7 @@ fi
 echo "This script will delete the EKS cluster ${CLUSTER_NAME} in region ${REGION}"
 echo "This action is irreversible and will delete all resources in the cluster"
 echo "Please ensure you have backed up any important data before proceeding"
-# Same env-var bypass as scripts/terramate-destroy-confirm.sh — lets a
+# Same env-var bypass as scripts/ops/teardown/terramate-destroy-confirm.sh — lets a
 # `terramate script run --reverse destroy` orchestrate this prep step
 # without a second human prompt after the user already consented once.
 if [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then

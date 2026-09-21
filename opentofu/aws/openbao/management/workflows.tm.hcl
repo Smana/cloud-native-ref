@@ -89,7 +89,7 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # CA fetch BEFORE `tofu init`, as in this file's `deploy` and in both
         # openbao/cluster stacks. The fetch is the step that can fail -- an
         # unreadable or missing ca-chain secret -- and `tofu init` is a backend
@@ -116,7 +116,7 @@ script "destroy" {
         # random_password in this same state are real resources, do not match
         # the prefix, and tofu still has to delete them.
         bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
-          bash "${terramate.root.path.fs.absolute}/scripts/tofu-destroy-contained.sh" \
+          bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/tofu-destroy-contained.sh" \
           --contained-prefix vault_ -- \
           -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH

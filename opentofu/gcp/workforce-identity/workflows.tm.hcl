@@ -119,7 +119,7 @@ script "destroy" {
         [warn] can undo by re-running deploy.
         [warn] ─────────────────────────────────────────────────────────────────
         WARN
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH

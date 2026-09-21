@@ -104,7 +104,7 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
       BASH

@@ -249,7 +249,7 @@ script "destroy" {
     commands = [
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
       # Init before anything is torn down: a lock file predating a new provider
       # must fail here, not after Flux has been suspended. Same stack dir as the
       # stage1-destroy-cluster job below, so that job inherits this init.
@@ -322,7 +322,7 @@ script "destroy" {
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "if ! (cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'); then echo '[warn] CA chain fetch failed -- continuing anyway.'; echo '       The vault provider will fail to configure and destroy-stage2.sh will'; echo '       fall through to its tolerant path. Failing here instead would strand'; echo '       the live EKS cluster stage 1 is about to delete.'; fi"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
-      "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
+      "bash '${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
 
@@ -413,7 +413,7 @@ script "destroy" {
     description = "Drop stage-2 state entries whose cluster no longer exists"
     commands = [
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
-      "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
+      "bash '${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
     ]
   }
 }

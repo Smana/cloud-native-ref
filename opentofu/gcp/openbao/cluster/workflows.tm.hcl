@@ -127,7 +127,7 @@ script "destroy" {
     commands = [
       # The confirmation prompt is its own step because it must run whether or
       # not the snapshot is skipped.
-      ["bash", global.provisioner, "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      ["bash", global.provisioner, "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
       # One last snapshot into the lineage bucket before the node goes -- the
       # in-cluster CronJob is already gone at this point of a reverse destroy.
       # Fails hard when OpenBao is unreachable; TM_OPENBAO_SKIP_SNAPSHOT=true

@@ -22,7 +22,7 @@ Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 1. **`prepare-destroy`** — runs `scripts/ops/aws/eks-prepare-destroy.sh` (see below).
 2. **`stage2-destroy-addons`** — *attempts* to destroy the `eks/configure` stack
-   (Cilium, Flux) via `scripts/destroy-stage2.sh` in its `attempt` mode. Never fatal: everything
+   (Cilium, Flux) via `scripts/ops/teardown/destroy-stage2.sh` in its `attempt` mode. Never fatal: everything
    that stack manages lives inside the cluster step 3 deletes anyway, so a failure
    here must not strand the one billable resource ([why](#stage-2-never-gates-the-cluster)).
 3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
@@ -42,7 +42,7 @@ TM_CLOUD=all terramate script run --reverse destroy   # both clouds
 ```
 
 Reverse dependency order, with a single confirmation prompt
-(`scripts/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
+(`scripts/ops/teardown/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
 sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
 
 {{< callout type="info" >}}
@@ -102,7 +102,7 @@ Before OpenTofu deletes anything, the script:
 
 The `eks/configure` stack manages Cilium, the Flux Operator and the Flux Instance —
 all of them objects *inside* the cluster that stage 1 deletes moments later. Its
-teardown is therefore tidiness, never a prerequisite, and `scripts/destroy-stage2.sh`
+teardown is therefore tidiness, never a prerequisite, and `scripts/ops/teardown/destroy-stage2.sh`
 enforces that: `attempt` reports a failure and exits 0.
 
 Both clouds proved why the hard version is wrong:

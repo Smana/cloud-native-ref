@@ -366,7 +366,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # Init before anything is torn down: a lock file predating a new provider
         # must fail here, not after resources have started disappearing. Same stack
         # dir as stage1-destroy-cluster, so that job inherits this init.
@@ -431,7 +431,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
           -var='gateway_api_version=${global.gateway_api_version}' \
@@ -514,7 +514,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh" \
           reconcile "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure"
       BASH
       ],

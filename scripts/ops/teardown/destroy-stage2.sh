@@ -128,7 +128,7 @@ reconcile)
     echo "[error] could not read the stage-2 state." >&2
     echo "[error] Refusing to assume it is empty: that would leave real drift" >&2
     echo "[error] behind and report success. Fix the backend, then re-run:" >&2
-    echo "[error]   bash scripts/destroy-stage2.sh reconcile ${dir}" >&2
+    echo "[error]   bash scripts/ops/teardown/destroy-stage2.sh reconcile ${dir}" >&2
     exit 1
   fi
 
