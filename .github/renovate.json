@@ -108,6 +108,16 @@
       "allowedVersions": "<8"
     },
     {
+      "description": "Hold the Headlamp plugin's TypeScript below 7. typescript-eslint, pulled in through @headlamp-k8s/eslint-config, refuses TS 7 (\"typescript-eslint does not support TS 7.0\"), so the image build fails at `npm run lint` and never reaches the compiler. Renovate opened #2032 for it anyway. Lift this bound once typescript-eslint supports TS >= 7: https://github.com/typescript-eslint/typescript-eslint/issues/10940",
+      "matchFileNames": [
+        "container-images/headlamp-plugin-app/**"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": "<7"
+    },
+    {
       "description": "Never automerge a GitHub Action digest bump. Every `uses:` in this repo is pinned to a commit SHA, which is what makes a retagged action -- the tj-actions/changed-files compromise, CVE-2025-30066, where every tag including version tags was moved to a commit that dumped runner memory into the build log -- a visible diff rather than a silent substitution. That property only holds while a human looks at the new SHA. Automerging digest updates would restore the old behaviour exactly, with a PR trail as the only difference. Stated as its own rule rather than relying on `digest` being absent from the patch/minor automerge list above, so widening that list cannot undo this by accident. `minimumReleaseAge` is the second half: a malicious retag is typically caught within hours, so not proposing one for three days means the usual attack is revoked before it is ever offered here.",
       "matchManagers": [
         "github-actions"
