@@ -133,7 +133,9 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.openbao_ca_fetch}
-        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+        rc=0
+        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars || rc=$?
+        ${global.drift_verdict}
       BASH
       ],
     ]

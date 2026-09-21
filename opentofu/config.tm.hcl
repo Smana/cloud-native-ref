@@ -29,6 +29,16 @@ globals {
     }
   EOT
 
+  # A bash heredoc can't carry a command-level `sync_drift_status`, so unmapped
+  # exit 2 (drift) fails the task and cancels the walk (engine/run.go:547-601, v0.17.3).
+  drift_verdict = <<-EOT
+    if [ "$rc" -eq 2 ]; then
+      echo "=== DRIFT DETECTED in ${terramate.stack.path.relative}: see the plan above (exit 2 reported as success so the walk continues) ==="
+      exit 0
+    fi
+    exit "$rc"
+  EOT
+
   region           = "eu-west-3"
   profile          = ""
   eks_cluster_name = "aws-0"
