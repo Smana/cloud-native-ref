@@ -32,10 +32,10 @@ while IFS= read -r hit; do
       printf 'FAIL  %s:%s  %s\n      resolved to %s\n' "$file" "$line" "$ref" "${target#"$ROOT"/}"
       failed=$((failed + 1))
     fi
-  done < <(grep -oE '[$]?[$][{][^}]+[}](/\.\.)*/scripts/[A-Za-z0-9_./-]+\.(sh|py|js)|(^|[[:space:]"(])scripts/[A-Za-z0-9_./-]+\.(sh|py|js)' <<<"$text" \
+  done < <(grep -oE '[$]?[$][{][^}]+[}](/\.\.)*/scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)|(^|[[:space:]"(])scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)' <<<"$text" \
              | sed -E 's/^[[:space:]"(]//')
 done < <(cd "$ROOT" && grep -rnE --include='*.tf' --include='*.tm.hcl' --include='*.tfvars' \
-           'scripts/[A-Za-z0-9_./-]+\.(sh|py|js)' opentofu 2>/dev/null)
+           'scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)' opentofu 2>/dev/null)
 
 if [ "$checked" -lt "$FLOOR" ]; then
   echo "FAIL  checked $checked script reference(s), floor is $FLOOR: the extraction broke, not the references"
