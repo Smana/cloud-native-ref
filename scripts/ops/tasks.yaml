@@ -26,6 +26,7 @@ tasks:
     cmds: ["{{.TASKFILE_DIR}}/aws/eks-recycle-bootstrap-nodes.sh {{.CLI_ARGS}}"]
   gcp:adopt-workforce-pool:
     desc: Make the workforce pool survive a teardown and rebuild
+    dir: "{{.ROOT_DIR}}/opentofu/gcp/workforce-identity"
     cmds: ["{{.TASKFILE_DIR}}/gcp/adopt-workforce-pool.sh {{.CLI_ARGS}}"]
   gcp:purge-dns-records:
     desc: Empty a Cloud DNS managed zone so the zone can be destroyed

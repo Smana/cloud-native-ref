@@ -42,8 +42,11 @@
 # 30-day tombstones accumulate. A stable name that survives rebuilds is the
 # property worth having; this script is what buys it.
 #
-# Usage (from the workforce-identity stack directory):
-#   scripts/ops/gcp/adopt-workforce-pool.sh --pool NAME [--provider NAME] [--location L] [--apply]
+# Usage: the state adoption half needs an initialised stack directory as cwd.
+#   from the stack directory:
+#     bash ../../../scripts/ops/gcp/adopt-workforce-pool.sh --pool NAME [--provider NAME] [--location L] [--apply]
+#   from anywhere:
+#     task ops:gcp:adopt-workforce-pool -- --pool NAME [--provider NAME] [--location L] [--apply]
 #
 # Dry-run unless --apply.
 

@@ -237,11 +237,11 @@ each gate actually checks.
 | `terramate-destroy-confirm.sh` | Single y/n prompt every stack's destroy script calls first, cached so `--reverse destroy` asks once |
 | `eks-prepare-destroy.sh` | Pre-destroy EKS cleanup — suspends Flux, disables blocking webhooks, sweeps orphaned EBS volumes; the CSI volume reclaim itself moved to `reclaim-csi-volumes.sh` |
 | `eks-recycle-bootstrap-nodes.sh` | Recycles Stage 1 node-group nodes so they pick up Cilium prefix delegation |
-| `reclaim-csi-volumes.sh` | Reclaims CSI-provisioned volumes before a cluster destroy — cloud-neutral, called by both teardown paths |
-| `destroy-stage2.sh` | Graceful-then-reconcile teardown of either cloud's `configure` stack, never gating the cluster delete |
-| `purge-dns-records.sh` | Empties a Cloud DNS zone of external-dns leftovers so `tofu destroy` can delete it |
-| `export-diagrams.sh` | Exports `.drawio` architecture diagrams to PNG |
-| `cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
-| `load.sh` | Runs an image-gallery load-generator scenario in-cluster (`browse`, `upload`, `mixed`, `steady`, `incident`) from the suspended `image-gallery-loadgen` CronJob |
+| `scripts/ops/k8s/reclaim-csi-volumes.sh` | Reclaims CSI-provisioned volumes before a cluster destroy — cloud-neutral, called by both teardown paths |
+| `scripts/ops/teardown/destroy-stage2.sh` | Graceful-then-reconcile teardown of either cloud's `configure` stack, never gating the cluster delete |
+| `scripts/ops/gcp/purge-dns-records.sh` | Empties a Cloud DNS zone of external-dns leftovers so `tofu destroy` can delete it |
+| `scripts/docs/export-diagrams.sh` | Exports `.drawio` architecture diagrams to SVG |
+| `scripts/ops/demo/cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
+| `scripts/ops/demo/load.sh` | Runs an image-gallery load-generator scenario in-cluster (`browse`, `upload`, `mixed`, `steady`, `incident`) from the suspended `image-gallery-loadgen` CronJob |
 | `test-flux-schema.sh` | Quarantined, never run: it asserts bundle filenames the render has outgrown. See `scripts/ci/tests/quarantine/README.md` |
 | `test-vector-vrl.sh` / `validate-vector-vrl.sh` / `vector-vrl-tests/` | Validate the Vector log-parsing configuration |

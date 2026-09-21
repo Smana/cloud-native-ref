@@ -100,7 +100,7 @@ A logo used by a second diagram belongs in `icons/`, not embedded twice. Check `
 ## After any diagram change
 
 ```bash
-./scripts/docs/export-diagrams.sh      # regenerates every SVG the site embeds
+./scripts/docs/export-diagrams.sh    # regenerates every SVG the site embeds
 ./scripts/ci/validate-links.sh       # after any file move
 ./scripts/ci/validate-doc-claims.sh  # the pages that describe the diagram
 ```
