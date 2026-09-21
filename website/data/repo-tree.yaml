@@ -134,7 +134,7 @@ entries:
 
   - path: tooling/
     kind: dir
-    desc: Harbor, Headlamp, Homepage, the Dagger engine, self-hosted runners (off by default)
+    desc: Harbor, Headlamp, Homepage, self-hosted runners (off by default)
     owner: tooling
 
   - path: apps/

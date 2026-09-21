@@ -245,5 +245,4 @@ Runner scale sets run in-cluster (`tooling/base/gha-runners/`) and are **off
 by default** — commented out of `tooling/aws-0/kustomization.yaml`.
 When enabled they give private-endpoint access, lower latency, no egress
 charges for heavy builds, and secrets via External Secrets rather than
-long-lived tokens in a workflow. A second scale set is dedicated to Dagger
-builds and shares the in-cluster `dagger-engine`.
+long-lived tokens in a workflow.

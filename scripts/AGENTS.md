@@ -17,7 +17,7 @@ Two properties are load-bearing:
   not skipped. The previous kubeconform setup ran with `-ignore-missing-schemas`, so every
   `cloud.ogenki.io` claim went unvalidated for the life of the repo.
 - **Polaris audits rendered charts, not raw files.** The repo has 1 raw Deployment; the rendered
-  bundle has 156 controllers. Pointing a best-practices gate at the source tree checks almost
+  bundle has 160 controllers. Pointing a best-practices gate at the source tree checks almost
   nothing.
 
 `.schemas/` and `.bundle/` are generated on every run and gitignored — a committed catalog drifts

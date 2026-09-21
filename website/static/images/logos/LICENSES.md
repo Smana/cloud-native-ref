@@ -27,7 +27,6 @@ permit unmodified use to refer to the project. Path pattern:
 
 | File | Source | Terms |
 |---|---|---|
-| `dagger.svg` | `dagger/dagger` — `docs/static/img/favicon.svg` | Apache-2.0 project; brand assets for nominative use |
 | `go.svg` | `golang/website` — `_content/images/go-logo-blue.svg` | [Go brand guidelines](https://go.dev/brand) — unmodified use permitted |
 | `grafana.svg` | `grafana/grafana` — `public/img/grafana_icon.svg` | [Grafana Labs trademark policy](https://grafana.com/legal/trademark-policy/) |
 | `hugo.svg` | `gohugoio/hugoDocs` — `static/images/hugo-logo-wide.svg` | Apache-2.0 project |

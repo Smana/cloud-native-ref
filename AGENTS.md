@@ -99,7 +99,7 @@ tofu validate && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 
 `validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. Two
 properties are load-bearing and easy to break: `skipMissingSchemas: false` means an unknown Kind
-**fails** the build rather than being skipped, and Polaris audits the *rendered* bundle (156
+**fails** the build rather than being skipped, and Polaris audits the *rendered* bundle (160
 controllers) rather than the source tree (1). `scripts/AGENTS.md` explains what each gate catches
 and, more usefully, what none of them can.
 

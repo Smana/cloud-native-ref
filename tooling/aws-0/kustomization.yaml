@@ -11,5 +11,4 @@ resources:
   # when the LLM stack is enabled). Wired via
   # clusters/aws-0-llm-platform/tooling-promptfoo.yaml.
   # Enabling only when needed for cost reasons
-  # - ../base/dagger-engine
   # - ../base/gha-runners

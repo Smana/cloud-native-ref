@@ -20,7 +20,6 @@ personal blog — a separate property from this site.
 - [Tailscale: Simplifying Cloud Access](https://blog.ogenki.io/post/tailscale/) — using Tailscale as a zero-trust VPN for private access to cluster services, instead of bastion hosts.
 - [VictoriaMetrics and Grafana Operators](https://blog.ogenki.io/post/series/observability/metrics) — standing up the metrics stack with the VictoriaMetrics and Grafana operators.
 - [Effective Alerting with VictoriaMetrics](https://blog.ogenki.io/post/series/observability/alerts/) — designing alert rules and routing on top of VictoriaMetrics.
-- [Dagger: The Missing Piece of Developer Experience](https://blog.ogenki.io/post/dagger-intro/) — running the same CI pipeline locally and in GitHub Actions with Dagger.
 
 ## Upstream documentation
 

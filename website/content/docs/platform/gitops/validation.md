@@ -64,9 +64,9 @@ what a passing run means here, not incidental detail.
 **Polaris audits the rendered bundle, not the source tree.** Re-verified on
 this branch by rendering the repository and counting both sides directly:
 the tree has **one** raw `Deployment` manifest
-(`tooling/base/dagger-engine/deployment.yaml`); the rendered bundle has
-**156 controllers** — 109 `Deployment`, 25 `Job`, 10 `StatefulSet`, 8
-`DaemonSet`, 4 `CronJob` — everything else arrives as a `HelmRelease` and
+(`tooling/gcp-0/headlamp/token-exchange.yaml`); the rendered bundle has
+**160 controllers** — 110 `Deployment`, 25 `Job`, 10 `StatefulSet`, 8
+`DaemonSet`, 7 `CronJob` — everything else arrives as a `HelmRelease` and
 only becomes a controller after `helm template` runs. A best-practices audit
 pointed at the source tree would check one workload; pointed at the
 rendered bundle, it checks what's actually scheduled.
