@@ -89,9 +89,9 @@ the reference-rewrite recipe this plan reuses.
 
 ### Task 1: The `test-terramate-script-refs.sh` gate
 
-Measured on this branch: **87** script references on executed (non-comment) lines under
+Measured on this branch: **88** script references on executed (non-comment) lines under
 `opentofu/`, in five shapes. `${terramate.root.path.fs.absolute}/scripts/X` ×70, `$${ROOT}/scripts/X`
-×7, bare `scripts/X` in `echo` hints ×4, `${path.module}/scripts/X` ×4 (module-local), and
+×7, bare `scripts/X` in `echo` hints ×4, `${path.module}/scripts/X` ×5 (module-local, one of them a `.yaml` read by `file()`), and
 `${path.module}/../../../../scripts/X` ×2.
 
 Two rules resolve all five. A `${path.module}/` prefix resolves beside the `.tf` file. Everything
@@ -143,10 +143,10 @@ while IFS= read -r hit; do
       printf 'FAIL  %s:%s  %s\n      resolved to %s\n' "$file" "$line" "$ref" "${target#"$ROOT"/}"
       failed=$((failed + 1))
     fi
-  done < <(grep -oE '[$]?[$][{][^}]+[}](/\.\.)*/scripts/[A-Za-z0-9_./-]+\.(sh|py|js)|(^|[[:space:]"(])scripts/[A-Za-z0-9_./-]+\.(sh|py|js)' <<<"$text" \
+  done < <(grep -oE '[$]?[$][{][^}]+[}](/\.\.)*/scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)|(^|[[:space:]"(])scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)' <<<"$text" \
              | sed -E 's/^[[:space:]"(]//')
 done < <(cd "$ROOT" && grep -rnE --include='*.tf' --include='*.tm.hcl' --include='*.tfvars' \
-           'scripts/[A-Za-z0-9_./-]+\.(sh|py|js)' opentofu 2>/dev/null)
+           'scripts/[A-Za-z0-9_./-]+\.(sh|py|js|ya?ml)' opentofu 2>/dev/null)
 
 if [ "$checked" -lt "$FLOOR" ]; then
   echo "FAIL  checked $checked script reference(s), floor is $FLOOR: the extraction broke, not the references"
@@ -162,7 +162,7 @@ an expansion. ShellCheck's SC2016 is not raised at `-S warning`, but confirm tha
 - [ ] **Step 2: Run it against the real tree**
 
 Run: `bash scripts/ci/tests/test-terramate-script-refs.sh; echo "exit=$?"`
-Expected: `87 script reference(s) on executed opentofu/terramate lines checked; 0 failed`, `exit=0`.
+Expected: `88 script reference(s) on executed opentofu/terramate lines checked; 0 failed`, `exit=0`.
 
 - [ ] **Step 3: Prove it catches a moved script**
 
@@ -175,7 +175,7 @@ mkdir -p "$T/scripts/ops/teardown"
 mv "$T/scripts/terramate-destroy-confirm.sh" "$T/scripts/ops/teardown/"
 TM_REFS_ROOT="$T" bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1; echo "exit=${PIPESTATUS[0]}"
 ```
-Expected: `87 script reference(s) … checked; 15 failed`, `exit=1`.
+Expected: `88 script reference(s) … checked; 15 failed`, `exit=1`.
 
 - [ ] **Step 4: Prove it resolves `${path.module}` climbs**
 
@@ -220,7 +220,7 @@ directly after the `validate-idp-topology.sh` row:
 git add scripts/ci/tests/test-terramate-script-refs.sh scripts/AGENTS.md
 git commit -m "test(ci): gate every script path opentofu and terramate execute
 
-87 references on executed lines, 30 of them to scripts this PR moves.
+88 references on executed lines, 30 of them to scripts this PR moves.
 They run at apply and destroy time and no CI job executes them; neither
 test-script-paths.sh nor verify-doc-paths.sh reads a .tf or .tm.hcl."
 ```
@@ -378,7 +378,7 @@ git mv scripts/cleanup-benchmark-images.sh     scripts/ops/demo/cleanup-benchmar
 bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1
 bash scripts/ci/tests/test-script-paths.sh | tail -1
 ```
-Expected: `87 … checked; 8 failed` (the executed references, which Step 4 fixes), then
+Expected: `88 … checked; 8 failed` (the executed references, which Step 4 fixes), then
 `11 roots, 21 sources, 16 subjects checked; 4 failed`: the three `lib/` sources and
 `test-cnpg-promote-seed.sh`'s subject, all fixed in Step 3. Both counts were measured by simulating
 this move. A different number means the measurement is stale: report it.
@@ -463,7 +463,7 @@ git diff --name-only HEAD -- opentofu | grep -E '\.(tf|tm\.hcl|tfvars)$'
 for f in $(git ls-files -s | awk '$1=="120000"{print $4}'); do [ -L "$f" ] || echo "NOT A SYMLINK: $f"; done
 ```
 Expected:
-- the terramate gate: `87 … checked; 0 failed`;
+- the terramate gate: `88 … checked; 0 failed`;
 - the paths gate: `0 failed`. It checks the three `lib/` sources;
 - no `SYNTAX:` line;
 - `eks->k8s call resolves`;
@@ -514,7 +514,7 @@ git mv scripts/teardown.sh scripts/ops/teardown/teardown.sh
 bash scripts/ci/tests/test-terramate-script-refs.sh | tail -1
 bash scripts/ci/tests/test-script-paths.sh | tail -1
 ```
-Expected: `87 … checked; 22 failed`, then `11 roots, 21 sources, 16 subjects checked; 1 failed`. That
+Expected: `88 … checked; 22 failed`, then `11 roots, 21 sources, 16 subjects checked; 1 failed`. That
 one is `teardown.sh:38`, which resolves to `scripts/ops` instead of the repo root. Both counts were
 measured by simulating this move.
 
@@ -565,7 +565,7 @@ git grep -n -E 'scripts/(destroy-stage2|tofu-destroy-contained|terramate-destroy
   -- ':!docs/superpowers/plans' ':!docs/superpowers/specs' ':!docs/specs'
 ```
 Expected:
-- the terramate gate: `87 … checked; 0 failed`;
+- the terramate gate: `88 … checked; 0 failed`;
 - `terramate ok`;
 - no `SYNTAX:` line;
 - the paths gate: `11 roots, … 0 failed`;
@@ -804,7 +804,7 @@ bash scripts/ci/tests/test-terramate-script-refs.sh
 Expected:
 - `task check` exits 0, with the rendered resource count, `23 passed, 1 skipped, 0 failed`, and all
   six gates passing;
-- the terramate gate: `87 … checked; 0 failed`.
+- the terramate gate: `88 … checked; 0 failed`.
 
 Cite both verbatim.
 
@@ -869,5 +869,5 @@ Follow `.agents/skills/create-pr/SKILL.md`. The body must carry:
 - **Measured, not copied.** The design says PR 2 has 77 live references. Measured: 147 matches
   across the 18 moving files, 123 excluding a script's mention of itself. Each task's rewrite
   expects its own measured count (9, 18, 22 files), not the design's.
-- **Exact values are consistent across tasks:** 87 references checked, floor 80; failure counts
+- **Exact values are consistent across tasks:** 88 references checked, floor 80; failure counts
   8 (Task 4) and 22 (Task 5), both measured by simulating the move; suite count 23.
