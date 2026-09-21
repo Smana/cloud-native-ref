@@ -96,6 +96,7 @@ suite**; if a change stops that being true, it has regressed to testing nothing.
 | `verify-doc-paths.sh` | every **backticked** repository path in `website/content/` still exists. Runs in the website workflow, not in `validate-manifests.sh`, and catches what `validate-links.sh` cannot: a path in prose, or one linked by absolute GitHub URL. No allowlist by design — fix the path or drop the reference |
 | `validate-doc-claims.sh` | docs still agree with config, per `.doc-claims.yaml` |
 | `validate-idp-topology.sh` | exactly one cloud hosts ZITADEL (ADR-0027) |
+| `ci/tests/test-terramate-script-refs.sh` | every script path on an **executed** `.tf`/`.tm.hcl` line exists — the apply- and destroy-time calls no CI job runs. Comments are skipped; `echo` hints are not |
 | `diagram-icons.py audit` | boxes naming a product that render without an icon. Advisory, never a CI gate |
 | `export-diagrams.sh` | regenerates every SVG the site embeds. Pins the drawio version on purpose |
 | `eks-prepare-destroy.sh` | **deletes every PVC.** Must carry a cloud gate |
