@@ -92,7 +92,7 @@ subchart, its image pinned to `13.1.4` in
 to `grafana: 12.7.*`, so security releases need that explicit tag until the
 stack bumps its dependency. The two VictoriaMetrics datasource plugins are
 **pinned catalog installs** in the chart's `plugins:` list —
-`victoriametrics-metrics-datasource@0.25.2` and
+`victoriametrics-metrics-datasource@0.26.1` and
 `victoriametrics-logs-datasource@0.32.0` — which the chart maps straight to
 `GF_PLUGINS_PREINSTALL_SYNC`. Two details of that list are load-bearing: the
 pin separator is `@`, not a space (a space is silently split into two bare
