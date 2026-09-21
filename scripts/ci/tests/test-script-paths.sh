@@ -6,7 +6,10 @@
 # sibling path (an exec target, a sourced file). A wrong count makes `cd`
 # SUCCEED at the wrong directory, or makes an exec/source target resolve to
 # nothing -- either way quietly. Root climbs are checked against two markers;
-# sibling climbs are checked for existence. And the relative path it sources a
+# sibling climbs are checked for existence, EXCEPT when the first segment also
+# exists at the repo root and the climb itself isn't the root: AGENTS.md and
+# README.md both nest at several depths, so "exists" alone would pass a climb
+# that stopped one level short by accident. And the relative path it sources a
 # library, or reaches its test subject, through. Six of the nine
 # lib/-sourcing scripts run during a terramate apply, so that failure lands
 # mid-deploy with no CI gate in front of it.
@@ -69,8 +72,19 @@ while IFS= read -r script; do
       /[A-Za-z0-9_]*)
         seg="$(printf '%s' "$after" | grep -oE '^(/[A-Za-z0-9._-]+)+')"
         n_rels=$((n_rels + 1))
-        [ -e "$dir$ups$seg" ] \
-          || fail "$(rel "$script"):$lineno — reaches a missing path: $dir$ups$seg"
+        # A climb that stops one level short of the root, on a directory that
+        # HAPPENS to have a same-named entry (AGENTS.md and README.md both
+        # nest), passes the plain existence check by accident -- indistinguish-
+        # able from a genuine wrong depth. Fail loudly instead when the first
+        # segment also exists at the true root and the climb itself is not it.
+        first_seg="${seg#/}"; first_seg="${first_seg%%/*}"
+        climbed="$(cd "$dir$ups" 2>/dev/null && pwd)"
+        if [ -e "$MARKER_ROOT/$first_seg" ] && { [ -z "$climbed" ] || ! is_repo_root "$climbed"; }; then
+          fail "$(rel "$script"):$lineno — '$first_seg' also exists at the repo root; this climb stops at ${climbed:-$dir$ups}, not the root. If you meant the root, climb to it; if you meant this sibling, compute it from a REPO_ROOT/SCRIPTS variable instead"
+        else
+          [ -e "$dir$ups$seg" ] \
+            || fail "$(rel "$script"):$lineno — reaches a missing path: $dir$ups$seg"
+        fi
         continue ;;
     esac
     n_roots=$((n_roots + 1))
