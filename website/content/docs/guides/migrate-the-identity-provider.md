@@ -45,7 +45,7 @@ Examples are AWS → GCP; reverse the cloud arguments to go the other way.
 [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}):
 
 ```bash
-./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+./scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
   --cloud aws --bucket eu-west-3-ogenki-cnpg-backups --apply
 ```
 
@@ -56,7 +56,7 @@ aws s3 sync s3://eu-west-3-ogenki-cnpg-backups/zitadel-20260902/ /tmp/zitadel-se
 gcloud storage rsync --recursive /tmp/zitadel-seed/ \
   gs://<gcp-project>-ogenki-cnpg-backups/zitadel-20260902/
 
-./scripts/cnpg-promote-seed.sh --verify-seed zitadel-20260902 \
+./scripts/ops/k8s/cnpg-promote-seed.sh --verify-seed zitadel-20260902 \
   --cloud gcp --bucket <gcp-project>-ogenki-cnpg-backups
 ```
 

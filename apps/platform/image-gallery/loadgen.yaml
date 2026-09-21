@@ -2,7 +2,7 @@
 #
 # SUSPENDED by default. When resumed it runs `steady` (1 req/s, the mixed API
 # mix) for 14 minutes every 15 minutes, so dashboards always have data.
-# On-demand runs of any scenario: scripts/demo-load.sh <scenario>.
+# On-demand runs of any scenario: scripts/ops/demo/load.sh <scenario>.
 #
 # The image tag moves with the App's (apps/base/complete/app.yaml): same release, same API.
 apiVersion: batch/v1

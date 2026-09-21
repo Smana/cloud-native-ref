@@ -20,7 +20,7 @@
 # This sweep runs after `tofu destroy` returns, when every node is terminated
 # and so every volume of this cluster is unambiguously detached. There is no
 # in-flight state left to race, which is exactly what makes the late moment the
-# reliable one. GCP's equivalent (gcp-sweep-orphaned-disks.sh) had to be written
+# reliable one. GCP's equivalent (sweep-orphaned-disks.sh) had to be written
 # from scratch because GKE had no sweep at all; here the moment is the fix.
 #
 # WHAT IT MATCHES, AND WHY IT IS SAFE
@@ -39,7 +39,7 @@
 # live cluster's volume during a reschedule. Keep all three.
 #
 # Usage:
-#   aws-sweep-orphaned-volumes.sh --cluster-name N --region R [--profile P] [--apply]
+#   scripts/ops/aws/sweep-orphaned-volumes.sh --cluster-name N --region R [--profile P] [--apply]
 #
 # Dry-run unless --apply, and it lists exactly what it would delete.
 

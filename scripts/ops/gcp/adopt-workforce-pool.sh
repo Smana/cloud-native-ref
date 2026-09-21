@@ -43,7 +43,7 @@
 # property worth having; this script is what buys it.
 #
 # Usage (from the workforce-identity stack directory):
-#   gcp-adopt-workforce-pool.sh --pool NAME [--provider NAME] [--location L] [--apply]
+#   scripts/ops/gcp/adopt-workforce-pool.sh --pool NAME [--provider NAME] [--location L] [--apply]
 #
 # Dry-run unless --apply.
 

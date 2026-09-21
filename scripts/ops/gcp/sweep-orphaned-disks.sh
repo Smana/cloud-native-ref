@@ -4,7 +4,7 @@
 #
 # WHY THIS EXISTS
 #
-# scripts/k8s-reclaim-csi-volumes.sh tries to reclaim every PV *before* the
+# scripts/ops/k8s/reclaim-csi-volumes.sh tries to reclaim every PV *before* the
 # cluster is deleted, which is the only moment the CSI controller can do it. When
 # it cannot finish in time it prints a warning and exits 0, ending with:
 #
@@ -40,7 +40,7 @@
 # named that way.
 #
 # Usage:
-#   gcp-sweep-orphaned-disks.sh --project ID [--apply]
+#   scripts/ops/gcp/sweep-orphaned-disks.sh --project ID [--apply]
 #
 # Dry-run unless --apply, and it lists exactly what it would delete.
 
@@ -50,7 +50,7 @@ set -o pipefail
 
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../../lib/gcloud-adc.sh"
 
 PROJECT=""
 APPLY="false"

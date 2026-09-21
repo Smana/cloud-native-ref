@@ -57,7 +57,7 @@ set -o pipefail
 # scripts/lib/gcloud-adc.sh. Without it this script reports "could not list the
 # live archive" for a bucket the deploy writes to happily.
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../../lib/gcloud-adc.sh"
 
 CLOUD="" BUCKET="" CLUSTER="" SEED="" PROJECT="" PROFILE=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"

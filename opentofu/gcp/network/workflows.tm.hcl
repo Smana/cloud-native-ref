@@ -120,7 +120,7 @@ script "destroy" {
           # `set -e` killed the destroy before tofu ran. The stack then looked
           # torn down (terramate exits non-zero at the very end) while the VPC,
           # the NAT and the Tailscale router were all still billing.
-          bash "${terramate.root.path.fs.absolute}/scripts/gcp-purge-dns-records.sh" "$${zone}" "$${project}"
+          bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/purge-dns-records.sh" "$${zone}" "$${project}"
         else
           echo "[warn] no DNS zone in state; skipping the record purge."
         fi

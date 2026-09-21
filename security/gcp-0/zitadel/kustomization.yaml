@@ -33,7 +33,7 @@ patches:
   #      2026-08-28 and is not any more: gcp-0 now writes real backups, so a seed
   #      is frozen the same way aws-0's is:
   #
-  #        ./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel \
+  #        ./scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel \
   #          --namespace security --cloud gcp \
   #          --bucket ${project_id}-ogenki-cnpg-backups --apply
   #

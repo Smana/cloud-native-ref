@@ -414,7 +414,7 @@ script "destroy" {
 
         if gcloud container clusters get-credentials "$${name}" \
              --location "$${location}" --project "$${project}" 2>/dev/null; then
-          bash "${terramate.root.path.fs.absolute}/scripts/k8s-reclaim-csi-volumes.sh" || true
+          bash "${terramate.root.path.fs.absolute}/scripts/ops/k8s/reclaim-csi-volumes.sh" || true
         else
           echo "[warn] could not fetch credentials for $${name}; skipping the in-cluster"
           echo "       reclaim. Any orphaned disks are swept by the network stack destroy."
@@ -482,7 +482,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        # The backstop k8s-reclaim-csi-volumes.sh has always CLAIMED to have.
+        # The backstop reclaim-csi-volumes.sh has always CLAIMED to have.
         #
         # That script reclaims PVs while the cluster still exists -- the only
         # moment the CSI controller can -- and when it runs out of time it warns
@@ -498,7 +498,7 @@ script "destroy" {
         # after it, everything that leaked is unattached and visible.
         #
         # Never fails the teardown -- see the script's closing comment.
-        bash "${terramate.root.path.fs.absolute}/scripts/gcp-sweep-orphaned-disks.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/sweep-orphaned-disks.sh" \
           --project "$(cd "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/init" && \
             awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$2); print $2}' variables.tfvars)" \
           --apply

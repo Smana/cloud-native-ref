@@ -99,7 +99,7 @@ suite**; if a change stops that being true, it has regressed to testing nothing.
 | `ci/tests/test-terramate-script-refs.sh` | every script path on an **executed** `.tf`/`.tm.hcl` line exists — the apply- and destroy-time calls no CI job runs. Comments are skipped; `echo` hints are not |
 | `docs/diagram-icons.py audit` | boxes naming a product that render without an icon. Advisory, never a CI gate |
 | `docs/export-diagrams.sh` | regenerates every SVG the site embeds. Pins the drawio version on purpose |
-| `eks-prepare-destroy.sh` | **deletes every PVC.** Must carry a cloud gate |
+| `ops/aws/eks-prepare-destroy.sh` | **deletes every PVC.** Must carry a cloud gate |
 | `tm-provisioner.sh` | the `TM_CLOUD` lane enforcement every stack routes through |
 
 **`validate-idp-topology.sh` only checks the repo.** `gcp-0` runs its own ZITADEL while the

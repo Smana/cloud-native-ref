@@ -20,7 +20,7 @@ terramate script run destroy
 
 Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
-1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
+1. **`prepare-destroy`** — runs `scripts/ops/aws/eks-prepare-destroy.sh` (see below).
 2. **`stage2-destroy-addons`** — *attempts* to destroy the `eks/configure` stack
    (Cilium, Flux) via `scripts/destroy-stage2.sh` in its `attempt` mode. Never fatal: everything
    that stack manages lives inside the cluster step 3 deletes anyway, so a failure
@@ -70,7 +70,7 @@ Before OpenTofu deletes anything, the script:
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
 - Reclaims CSI-provisioned EBS volumes, by calling
-  `scripts/k8s-reclaim-csi-volumes.sh` — the same script the GKE teardown
+  `scripts/ops/k8s/reclaim-csi-volumes.sh` — the same script the GKE teardown
   calls, since every step of it is plain Kubernetes. It patches **every** PV's
   `persistentVolumeReclaimPolicy` to `Delete` — including PVs deliberately
   set to `Retain` — deletes CloudNativePG `Cluster` resources so the operator
@@ -129,7 +129,7 @@ emptied for resources that still exist.
 ## The sweep before the destroy
 
 `terramate script run destroy` opens with `stage0-sweep-teardown-blockers`, which
-runs `scripts/aws-sweep-teardown-blockers.sh`. It clears the two things that make
+runs `scripts/ops/aws/sweep-teardown-blockers.sh`. It clears the two things that make
 `tofu destroy` **fail**, neither of which Terraform owns:
 
 - **ExternalDNS records.** Route53 refuses `DeleteHostedZone` while any record
@@ -164,7 +164,7 @@ actually gone.
 ## The sweep after the destroy
 
 `terramate script run destroy` ends with `stage3-sweep-orphaned-volumes`, which
-runs `scripts/aws-sweep-orphaned-volumes.sh` once the cluster is gone.
+runs `scripts/ops/aws/sweep-orphaned-volumes.sh` once the cluster is gone.
 
 It exists because the pre-destroy sweep above runs at the wrong moment to be
 complete. It fires moments after the PVCs are deleted, so a volume still
@@ -186,7 +186,7 @@ Run it by hand if you tore the cluster down some other way. It is a dry run
 unless you pass `--apply`:
 
 ```bash
-./scripts/aws-sweep-orphaned-volumes.sh --cluster-name aws-0 --region eu-west-3
+./scripts/ops/aws/sweep-orphaned-volumes.sh --cluster-name aws-0 --region eu-west-3
 ```
 
 GCP has the same step as `stage2-sweep-orphaned-disks` — see the

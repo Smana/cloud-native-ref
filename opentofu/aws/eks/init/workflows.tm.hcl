@@ -77,7 +77,7 @@ script "deploy" {
     name        = "stage3-recycle-bootstrap-nodes"
     description = "Recycle node-group nodes whose ENIs predate Cilium (no-op once they use prefix delegation)"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "${terramate.root.path.fs.absolute}/scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "${terramate.root.path.fs.absolute}/scripts/ops/aws/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
     ]
   }
 
@@ -259,7 +259,7 @@ script "destroy" {
         "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
         "--tm-run",
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/eks-prepare-destroy.sh",
+        "${terramate.root.path.fs.absolute}/scripts/ops/aws/eks-prepare-destroy.sh",
         "--cluster-name",
         global.eks_cluster_name,
         "--region",
@@ -357,7 +357,7 @@ script "destroy" {
   # stacks entirely untouched and a GKE cluster running.
   #
   # Idempotent and dry-run-safe; on a healthy teardown it finds nothing and says
-  # so. See scripts/aws-sweep-teardown-blockers.sh for what it will not touch.
+  # so. See scripts/ops/aws/sweep-teardown-blockers.sh for what it will not touch.
   job {
     name        = "stage0-sweep-teardown-blockers"
     description = "Clear ExternalDNS records and the EKS-managed SG that block DeleteHostedZone / DeleteVpc"
@@ -367,7 +367,7 @@ script "destroy" {
         "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
         "--tm-run",
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/aws-sweep-teardown-blockers.sh",
+        "${terramate.root.path.fs.absolute}/scripts/ops/aws/sweep-teardown-blockers.sh",
         "--cluster-name",
         global.eks_cluster_name,
         "--region",
@@ -388,7 +388,7 @@ script "destroy" {
         "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
         "--tm-run",
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/aws-sweep-orphaned-volumes.sh",
+        "${terramate.root.path.fs.absolute}/scripts/ops/aws/sweep-orphaned-volumes.sh",
         "--cluster-name",
         global.eks_cluster_name,
         "--region",

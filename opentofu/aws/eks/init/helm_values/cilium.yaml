@@ -90,7 +90,7 @@ prometheus:
 # every node would cost real schedulable capacity to guard a transient.
 #
 # WHY THIS WENT UNNOTICED FOR SO LONG: the OOM kills were always happening, but
-# scripts/eks-recycle-bootstrap-nodes.sh used to read Cilium's ConfigMap BEFORE
+# scripts/ops/aws/eks-recycle-bootstrap-nodes.sh used to read Cilium's ConfigMap BEFORE
 # waiting for Cilium, found the key unset, and exited 0. The wait never ran, so
 # a slow, crash-looping rollout looked like a healthy one and the damage
 # surfaced an hour later as IP exhaustion in an unrelated component. Fixing that

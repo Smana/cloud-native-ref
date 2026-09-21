@@ -61,7 +61,7 @@ destroy` says "Destroy complete" and the disks keep billing. Three survived the
 2026-08-27 teardown (20/10/5 GB), the GCP replay of an EBS leak EKS already had
 a step for.
 
-`stage2-reclaim-volumes` calls `scripts/k8s-reclaim-csi-volumes.sh`, shared with
+`stage2-reclaim-volumes` calls `scripts/ops/k8s/reclaim-csi-volumes.sh`, shared with
 the AWS teardown because every step of it is plain Kubernetes — what it does,
 step by step, is on the
 [AWS teardown]({{< relref "/docs/get-started/aws/teardown.md#what-eks-prepare-destroysh-does-first" >}}).
@@ -88,8 +88,8 @@ from, and never fails the teardown.
 Run it by hand against any project at any time:
 
 ```bash
-./scripts/gcp-sweep-orphaned-disks.sh --project <project>          # dry run
-./scripts/gcp-sweep-orphaned-disks.sh --project <project> --apply
+./scripts/ops/gcp/sweep-orphaned-disks.sh --project <project>          # dry run
+./scripts/ops/gcp/sweep-orphaned-disks.sh --project <project> --apply
 ```
 
 {{< callout type="warning" >}}
@@ -129,7 +129,7 @@ which lands at the *end* of the network destroy, after the rest of the VPC is
 already gone, leaving the stack half torn down. On 2026-08-27 that meant deleting
 twelve records by hand.
 
-The network stack's destroy now runs `scripts/gcp-purge-dns-records.sh` first,
+The network stack's destroy now runs `scripts/ops/gcp/purge-dns-records.sh` first,
 reading the zone name from state rather than re-deriving it. Apex NS and SOA are
 left alone: Cloud DNS will not delete them separately and removes them with the
 zone. Safe to re-run — it exits 0 when the zone is already gone or already empty.
@@ -229,7 +229,7 @@ rather than as an error during the rebuild.
 {{< /callout >}}
 
 You should not normally have to do any of this: the workforce-identity stack's
-deploy runs `scripts/gcp-adopt-workforce-pool.sh` first, which undeletes the
+deploy runs `scripts/ops/gcp/adopt-workforce-pool.sh` first, which undeletes the
 pool *and* its provider and imports both into state, so a rebuild inside the
 30-day window just works. It is a no-op on a genuinely fresh org. The manual
 commands are here for when you are diagnosing rather than deploying.

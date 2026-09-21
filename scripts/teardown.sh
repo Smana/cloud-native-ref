@@ -87,11 +87,11 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
       --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
     if [ -n "${_left//[[:space:]]/}" ]; then
       echo "=== destroy left resources behind — sweeping controller-created orphans ==="
-      bash "${ROOT}/scripts/aws-sweep-teardown-blockers.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-teardown-blockers.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-      bash "${ROOT}/scripts/aws-sweep-controller-orphans.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-controller-orphans.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-      bash "${ROOT}/scripts/aws-sweep-orphaned-volumes.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
 
       echo

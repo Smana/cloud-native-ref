@@ -36,7 +36,7 @@ archive — a live prefix keeps changing under you, and the whole point is a kno
 state you can return to.
 
 ```bash
-./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+./scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
   --cloud gcp --bucket <project>-ogenki-cnpg-backups --apply
 ```
 
@@ -84,7 +84,7 @@ bootstraps empty. Recovery is unaffected by any of this: it reads
 `spec.objectStoreRecovery.path` explicitly and never touches a live archive.
 
 {{< callout type="info" >}}
-`scripts/cnpg-prepare-restore.sh` still exists as an escape hatch for the cases
+`scripts/ops/k8s/cnpg-prepare-restore.sh` still exists as an escape hatch for the cases
 that still collide: a cluster pinned to an explicit `serverName`, an archive
 left behind by a pre-#1963 generation, or a deliberate reuse of a prefix. It
 refuses to clear a live archive unless the named seed actually holds a base
@@ -138,7 +138,7 @@ identity providers. All five matched exactly:
 ## Rotating the seed
 
 Refresh it when the database changes meaningfully — new OAuth apps, a schema
-migration, significant user growth. Re-run `scripts/cnpg-promote-seed.sh` (if
+migration, significant user growth. Re-run `scripts/ops/k8s/cnpg-promote-seed.sh` (if
 `--seed` is omitted it defaults to the claim name with any `xplane-` prefix
 removed, plus today's date) and update `path`. The old prefix costs a few tens
 of megabytes; keep it until the new one has been restored from at least once.
