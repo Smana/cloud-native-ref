@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubernetes-event-exporter
+  labels:
+    app.kubernetes.io/instance: kubernetes-event-exporter
+    app.kubernetes.io/name: kubernetes-event-exporter
+    app.kubernetes.io/component: kubernetes-event-exporter
+spec:
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - observability
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: kubernetes-event-exporter
+      app.kubernetes.io/name: kubernetes-event-exporter
+      app.kubernetes.io/component: metrics

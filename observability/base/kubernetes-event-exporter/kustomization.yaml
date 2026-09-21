@@ -2,5 +2,35 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: observability
 resources:
-  - helmrelease.yaml
+  - serviceaccount.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
   - vmrule.yaml
+
+# No "dump" file receiver in config.yaml: with layout: {} (empty-but-present) the
+# fork's file sink takes the convertLayoutTemplate branch over zero keys and emits
+# contentless "{}" lines (pkg/sinks/file.go) — every cluster Event became a noise
+# line that Vector's unfiltered kubernetes_logs source re-ingested into VictoriaLogs.
+# It was never a fallback either: if the informer stops, no receiver gets anything.
+# Events flow solely via the loki receiver, targeting vlsingle (see
+# observability/base/victoria-logs/) — it pointed at the vlcluster vlinsert Service
+# (never deployed here) from 2025-08-23 to 2026-08-29, so event push silently went
+# nowhere the whole time.
+#
+# The repo's first configMapGenerator: the exporter reads -conf once at startup with
+# no file watcher, so a plain ConfigMap wouldn't roll the pod on a config change. The
+# generated name's content hash does, the same way a HelmRelease's checksum/config
+# annotation did before this was vendored (ADR-0040).
+configMapGenerator:
+  - name: kubernetes-event-exporter
+    files:
+      - config.yaml
+    options:
+      labels:
+        app.kubernetes.io/instance: kubernetes-event-exporter
+        app.kubernetes.io/name: kubernetes-event-exporter
