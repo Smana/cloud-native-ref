@@ -1,0 +1,10 @@
+version: "3"
+
+# build-og-card.html is not a task: open it in a browser and screenshot it.
+tasks:
+  export-diagrams:
+    desc: Regenerate every diagram SVG the site embeds from its .drawio source (needs the pinned drawio)
+    cmds: ["{{.TASKFILE_DIR}}/export-diagrams.sh {{.CLI_ARGS}}"]
+  diagram-icons:
+    desc: The icon library behind docs/architecture/*.drawio — `task docs:diagram-icons -- audit`
+    cmds: ["python3 {{.TASKFILE_DIR}}/diagram-icons.py {{.CLI_ARGS}}"]

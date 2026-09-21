@@ -6,6 +6,10 @@ includes:
   # file and no ci:* task would exist.
   ci:
     taskfile: scripts/tasks.yaml
+  ops:
+    taskfile: scripts/ops/tasks.yaml
+  docs:
+    taskfile: scripts/docs/tasks.yaml
 
 tasks:
   default:
