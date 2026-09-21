@@ -1,0 +1,15 @@
+clusterName: ${cluster_name}
+leaderElection: {}
+logFormat: json
+logLevel: info
+metricsNamePrefix: event_exporter_
+receivers:
+- loki:
+    streamLabels:
+      source: kubernetes-event-exporter
+    url: http://victoria-logs-victoria-logs-single-server.observability.svc.cluster.local:9428/insert/loki/api/v1/push
+  name: victorialogs
+route:
+  routes:
+  - match:
+    - receiver: victorialogs
