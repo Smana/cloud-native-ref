@@ -338,22 +338,17 @@ groups:
         role: Landing-page dashboard linking every service this platform runs
         url: https://gethomepage.dev
         pin: "`tooling/base/homepage/helmrelease.yaml`"
-      - name: Dagger engine
-        role: Shared build engine for self-hosted runners — provisioned, not yet wired live
-        logo: dagger
-        url: https://dagger.io
-        pin: "`tooling/base/dagger-engine/deployment.yaml` — image tag"
       - name: GitHub Actions Runner Controller
         role: Reconciles self-hosted GitHub Actions runners — off by default
         logo: github-actions
         url: https://github.com/actions/actions-runner-controller
         pin: "`tooling/base/gha-runners/controller-helmrelease.yaml`"
         note: Off by default.
-      - name: GHA runner scale sets
-        role: Two runner pools — plain Kubernetes jobs, and Docker-in-Docker for Dagger
+      - name: GHA runner scale set
+        role: Runner pool for plain Kubernetes jobs
         logo: github-actions
         url: https://github.com/actions/actions-runner-controller
-        pin: "`tooling/base/gha-runners/default-scale-set-helmrelease.yaml`, `dagger-scale-set-helmrelease.yaml`"
+        pin: "`tooling/base/gha-runners/default-scale-set-helmrelease.yaml`"
         note: Off by default.
       - name: Valkey
         role: Per-tenant cache — kvStore claims for Harbor and this platform's demo apps

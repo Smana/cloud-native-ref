@@ -187,12 +187,6 @@ CHART_RENDER_OVERRIDES = {
             "namespace": "tooling",
         }
     },
-    ("tooling", "dagger-gha-runner-scale-set"): {
-        "controllerServiceAccount": {
-            "name": "gha-runner-scale-set-controller-gha-rs-controller",
-            "namespace": "tooling",
-        }
-    },
 }
 
 
@@ -351,9 +345,9 @@ def normalize_quantities(node):
 
     The Kubernetes API server's resource.Quantity.UnmarshalJSON accepts a bare
     JSON number (`cpu: 1`) exactly like a string (`cpu: "1"`) - upstream chart
-    defaults (KEDA, Harbor's bundled Trivy subchart) and this repo's own
-    dagger-engine overlay rely on that leniency, and these workloads run in
-    the live cluster today with these exact values. flux-schema's generated
+    defaults (KEDA, Harbor's bundled Trivy subchart) rely on that leniency,
+    and these workloads run in the live cluster today with these exact
+    values. flux-schema's generated
     JSON-Schema catalog types Quantity as `string` only, stricter than the
     API server actually is, so a numeric value here is a validator false
     positive, not a real defect. Narrowly scoped to resources.limits/requests

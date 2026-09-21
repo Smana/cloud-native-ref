@@ -20,7 +20,7 @@
         <mxCell id="cbox" value="&lt;b&gt;ci.yaml&lt;/b&gt; — six jobs, every pull request, no path filter" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;spacingTop=6;" vertex="1" parent="1">
           <mxGeometry x="290" y="110" width="570" height="300" as="geometry" />
         </mxCell>
-        <mxCell id="j1" value="&lt;b&gt;Pre-commit checks&lt;/b&gt;&#xa;Dagger → daggerverse/pre-commit-tf&#xa;terraform fmt · validate · tflint" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="j1" value="&lt;b&gt;Pre-commit checks&lt;/b&gt;&#xa;terraform fmt · validate · tflint" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="310" y="150" width="260" height="74" as="geometry" />
         </mxCell>
         <mxCell id="j2" value="&lt;b&gt;Security scanning&lt;/b&gt;&#xa;Trivy · Checkov · TruffleHog&#xa;SARIF → GitHub Security tab" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">

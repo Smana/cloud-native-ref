@@ -10,7 +10,6 @@ spec:
         operator: In
         values:
           - default-gha-runner-scale-set
-          - dagger-gha-runner-scale-set
   egress:
     - toEndpoints:
         - matchLabels:
@@ -21,13 +20,6 @@ spec:
             - port: "53"
               protocol: UDP
             - port: "53"
-              protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            k8s:app.kubernetes.io/name: dagger-engine
-      toPorts:
-        - ports:
-            - port: "8080"
               protocol: TCP
     - toEntities:
         - world

@@ -111,27 +111,6 @@ exemptions:
       - hostPIDSet
       - privilegeEscalationAllowed
 
-  # Container build engine (BuildKit). Building OCI images requires creating
-  # mount/user namespaces and running nested containers, hence a privileged
-  # container with dangerous capabilities.
-  - controllerNames:
-      - dagger-engine
-    rules:
-      - privilegeEscalationAllowed
-      - runAsPrivileged
-      - dangerousCapabilities
-
-  # GitHub Actions runner in docker-in-docker mode. The `dind` sidecar is
-  # hardcoded privileged by the upstream chart (gha-runner-scale-set
-  # _helpers.tpl "dind-container" — not overridable from values), and the runner
-  # executes arbitrary workflow code that legitimately escalates (sudo, apt).
-  # NOTE: tagNotSpecified is NOT exempted — the runner image is pinned below.
-  - controllerNames:
-      - dagger-gha-runner-scale-set
-    rules:
-      - privilegeEscalationAllowed
-      - runAsPrivileged
-
   # GitHub Actions runner (kubernetes mode). Executes arbitrary workflow code
   # that legitimately escalates privileges (sudo/apt in workflow steps).
   # NOTE: tagNotSpecified is NOT exempted — the runner image is pinned below.
