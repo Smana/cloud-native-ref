@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+#
+# Offline tests for scripts/openbao-oidc-check.sh (design E, #2045): the
+# post-deploy check that proves OpenBao's auth/oidc client agrees with the
+# secret store and with ZITADEL, one test per exit-code case in the plan's
+# Task 5 brief.
+#
+# WHY END-TO-END, RATHER THAN LIFTED FUNCTIONS. Every other suite in this
+# directory that tests a big script lifts one function out with sed, because
+# the script itself parses argv at the top and is not sourceable. This
+# subject IS that shape too, but it has no internal function worth lifting in
+# isolation: the whole point under test is the SEQUENCE of decisions --
+# secret vs. mount, then id agreement, then a live probe -- so the suite runs
+# the real script as a subprocess, with `aws` and `curl` replaced by small
+# fakes on PATH. A function lifted out and eval'd would still need this exact
+# fixture machinery to drive it; running the real binary means the argv
+# parsing and the `--ca-file` existence check are exercised for free.
+#
+# WHY PATH STUBS. Same reasoning as test-zitadel-oidc-clients-openbao.sh: a
+# stub function would be bypassed by `command`/`env`, and it is the only way
+# to prove secrets travel where the design says without contacting anything
+# real. `aws` fakes Secrets Manager with flat files; `curl` fakes OpenBao's
+# /v1 API from those same files, AND fakes the authorize URL's first hop
+# (identified by having no `-K`: it is the one call in this script that must
+# NOT carry the root token, because it goes to ZITADEL, not OpenBao).
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+fail=0
+check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
+          else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
+contains() { if grep -qF -- "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
+             else printf '  FAIL %s: %q not found in %q\n' "$3" "$2" "$1"; fail=1; fi }
+absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3" "$2"; fail=1
+           else printf '  ok   %s\n' "$3"; fi }
+
+# The subject is still at scripts/ root. When it moves, this path moves with it.
+SUBJECT="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../openbao-oidc-check.sh}"
+[ -f "$SUBJECT" ] || { echo "  FAIL $SUBJECT does not exist" >&2; exit 1; }
+REAL_JQ="$(command -v jq)"
+rjq() { "$REAL_JQ" "$@"; }
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+STUB_BIN="$WORK/bin"
+mkdir -p "$STUB_BIN"
+STORE="$WORK/store"
+CURL_STATE="$WORK/bao"
+CURL_LOG="$WORK/curl.log"
+export STORE CURL_STATE CURL_LOG REAL_JQ
+
+# A tiny Secrets Manager: one file per secret id, sanitised the same way
+# store_file() does in the other suites (cloud-secret-store.sh's own tests
+# cover CLOUD dispatch and eventual-consistency; this only needs the two
+# calls openbao-oidc-check.sh actually makes).
+cat > "$STUB_BIN/aws" <<'EOF'
+#!/usr/bin/env bash
+service="$1" action="$2"; shift 2
+secret_id=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    [ "${args[$i]}" = "--secret-id" ] && secret_id="${args[$((i + 1))]}"
+done
+file="$STORE/${secret_id//\//_}"
+case "$service $action" in
+    "secretsmanager describe-secret")   [ -f "$file" ] ;;
+    "secretsmanager get-secret-value")  [ -f "$file" ] && cat "$file" ;;
+    *) echo "aws stub: unhandled $service $action" >&2; exit 1 ;;
+esac
+EOF
+
+# A small fake OpenBao, plus the authorize URL's first hop.
+#
+# The first hop is told apart from every OpenBao call by having no `-K`:
+# openbao-oidc-check.sh never sends the root token to ZITADEL, so that is the
+# one call in the whole script this stub can identify structurally rather
+# than by inspecting the URL. It answers from $AUTHORIZE_HTTP_CODE (default
+# 302) or, with $AUTHORIZE_CURL_FAIL=1, fails the connection outright -- the
+# "OpenBao unreachable" shape reused for "ZITADEL unreachable", since both
+# collapse to the same exit 2 in this script.
+cat > "$STUB_BIN/curl" <<'EOF'
+#!/usr/bin/env bash
+args=("$@") method=GET url="" kfile="" has_body=no wants_code=no
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[$i]}" in
+        -X) method="${args[$((i + 1))]}" ;;
+        -K) kfile="${args[$((i + 1))]}" ;;
+        -w) [ "${args[$((i + 1))]}" = '%{http_code}' ] && wants_code=yes ;;
+        @-) has_body=yes ;;
+        http://*|https://*) url="${args[$i]}" ;;
+    esac
+done
+{ printf 'CALL:'; printf ' %q' "$@"; printf '\n'; } >> "$CURL_LOG"
+
+body="$WORK_BODY"
+[ "$has_body" = yes ] && cat > "$body"
+
+if [ "$wants_code" = yes ] && [ -z "$kfile" ]; then
+    if [ "${AUTHORIZE_CURL_FAIL:-0}" = 1 ]; then
+        echo "curl: (7) Failed to connect to host" >&2
+        exit 7
+    fi
+    printf '%s' "${AUTHORIZE_HTTP_CODE:-302}"
+    exit 0
+fi
+
+if [ "${BAO_UNREACHABLE:-0}" = 1 ]; then
+    echo "curl: (7) Failed to connect to host" >&2
+    exit 7
+fi
+
+path="${url#*/v1/}"
+case "$method $path" in
+    "GET sys/auth")               cat "$CURL_STATE/sys_auth.json" 2>/dev/null || echo '{"data":{}}' ;;
+    "GET auth/oidc/config")       "$REAL_JQ" -c '{data: (del(.oidc_client_secret) + {status: "valid"})}' "$CURL_STATE/config.json" ;;
+    "GET auth/oidc/role/default") "$REAL_JQ" -c '{data: .}' "$CURL_STATE/role.json" ;;
+    "POST auth/oidc/oidc/auth_url")
+        if [ -n "${AUTH_URL_ERROR:-}" ]; then
+            printf '%s' "$AUTH_URL_ERROR" >&2
+            exit 22
+        fi
+        "$REAL_JQ" -cn --arg u "${AUTH_URL_VALUE-https://auth.cloud.ogenki.io/authorize?client_id=x}" '{data: {auth_url: $u}}' ;;
+    *) echo "curl stub: unhandled $method $path" >&2; exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$STUB_BIN/aws" "$STUB_BIN/curl"
+WORK_BODY="$WORK/last-body"
+export WORK_BODY
+PATH="$STUB_BIN:$PATH"
+
+calls() { grep '^CALL:' "$CURL_LOG"; }
+tls_verified() { # label, call lines
+    if grep -qE -- '(^| )(-[A-Za-z]*k[A-Za-z]*|--insecure)( |$)' <<< "$2"; then
+        printf '  FAIL %s: an insecure flag in %s\n' "$1" "$2"; fail=1
+    else
+        printf '  ok   %s\n' "$1"
+    fi
+}
+
+CA_FILE="$WORK/ca.pem"
+: > "$CA_FILE"
+BAO_URL="https://bao.priv.aws.ogenki.io:8200"
+OIDC_SECRET_NAME="openbao-oidc"  # pragma: allowlist secret -- a store KEY name, not a secret value
+ROOT_SECRET_NAME="openbao/cloud-native-ref/tokens/root"  # pragma: allowlist secret
+REDIRECT_URI="http://localhost:8250/oidc/callback"
+ID="222222222222222222"
+CS="CS-SENTINEL-4b1d"
+ROOT="ROOT-TOKEN-SENTINEL-9e7c"
+
+# A fully consistent, bootstrapped platform: the store, the config, the role
+# and the live probe all agree on $ID. Each test starts here and un-converges
+# exactly the one thing it means to exercise.
+world() {
+    rm -rf "$CURL_STATE" "$STORE"
+    mkdir -p "$CURL_STATE" "$STORE"
+    : > "$CURL_LOG"
+    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR
+    export AUTHORIZE_HTTP_CODE=302
+    export AUTH_URL_VALUE="https://auth.cloud.ogenki.io/authorize?client_id=${ID}"
+    echo '{"data":{"oidc/":{"type":"oidc"},"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
+    rjq -cn --arg id "$ID" '{
+        oidc_discovery_url: "https://auth.cloud.ogenki.io", oidc_discovery_ca_pem: "",
+        oidc_client_id: $id, oidc_client_secret: "OLD-SECRET", default_role: "default",
+        bound_issuer: "https://auth.cloud.ogenki.io", namespace_in_state: true,
+        provider_config: {}}' > "$CURL_STATE/config.json"
+    rjq -cn --arg id "$ID" --arg cb "$BAO_URL/ui/vault/auth/oidc/oidc/callback" '{
+        role_type: "oidc", bound_audiences: [$id], user_claim: "email", groups_claim: "groups",
+        allowed_redirect_uris: [$cb, "http://localhost:8250/oidc/callback"]}' > "$CURL_STATE/role.json"
+    printf '{"client_id":"%s","client_secret":"%s","endpoint":"https://auth.cloud.ogenki.io"}' "$ID" "$CS" \
+        > "$STORE/${OIDC_SECRET_NAME//\//_}"
+    printf '{"token":"%s"}' "$ROOT" > "$STORE/${ROOT_SECRET_NAME//\//_}"
+}
+
+run_check() {
+    out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" \
+        --ca-file "$CA_FILE" --cloud aws --oidc-secret "$OIDC_SECRET_NAME" \
+        --redirect-uri "$REDIRECT_URI" 2>&1)"
+    rc=$?
+}
+
+echo "== exit 0: consistent =="
+world; run_check
+check "consistent: returns 0" "0" "$rc"
+contains "$out" "[ok     ]" "consistent: says [ok     ]"
+contains "$out" "$ID" "consistent: names the client id"
+
+echo
+echo "== exit 0: not bootstrapped =="
+world
+rm -f "$STORE/${OIDC_SECRET_NAME//\//_}"
+echo '{"data":{"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
+run_check
+check "not bootstrapped: returns 0" "0" "$rc"
+contains "$out" "not bootstrapped" "not bootstrapped: says so"
+absent "$out" "[FAILED" "not bootstrapped: no failure line"
+
+echo
+echo "== exit 1: the secret exists but the mount doesn't =="
+world
+echo '{"data":{"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
+run_check
+check "secret, no mount: returns 1" "1" "$rc"
+contains "$out" "no oidc/ auth mount yet" "secret, no mount: names the gap"
+contains "$out" "terramate -C opentofu/aws/openbao/management script run deploy" \
+    "secret, no mount: prints the management apply command"
+
+echo
+echo "== exit 1: the mount exists but the secret doesn't =="
+world
+rm -f "$STORE/${OIDC_SECRET_NAME//\//_}"
+run_check
+check "mount, no secret: returns 1" "1" "$rc"
+contains "$out" "DESTROY the mount" "mount, no secret: warns the next apply destroys it"
+
+echo
+echo "== exit 1: the config id doesn't match the store =="
+world
+rjq '.oidc_client_id = "111111111111111111"' "$CURL_STATE/config.json" > "$WORK/c.json" && mv "$WORK/c.json" "$CURL_STATE/config.json"
+run_check
+check "config id mismatch: returns 1" "1" "$rc"
+contains "$out" "does not match the store" "config id mismatch: names the mismatch"
+contains "$out" "store:            ${ID}" "config id mismatch: prints the store id"
+contains "$out" "auth/oidc/config: 111111111111111111" "config id mismatch: prints the config id"
+contains "$out" "role audience:" "config id mismatch: prints the role audience"
+contains "$out" "sync --apply" "config id mismatch: prints the fix command"
+
+echo
+echo "== exit 1: the role audience doesn't match the store =="
+world
+rjq '.bound_audiences = ["111111111111111111"]' "$CURL_STATE/role.json" > "$WORK/r.json" && mv "$WORK/r.json" "$CURL_STATE/role.json"
+run_check
+check "role audience mismatch: returns 1" "1" "$rc"
+contains "$out" "does not match the store" "role audience mismatch: names the mismatch"
+contains "$out" '["111111111111111111"]' "role audience mismatch: prints the stale audience"
+
+echo
+echo "== exit 1: liveness -- auth_url returns no URL =="
+world
+export AUTH_URL_VALUE=""
+run_check
+check "empty auth_url: returns 1" "1" "$rc"
+contains "$out" "returned no auth_url" "empty auth_url: says so"
+
+echo
+echo "== exit 1: liveness -- the first hop returns 400 (App.NotFound) =="
+world
+export AUTHORIZE_HTTP_CODE=400
+run_check
+check "first hop 400: returns 1" "1" "$rc"
+contains "$out" "App.NotFound" "first hop 400: names App.NotFound"
+contains "$out" "$ID" "first hop 400: names the client id"
+
+echo
+echo "== exit 2: OpenBao unreachable =="
+world
+export BAO_UNREACHABLE=1
+run_check
+check "OpenBao unreachable: returns 2" "2" "$rc"
+contains "$out" "cannot reach OpenBao" "OpenBao unreachable: says so"
+unset BAO_UNREACHABLE
+
+echo
+echo "== exit 2: the root token is unreadable =="
+world
+rm -f "$STORE/${ROOT_SECRET_NAME//\//_}"
+run_check
+check "unreadable token: returns 2" "2" "$rc"
+contains "$out" "no root token readable" "unreadable token: says so"
+
+echo
+echo "== exit 2: the first hop returns neither 302 nor 400 =="
+world
+export AUTHORIZE_HTTP_CODE=500
+run_check
+check "first hop 500: returns 2" "2" "$rc"
+contains "$out" "neither 302 nor 400" "first hop 500: says cannot tell"
+contains "$out" "T0" "first hop 500: names T0 as unverified"
+
+echo
+echo "== exit 2: a non-map sys/auth answer is cannot-tell, never 'no mount' =="
+world
+echo '{}' > "$CURL_STATE/sys_auth.json"
+run_check
+check "ambiguous sys/auth: returns 2" "2" "$rc"
+contains "$out" "no mount map" "ambiguous sys/auth: says cannot tell"
+absent "$out" "not bootstrapped" "ambiguous sys/auth: never says not bootstrapped"
+
+echo
+echo "== flags: required, and the --oidc-secret default =="
+world
+out="$(bash "$SUBJECT" --root-token-secret-name "$ROOT_SECRET_NAME" --ca-file "$CA_FILE" --cloud aws --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "no --url: returns 2" "2" "$rc"
+contains "$out" "--url is required" "no --url: names it"
+
+out="$(bash "$SUBJECT" --url "$BAO_URL" --ca-file "$CA_FILE" --cloud aws --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "no --root-token-secret-name: returns 2" "2" "$rc"
+
+out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" --cloud aws --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "no --ca-file: returns 2" "2" "$rc"
+
+out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" --ca-file "$WORK/missing.pem" --cloud aws --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "a --ca-file that does not exist: returns 2" "2" "$rc"
+
+out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" --ca-file "$CA_FILE" --cloud azure --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "an invalid --cloud: returns 2" "2" "$rc"
+
+out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" --ca-file "$CA_FILE" --cloud aws 2>&1)"
+rc=$?
+check "no --redirect-uri: returns 2" "2" "$rc"
+
+# The default is exercised by every other test above (none pass --oidc-secret
+# down a different path than "openbao-oidc"); this pins the literal default
+# by omitting the flag explicitly rather than relying on that coincidence.
+world
+out="$(bash "$SUBJECT" --url "$BAO_URL" --root-token-secret-name "$ROOT_SECRET_NAME" \
+    --ca-file "$CA_FILE" --cloud aws --redirect-uri "$REDIRECT_URI" 2>&1)"
+rc=$?
+check "--oidc-secret defaults to openbao-oidc: returns 0" "0" "$rc"
+
+echo
+echo "== the root token and the client secret are on no argv, and TLS is verified =="
+world; run_check
+absent "$(calls)" "$ROOT" "curl's argv never carries the root token"
+absent "$(calls)" "$CS"   "curl's argv never carries the client secret"
+absent "$out"      "$ROOT" "stdout never carries the root token"
+absent "$out"      "$CS"   "stdout never carries the client secret"
+tls_verified "every call verifies TLS" "$(calls)"
+contains "$(calls)" "--cacert $CA_FILE" "the OpenBao calls pass --cacert"
+
+echo
+echo "== the authorize URL's first hop never carries the root token =="
+world; run_check
+first_hop="$(grep -F "auth.cloud.ogenki.io/authorize" "$CURL_LOG" || true)"
+check "the first hop was made" "yes" "$([ -n "$first_hop" ] && echo yes || echo no)"
+absent "$first_hop" "-K " "the first hop carries no -K (no root token to ZITADEL)"
+
+echo
+if [ "$fail" -eq 0 ]; then echo "PASS"; else echo "==> failure(s) above"; fi
+exit "$fail"
