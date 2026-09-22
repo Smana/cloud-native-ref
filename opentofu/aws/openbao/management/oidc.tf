@@ -116,6 +116,16 @@ resource "vault_jwt_auth_backend" "oidc" {
     max_lease_ttl      = "8h"
     token_type         = "default-service"
   }
+
+  lifecycle {
+    # OpenBao v2.6.2 never returns oidc_client_secret on read (design fact 6),
+    # so the provider always plans to rewrite it -- and every ZITADEL rebuild
+    # issues a new client id too. Left unignored, the next management apply
+    # replays the discovery check while ZITADEL is still down mid-rebuild and
+    # fails. scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
+    # both fields after Terraform creates the mount (design fact 8).
+    ignore_changes = [oidc_client_id, oidc_client_secret]
+  }
 }
 
 resource "vault_jwt_auth_backend_role" "oidc_default" {
@@ -166,6 +176,14 @@ resource "vault_jwt_auth_backend_role" "oidc_default" {
   token_policies = []
   token_ttl      = 3600
   token_max_ttl  = 28800
+
+  lifecycle {
+    # Same rotation as the backend's lifecycle block above: bound_audiences
+    # tracks the client id, so it churns on the same schedule and for the same
+    # reason. reconcile_openbao_oidc keeps it in sync after Terraform creates
+    # the role (design facts 6 and 8).
+    ignore_changes = [bound_audiences]
+  }
 }
 
 # Role -> policy, by way of an external group

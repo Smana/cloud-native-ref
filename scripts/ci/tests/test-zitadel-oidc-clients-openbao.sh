@@ -81,6 +81,26 @@ check "oidc.tf pins the UI callback path" "yes" "$callback_found"
 # entirely, must fail here rather than only failing against a live ZITADEL.
 contains "$consumers_line" '/ui/vault/auth/oidc/oidc/callback' "CONSUMERS registers the same UI callback path"
 
+echo
+echo "== contract: oidc.tf ignores the fields the reconcile rotates (design facts 6, 8) =="
+# Anchored to an active `ignore_changes = [...]` line, same reasoning as the
+# UI-callback guard above: a plain substring match is satisfied by a comment
+# that only mentions the field names, which is exactly how #2011's regression
+# shape (an inert-looking line) would slip past this guard.
+if grep -qE '^[[:space:]]*ignore_changes[[:space:]]*=[[:space:]]*\[oidc_client_id,[[:space:]]*oidc_client_secret\][[:space:]]*$' "$OIDC_TF_SRC"; then
+    backend_ignore=yes
+else
+    backend_ignore=no
+fi
+check "vault_jwt_auth_backend.oidc ignores oidc_client_id and oidc_client_secret" "yes" "$backend_ignore"
+
+if grep -qE '^[[:space:]]*ignore_changes[[:space:]]*=[[:space:]]*\[bound_audiences\][[:space:]]*$' "$OIDC_TF_SRC"; then
+    role_ignore=yes
+else
+    role_ignore=no
+fi
+check "vault_jwt_auth_backend_role.oidc_default ignores bound_audiences" "yes" "$role_ignore"
+
 # ── stubs ───────────────────────────────────────────────────────────────────
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
