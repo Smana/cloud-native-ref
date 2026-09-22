@@ -1,8 +1,8 @@
 version: "3"
 
 # tm-provisioner.sh, helm-release-present.sh, openbao-adopt-jwt-mount.sh and
-# openbao-config.sh are not indexed here: terramate and tofu call them during
-# an apply, never a human directly.
+# openbao-config.sh are not indexed here: they are terramate/tofu plumbing,
+# invoked at plan, apply or destroy time.
 tasks:
   secret-store:
     desc: Inspect and migrate the cloud secret store that backs External Secrets
