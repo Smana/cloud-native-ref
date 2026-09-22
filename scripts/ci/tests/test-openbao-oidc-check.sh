@@ -82,6 +82,10 @@ EOF
 # error, not a connection drop -- --fail-with-body's shape); $AUTH_URL_ERROR
 # does the same for the auth_url POST. Each drives one of this script's own
 # "cannot tell" branches independently of the others.
+#
+# $AUTH_URL_EMPTY_TIMES / $AUTHORIZE_FAIL_TIMES make the first N auth_url
+# POSTs answer an empty auth_url, or the first N first hops fail to connect,
+# then recover: the transient shapes the probe's retry exists for.
 cat > "$STUB_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 args=("$@") method=GET url="" kfile="" has_body=no wants_code=no
@@ -98,9 +102,10 @@ done
 
 body="$WORK_BODY"
 [ "$has_body" = yes ] && cat > "$body"
+nth() { local f="$CURL_STATE/$1.count" n; n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f"; echo "$n"; }
 
 if [ "$wants_code" = yes ] && [ -z "$kfile" ]; then
-    if [ "${AUTHORIZE_CURL_FAIL:-0}" = 1 ]; then
+    if [ "${AUTHORIZE_CURL_FAIL:-0}" = 1 ] || [ "$(nth first_hop)" -le "${AUTHORIZE_FAIL_TIMES:-0}" ]; then
         echo "curl: (7) Failed to connect to host" >&2
         exit 7
     fi
@@ -133,7 +138,9 @@ case "$method $path" in
             printf '%s' "$AUTH_URL_ERROR" >&2
             exit 22
         fi
-        "$REAL_JQ" -cn --arg u "${AUTH_URL_VALUE-https://auth.cloud.ogenki.io/authorize?client_id=x}" '{data: {auth_url: $u}}' ;;
+        u="${AUTH_URL_VALUE-https://auth.cloud.ogenki.io/authorize?client_id=x}"
+        [ "$(nth auth_url)" -le "${AUTH_URL_EMPTY_TIMES:-0}" ] && u=""
+        "$REAL_JQ" -cn --arg u "$u" '{data: {auth_url: $u}}' ;;
     *) echo "curl stub: unhandled $method $path" >&2; exit 1 ;;
 esac
 exit 0
@@ -142,8 +149,10 @@ chmod +x "$STUB_BIN/aws" "$STUB_BIN/curl"
 WORK_BODY="$WORK/last-body"
 export WORK_BODY
 PATH="$STUB_BIN:$PATH"
+export OPENBAO_CHECK_RETRY_SLEEP=0
 
 calls() { grep '^CALL:' "$CURL_LOG"; }
+count_calls() { grep -cF -- "$1" "$CURL_LOG"; }  # needle -> how many curl calls carried it
 tls_verified() { # label, call lines
     if grep -qE -- '(^| )(-[A-Za-z]*k[A-Za-z]*|--insecure)( |$)' <<< "$2"; then
         printf '  FAIL %s: an insecure flag in %s\n' "$1" "$2"; fail=1
@@ -169,7 +178,7 @@ world() {
     rm -rf "$CURL_STATE" "$STORE"
     mkdir -p "$CURL_STATE" "$STORE"
     : > "$CURL_LOG"
-    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL
+    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL AUTH_URL_EMPTY_TIMES AUTHORIZE_FAIL_TIMES
     export AUTHORIZE_HTTP_CODE=302
     export AUTH_URL_VALUE="https://auth.cloud.ogenki.io/authorize?client_id=${ID}"
     echo '{"data":{"oidc/":{"type":"oidc"},"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
@@ -256,6 +265,8 @@ contains "$out" "store:            ${ID}" "config id mismatch: prints the store 
 contains "$out" "auth/oidc/config: 111111111111111111" "config id mismatch: prints the config id"
 contains "$out" "role audience:" "config id mismatch: prints the role audience"
 contains "$out" "sync --apply" "config id mismatch: prints the fix command"
+check "config id mismatch: not retried -- one config read" "1" "$(count_calls auth/oidc/config)"
+check "config id mismatch: not retried -- no auth_url POST" "0" "$(count_calls auth/oidc/oidc/auth_url)"
 
 echo
 echo "== exit 1: the role audience doesn't match the store =="
@@ -267,12 +278,26 @@ contains "$out" "does not match the store" "role audience mismatch: names the mi
 contains "$out" '["111111111111111111"]' "role audience mismatch: prints the stale audience"
 
 echo
-echo "== exit 1: liveness -- auth_url returns no URL =="
+echo "== exit 2: liveness -- auth_url keeps returning no URL =="
+# OpenBao v2.6.2 answers 200 with an empty auth_url both when discovery fails
+# (ZITADEL briefly unreachable) and when the redirect_uri is not allowed --
+# it cannot say which, so neither can this script.
 world
 export AUTH_URL_VALUE=""
 run_check
-check "empty auth_url: returns 1" "1" "$rc"
-contains "$out" "returned no auth_url" "empty auth_url: says so"
+check "persistent empty auth_url: returns 2" "2" "$rc"
+contains "$out" "returned no auth_url" "persistent empty auth_url: says so"
+contains "$out" "OpenBao cannot fetch ZITADEL's discovery document, or the redirect_uri is not in the role's allowed_redirect_uris" \
+    "persistent empty auth_url: names both causes"
+check "persistent empty auth_url: tried 5 times" "5" "$(count_calls auth/oidc/oidc/auth_url)"
+
+echo
+echo "== exit 0: liveness -- an empty auth_url that recovers is retried =="
+world
+export AUTH_URL_EMPTY_TIMES=2
+run_check
+check "transient empty auth_url: returns 0" "0" "$rc"
+check "transient empty auth_url: third attempt succeeds" "3" "$(count_calls auth/oidc/oidc/auth_url)"
 
 echo
 echo "== exit 1: liveness -- the first hop returns 400 (App.NotFound) =="
@@ -282,6 +307,7 @@ run_check
 check "first hop 400: returns 1" "1" "$rc"
 contains "$out" "App.NotFound" "first hop 400: names App.NotFound"
 contains "$out" "$ID" "first hop 400: names the client id"
+check "first hop 400: not retried" "1" "$(count_calls auth.cloud.ogenki.io/authorize)"
 
 echo
 echo "== exit 2: liveness -- the auth_url POST itself cannot be reached =="
@@ -300,6 +326,14 @@ run_check
 check "first hop unreachable: returns 2" "2" "$rc"
 contains "$out" "cannot reach the authorize URL's first hop" "first hop unreachable: says so"
 unset AUTHORIZE_CURL_FAIL
+
+echo
+echo "== exit 0: liveness -- a first hop that fails, then connects, is retried =="
+world
+export AUTHORIZE_FAIL_TIMES=2
+run_check
+check "transient first hop: returns 0" "0" "$rc"
+check "transient first hop: third attempt succeeds" "3" "$(count_calls auth.cloud.ogenki.io/authorize)"
 
 echo
 echo "== the auth_url POST body carries the role and the configured redirect_uri =="
@@ -333,6 +367,7 @@ run_check
 check "first hop 500: returns 2" "2" "$rc"
 contains "$out" "neither 302 nor 400" "first hop 500: says cannot tell"
 contains "$out" "T0" "first hop 500: names T0 as unverified"
+check "first hop 500: tried 5 times" "5" "$(count_calls auth.cloud.ogenki.io/authorize)"
 
 echo
 echo "== exit 2: a non-map sys/auth answer is cannot-tell, never 'no mount' =="

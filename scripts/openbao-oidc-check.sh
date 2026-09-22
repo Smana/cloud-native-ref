@@ -31,7 +31,8 @@
 #      cluster that has never run the management apply).
 #   1  a definite, nameable problem. The message names the fix.
 #   2  cannot tell: OpenBao unreachable, the root token unreadable, or the
-#      liveness probe's first hop answered with neither 302 nor 400. T0, the
+#      liveness probe still inconclusive after PROBE_ATTEMPTS tries -- no
+#      auth_url, or a first hop answering neither 302 nor 400. T0, the
 #      live spike that would have measured those two codes against a real
 #      ZITADEL, never ran -- no cluster was reachable when this was written
 #      (plan ruling on T0) -- so until the first live run, 302/400 are an
@@ -67,6 +68,10 @@ REDIRECT_URI=""
 # and reconcile_openbao_oidc rotates that same role -- nothing on the platform
 # creates a second one.
 ROLE="default"
+# The liveness probe's retry budget. Only the probe retries: everything before
+# it compares values already at rest, so a second read would say the same.
+PROBE_ATTEMPTS=5
+RETRY_SLEEP="${OPENBAO_CHECK_RETRY_SLEEP:-10}"
 
 usage() {
     cat <<'EOF' >&2
@@ -76,8 +81,8 @@ Usage: openbao-oidc-check.sh --url <url> --root-token-secret-name <id> \
 
 Exit 0: consistent, or not bootstrapped yet.
 Exit 1: a definite problem -- the message names the fix.
-Exit 2: cannot tell (OpenBao unreachable, the root token unreadable, or an
-unrecognised HTTP code from the authorize URL's first hop).
+Exit 2: cannot tell (OpenBao unreachable, the root token unreadable, or the
+liveness probe still inconclusive after its retries).
 EOF
 }
 
@@ -118,7 +123,7 @@ check() {
 
     local secret_present=false mount_present="" auth_json mount
     local stored stored_id cfg_json role_json cfg have_id have_aud want_aud
-    local token_file auth_body resp url code
+    local token_file auth_body resp url code attempt=0 transient=""
 
     store_exists "$OIDC_SECRET" && secret_present=true
 
@@ -205,39 +210,51 @@ check() {
     # store that still (wrongly) agrees. auth_url is the one call that goes
     # all the way to ZITADEL: a known client 302s to its login page; an
     # unknown one 400s with App.NotFound.
+    #
+    # Only a 302 or a 400 is definite. Everything else can be ZITADEL still
+    # starting mid-rebuild, so it is retried before it is called "cannot
+    # tell". OpenBao v2.6.2 answers 200 with an EMPTY auth_url when it cannot
+    # fetch the discovery document -- the same answer it gives for a
+    # redirect_uri the role does not allow, so an empty URL that persists
+    # stays exit 2: this script cannot tell the two apart.
     auth_body="$(jq -cn --arg r "$ROLE" --arg u "$REDIRECT_URI" '{role: $r, redirect_uri: $u}')" || exit 2
-    if ! resp="$(printf '%s' "$auth_body" | openbao_req POST auth/oidc/oidc/auth_url --data-binary @- 2>&1)"; then
-        echo "[FAILED ] cannot tell -- cannot reach auth/oidc/oidc/auth_url: ${resp}" >&2
-        exit 2
-    fi
-    url="$(jq -r '.data.auth_url // empty' <<< "$resp" 2>/dev/null)" || url=""
-    if [ -z "$url" ]; then
-        echo "[FAILED ] auth/oidc/oidc/auth_url returned no auth_url for role ${ROLE}" >&2
-        exit 1
-    fi
+    while [ "$attempt" -lt "$PROBE_ATTEMPTS" ]; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -gt 1 ]; then sleep "$RETRY_SLEEP"; fi
 
-    # The authorize URL points at ZITADEL, not OpenBao: no --cacert (that
-    # would be OpenBao's CA, wrong issuer entirely) and no -L, since the
-    # FIRST hop's status code is what tells known from unknown. TLS is still
-    # verified against the system trust store -- never -k -- which is
-    # correct here: ZITADEL's route is public (design fact 1's topology
-    # table), so its certificate chains to a public CA.
-    if ! code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>&1)"; then
-        echo "[FAILED ] cannot tell -- cannot reach the authorize URL's first hop: ${code}" >&2
-        exit 2
-    fi
-    case "$code" in
-        302)
-            echo "[ok     ] OpenBao's OIDC client ${have_id} matches the store, and ZITADEL accepts it (first hop 302)"
-            exit 0 ;;
-        400)
-            echo "[FAILED ] the authorize URL's first hop returned 400 -- ZITADEL does not know client ${have_id} (App.NotFound)" >&2
-            exit 1 ;;
-        *)
-            echo "[FAILED ] cannot tell -- the authorize URL's first hop returned ${code}, neither 302 nor 400." >&2
-            echo "          T0, the live spike, never ran: treat 302/400 as unverified until the first live run." >&2
-            exit 2 ;;
-    esac
+        if ! resp="$(printf '%s' "$auth_body" | openbao_req POST auth/oidc/oidc/auth_url --data-binary @- 2>&1)"; then
+            transient="cannot reach auth/oidc/oidc/auth_url: ${resp}"
+            continue
+        fi
+        url="$(jq -r '.data.auth_url // empty' <<< "$resp" 2>/dev/null)" || url=""
+        if [ -z "$url" ]; then
+            transient="auth/oidc/oidc/auth_url returned no auth_url for role ${ROLE}: OpenBao cannot fetch ZITADEL's discovery document, or the redirect_uri is not in the role's allowed_redirect_uris"
+            continue
+        fi
+
+        # The authorize URL points at ZITADEL, not OpenBao: no --cacert (that
+        # would be OpenBao's CA, wrong issuer entirely) and no -L, since the
+        # FIRST hop's status code is what tells known from unknown. TLS is
+        # still verified against the system trust store -- never -k -- which
+        # is correct here: ZITADEL's route is public (design fact 1's topology
+        # table), so its certificate chains to a public CA.
+        if ! code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>&1)"; then
+            transient="cannot reach the authorize URL's first hop: ${code}"
+            continue
+        fi
+        case "$code" in
+            302)
+                echo "[ok     ] OpenBao's OIDC client ${have_id} matches the store, and ZITADEL accepts it (first hop 302)"
+                exit 0 ;;
+            400)
+                echo "[FAILED ] the authorize URL's first hop returned 400 -- ZITADEL does not know client ${have_id} (App.NotFound)" >&2
+                exit 1 ;;
+            *)
+                transient="the authorize URL's first hop returned ${code}, neither 302 nor 400."$'\n'"          T0, the live spike, never ran: treat 302/400 as unverified until the first live run." ;;
+        esac
+    done
+    echo "[FAILED ] cannot tell after ${PROBE_ATTEMPTS} attempts -- ${transient}" >&2
+    exit 2
 }
 
 check
