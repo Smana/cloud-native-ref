@@ -79,13 +79,17 @@ Two consequences worth stating outright:
 `TM_CLOUD` replaced; it is inert today and appears only in archived plans under
 `docs/superpowers/plans/`.
 
-## EKS deploy (two-stage bootstrap, three jobs)
+## EKS deploy (two-stage bootstrap, five jobs)
 
-Defined in `opentofu/aws/eks/init/workflows.tm.hcl`. Stage 1 creates the cluster
-with the temporary VPC-CNI; Stage 2 (run from the same script) disables it,
-installs Cilium, then Flux; a final `stage3-recycle-bootstrap-nodes` job
-recycles the Stage 1 node-group nodes whose ENIs predate Cilium — a no-op once
-they use prefix delegation.
+Defined in `opentofu/aws/eks/init/workflows.tm.hcl`, run in this order:
+
+| Job | Does |
+|---|---|
+| `stage1-infrastructure` | the cluster, with the temporary VPC-CNI |
+| `stage2-cilium-and-flux` | disables VPC-CNI and kube-proxy, installs Cilium, then Flux |
+| `stage3-recycle-bootstrap-nodes` | recycles Stage 1 nodes whose ENIs predate Cilium — a no-op once they use prefix delegation |
+| `stage4-oidc-clients` | registers the OIDC clients, this cluster's and any consumer's, and reconciles OpenBao's; a failure only warns |
+| `stage5-verify-openbao-oidc` | halts the deploy when OpenBao's OIDC client disagrees with the store or ZITADEL (#2045) |
 
 `terramate script run deploy` from `opentofu/` already covers this stack, so
 these are the targeted forms — useful for re-running one stage after a failure,
