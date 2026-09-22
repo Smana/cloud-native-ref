@@ -15,7 +15,7 @@
 # ClusterSecretStore is overridden in security/gcp-0/openbao). Nothing seeds
 # them, on either cloud.
 #
-# `./scripts/secret-store.sh check --cloud gcp` lists every key this cluster
+# `./scripts/provision/secret-store.sh check --cloud gcp` lists every key this cluster
 # needs and which are missing, rather than waiting for the ten-minute
 # HelmRelease timeout to say so indirectly.
 apiVersion: kustomize.toolkit.fluxcd.io/v1

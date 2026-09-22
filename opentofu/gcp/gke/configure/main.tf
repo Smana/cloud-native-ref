@@ -59,13 +59,13 @@ resource "helm_release" "cilium" {
 
 
 # Is flux-operator already installed? See the lifecycle comment on the resource
-# below, and scripts/helm-release-present.sh, for why terraform stops tracking
+# below, and scripts/provision/helm-release-present.sh, for why terraform stops tracking
 # this release and why that makes the check necessary.
 #
 # Never fails: an unreachable cluster answers "false", terraform attempts the
 # create, and helm reports any genuine conflict itself.
 data "external" "flux_operator_release" {
-  program = ["bash", "${path.module}/../../../../scripts/helm-release-present.sh"]
+  program = ["bash", "${path.module}/../../../../scripts/provision/helm-release-present.sh"]
 
   query = {
     name      = "flux-operator"

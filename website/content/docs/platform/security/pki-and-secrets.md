@@ -281,12 +281,12 @@ PEM:
 
 ```bash
 # aws-0
-./scripts/openbao-config.sh ca --region eu-west-3 \
+./scripts/provision/openbao-config.sh ca --region eu-west-3 \
   --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain \
   --ca-output-file /tmp/ogenki-aws-ca.pem
 
 # gcp-0
-./scripts/openbao-config.sh ca --cloud gcp --project ogenki-435905 \
+./scripts/provision/openbao-config.sh ca --cloud gcp --project ogenki-435905 \
   --root-ca-secret-name openbao-priv-gcp-ca-chain \
   --ca-output-file /tmp/ogenki-gcp-ca.pem
 ```

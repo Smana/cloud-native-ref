@@ -50,14 +50,13 @@ trap 'rm -rf "$WORK"' EXIT
 # ── contract guards against the real repo files ─────────────────────────────
 #
 # Overridable so a guard-failure proof can point at a temp copy instead of the
-# committed file (see the plan's Task 1, Step 2). The subject is still at
-# scripts/ root. When it moves, this path moves with it.
-CONSUMERS_SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
+# committed file (see the plan's Task 1, Step 2).
+CONSUMERS_SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../provision/zitadel-oidc-clients.sh}"
 TFVARS_SRC="${OPENBAO_MANAGEMENT_TFVARS:-$REPO_ROOT/opentofu/aws/openbao/management/variables.tfvars}"
 OIDC_TF_SRC="${OPENBAO_OIDC_TF:-$REPO_ROOT/opentofu/aws/openbao/management/oidc.tf}"
 AWS_WORKFLOWS_SRC="${AWS_EKS_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/eks/init/workflows.tm.hcl}"
 GCP_WORKFLOWS_SRC="${GCP_GKE_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl}"
-CHECK_SRC="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../openbao-oidc-check.sh}"
+CHECK_SRC="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../provision/openbao-oidc-check.sh}"
 
 echo "== contract: the openbao CONSUMERS key matches variables.tfvars (#2011) =="
 consumers_line="$(grep -E '^[[:space:]]*"openbao\|' "$CONSUMERS_SRC" || true)"
@@ -181,8 +180,8 @@ stage5_body="$(job_body "$AWS_WORKFLOWS_SRC" stage5-verify-openbao-oidc)"
 in_job "$stage4_body" '${global.cloud_gate}' "stage4 carries the cloud gate"
 in_job "$stage5_body" '${global.cloud_gate}' "stage5 carries the cloud gate"
 in_job "$stage5_body" 'set -euo pipefail' "stage5 runs under errexit"
-check_call="$(grep -F 'scripts/openbao-oidc-check.sh' <<< "$stage5_body" || true)"
-contains "$check_call" 'scripts/openbao-oidc-check.sh' "stage5 calls openbao-oidc-check.sh"
+check_call="$(grep -F 'scripts/provision/openbao-oidc-check.sh' <<< "$stage5_body" || true)"
+contains "$check_call" 'scripts/provision/openbao-oidc-check.sh' "stage5 calls openbao-oidc-check.sh"
 contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
     "stage5 probes with the UI callback oidc.tf registers"
 
@@ -190,7 +189,7 @@ contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc
 # misspelt flag breaks every deploy -- visible only on a live run.
 stage5_flags_known() { # workflows file -> "yes", or "no: <first unknown flag>"
     local call flags labels f
-    call="$(job_body "$1" stage5-verify-openbao-oidc | grep -F 'scripts/openbao-oidc-check.sh' || true)"
+    call="$(job_body "$1" stage5-verify-openbao-oidc | grep -F 'scripts/provision/openbao-oidc-check.sh' || true)"
     flags="$(grep -oE -- '(^|[[:space:]])--[a-z][a-z-]*' <<< "$call" | tr -d '[:blank:]')"
     labels="$(awk '/^while \[ \$# -gt 0 \]/ { on = 1 } on && /^done/ { exit } on' "$CHECK_SRC" \
               | grep -oE '^[[:space:]]*[-a-z|]+\)' | grep -oE -- '--[a-z][a-z-]*')"
@@ -237,7 +236,7 @@ check_call_last() { # file -> yes/no: the check call is the heredoc's ONLY last 
     last="$(heredoc_body "$1" stage5-verify-openbao-oidc | grep -v '^[[:space:]]*$' | tail -1 \
             | sed -E 's/^[[:space:]]+//')"
     case "$last" in
-        'bash "$${ROOT}/scripts/openbao-oidc-check.sh"'*)
+        'bash "$${ROOT}/scripts/provision/openbao-oidc-check.sh"'*)
             case "$last" in
                 *'||'*|*'&&'*|*';'*|*'|'*) echo no ;;
                 *)                         echo yes ;;
@@ -251,12 +250,12 @@ check "the committed file: the check call is the heredoc's only last statement" 
 # Both mutants are built from the COMMITTED file, not a hand-written fixture,
 # so a future reformat of the real heredoc cannot make this proof stale
 # without also touching the strings below.
-CALL_START='        bash "$${ROOT}/scripts/openbao-oidc-check.sh" \'
+CALL_START='        bash "$${ROOT}/scripts/provision/openbao-oidc-check.sh" \'
 CALL_END='          --redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"'
 
 MUTANT_IF="$WORK/workflows-mutant-if-then-fi.tm.hcl"
 awk -v start="$CALL_START" -v end="$CALL_END" '
-    $0 == start { print "        if ! bash \"$${ROOT}/scripts/openbao-oidc-check.sh\" \\"; next }
+    $0 == start { print "        if ! bash \"$${ROOT}/scripts/provision/openbao-oidc-check.sh\" \\"; next }
     $0 == end   { print end "; then echo \"[warn] oidc drift, continuing anyway\"; fi"; next }
     { print }
 ' "$AWS_WORKFLOWS_SRC" > "$MUTANT_IF"

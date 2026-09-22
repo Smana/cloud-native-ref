@@ -72,7 +72,7 @@ script "deploy" {
         if [ -z "$${PROJECT}" ]; then
           echo "[warn] could not read project_id from variables.tfvars; skipping seed."
         else
-          bash "${terramate.root.path.fs.absolute}/scripts/secret-store.sh" \
+          bash "${terramate.root.path.fs.absolute}/scripts/provision/secret-store.sh" \
             seed --cloud gcp --project "$${PROJECT}" --apply || \
             echo "[warn] seed failed; re-run it by hand before Flux reconciles the databases"
         fi
@@ -168,12 +168,12 @@ script "deploy" {
         if ! gcloud container clusters get-credentials "$${NAME}" \
                --location "$${LOCATION}" --project "$${PROJECT}" 2>/dev/null; then
           echo "[warn] could not fetch credentials for $${NAME}; skipping stage 3."
-          echo "       Re-run by hand: scripts/secret-store.sh grant --cloud gcp --project $${PROJECT} --apply"
+          echo "       Re-run by hand: scripts/provision/secret-store.sh grant --cloud gcp --project $${PROJECT} --apply"
           exit 0
         fi
 
         echo "== granting External Secrets access to the keys this cluster asks for"
-        bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || \
+        bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || \
           echo "[warn] grant failed; re-run it by hand"
 
         # Only when this cluster hosts the IdP. Consuming another cluster's
@@ -223,7 +223,7 @@ script "deploy" {
 
           echo "== registering this cluster's OIDC clients in $${CONSUMED_IDP}"
           IDP_URL="$${CONSUMED_IDP}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-            bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+            bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
               --cluster "$${NAME}" \
               --cloud gcp --project "$${PROJECT}" \
               --idp-cloud "${global.primary_cloud}" --region "${global.region}" \
@@ -231,7 +231,7 @@ script "deploy" {
             echo "[warn] OIDC registration against the primary cloud failed; re-run it by hand"
 
           echo "== granting access to the secrets it just created"
-          bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
+          bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
           exit 0
         fi
 
@@ -274,7 +274,7 @@ script "deploy" {
           echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
           echo "       Re-run by hand once it is up:"
           echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
-          echo "         scripts/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
+          echo "         scripts/provision/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
           exit 0
         fi
 
@@ -286,13 +286,13 @@ script "deploy" {
         WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-          bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
             --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
             --workforce-pool "$${WORKFORCE_POOL}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"
-        bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
+        bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
       BASH
       ],
     ]

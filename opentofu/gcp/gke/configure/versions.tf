@@ -3,7 +3,7 @@ terraform {
 
   required_providers {
     # The flux-operator bootstrap guard in main.tf shells out through
-    # scripts/helm-release-present.sh to ask whether Flux already owns the
+    # scripts/provision/helm-release-present.sh to ask whether Flux already owns the
     # release.
     external = {
       source  = "hashicorp/external"

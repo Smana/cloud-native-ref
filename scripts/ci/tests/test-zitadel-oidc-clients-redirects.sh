@@ -51,8 +51,7 @@ load_function() {
     eval "$body"
 }
 
-# The subject is still at scripts/ root. When it moves, this path moves with it.
-SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
+SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../provision/zitadel-oidc-clients.sh}"
 # oidc_config_payload builds the PUT body app_set_redirect sends, so the
 # assertions below on redirectUris run against the real one.
 load_function oidc_config_payload "$SRC"

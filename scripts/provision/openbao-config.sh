@@ -3,20 +3,20 @@
 set -euo pipefail
 
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../lib/gcloud-adc.sh"
 # cloud-secret-store.sh re-sources gcloud-adc.sh, which re-runs its two
 # `_gcloud_adc_*=""` initialisers. Harmless HERE and only here: both `.` lines
 # run at load time, before anything has resolved a token, so the reset lands on
 # values that are still empty. Do not move either line below a call that uses
 # the ADC token.
 # shellcheck source=scripts/lib/cloud-secret-store.sh
-. "$(dirname "$0")/lib/cloud-secret-store.sh"
+. "$(dirname "$0")/../lib/cloud-secret-store.sh"
 
 # Provenance the library stamps on a secret it CREATES (an existing secret just
 # gets a new version, description and labels untouched). Set here rather than
 # left at the library's defaults so an operator reading the console lands on
 # this script, not on the shared helper.
-STORE_WRITE_DESCRIPTION="OpenBao lineage material, written by scripts/openbao-config.sh"
+STORE_WRITE_DESCRIPTION="OpenBao lineage material, written by scripts/provision/openbao-config.sh"
 STORE_WRITE_LABEL="openbao-config"
 
 # This script is used to configure OpenBao. It supports two operations:
@@ -829,7 +829,7 @@ verify_pki_present() {
 # root token was kept and the recovery keys were printed and dropped, which
 # meant `bao operator generate-root` was impossible: losing or revoking the
 # root token left the cluster unrecoverable, and the restore path in
-# scripts/openbao-snapshot.sh could never authenticate.
+# scripts/provision/openbao-snapshot.sh could never authenticate.
 #
 # They go in a SEPARATE secret from the root token on purpose - co-locating a
 # credential with the material that regenerates it makes the pair worth exactly

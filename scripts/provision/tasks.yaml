@@ -1,0 +1,18 @@
+version: "3"
+
+# tm-provisioner.sh, helm-release-present.sh, openbao-adopt-jwt-mount.sh and
+# openbao-config.sh are not indexed here: they are terramate/tofu plumbing,
+# invoked at plan, apply or destroy time.
+tasks:
+  secret-store:
+    desc: Inspect and migrate the cloud secret store that backs External Secrets
+    cmds: ["{{.TASKFILE_DIR}}/secret-store.sh {{.CLI_ARGS}}"]
+  zitadel-oidc-clients:
+    desc: Register a cluster's OIDC clients in ZITADEL, and store the credentials
+    cmds: ["{{.TASKFILE_DIR}}/zitadel-oidc-clients.sh {{.CLI_ARGS}}"]
+  zitadel-idp:
+    desc: Register the Google Workspace identity provider and the groups Action in ZITADEL
+    cmds: ["{{.TASKFILE_DIR}}/zitadel-idp.sh {{.CLI_ARGS}}"]
+  openbao-snapshot:
+    desc: Back up an OpenBao raft snapshot to object storage, or restore one
+    cmds: ["{{.TASKFILE_DIR}}/openbao-snapshot.sh {{.CLI_ARGS}}"]

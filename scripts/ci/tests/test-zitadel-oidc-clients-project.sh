@@ -32,8 +32,7 @@ load_functions() {
     eval "$body"
 }
 
-# The subject is still at scripts/ root. When it moves, this path moves with it.
-load_functions "${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
+load_functions "${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../provision/zitadel-oidc-clients.sh}"
 
 # Read only by ensure_project()'s eval'd body above -- shellcheck can't see
 # that use through the eval.

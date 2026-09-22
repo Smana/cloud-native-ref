@@ -20,7 +20,7 @@ path "sys/storage/raft/snapshot" {
 # identity, so a read grant here would never actually be exercised.
 #
 # The same reasoning holds on both clouds because it is the same script:
-# scripts/openbao-snapshot.sh is a symlink to
+# scripts/provision/openbao-snapshot.sh is a symlink to
 # container-images/openbao-snapshot/openbao-snapshot.sh, and `CLOUD` selects only
 # which CLI moves the object and which secret store the recovery keys come from.
 # The auth flow and the marker's kv paths are cloud-neutral, and restore()

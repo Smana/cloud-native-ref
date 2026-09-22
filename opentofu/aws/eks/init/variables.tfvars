@@ -20,7 +20,7 @@ enable_ssm = true
 # `293655038025345449` is the `eks-mycluster-0-kubectl` app (redirect
 # http://localhost:8000), used by `kubectl` OIDC login. It lives in the LEGACY
 # `Ogenki` ZITADEL project, not the `platform` project that
-# scripts/zitadel-oidc-clients.sh manages -- so nothing reconciles it, and
+# scripts/provision/zitadel-oidc-clients.sh manages -- so nothing reconciles it, and
 # deleting the Ogenki project would break kubectl auth with an error that names
 # neither this file nor the project.
 #

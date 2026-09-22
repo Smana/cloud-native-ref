@@ -23,7 +23,7 @@ setup scripts cannot recreate:
 - **any human user at all** — which exists only after a first interactive login,
   and therefore cannot be seeded by a script that runs at bootstrap.
 
-`scripts/zitadel-oidc-clients.sh` and `scripts/zitadel-idp.sh` can rebuild the
+`scripts/provision/zitadel-oidc-clients.sh` and `scripts/provision/zitadel-idp.sh` can rebuild the
 provider, the clients, the project, its roles and the login policy. They cannot
 rebuild the fact that a person logged in once. Restoring is the difference
 between *the platform comes back* and *the platform is rebuilt and everyone logs
@@ -121,7 +121,7 @@ application's own state **before** deleting anything, and compare after:
 
 ```bash
 # before
-./scripts/zitadel-oidc-clients.sh ...   # or the ZITADEL API directly
+./scripts/provision/zitadel-oidc-clients.sh ...   # or the ZITADEL API directly
 ```
 
 The `gcp-0` run compared users, OIDC apps, project roles, user grants and

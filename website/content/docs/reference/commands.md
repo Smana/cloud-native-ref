@@ -53,11 +53,11 @@ default behaviour".
 
 | Variable | `=true` | unset (the default) | Gates |
 |---|---|---|---|
-| `TM_CLOUD` | *not a boolean* — a comma list of lanes, or `all` | `aws`: AWS stacks run, GCP stacks echo `[skip]` and exit 0, `opentofu/shared/**` runs under every value | Every `tofu` call, via `scripts/tm-provisioner.sh` behind `global.provisioner`; plus the non-tofu jobs that carry `--tm-run` or `${global.cloud_gate}` |
+| `TM_CLOUD` | *not a boolean* — a comma list of lanes, or `all` | `aws`: AWS stacks run, GCP stacks echo `[skip]` and exit 0, `opentofu/shared/**` runs under every value | Every `tofu` call, via `scripts/provision/tm-provisioner.sh` behind `global.provisioner`; plus the non-tofu jobs that carry `--tm-run` or `${global.cloud_gate}` |
 | `TM_LLM_PLATFORM_ENABLED` | the stack's `deploy`/`preview`/`drift detect`/`destroy` run | `[skip]`, exit 0 — the platform is never built by a bare `terramate script run deploy` | `opentofu/aws/llm-platform/workflows.tm.hcl` |
 | `TM_DESTROY_CONFIRMED` | the y/n prompt is bypassed (this is the CI escape hatch) | prompts once on `/dev/tty`, cached 10 min so `--reverse destroy` asks once; **exits 1** when there is no tty | `scripts/ops/teardown/terramate-destroy-confirm.sh`, called first by every stack's `destroy` |
 | `TM_LINEAGE_DESTROY` | the four lineage-bearing stacks are destroyed | `[skip]`, exit 0 — a `--reverse destroy` sweep leaves the seal key, both snapshot buckets, the PKI mount and the JWT auth mounts standing | `destroy` in `opentofu/aws/openbao/{lineage,management}` and `opentofu/gcp/openbao/{lineage,management}` |
-| `TM_OPENBAO_SKIP_SNAPSHOT` | **inverted** — the CA fetch and the pre-destroy raft snapshot are skipped, and everything written since the last scheduled snapshot is lost | the snapshot is taken, and a failure aborts the destroy rather than stranding a node's data | `destroy` in `opentofu/{aws,gcp}/openbao/cluster`, and the `pre-destroy-snapshot` subcommand of `scripts/openbao-config.sh` |
+| `TM_OPENBAO_SKIP_SNAPSHOT` | **inverted** — the CA fetch and the pre-destroy raft snapshot are skipped, and everything written since the last scheduled snapshot is lost | the snapshot is taken, and a failure aborts the destroy rather than stranding a node's data | `destroy` in `opentofu/{aws,gcp}/openbao/cluster`, and the `pre-destroy-snapshot` subcommand of `scripts/provision/openbao-config.sh` |
 | `TM_TAILNET_DESTROY` | the tailnet-wide singletons are destroyed | `[skip]`, exit 0 — tearing down one cloud does not remove tailnet access for the other | `destroy` in `opentofu/shared/tailscale/workflows.tm.hcl` |
 | `TM_FEDERATION_DESTROY` | the AWS↔GCP OIDC provider and role are destroyed | `[skip]`, exit 0 — `gcp-0`'s cert-manager and external-dns-public keep working | `destroy` in `opentofu/shared/aws-gcp-federation/workflows.tm.hcl` |
 
@@ -235,10 +235,10 @@ each gate actually checks.
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
 | `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
 | `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
-| `openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
-| `openbao-snapshot.sh` | OpenBao Raft snapshot automation |
-| `openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
-| `secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`) |
+| `scripts/provision/openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
+| `scripts/provision/openbao-snapshot.sh` | OpenBao Raft snapshot automation (`task provision:openbao-snapshot`) |
+| `scripts/provision/openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
+| `scripts/provision/secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`; `task provision:secret-store`) |
 | `terramate-destroy-confirm.sh` | Single y/n prompt every stack's destroy script calls first, cached so `--reverse destroy` asks once |
 | `eks-prepare-destroy.sh` | Pre-destroy EKS cleanup — suspends Flux, disables blocking webhooks, sweeps orphaned EBS volumes; the CSI volume reclaim itself moved to `reclaim-csi-volumes.sh` |
 | `eks-recycle-bootstrap-nodes.sh` | Recycles Stage 1 node-group nodes so they pick up Cilium prefix delegation |

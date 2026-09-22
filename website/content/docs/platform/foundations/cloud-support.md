@@ -190,7 +190,7 @@ gaps at all.
 ### Needs a human, on both clouds
 
 Two ExternalSecrets read from the cloud's managed secret store and nothing
-seeds them — `./scripts/secret-store.sh check --cloud gcp` (or `aws`) lists
+seeds them — `./scripts/provision/secret-store.sh check --cloud gcp` (or `aws`) lists
 what is missing, and its `seed` command creates the generatable ones:
 
 - Harbor's admin and Valkey passwords, at `harbor-admin-password`

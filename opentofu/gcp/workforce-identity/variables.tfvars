@@ -18,5 +18,5 @@ public_domain_name    = "gcp.cloud.ogenki.io"
 # its rebuilds restore from a seed and keep their ids. On a GCP-primary
 # bootstrap this value is WRONG and unknowable in advance; the audience is
 # reconciled after ZITADEL exists by resolve_workforce_audience in
-# scripts/zitadel-oidc-clients.sh, and tofu ignores changes to it.
+# scripts/provision/zitadel-oidc-clients.sh, and tofu ignores changes to it.
 zitadel_project_id = "388445486190712688"

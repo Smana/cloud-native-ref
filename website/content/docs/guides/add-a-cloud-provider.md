@@ -121,7 +121,7 @@ three or it half-works:
 | Place | What it drives |
 |---|---|
 | `global.stack_cloud` in `opentofu/config.tm.hcl` | which lane a stack belongs to, from its tags |
-| `--tm-check` in `scripts/tm-provisioner.sh` | whether `TM_CLOUD` selects that lane |
+| `--tm-check` in `scripts/provision/tm-provisioner.sh` | whether `TM_CLOUD` selects that lane |
 | `KNOWN_CLOUDS` in `scripts/ci/validate-idp-topology.sh` | which values `primary_cloud` may take |
 
 The third is the one that surprises: a new lane that is *not* primary must also

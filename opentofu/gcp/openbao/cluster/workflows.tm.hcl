@@ -153,10 +153,10 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --cloud gcp --project ogenki-435905 \
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" pre-destroy-snapshot \
           --cloud gcp --project ogenki-435905 \
           --url https://bao.priv.gcp.ogenki.io:8200 \
           --root-token-secret-name openbao-priv-gcp-root-token \

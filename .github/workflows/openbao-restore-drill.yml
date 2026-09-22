@@ -123,7 +123,7 @@ jobs:
           #     real rehydrate.
           #
           # Full JSON through jq rather than --query, for the reason
-          # latest_snapshot() in scripts/openbao-config.sh gives: that query
+          # latest_snapshot() in scripts/provision/openbao-config.sh gives: that query
           # ERRORS on an empty bucket, so exit status alone cannot separate
           # "empty" from "could not list".
           if ! listing=$(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
@@ -396,7 +396,7 @@ jobs:
           # /proc/<pid>/cmdline during this job -- a third-party action, a build
           # dependency -- could assume the drill role, which holds s3:GetObject
           # and kms:Decrypt on the seal key. Same pattern as
-          # scripts/zitadel-oidc-clients.sh.
+          # scripts/provision/zitadel-oidc-clients.sh.
           CFG=$(mktemp); chmod 600 "$CFG"
           trap 'rm -f "$CFG"' EXIT
           printf 'header = "Authorization: bearer %s"\n' "${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" > "$CFG"

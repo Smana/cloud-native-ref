@@ -27,7 +27,7 @@
 #   3. Creates the Google IdP if missing, INSTANCE-level, and if one already
 #      exists corrects its client id in place should the store's differ --
 #      never by recreating, which would orphan every existing user link.
-#   4. Uploads scripts/zitadel-actions/groups-from-roles.js as a v1 Action.
+#   4. Uploads scripts/provision/zitadel-actions/groups-from-roles.js as a v1 Action.
 #   5. Wires that Action into flow 2 (CustomiseToken) on BOTH triggers.
 #
 # Usage:
@@ -57,11 +57,11 @@ set -o pipefail
 
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../lib/gcloud-adc.sh"
 # shellcheck source=scripts/lib/cloud-secret-store.sh
-. "$(dirname "$0")/lib/cloud-secret-store.sh"
+. "$(dirname "$0")/../lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/zitadel-pat.sh
-. "$(dirname "$0")/lib/zitadel-pat.sh"
+. "$(dirname "$0")/../lib/zitadel-pat.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift

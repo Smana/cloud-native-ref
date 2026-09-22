@@ -139,7 +139,7 @@ variable "mode" {
 # rather than on the variable being unset is what lets a first deploy converge
 # without OIDC, pick it up on the next apply, and keep it across rebuilds.
 variable "openbao_oidc_secret_id" {
-  description = "AWS Secrets Manager secret holding {client_id, client_secret, endpoint} for OpenBao's ZITADEL OIDC client, as written by scripts/zitadel-oidc-clients.sh. Empty disables OIDC auth."
+  description = "AWS Secrets Manager secret holding {client_id, client_secret, endpoint} for OpenBao's ZITADEL OIDC client, as written by scripts/provision/zitadel-oidc-clients.sh. Empty disables OIDC auth."
   type        = string
   default     = ""
 }
@@ -160,7 +160,7 @@ variable "openbao_oidc_issuer" {
 # Terraform, which is accepted (ADR-0036).
 #
 # An entry is only useful once a matching ZITADEL project role `app-<name>`
-# exists and a human has been granted it; see scripts/zitadel-oidc-clients.sh.
+# exists and a human has been granted it; see scripts/provision/zitadel-oidc-clients.sh.
 variable "secret_owning_apps" {
   description = "Apps that own a prefix under the apps/ kv-v2 mount. Each gets a policy, an external identity group and an alias matched on the OIDC groups claim."
   type        = set(string)

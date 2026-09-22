@@ -22,7 +22,7 @@ the break-glass credential load-bearing
 > older than the current client, so any fixed value goes stale on every rebuild
 > ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)). `oidc.tf` creates the mount
 > and its role once and puts all three fields under `ignore_changes`;
-> `scripts/zitadel-oidc-clients.sh`'s `sync` rotates them on every AWS deploy, and the
+> `scripts/provision/zitadel-oidc-clients.sh`'s `sync` rotates them on every AWS deploy, and the
 > `stage5-verify-openbao-oidc` job halts the deploy when OpenBao, the secret store and ZITADEL
 > disagree.
 
@@ -30,7 +30,7 @@ the break-glass credential load-bearing
 
 Every human-facing service on this platform authenticates through ZITADEL:
 Grafana, Headlamp, the Flux UI and Harbor all take an OIDC client registered by
-`scripts/zitadel-oidc-clients.sh`, and all four read the same flat `groups`
+`scripts/provision/zitadel-oidc-clients.sh`, and all four read the same flat `groups`
 claim. OpenBao is the exception. Its only human login is
 `bao login -method=userpass username=admin`, backed by a generated password
 published to `openbao/cloud-native-ref/users/admin` in AWS Secrets Manager and
@@ -45,13 +45,13 @@ The awkward part is what ZITADEL actually models. **ZITADEL has no groups.** It
 has project roles, and it emits them as a nested object keyed by role and then
 by organisation. Nothing in ZITADEL produces the flat array of strings that OIDC
 consumers expect, so the platform already builds one: the `groupsFromRoles`
-Action (`scripts/zitadel-actions/groups-from-roles.js`) flattens
+Action (`scripts/provision/zitadel-actions/groups-from-roles.js`) flattens
 `urn:zitadel:iam:org:project:roles` into `groups` and `roles`. Four consumers
 depend on it today.
 
 Google Workspace sits upstream of ZITADEL as the identity provider, which makes
 "authorise by Google group" the intuitive ask. It does not follow. The IdP
-registration in `scripts/zitadel-idp.sh` requests
+registration in `scripts/provision/zitadel-idp.sh` requests
 `scopes: ["openid","profile","email"]`, and Google's OIDC does not emit group
 memberships under any of them — reading them requires the Admin SDK Directory
 API and a credential to call it with. **No Google group membership reaches

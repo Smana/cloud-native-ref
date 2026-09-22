@@ -37,7 +37,7 @@ tags = {
 # scripts/lib/cloud-secret-store.sh -- `harbor-oidc` and `security-flux-ui-oidc`
 # are literal secret names, not prefixed keys):
 #
-#   ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
+#   ./scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
 #     --region eu-west-3 --apply
 #
 # First bootstrap still needs ONE management apply after that registration,
@@ -50,7 +50,7 @@ tags = {
 # Granting a human the role the external group binds to remains a separate step,
 # because a human does not exist in ZITADEL until their first login:
 #
-#   ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
+#   ./scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
 #     --region eu-west-3 --grant-admin <your-email> --apply
 openbao_oidc_secret_id = "openbao-oidc"
 

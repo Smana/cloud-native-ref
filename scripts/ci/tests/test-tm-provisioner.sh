@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Truth table for the TM_CLOUD selector.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# The subject is still at scripts/ root. When it moves, this path moves with it.
-G="$HERE/../../tm-provisioner.sh"
+G="$HERE/../../provision/tm-provisioner.sh"
 fail=0
 check() { # want_env lane expected
     local out

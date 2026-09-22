@@ -15,7 +15,7 @@
 #
 # Everything here is `count`-gated on the client id being present, so a cluster
 # whose ZITADEL has not been bootstrapped yet applies cleanly with no OIDC
-# method rather than failing. `scripts/zitadel-oidc-clients.sh` registers the
+# method rather than failing. `scripts/provision/zitadel-oidc-clients.sh` registers the
 # app and writes {client_id, client_secret, endpoint} to the `openbao-oidc`
 # store key; this reads it back.
 
@@ -65,7 +65,7 @@ locals {
   oidc_enabled = local.oidc_client_id != "" && local.oidc_issuer != "" ? 1 : 0
 
   # BOTH callbacks, and both are required -- see ADR-0034 and the `openbao`
-  # entry in scripts/zitadel-oidc-clients.sh, which must register exactly these.
+  # entry in scripts/provision/zitadel-oidc-clients.sh, which must register exactly these.
   #
   # The UI path embeds the mount path TWICE: /ui/vault/auth/<mount>/oidc/callback.
   # That is why `path` below is pinned to "oidc" with a comment rather than made
@@ -122,7 +122,7 @@ resource "vault_jwt_auth_backend" "oidc" {
     # so the provider always plans to rewrite it -- and every ZITADEL rebuild
     # issues a new client id too. Left unignored, the next management apply
     # replays the discovery check while ZITADEL is still down mid-rebuild and
-    # fails. scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
+    # fails. scripts/provision/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
     # both fields after Terraform creates the mount (design fact 8).
     #
     # Caveat: ANY other in-place update to this resource re-sends the whole
@@ -151,7 +151,7 @@ resource "vault_jwt_auth_backend_role" "oidc_default" {
   # trip -- user_claim below asks for a claim that was never requested.
   #
   # Same trap, same values, as the OIDC_SCOPES the registration script sets for
-  # every other consumer (HEADLAMP_OIDC_SCOPES in scripts/zitadel-oidc-clients.sh):
+  # every other consumer (HEADLAMP_OIDC_SCOPES in scripts/provision/zitadel-oidc-clients.sh):
   # `groups` is what makes ZITADEL run the groupsFromRoles Action, and `email` is
   # what user_claim reads. `openid` is always sent by the auth method itself and
   # must not be repeated here.

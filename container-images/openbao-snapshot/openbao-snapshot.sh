@@ -15,7 +15,7 @@ export warn="WARNING"
 # exits 2 whenever the node is sealed, which is precisely its state on the
 # restore path. curl is already in this image (see the Dockerfile's apt step)
 # and is already a pre-flight requirement of the caller in
-# scripts/openbao-config.sh, so this adds nothing an operator does not have.
+# scripts/provision/openbao-config.sh, so this adds nothing an operator does not have.
 check_required_bin() {
     for BIN in bao jq curl; do
         if ! type "${BIN}" >/dev/null 2>&1; then
@@ -133,7 +133,7 @@ esac
 #
 # Flags are accumulated in the POSITIONAL PARAMETERS and expanded as "$@". That
 # is deliberately not the trap documented in verify_pki_present() in
-# scripts/openbao-config.sh: word-splitting an unquoted variable that holds
+# scripts/provision/openbao-config.sh: word-splitting an unquoted variable that holds
 # several flags, where `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes
 # `--cacert /path` as ONE argv element when quoted and an empty word when unset.
 # "$@" expands each element separately and disappears cleanly when empty, which
@@ -141,7 +141,7 @@ esac
 # `set --` clobbers nothing.
 seal_status_raw() {
     # VAULT_TLS_SERVER_NAME set means VAULT_ADDR holds an ADDRESS and the
-    # certificate carries a NAME -- the split scripts/openbao-config.sh's
+    # certificate carries a NAME -- the split scripts/provision/openbao-config.sh's
     # --fallback-address installs when the DNS record is gone but the node is
     # not. curl does not read VAULT_TLS_SERVER_NAME, so without this it asks for
     # the bare IP and fails verification against a certificate that has no IP
@@ -408,7 +408,7 @@ require_recovery_keys_secret() {
 # message on stdout is captured by the command substitution and the operator
 # sees a bare non-zero exit with no reason -- measured, on both of its error
 # paths. Same bug, same fix, as node_seal_type() above and log_err() in
-# scripts/openbao-config.sh.
+# scripts/provision/openbao-config.sh.
 # The LINEAGE's root token, as stored at init time. Used after a raft restore,
 # where the snapshot's token store makes it valid again -- see the long note at
 # the post-restore call site for why this is preferred over minting.
@@ -774,7 +774,7 @@ restore() {
         # stale snapshot until the 120-day lifecycle rule aged them out.
         #
         # Full JSON through jq rather than `--query 'sort_by(...)[-1].Key'`, for
-        # the same reason latest_snapshot() in scripts/openbao-config.sh does
+        # the same reason latest_snapshot() in scripts/provision/openbao-config.sh does
         # it this way: that query ERRORS on an empty bucket, so exit status
         # alone could not separate "empty" from "could not list" -- and the
         # gate below needs the whole set, not only the last element.

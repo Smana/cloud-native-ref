@@ -43,7 +43,7 @@ globals {
   # first so the restore verifies the server. See the AWS twin for the full
   # rationale; the only differences are the cloud flag and the GCS bucket.
   openbao_rehydrate = <<-EOT
-    bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" rehydrate \
+    bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" rehydrate \
       --url https://bao.priv.gcp.ogenki.io:8200 \
       --cloud gcp \
       --project ogenki-435905 \
@@ -54,7 +54,7 @@ globals {
   EOT
 
   openbao_ca_fetch = <<-EOT
-    bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+    bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
       --cloud gcp \
       --project ogenki-435905 \
       --root-ca-secret-name openbao-priv-gcp-ca-chain \

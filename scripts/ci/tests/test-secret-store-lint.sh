@@ -17,10 +17,9 @@ set -o pipefail
 
 cd "$(dirname "$0")/../../.."
 
-# The subject is still at scripts/ root. When it moves, this path moves with it.
 # shellcheck disable=SC2154  # LINT_JQ comes from the eval below
-eval "$(sed -n "/^LINT_JQ='/,/^'$/p" scripts/secret-store.sh)"
-[ -n "${LINT_JQ:-}" ] || { echo "could not lift LINT_JQ out of scripts/secret-store.sh" >&2; exit 1; }
+eval "$(sed -n "/^LINT_JQ='/,/^'$/p" scripts/provision/secret-store.sh)"
+[ -n "${LINT_JQ:-}" ] || { echo "could not lift LINT_JQ out of scripts/provision/secret-store.sh" >&2; exit 1; }
 
 pass=0
 fail=0

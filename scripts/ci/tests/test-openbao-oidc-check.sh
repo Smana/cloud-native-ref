@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Offline tests for scripts/openbao-oidc-check.sh (design E, #2045): the
+# Offline tests for scripts/provision/openbao-oidc-check.sh (design E, #2045): the
 # post-deploy check that proves OpenBao's auth/oidc client agrees with the
 # secret store and with ZITADEL, one test per exit-code case in the plan's
 # Task 5 brief.
@@ -33,8 +33,7 @@ contains() { if grep -qF -- "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
 absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3" "$2"; fail=1
            else printf '  ok   %s\n' "$3"; fi }
 
-# The subject is still at scripts/ root. When it moves, this path moves with it.
-SUBJECT="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../openbao-oidc-check.sh}"
+SUBJECT="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../provision/openbao-oidc-check.sh}"
 [ -f "$SUBJECT" ] || { echo "  FAIL $SUBJECT does not exist" >&2; exit 1; }
 OPENBAO_DOC="${OPENBAO_DOC:-$HERE/../../../website/content/docs/platform/security/openbao.md}"
 REAL_JQ="$(command -v jq)"

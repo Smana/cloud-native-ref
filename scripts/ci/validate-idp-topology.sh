@@ -45,7 +45,7 @@ set -euo pipefail
 ROOT="${1:-$(git rev-parse --show-toplevel)}"
 CONFIG="${ROOT}/opentofu/config.tm.hcl"
 # A third copy of the cloud list -- the others are global.stack_cloud in
-# opentofu/config.tm.hcl and --tm-check in scripts/tm-provisioner.sh. Adding a
+# opentofu/config.tm.hcl and --tm-check in scripts/provision/tm-provisioner.sh. Adding a
 # lane means adding it here too; see the checklist in
 # website/content/docs/guides/add-a-cloud-provider.md.
 KNOWN_CLOUDS="aws gcp"

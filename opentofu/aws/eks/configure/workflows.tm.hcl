@@ -70,7 +70,7 @@ script "deploy" {
       # the two owners overwriting each other.
       #
       # Idempotent: a no-op once the resource is already out of state.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "tofu state rm helm_release.flux_operator 2>/dev/null || true"],
 
     ]
