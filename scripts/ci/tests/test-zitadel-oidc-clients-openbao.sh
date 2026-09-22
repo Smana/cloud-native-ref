@@ -42,8 +42,8 @@ contains() { if grep -qF -- "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
 absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3" "$2"; fail=1
            else printf '  ok   %s\n' "$3"; fi }
 
-# Moved up from the stub section below: the contract guards need it too, to
-# hold mutated temp copies of workflows.tm.hcl for the stage5 guard proofs.
+# The contract guards need it too, to hold mutated temp copies of
+# workflows.tm.hcl for the stage5 guard proofs.
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -181,13 +181,19 @@ contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc
     "stage5 probes with the UI callback oidc.tf registers"
 
 echo
-echo "== contract: stage5's check call is the heredoc's LAST statement (design §7) =="
-# grep for a `||` on the call's own line -- this guard's earlier shape -- never
-# sees either of these: `if ! check; then echo; fi` moves the interesting part
-# off that line, and a `set +e` earlier plus a harmless trailing command after
-# the call reaches the same effect. Neither ever writes `||` anywhere near the
-# call. Anchoring on "last statement of the heredoc" catches both, because
-# each one puts something else after the call.
+echo "== contract: stage5's check call is the heredoc's LAST statement, alone (design §7) =="
+# grep for a `||` on the call's own line -- this guard's ORIGINAL shape --
+# misses three ways to swallow the check's exit status without ever writing
+# `||` where that first guard looked: `if ! check; then echo; fi` and a
+# `set +e` plus a trailing command both move the interesting part to a LATER
+# line, and stage4's own style one job above -- `check \\\n  ... \\\n  ...
+# || echo "[warn] ..."` -- puts it on the SAME line as the call, after its
+# final argument. The prefix match this guard used right after adding the
+# "last statement" property still passed that third shape, because a `||`
+# tacked onto the end of an already-matching prefix is still a match of that
+# prefix. Requiring the WHOLE last logical line to carry none of `||`, `&&`,
+# `;` or `|` closes that gap without reintroducing the too-narrow original
+# (a bare `||` check misses the first two wrapper shapes entirely).
 heredoc_body() { # file, job name -> logical lines of ONLY that job's bash -c heredoc
     awk -v n="\"$2\"" '
         !on && $1 == "name" && index($0, n) { on = 1; next }
@@ -195,16 +201,20 @@ heredoc_body() { # file, job name -> logical lines of ONLY that job's bash -c he
         inh && /^[[:space:]]*BASH[[:space:]]*$/ { exit }
         inh' "$1" | logical_lines
 }
-check_call_last() { # file -> yes/no: the check call is the heredoc's last statement
+check_call_last() { # file -> yes/no: the check call is the heredoc's ONLY last statement
     local last
     last="$(heredoc_body "$1" stage5-verify-openbao-oidc | grep -v '^[[:space:]]*$' | tail -1 \
             | sed -E 's/^[[:space:]]+//')"
     case "$last" in
-        'bash "$${ROOT}/scripts/openbao-oidc-check.sh"'*) echo yes ;;
-        *)                                                echo no  ;;
+        'bash "$${ROOT}/scripts/openbao-oidc-check.sh"'*)
+            case "$last" in
+                *'||'*|*'&&'*|*';'*|*'|'*) echo no ;;
+                *)                         echo yes ;;
+            esac ;;
+        *) echo no ;;
     esac
 }
-check "the committed file: the check call is the heredoc's last statement" \
+check "the committed file: the check call is the heredoc's only last statement" \
     "yes" "$(check_call_last "$AWS_WORKFLOWS_SRC")"
 
 # Both mutants are built from the COMMITTED file, not a hand-written fixture,
@@ -234,6 +244,30 @@ check "mutant \`set +e\` + trailing command: the file actually changed" "changed
     "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_SETE" && echo unchanged || echo changed)"
 check "mutant \`set +e\` + trailing command: now FAILS (not the last statement)" \
     "no" "$(check_call_last "$MUTANT_SETE")"
+
+# stage4's OWN style, one job above: `check ... || echo "[warn] ..."` on the
+# SAME line as the call. This is what the prefix-only version of
+# check_call_last missed -- the line still STARTS with the call, so a plain
+# prefix match still said "yes".
+MUTANT_OR="$WORK/workflows-mutant-same-line-or.tm.hcl"
+awk -v end="$CALL_END" '
+    $0 == end { print end " || echo \"[warn] oidc drift, continuing anyway\""; next }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_OR"
+check "mutant same-line \`|| echo\`: the file actually changed" "changed" \
+    "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_OR" && echo unchanged || echo changed)"
+check "mutant same-line \`|| echo\`: now FAILS (an operator follows the call)" \
+    "no" "$(check_call_last "$MUTANT_OR")"
+
+MUTANT_AND="$WORK/workflows-mutant-same-line-and.tm.hcl"
+awk -v end="$CALL_END" '
+    $0 == end { print end " && true"; next }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_AND"
+check "mutant same-line \`&& true\`: the file actually changed" "changed" \
+    "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_AND" && echo unchanged || echo changed)"
+check "mutant same-line \`&& true\`: now FAILS (an operator follows the call)" \
+    "no" "$(check_call_last "$MUTANT_AND")"
 
 echo
 echo "== contract: stage5's primary_cloud skip is pinned -- deleting it must fail =="
