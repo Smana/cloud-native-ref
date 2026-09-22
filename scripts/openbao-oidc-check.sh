@@ -123,7 +123,7 @@ check() {
 
     local secret_present=false mount_present="" auth_json mount
     local stored stored_id cfg_json role_json cfg have_id have_aud want_aud
-    local token_file auth_body resp url code attempt=0 transient=""
+    local token_file auth_body resp url hop code location err attempt=0 transient=""
 
     store_exists "$OIDC_SECRET" && secret_present=true
 
@@ -209,7 +209,9 @@ check() {
     # risk R6), pairing a client id ZITADEL genuinely does not know with a
     # store that still (wrongly) agrees. auth_url is the one call that goes
     # all the way to ZITADEL: a known client 302s to its login page; an
-    # unknown one 400s with App.NotFound.
+    # unknown one -- or a known one asked for a redirect_uri it never
+    # registered -- 400s. A 302 straight back to the redirect_uri is ZITADEL
+    # refusing the request with ?error=, not accepting it.
     #
     # Only a 302 or a 400 is definite. Everything else can be ZITADEL still
     # starting mid-rebuild, so it is retried before it is called "cannot
@@ -238,16 +240,25 @@ check() {
         # still verified against the system trust store -- never -k -- which
         # is correct here: ZITADEL's route is public (design fact 1's topology
         # table), so its certificate chains to a public CA.
-        if ! code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>&1)"; then
-            transient="cannot reach the authorize URL's first hop: ${code}"
+        if ! hop="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$url" 2>&1)"; then
+            transient="cannot reach the authorize URL's first hop: ${hop}"
             continue
         fi
+        code="${hop%% *}" location="${hop#* }"
         case "$code" in
             302)
+                case "$location" in
+                    "$REDIRECT_URI"*)
+                        # The error only: the rest of the query carries OpenBao's state.
+                        err="$(sed -nE 's/.*[?&](error=[^&]*).*/\1/p' <<< "$location")"
+                        echo "[FAILED ] ZITADEL redirected back with an error (${err:-no error parameter}) instead of to its login page, for client ${have_id}" >&2
+                        exit 1 ;;
+                esac
                 echo "[ok     ] OpenBao's OIDC client ${have_id} matches the store, and ZITADEL accepts it (first hop 302)"
                 exit 0 ;;
             400)
-                echo "[FAILED ] the authorize URL's first hop returned 400 -- ZITADEL does not know client ${have_id} (App.NotFound)" >&2
+                echo "[FAILED ] the authorize URL's first hop returned 400 -- ZITADEL does not know client ${have_id} (App.NotFound)," >&2
+                echo "          or the client does not list ${REDIRECT_URI} among its redirect URIs" >&2
                 exit 1 ;;
             *)
                 transient="the authorize URL's first hop returned ${code}, neither 302 nor 400."$'\n'"          T0, the live spike, never ran: treat 302/400 as unverified until the first live run." ;;

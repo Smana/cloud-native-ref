@@ -73,8 +73,9 @@ EOF
 # The first hop is told apart from every OpenBao call by having no `-K`:
 # openbao-oidc-check.sh never sends the root token to ZITADEL, so that is the
 # one call in the whole script this stub can identify structurally rather
-# than by inspecting the URL. It answers from $AUTHORIZE_HTTP_CODE (default
-# 302) or, with $AUTHORIZE_CURL_FAIL=1, fails the connection outright -- the
+# than by inspecting the URL. It fills the -w format from $AUTHORIZE_HTTP_CODE
+# (default 302) and $AUTHORIZE_LOCATION (default ZITADEL's login page) or,
+# with $AUTHORIZE_CURL_FAIL=1, fails the connection outright -- the
 # "OpenBao unreachable" shape reused for "ZITADEL unreachable", since both
 # collapse to the same exit 2 in this script.
 #
@@ -88,12 +89,12 @@ EOF
 # then recover: the transient shapes the probe's retry exists for.
 cat > "$STUB_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
-args=("$@") method=GET url="" kfile="" has_body=no wants_code=no
+args=("$@") method=GET url="" kfile="" has_body=no wants_code=no wfmt=""
 for ((i = 0; i < ${#args[@]}; i++)); do
     case "${args[$i]}" in
         -X) method="${args[$((i + 1))]}" ;;
         -K) kfile="${args[$((i + 1))]}" ;;
-        -w) [ "${args[$((i + 1))]}" = '%{http_code}' ] && wants_code=yes ;;
+        -w) wfmt="${args[$((i + 1))]}"; [ "${wfmt#%\{http_code\}}" != "$wfmt" ] && wants_code=yes ;;
         @-) has_body=yes ;;
         http://*|https://*) url="${args[$i]}" ;;
     esac
@@ -109,7 +110,9 @@ if [ "$wants_code" = yes ] && [ -z "$kfile" ]; then
         echo "curl: (7) Failed to connect to host" >&2
         exit 7
     fi
-    printf '%s' "${AUTHORIZE_HTTP_CODE:-302}"
+    # Quoted replacements: bash 5.2's patsub_replacement expands a bare `&`.
+    out="${wfmt//"%{http_code}"/"${AUTHORIZE_HTTP_CODE:-302}"}"
+    printf '%s' "${out//"%{redirect_url}"/"${AUTHORIZE_LOCATION-https://auth.cloud.ogenki.io/ui/login/login?authRequestID=1}"}"
     exit 0
 fi
 
@@ -178,7 +181,7 @@ world() {
     rm -rf "$CURL_STATE" "$STORE"
     mkdir -p "$CURL_STATE" "$STORE"
     : > "$CURL_LOG"
-    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL AUTH_URL_EMPTY_TIMES AUTHORIZE_FAIL_TIMES
+    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL AUTH_URL_EMPTY_TIMES AUTHORIZE_FAIL_TIMES AUTHORIZE_LOCATION
     export AUTHORIZE_HTTP_CODE=302
     export AUTH_URL_VALUE="https://auth.cloud.ogenki.io/authorize?client_id=${ID}"
     echo '{"data":{"oidc/":{"type":"oidc"},"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
@@ -308,6 +311,22 @@ check "first hop 400: returns 1" "1" "$rc"
 contains "$out" "App.NotFound" "first hop 400: names App.NotFound"
 contains "$out" "$ID" "first hop 400: names the client id"
 check "first hop 400: not retried" "1" "$(count_calls auth.cloud.ogenki.io/authorize)"
+# A 400 is also ZITADEL's answer for a known client asked for a redirect_uri
+# it never registered -- the message must not claim App.NotFound alone.
+contains "$out" "$REDIRECT_URI" "first hop 400: names the redirect_uri as the other cause"
+
+echo
+echo "== exit 1: liveness -- a 302 straight back to the redirect_uri is an error =="
+# ZITADEL knows the client but refused the request, so it redirected to the
+# redirect_uri with ?error= rather than to its login page.
+world
+export AUTHORIZE_LOCATION="${REDIRECT_URI}?error=invalid_scope&state=STATE-SENTINEL"
+run_check
+check "302 back with ?error=: returns 1" "1" "$rc"
+contains "$out" "ZITADEL redirected back with an error" "302 back with ?error=: says so"
+contains "$out" "error=invalid_scope" "302 back with ?error=: names the error"
+absent "$out" "STATE-SENTINEL" "302 back with ?error=: prints the error, not the whole query"
+check "302 back with ?error=: not retried" "1" "$(count_calls auth.cloud.ogenki.io/authorize)"
 
 echo
 echo "== exit 2: liveness -- the auth_url POST itself cannot be reached =="
