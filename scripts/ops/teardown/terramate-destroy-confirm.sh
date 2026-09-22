@@ -9,7 +9,7 @@
 #
 # Usage in workflows.tm.hcl:
 #   commands = [
-#     ["bash", "${terramate.root.path.absolute}/scripts/terramate-destroy-confirm.sh"],
+#     ["bash", "${terramate.root.path.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
 #     [global.provisioner, "destroy", ...],
 #   ]
 #

@@ -22,4 +22,4 @@ width ~1400px, light theme, matching the ogenki branding.
 `website/assets/` is Hugo's asset pipeline, reachable from a template through
 `resources.Get`. Images embedded directly from Markdown with a site-root path
 belong in `website/static/` instead — see the note at the top of
-`scripts/export-diagrams.sh`, which records the same distinction for diagrams.
+`scripts/docs/export-diagrams.sh`, which records the same distinction for diagrams.

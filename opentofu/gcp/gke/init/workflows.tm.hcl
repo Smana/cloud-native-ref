@@ -366,7 +366,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # Init before anything is torn down: a lock file predating a new provider
         # must fail here, not after resources have started disappearing. Same stack
         # dir as stage1-destroy-cluster, so that job inherits this init.
@@ -414,7 +414,7 @@ script "destroy" {
 
         if gcloud container clusters get-credentials "$${name}" \
              --location "$${location}" --project "$${project}" 2>/dev/null; then
-          bash "${terramate.root.path.fs.absolute}/scripts/k8s-reclaim-csi-volumes.sh" || true
+          bash "${terramate.root.path.fs.absolute}/scripts/ops/k8s/reclaim-csi-volumes.sh" || true
         else
           echo "[warn] could not fetch credentials for $${name}; skipping the in-cluster"
           echo "       reclaim. Any orphaned disks are swept by the network stack destroy."
@@ -431,7 +431,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
           -var='gateway_api_version=${global.gateway_api_version}' \
@@ -482,7 +482,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        # The backstop k8s-reclaim-csi-volumes.sh has always CLAIMED to have.
+        # The backstop reclaim-csi-volumes.sh has always CLAIMED to have.
         #
         # That script reclaims PVs while the cluster still exists -- the only
         # moment the CSI controller can -- and when it runs out of time it warns
@@ -498,7 +498,7 @@ script "destroy" {
         # after it, everything that leaked is unattached and visible.
         #
         # Never fails the teardown -- see the script's closing comment.
-        bash "${terramate.root.path.fs.absolute}/scripts/gcp-sweep-orphaned-disks.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/sweep-orphaned-disks.sh" \
           --project "$(cd "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/init" && \
             awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$2); print $2}' variables.tfvars)" \
           --apply
@@ -514,7 +514,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh" \
           reconcile "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure"
       BASH
       ],

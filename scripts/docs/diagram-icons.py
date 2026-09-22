@@ -33,7 +33,7 @@ import re
 import sys
 from collections import defaultdict
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ICONS = os.path.join(ROOT, 'docs', 'architecture', 'icons')
 SRC = os.path.join(ROOT, 'docs', 'architecture')
 
@@ -162,7 +162,7 @@ def cmd_audit(args):
     for src in ('local', 'vendor', 'cncf', 'brand', 'none'):
         if by_source[src]:
             how = {
-                'local': "docs/architecture/icons/ — ./scripts/diagram-icons.py style <name>",
+                'local': "docs/architecture/icons/ — ./scripts/docs/diagram-icons.py style <name>",
                 'vendor': "an mxgraph stencil — shapesearch.py, no embedding needed",
                 'cncf': "github.com/cncf/artwork — fetch, then rsvg-convert -w 64 -h 64",
                 'brand': "the project's brand page — aiicons.py --embed, then rasterise",

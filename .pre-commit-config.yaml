@@ -73,7 +73,7 @@ repos:
     hooks:
       - id: check-rebased
         name: Branch is rebased on origin/main
-        entry: scripts/check-rebased.sh
+        entry: scripts/ci/check-rebased.sh
         language: script
         stages: [pre-push]
         always_run: true

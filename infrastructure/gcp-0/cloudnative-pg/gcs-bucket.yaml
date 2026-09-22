@@ -32,7 +32,7 @@
 #
 # Freezing a recovery seed is likewise a script now, not a `gcloud storage mv`:
 #
-#   ./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+#   ./scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
 #     --cloud gcp --bucket ${project_id}-ogenki-cnpg-backups --apply
 #
 # It discovers the uid-suffixed live prefix from the Cluster, forces the

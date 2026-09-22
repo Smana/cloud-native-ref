@@ -49,7 +49,7 @@
 # Dry-run unless --apply.
 #
 # Usage:
-#   aws-sweep-controller-orphans.sh --cluster-name aws-0 --region eu-west-3 [--vpc-id V] [--apply]
+#   scripts/ops/aws/sweep-controller-orphans.sh --cluster-name aws-0 --region eu-west-3 [--vpc-id V] [--apply]
 set -o nounset
 set -o pipefail
 

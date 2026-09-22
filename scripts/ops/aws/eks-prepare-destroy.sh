@@ -40,7 +40,7 @@ fi
 echo "This script will delete the EKS cluster ${CLUSTER_NAME} in region ${REGION}"
 echo "This action is irreversible and will delete all resources in the cluster"
 echo "Please ensure you have backed up any important data before proceeding"
-# Same env-var bypass as scripts/terramate-destroy-confirm.sh — lets a
+# Same env-var bypass as scripts/ops/teardown/terramate-destroy-confirm.sh — lets a
 # `terramate script run --reverse destroy` orchestrate this prep step
 # without a second human prompt after the user already consented once.
 if [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
@@ -112,7 +112,7 @@ kubectl delete validatingadmissionpolicybinding --all --wait=false 2>/dev/null |
 # 2026-08-27 gcp-0 teardown for want of exactly this, and a second copy would
 # have been a second thing to forget. The EBS sweep below is the AWS-specific
 # half, and stays here.
-"$(dirname "$0")/k8s-reclaim-csi-volumes.sh" || true
+"$(dirname "$0")/../k8s/reclaim-csi-volumes.sh" || true
 
 # Sweep EBS volumes this cluster orphaned in EARLIER runs. The reclaim above
 # only covers PVs that still exist; anything left behind by a previous destroy

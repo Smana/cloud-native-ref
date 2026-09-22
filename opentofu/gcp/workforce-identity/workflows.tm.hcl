@@ -44,8 +44,8 @@ script "deploy" {
         # that window fails 409 on the very first resource -- while every check
         # reports the org clean, because `list` hides deleted pools. This
         # undeletes and imports whatever is already there; it is a no-op on a
-        # genuinely fresh org. See scripts/gcp-adopt-workforce-pool.sh.
-        bash "${terramate.root.path.fs.absolute}/scripts/gcp-adopt-workforce-pool.sh" \
+        # genuinely fresh org. See scripts/ops/gcp/adopt-workforce-pool.sh.
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-workforce-pool.sh" \
           --pool "$(awk -F= '/workforce_pool_id/{gsub(/[ "]/,"",$2); print $2}' variables.tfvars)" \
           --apply
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
@@ -119,7 +119,7 @@ script "destroy" {
         [warn] can undo by re-running deploy.
         [warn] ─────────────────────────────────────────────────────────────────
         WARN
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH

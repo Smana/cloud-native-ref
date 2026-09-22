@@ -84,7 +84,7 @@ task = "3.53.1"
 #   gcloud components install gke-gcloud-auth-plugin
 "asdf:mise-plugins/mise-gcloud" = "581.0.0"
 
-# Diagram exporter (scripts/export-diagrams.sh) — PINNED, BUT NOT HERE.
+# Diagram exporter (scripts/docs/export-diagrams.sh) — PINNED, BUT NOT HERE.
 #
 # The SVGs under website/static/images/diagrams/ are committed artifacts, so the
 # tool that generates them should be pinned like any other. mise cannot be the
@@ -104,7 +104,7 @@ task = "3.53.1"
 # reverted. Even made to install, it would pull ~170 MB into every job for a tool
 # none of them run -- no CI job exports diagrams.
 #
-# The pin therefore lives in scripts/export-diagrams.sh as
+# The pin therefore lives in scripts/docs/export-diagrams.sh as
 # DRAWIO_PINNED_VERSION, which refuses to run against a different build. That is
 # where the version actually matters, and it costs CI nothing.
 #

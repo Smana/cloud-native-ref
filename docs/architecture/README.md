@@ -6,7 +6,7 @@ Drawio (`.drawio`) sources. Open with the [drawio desktop app](https://www.drawi
 **One command regenerates every export:**
 
 ```bash
-./scripts/export-diagrams.sh
+./scripts/docs/export-diagrams.sh
 ```
 
 It writes SVG to `website/static/images/diagrams/`, writes the one PNG GitHub still needs, and
@@ -76,13 +76,13 @@ re-rasterising its own.
 
 | # | Source | How |
 |---|--------|-----|
-| 1 | `icons/` | `./scripts/diagram-icons.py style <name>` — paste-ready, ogenki palette applied |
+| 1 | `icons/` | `./scripts/docs/diagram-icons.py style <name>` — paste-ready, ogenki palette applied |
 | 2 | mxgraph stencil | `shapesearch.py "<terms>"` to find it, then **rasterise it into `icons/`** — see below |
 | 3 | [CNCF Artwork](https://github.com/cncf/artwork) | **list** `projects/<slug>/icon/color/` and pick the SVG — `external-secrets-operator` ships `eso-icon-color.svg`, so filenames are not slugs |
 | 4 | Project brand | `aiicons.py "<brand>" --embed` |
 | 5 | none | a clean ogenki box — the honest fallback, only after 1–4 miss |
 
-`./scripts/diagram-icons.py audit` lists every box that names a product and renders without one,
+`./scripts/docs/diagram-icons.py audit` lists every box that names a product and renders without one,
 grouped by which source would supply it. It is advisory, not a CI gate: whether a box wants a logo
 is a judgment call, and a gate that can go red on a judgment call gets switched off.
 

@@ -45,7 +45,7 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
         # tofu command run in a stack, so it has to init itself.
         ${global.provisioner} init -lock-timeout=5m

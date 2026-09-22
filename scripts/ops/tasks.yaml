@@ -1,0 +1,48 @@
+version: "3"
+
+# The three helpers beside teardown.sh are not indexed: terramate destroy
+# scripts call them. teardown.sh is the entry point. k8s/reclaim-csi-volumes.sh
+# is the same kind of destroy-time helper -- gke destroy and
+# eks-prepare-destroy.sh call it -- and is excluded for the same reason: no
+# prompt, and it deletes every PVC and CNPG cluster in the current context.
+tasks:
+  teardown:
+    desc: Tear the platform down — destroy past failures, sweep controller orphans, retry, verify against the cloud
+    cmds: ["{{.TASKFILE_DIR}}/teardown/teardown.sh {{.CLI_ARGS}}"]
+  aws:sweep-orphaned-volumes:
+    desc: Delete EBS volumes the CSI driver created that nothing uses, after a cluster destroy
+    cmds: ["{{.TASKFILE_DIR}}/aws/sweep-orphaned-volumes.sh {{.CLI_ARGS}}"]
+  aws:sweep-teardown-blockers:
+    desc: Clear the two things that reliably block tofu destroy on AWS
+    cmds: ["{{.TASKFILE_DIR}}/aws/sweep-teardown-blockers.sh {{.CLI_ARGS}}"]
+  aws:sweep-controller-orphans:
+    desc: Sweep what in-cluster controllers left in AWS after a partial teardown (refuses while the cluster exists)
+    cmds: ["{{.TASKFILE_DIR}}/aws/sweep-controller-orphans.sh {{.CLI_ARGS}}"]
+  aws:eks-prepare-destroy:
+    desc: Prepare an EKS cluster for destruction — suspends Flux, deletes every PVC
+    cmds: ["{{.TASKFILE_DIR}}/aws/eks-prepare-destroy.sh {{.CLI_ARGS}}"]
+  aws:eks-recycle-bootstrap-nodes:
+    desc: Recycle EKS nodes whose ENIs predate Cilium
+    cmds: ["{{.TASKFILE_DIR}}/aws/eks-recycle-bootstrap-nodes.sh {{.CLI_ARGS}}"]
+  gcp:adopt-workforce-pool:
+    desc: Make the workforce pool survive a teardown and rebuild
+    dir: "{{.ROOT_DIR}}/opentofu/gcp/workforce-identity"
+    cmds: ["{{.TASKFILE_DIR}}/gcp/adopt-workforce-pool.sh {{.CLI_ARGS}}"]
+  gcp:purge-dns-records:
+    desc: Empty a Cloud DNS managed zone so the zone can be destroyed
+    cmds: ["{{.TASKFILE_DIR}}/gcp/purge-dns-records.sh {{.CLI_ARGS}}"]
+  gcp:sweep-orphaned-disks:
+    desc: Delete Persistent Disks GKE's CSI driver created that nothing uses
+    cmds: ["{{.TASKFILE_DIR}}/gcp/sweep-orphaned-disks.sh {{.CLI_ARGS}}"]
+  k8s:cnpg-prepare-restore:
+    desc: Clear a CNPG cluster's live WAL archive so a new cluster can start (off the normal path)
+    cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-prepare-restore.sh {{.CLI_ARGS}}"]
+  k8s:cnpg-promote-seed:
+    desc: Promote a live CNPG archive to a frozen restore seed, or verify one
+    cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-promote-seed.sh {{.CLI_ARGS}}"]
+  demo:load:
+    desc: Run an image-gallery load-generator scenario in-cluster
+    cmds: ["{{.TASKFILE_DIR}}/demo/load.sh {{.CLI_ARGS}}"]
+  demo:cleanup-benchmark-images:
+    desc: Remove benchmark-generated images from the image-gallery database and bucket
+    cmds: ["{{.TASKFILE_DIR}}/demo/cleanup-benchmark-images.sh {{.CLI_ARGS}}"]

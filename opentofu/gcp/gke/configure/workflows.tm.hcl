@@ -149,7 +149,7 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # The CA fetch is BEST-EFFORT here, and only here -- deploy and preview
         # above keep it strict, because there the vault provider must configure
         # for the apply to mean anything.
@@ -179,7 +179,7 @@ script "destroy" {
           echo "       will fall through to its tolerant path. Failing here instead"
           echo "       would strand the live GKE cluster gke/init is about to delete."
         fi
-        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
           -var='gateway_api_version=${global.gateway_api_version}' \

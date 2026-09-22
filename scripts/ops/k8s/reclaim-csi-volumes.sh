@@ -16,20 +16,20 @@
 #        because that is where it first hurt.
 #
 # The cloud-side sweep this script defers to now runs on both clouds AFTER the
-# cluster is destroyed -- scripts/gcp-sweep-orphaned-disks.sh and
-# scripts/aws-sweep-orphaned-volumes.sh, each wired into its own `destroy`.
+# cluster is destroyed -- scripts/ops/gcp/sweep-orphaned-disks.sh and
+# scripts/ops/aws/sweep-orphaned-volumes.sh, each wired into its own `destroy`.
 # GCP had no sweep at all before that. AWS had one, but only in prepare-destroy,
 # before the destroy -- so it missed whatever was still detaching, and left it
 # for a teardown a rebuild away.
 #
-# Extracted from scripts/eks-prepare-destroy.sh rather than copied: every step
+# Extracted from scripts/ops/aws/eks-prepare-destroy.sh rather than copied: every step
 # below is plain Kubernetes, and a second copy is a second thing to forget.
 #
 # MUST run while the CSI controller is still schedulable -- before any node
 # draining starts.
 #
 # Usage:
-#   k8s-reclaim-csi-volumes.sh [kube-context]
+#   scripts/ops/k8s/reclaim-csi-volumes.sh [kube-context]
 #
 # With no argument the current context is used. Never fails the caller: a
 # cluster that is already gone, or unreachable, leaves nothing to reclaim and

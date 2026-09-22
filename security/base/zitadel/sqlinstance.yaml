@@ -55,7 +55,7 @@ spec:
   # loss versus -2's intent: only the final ~50 seconds, which contain
   # nothing but the backup itself.
   #
-  # LESSON, now encoded in scripts/cnpg-promote-seed.sh (see the rotation
+  # LESSON, now encoded in scripts/ops/k8s/cnpg-promote-seed.sh (see the rotation
   # command at the end of this block): after the one-shot Backup completes,
   # force the segment out before copying —
   #   kubectl exec -n security xplane-zitadel-cnpg-cluster-1 -c postgres -- \
@@ -64,7 +64,7 @@ spec:
   # prefix, and only then take the copy.
   #
   # NOTE: this was a COPY, so the live prefix is NOT empty. A restore
-  # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
+  # therefore still needs scripts/ops/k8s/cnpg-prepare-restore.sh first (see the
   # expected-empty-archive note below). Earlier rotations MOVED the
   # prefix and got that clearing for free.
   #   [SUPERSEDED by #1963 — kept as a record of what was true on
@@ -115,12 +115,12 @@ spec:
   # uid), so a new cluster's destination is empty because it never existed.
   #
   # Rotate this seed with:
-  #   scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+  #   scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
   #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
   # It discovers the live prefix, forces the final WAL segment out before
   # copying, and verifies the result is restorable rather than counting objects.
   # ── zitadel-20260904: the first seed cut by the script, not by hand ─────────
-  # Created 2026-09-04 by scripts/cnpg-promote-seed.sh --apply against the
+  # Created 2026-09-04 by scripts/ops/k8s/cnpg-promote-seed.sh --apply against the
   # rebuilt aws-0, on the live prefix xplane-zitadel-cnpg-cluster-87c1dcbf --
   # the first per-generation prefix, and the first promotion that discovered its
   # source rather than assuming it.

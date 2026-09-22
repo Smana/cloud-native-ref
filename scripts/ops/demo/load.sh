@@ -3,9 +3,9 @@
 # image-gallery-loadgen CronJob's template. The Job exports its traces and
 # metrics like the app does, so each trace starts at the load generator.
 #
-#   scripts/demo-load.sh <browse|upload|mixed|steady|incident> [duration] [rate]
-#   scripts/demo-load.sh incident          # ~10 min scripted incident; resets the demo controls on exit
-#   scripts/demo-load.sh mixed 15m 25      # the soak: the 25 req/s cap for 15 minutes
+#   scripts/ops/demo/load.sh <browse|upload|mixed|steady|incident> [duration] [rate]
+#   scripts/ops/demo/load.sh incident          # ~10 min scripted incident; resets the demo controls on exit
+#   scripts/ops/demo/load.sh mixed 15m 25      # the soak: the 25 req/s cap for 15 minutes
 set -euo pipefail
 
 usage() { sed -n '2,8p' "$0"; }

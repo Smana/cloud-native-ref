@@ -26,16 +26,16 @@
 # finished when the provider says there is nothing left.
 #
 # Usage:
-#   scripts/teardown.sh                 # aws (the TM_CLOUD default)
-#   TM_CLOUD=gcp     scripts/teardown.sh
-#   TM_CLOUD=all     scripts/teardown.sh
-#   scripts/teardown.sh --verify-only   # skip the destroy, just report what is left
+#   scripts/ops/teardown/teardown.sh                 # aws (the TM_CLOUD default)
+#   TM_CLOUD=gcp     scripts/ops/teardown/teardown.sh
+#   TM_CLOUD=all     scripts/ops/teardown/teardown.sh
+#   scripts/ops/teardown/teardown.sh --verify-only   # skip the destroy, just report what is left
 #
 # TM_DESTROY_CONFIRMED=true skips the interactive prompt, for unattended runs.
 set -o nounset
 set -o pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CLOUDS="${TM_CLOUD:-aws}"
 VERIFY_ONLY=0
 [ "${1:-}" = "--verify-only" ] && VERIFY_ONLY=1
@@ -87,11 +87,11 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
       --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
     if [ -n "${_left//[[:space:]]/}" ]; then
       echo "=== destroy left resources behind — sweeping controller-created orphans ==="
-      bash "${ROOT}/scripts/aws-sweep-teardown-blockers.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-teardown-blockers.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-      bash "${ROOT}/scripts/aws-sweep-controller-orphans.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-controller-orphans.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-      bash "${ROOT}/scripts/aws-sweep-orphaned-volumes.sh" \
+      bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
 
       echo

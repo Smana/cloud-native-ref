@@ -19,7 +19,7 @@
 # Requires the draw.io desktop app on PATH.
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 command -v drawio >/dev/null || { echo "drawio not on PATH — install the desktop app"; exit 1; }
 

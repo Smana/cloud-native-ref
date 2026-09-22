@@ -24,7 +24,7 @@
 # when the zone goes -- so they never block the destroy.
 #
 # Usage:
-#   gcp-purge-dns-records.sh <zone-name> <project-id>
+#   scripts/ops/gcp/purge-dns-records.sh <zone-name> <project-id>
 #
 # Safe to run when the zone is already gone or already empty: it reports and
 # exits 0 either way, so a destroy that is re-run does not fail here.
@@ -35,7 +35,7 @@ set -o pipefail
 
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../../lib/gcloud-adc.sh"
 
 ZONE="${1:-}"
 PROJECT="${2:-}"

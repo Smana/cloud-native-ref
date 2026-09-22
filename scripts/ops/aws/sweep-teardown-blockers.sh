@@ -48,7 +48,7 @@
 #     actually gone.
 #
 # Usage:
-#   aws-sweep-teardown-blockers.sh --cluster-name N --region R \
+#   scripts/ops/aws/sweep-teardown-blockers.sh --cluster-name N --region R \
 #       [--zone-name Z] [--profile P] [--apply]
 #
 # Dry-run unless --apply, and it lists exactly what it would delete.
