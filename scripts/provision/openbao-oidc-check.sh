@@ -6,7 +6,7 @@
 #
 # WHY THIS EXISTS
 #
-# scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc heals the config
+# scripts/provision/zitadel-oidc-clients.sh's reconcile_openbao_oidc heals the config
 # and role after every sync, but nothing proves it actually worked: a
 # reconcile that silently never ran (--openbao-url never wired for this
 # cluster) or one whose failure got missed leaves OpenBao pointed at a client
@@ -51,9 +51,9 @@ set -o nounset
 set -o pipefail
 
 # shellcheck source=scripts/lib/cloud-secret-store.sh
-. "$(dirname "$0")/lib/cloud-secret-store.sh"
+. "$(dirname "$0")/../lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/openbao-api.sh
-. "$(dirname "$0")/lib/openbao-api.sh"
+. "$(dirname "$0")/../lib/openbao-api.sh"
 
 OPENBAO_URL=""
 OPENBAO_ROOT_TOKEN_SECRET=""

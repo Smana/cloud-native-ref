@@ -8,7 +8,7 @@
 # 077, printf a curl `-K` config file, escape `"` and `\`, remove it with a
 # trap baked at trap-SET time -- to keep OpenBao's root token, the single
 # highest-value credential in this design, out of `ps`/`/proc/<pid>/cmdline`.
-# scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc (#2045) needs the
+# scripts/provision/zitadel-oidc-clients.sh's reconcile_openbao_oidc (#2045) needs the
 # same calls, and copying the block a second time is exactly the shape this
 # repo has already paid for once -- see cloud-secret-store.sh's own header.
 # One copy of the root-token handling, here.

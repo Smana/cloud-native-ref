@@ -122,7 +122,7 @@ resource "vault_jwt_auth_backend" "oidc" {
     # so the provider always plans to rewrite it -- and every ZITADEL rebuild
     # issues a new client id too. Left unignored, the next management apply
     # replays the discovery check while ZITADEL is still down mid-rebuild and
-    # fails. scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
+    # fails. scripts/provision/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
     # both fields after Terraform creates the mount (design fact 8).
     #
     # Caveat: ANY other in-place update to this resource re-sends the whole

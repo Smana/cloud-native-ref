@@ -167,7 +167,7 @@ script "deploy" {
         OPENBAO_ARGS=()
         TLS_DIR="$(mktemp -d)"
         trap 'rm -rf "$${TLS_DIR}"' EXIT
-        if bash "$${ROOT}/scripts/openbao-config.sh" ca \
+        if bash "$${ROOT}/scripts/provision/openbao-config.sh" ca \
             --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file "$${TLS_DIR}/ca.pem" \
             --region "${global.region}" --profile "${global.profile}"; then
           OPENBAO_ARGS=(--openbao-url "${global.openbao_url}" \
@@ -255,11 +255,11 @@ script "deploy" {
         echo "== verifying OpenBao's OIDC client"
         TLS_DIR="$(mktemp -d)"
         trap 'rm -rf "$${TLS_DIR}"' EXIT
-        bash "$${ROOT}/scripts/openbao-config.sh" ca \
+        bash "$${ROOT}/scripts/provision/openbao-config.sh" ca \
           --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file "$${TLS_DIR}/ca.pem" \
           --region "${global.region}" --profile "${global.profile}"
 
-        bash "$${ROOT}/scripts/openbao-oidc-check.sh" \
+        bash "$${ROOT}/scripts/provision/openbao-oidc-check.sh" \
           --url "${global.openbao_url}" \
           --root-token-secret-name "${global.root_token_secret_name}" \
           --ca-file "$${TLS_DIR}/ca.pem" \

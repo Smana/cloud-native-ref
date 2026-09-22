@@ -175,7 +175,7 @@ locking yourself out of the secrets store.
 
 Terraform creates the `oidc/` mount once (`opentofu/aws/openbao/management/oidc.tf`) and then
 ignores `oidc_client_id`, `oidc_client_secret` and `bound_audiences` on it — those three rotate
-with ZITADEL, not with a re-apply. `scripts/zitadel-oidc-clients.sh`'s `sync` command owns them:
+with ZITADEL, not with a re-apply. `scripts/provision/zitadel-oidc-clients.sh`'s `sync` command owns them:
 every AWS deploy's `stage4-oidc-clients` job reconciles OpenBao's client against whatever ZITADEL
 currently issues, and `stage5-verify-openbao-oidc` halts the deploy if OpenBao, the secret store
 and ZITADEL ever disagree (#2045).
@@ -193,7 +193,7 @@ Recover a stale client by hand with the same sync, pointed at OpenBao, from the 
 
 ```bash
 IDP_URL=https://auth.cloud.ogenki.io PRIVATE_DOMAIN=priv.aws.ogenki.io \
-  scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --region eu-west-3 --apply \
+  scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --region eu-west-3 --apply \
   --openbao-url https://bao.priv.aws.ogenki.io:8200 \
   --openbao-root-token-secret openbao/cloud-native-ref/tokens/root \
   --openbao-ca-file opentofu/aws/openbao/management/.tls/ca.pem

@@ -22,7 +22,7 @@ the break-glass credential load-bearing
 > older than the current client, so any fixed value goes stale on every rebuild
 > ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)). `oidc.tf` creates the mount
 > and its role once and puts all three fields under `ignore_changes`;
-> `scripts/zitadel-oidc-clients.sh`'s `sync` rotates them on every AWS deploy, and the
+> `scripts/provision/zitadel-oidc-clients.sh`'s `sync` rotates them on every AWS deploy, and the
 > `stage5-verify-openbao-oidc` job halts the deploy when OpenBao, the secret store and ZITADEL
 > disagree.
 
