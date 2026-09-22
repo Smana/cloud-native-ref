@@ -233,6 +233,7 @@ each gate actually checks.
 | `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
 | `openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
 | `openbao-snapshot.sh` | OpenBao Raft snapshot automation |
+| `openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
 | `secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`) |
 | `terramate-destroy-confirm.sh` | Single y/n prompt every stack's destroy script calls first, cached so `--reverse destroy` asks once |
 | `eks-prepare-destroy.sh` | Pre-destroy EKS cleanup — suspends Flux, disables blocking webhooks, sweeps orphaned EBS volumes; the CSI volume reclaim itself moved to `reclaim-csi-volumes.sh` |

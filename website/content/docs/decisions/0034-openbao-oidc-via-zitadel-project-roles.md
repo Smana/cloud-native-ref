@@ -181,6 +181,10 @@ should be rare enough to be worth asking about.
   **false**, and when it is false the roles claim is empty while every request
   still reports success — the failure is silent on both sides. This has already
   cost this platform a debugging session once.
+- The client's id, secret and `bound_audiences` are rotated by
+  `scripts/zitadel-oidc-clients.sh`, not by Terraform — a rebuild restores
+  ZITADEL from a seed that predates the current client, so a fixed value would
+  go stale on every rebuild ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)).
 
 ### Neutral
 
