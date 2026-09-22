@@ -77,6 +77,11 @@ EOF
 # 302) or, with $AUTHORIZE_CURL_FAIL=1, fails the connection outright -- the
 # "OpenBao unreachable" shape reused for "ZITADEL unreachable", since both
 # collapse to the same exit 2 in this script.
+#
+# $CFG_READ_FAIL / $ROLE_READ_FAIL fail their one GET each (a permission
+# error, not a connection drop -- --fail-with-body's shape); $AUTH_URL_ERROR
+# does the same for the auth_url POST. Each drives one of this script's own
+# "cannot tell" branches independently of the others.
 cat > "$STUB_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 args=("$@") method=GET url="" kfile="" has_body=no wants_code=no
@@ -111,8 +116,18 @@ fi
 path="${url#*/v1/}"
 case "$method $path" in
     "GET sys/auth")               cat "$CURL_STATE/sys_auth.json" 2>/dev/null || echo '{"data":{}}' ;;
-    "GET auth/oidc/config")       "$REAL_JQ" -c '{data: (del(.oidc_client_secret) + {status: "valid"})}' "$CURL_STATE/config.json" ;;
-    "GET auth/oidc/role/default") "$REAL_JQ" -c '{data: .}' "$CURL_STATE/role.json" ;;
+    "GET auth/oidc/config")
+        if [ "${CFG_READ_FAIL:-0}" = 1 ]; then
+            echo '{"errors":["permission denied"]}' >&2
+            exit 22
+        fi
+        "$REAL_JQ" -c '{data: (del(.oidc_client_secret) + {status: "valid"})}' "$CURL_STATE/config.json" ;;
+    "GET auth/oidc/role/default")
+        if [ "${ROLE_READ_FAIL:-0}" = 1 ]; then
+            echo '{"errors":["permission denied"]}' >&2
+            exit 22
+        fi
+        "$REAL_JQ" -c '{data: .}' "$CURL_STATE/role.json" ;;
     "POST auth/oidc/oidc/auth_url")
         if [ -n "${AUTH_URL_ERROR:-}" ]; then
             printf '%s' "$AUTH_URL_ERROR" >&2
@@ -154,7 +169,7 @@ world() {
     rm -rf "$CURL_STATE" "$STORE"
     mkdir -p "$CURL_STATE" "$STORE"
     : > "$CURL_LOG"
-    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR
+    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL
     export AUTHORIZE_HTTP_CODE=302
     export AUTH_URL_VALUE="https://auth.cloud.ogenki.io/authorize?client_id=${ID}"
     echo '{"data":{"oidc/":{"type":"oidc"},"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
@@ -213,6 +228,24 @@ check "mount, no secret: returns 1" "1" "$rc"
 contains "$out" "DESTROY the mount" "mount, no secret: warns the next apply destroys it"
 
 echo
+echo "== exit 2: cannot read auth/oidc/config =="
+world
+export CFG_READ_FAIL=1
+run_check
+check "config unreadable: returns 2" "2" "$rc"
+contains "$out" "cannot read auth/oidc/config" "config unreadable: says so"
+unset CFG_READ_FAIL
+
+echo
+echo "== exit 2: cannot read auth/oidc/role/default =="
+world
+export ROLE_READ_FAIL=1
+run_check
+check "role unreadable: returns 2" "2" "$rc"
+contains "$out" "cannot read auth/oidc/role/default" "role unreadable: says so"
+unset ROLE_READ_FAIL
+
+echo
 echo "== exit 1: the config id doesn't match the store =="
 world
 rjq '.oidc_client_id = "111111111111111111"' "$CURL_STATE/config.json" > "$WORK/c.json" && mv "$WORK/c.json" "$CURL_STATE/config.json"
@@ -249,6 +282,31 @@ run_check
 check "first hop 400: returns 1" "1" "$rc"
 contains "$out" "App.NotFound" "first hop 400: names App.NotFound"
 contains "$out" "$ID" "first hop 400: names the client id"
+
+echo
+echo "== exit 2: liveness -- the auth_url POST itself cannot be reached =="
+world
+export AUTH_URL_ERROR='{"errors":["permission denied"]}'
+run_check
+check "auth_url unreachable: returns 2" "2" "$rc"
+contains "$out" "cannot reach auth/oidc/oidc/auth_url" "auth_url unreachable: says so"
+unset AUTH_URL_ERROR
+
+echo
+echo "== exit 2: liveness -- the authorize URL's first hop cannot be reached =="
+world
+export AUTHORIZE_CURL_FAIL=1
+run_check
+check "first hop unreachable: returns 2" "2" "$rc"
+contains "$out" "cannot reach the authorize URL's first hop" "first hop unreachable: says so"
+unset AUTHORIZE_CURL_FAIL
+
+echo
+echo "== the auth_url POST body carries the role and the configured redirect_uri =="
+world; run_check
+body_json="$(cat "$WORK_BODY")"
+check "auth_url body: role" "default" "$(rjq -r '.role' <<< "$body_json")"
+check "auth_url body: redirect_uri" "$REDIRECT_URI" "$(rjq -r '.redirect_uri' <<< "$body_json")"
 
 echo
 echo "== exit 2: OpenBao unreachable =="
