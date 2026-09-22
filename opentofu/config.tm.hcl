@@ -180,7 +180,7 @@ globals "openbao_ca_cmd" {
     "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
     "--tm-run",
     "bash",
-    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
+    "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh",
     "ca",
     "--root-ca-secret-name",
     global.ca_chain_secret_name,

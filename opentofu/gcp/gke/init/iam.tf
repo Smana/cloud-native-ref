@@ -472,7 +472,7 @@ locals {
 # after ZITADEL is running inside the cluster this stack is about to build.
 #
 # Listing them here would fail the apply on a fresh project. They are granted by
-# `scripts/secret-store.sh grant --cloud gcp`, which reads what the cluster's
+# `scripts/provision/secret-store.sh grant --cloud gcp`, which reads what the cluster's
 # ExternalSecrets actually ask for and grants what exists. Creation and access
 # stay together.
 #

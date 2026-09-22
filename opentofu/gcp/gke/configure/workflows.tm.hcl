@@ -33,7 +33,7 @@ script "deploy" {
         ${global.cloud_gate}
         set -euo pipefail
         # The vault provider (openbao.tf) needs the CA chain on disk before init.
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --cloud gcp --project ogenki-435905 \
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
@@ -99,7 +99,7 @@ script "preview" {
         ${global.cloud_gate}
         set -euo pipefail
         # The vault provider (openbao.tf) needs the CA chain on disk before init.
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --cloud gcp --project ogenki-435905 \
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
@@ -171,7 +171,7 @@ script "destroy" {
         # degrades this run from "removed the in-cluster objects" to "left them
         # for gke/init to delete with the cluster" -- which is the same
         # outcome either way, moments later.
-        if ! bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        if ! bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --cloud gcp --project ogenki-435905 \
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem; then
           echo "[warn] CA chain fetch failed -- continuing anyway."

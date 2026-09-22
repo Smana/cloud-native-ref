@@ -271,7 +271,7 @@ the newest object in the AWS history.
      --secret openbao-priv-gcp-root-token --project ogenki-435905 | jq -r .token)
 
    VAULT_TOKEN="$VAULT_TOKEN" VAULT_CACERT="$VAULT_CACERT" CLOUD=gcp \
-     ./scripts/openbao-snapshot.sh save \
+     ./scripts/provision/openbao-snapshot.sh save \
      -a "$VAULT_ADDR" -b ogenki-435905-ogenki-openbao-snapshot -s /tmp/bao.snap
    ```
 
@@ -279,7 +279,7 @@ the newest object in the AWS history.
    skip verify", and this chain is in no system trust store by default.
 
    The object just written is now the newest. Select it the way the tooling
-   does — `latest_snapshot()` in `scripts/openbao-config.sh` sorts GCS objects
+   does — `latest_snapshot()` in `scripts/provision/openbao-config.sh` sorts GCS objects
    **by name** — and copy that one object, by name, into S3:
 
    ```bash

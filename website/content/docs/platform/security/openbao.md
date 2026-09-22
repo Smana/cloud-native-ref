@@ -119,7 +119,7 @@ bound_issuer = ".../id/A0F8FD418B41D2BABB156BCFBF4BF5E2"   # the destroyed clust
 {{< /callout >}}
 
 On every deploy, the management stack's workflow runs
-`./scripts/openbao-config.sh rehydrate`: a fresh node is initialised with
+`./scripts/provision/openbao-config.sh rehydrate`: a fresh node is initialised with
 throwaway shares that are **never stored**, the newest snapshot is restored
 into it, and the root token and recovery keys already in Secrets Manager
 belong to the restored state. If the bucket is empty — the first deploy of a
@@ -251,7 +251,7 @@ Initialisation is not a day-2 operation — it happens once per *lineage*,
 on the first deploy, and is automated rather than run by hand. Every deploy
 after that rehydrates instead (see
 [The lineage](#the-lineage-and-rehydrate-at-boot)):
-`terramate script run deploy` calls `scripts/openbao-config.sh` (`init` subcommand — see
+`terramate script run deploy` calls `scripts/provision/openbao-config.sh` (`init` subcommand — see
 [Commands]({{< relref "/docs/reference/commands.md" >}}) for the full script
 table), which runs `bao operator init -recovery-shares=1 -recovery-threshold=1` and
 writes the result to **two separate** Secrets Manager entries:
@@ -309,7 +309,7 @@ a convenience. Trigger one manually with:
 kubectl create job --namespace security --from=cronjob/openbao-snapshot manual-openbao-snapshot-$(date +%s)
 ```
 
-**Restore.** `scripts/openbao-snapshot.sh` (`restore` subcommand) fetches
+**Restore.** `scripts/provision/openbao-snapshot.sh` (`restore` subcommand) fetches
 the newest snapshot from the bucket, authenticates — a supplied `VAULT_TOKEN`
 wins, otherwise it mints a temporary root token from the recovery key —
 restores, then reads the lineage's **stored** root token from
@@ -339,9 +339,9 @@ export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
 # `bao operator generate-root -init`, which returns 405 on an auto-unsealed
 # node -- every node in this design -- and the run dies under `set -e` with the
 # Raft restore ALREADY APPLIED. `rehydrate` works only because
-# scripts/openbao-config.sh passes this for you.
+# scripts/provision/openbao-config.sh passes this for you.
 export ROOT_TOKEN_SECRET_ID="openbao/cloud-native-ref/tokens/root"
-./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
+./scripts/provision/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
 
@@ -369,7 +369,7 @@ aws s3api list-objects-v2 --bucket eu-west-3-ogenki-openbao-snapshot \
   --query 'sort_by(Contents,&LastModified)[].[Key,LastModified,StorageClass]' --output text
 
 export OPENBAO_SNAPSHOT_KEY="2026-09-05T092947Z-awskms.snap"
-./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
+./scripts/provision/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
 
@@ -441,11 +441,11 @@ above:
   token from `openbao-priv-gcp-root-token`. There is no `app` namespace and
   so no tenant AppRole either.
 - **Snapshots ship to GCS.** `security/gcp-0/openbao-snapshot/` patches the
-  shared CronJob with `CLOUD=gcp`; `scripts/openbao-snapshot.sh` branches to
+  shared CronJob with `CLOUD=gcp`; `scripts/provision/openbao-snapshot.sh` branches to
   `gcloud storage` / `gs://` on that switch. The cluster is single-node Raft,
   rehydrated from `ogenki-435905-ogenki-openbao-snapshot` like AWS; with
   `seal_provider = "awskms"` it is the standby for the AWS lineage — see
   [OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
-- **`scripts/openbao-config.sh` takes `--cloud gcp`** (plus `--project`), and
+- **`scripts/provision/openbao-config.sh` takes `--cloud gcp`** (plus `--project`), and
   its `ca` subcommand reads `openbao-priv-gcp-ca-chain` as raw PEM rather
   than AWS's JSON-shaped `certificates/priv.aws.ogenki.io/ca-chain`.

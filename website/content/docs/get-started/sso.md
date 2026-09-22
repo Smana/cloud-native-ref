@@ -70,7 +70,7 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    did not exist when the OpenTofu stack applied, so nothing granted access to
 #    them. On AWS this step does not exist — External Secrets authenticates with
 #    EKS Pod Identity, which OpenTofu already granted.
-./scripts/secret-store.sh grant --cloud gcp --project ogenki-435905 --apply
+./scripts/provision/secret-store.sh grant --cloud gcp --project ogenki-435905 --apply
 ```
 
 ```bash

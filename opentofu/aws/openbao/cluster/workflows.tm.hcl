@@ -40,7 +40,7 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --root-ca-secret-name "${global.ca_chain_secret_name}" \
           --ca-output-file .tls/ca.pem \
           --region "${global.region}" --profile "${global.profile}"
@@ -49,7 +49,7 @@ script "destroy" {
         # gone while the node and its NLB are still up. Without it the snapshot
         # is refused, the walk stops after EKS and before the NAT gateway, and
         # the documented escape discards a snapshot that was obtainable.
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" pre-destroy-snapshot \
           --url "${global.openbao_url}" \
           --fallback-address "${global.openbao_fallback_address}" \
           --root-token-secret-name "${global.root_token_secret_name}" \

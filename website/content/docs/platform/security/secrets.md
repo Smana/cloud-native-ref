@@ -58,7 +58,7 @@ it at OpenBao would be circular, so it reads the cloud store and always will.
 Three database credentials also stay put, for a duller reason: the `SQLInstance`
 composition that renders their `ExternalSecret`s hardcodes the managed store and
 exposes no field to change it — the same blocker the `App` composition had until
-v0.6.1. They are created by the `seed` command of `scripts/secret-store.sh`, one
+v0.6.1. They are created by the `seed` command of `scripts/provision/secret-store.sh`, one
 operator command that also seeds part of the bootstrap tier, so keeping the two
 together is coherent rather than merely expedient. Nothing forecloses moving them
 later.

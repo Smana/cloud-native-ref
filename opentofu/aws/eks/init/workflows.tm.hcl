@@ -31,7 +31,7 @@ script "deploy" {
       # The configure stack's vault provider needs the CA chain on disk before
       # `tofu init`. Same step the management stack runs; configure/.tls/ is
       # gitignored.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       # The lineage restores OpenBao's storage from a snapshot on every deploy,
       # so `jwt/<cluster>` and its roles come back -- while THIS stack's state
@@ -385,7 +385,7 @@ script "destroy" {
       #
       # The `cd` is inside the guard so that neither half can abort the script.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
-      "if ! (cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'); then echo '[warn] CA chain fetch failed -- continuing anyway.'; echo '       The vault provider will fail to configure and destroy-stage2.sh will'; echo '       fall through to its tolerant path. Failing here instead would strand'; echo '       the live EKS cluster stage 1 is about to delete.'; fi"],
+      "if ! (cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'); then echo '[warn] CA chain fetch failed -- continuing anyway.'; echo '       The vault provider will fail to configure and destroy-stage2.sh will'; echo '       fall through to its tolerant path. Failing here instead would strand'; echo '       the live EKS cluster stage 1 is about to delete.'; fi"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "bash '${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]

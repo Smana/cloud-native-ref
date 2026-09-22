@@ -106,7 +106,7 @@ missing or unreadable secret surfaces as a `HelmRelease` timing out ten minutes
 later, naming only the HelmRelease.
 
 ```bash
-./scripts/secret-store.sh check --cloud gcp --project ogenki-435905
+./scripts/provision/secret-store.sh check --cloud gcp --project ogenki-435905
 ```
 
 That lists every key the cluster's ExternalSecrets ask for and whether it exists.

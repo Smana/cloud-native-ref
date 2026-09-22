@@ -123,7 +123,7 @@ jobs:
           #     real rehydrate.
           #
           # Full JSON through jq rather than --query, for the reason
-          # latest_snapshot() in scripts/openbao-config.sh gives: that query
+          # latest_snapshot() in scripts/provision/openbao-config.sh gives: that query
           # ERRORS on an empty bucket, so exit status alone cannot separate
           # "empty" from "could not list".
           if ! listing=$(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then

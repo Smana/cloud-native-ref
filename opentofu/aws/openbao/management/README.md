@@ -32,7 +32,7 @@ store. The `destroy` script therefore no-ops unless `TM_LINEAGE_DESTROY=true`.
 
 Its OpenTofu state stays valid across rebuilds because a rehydrated OpenBao holds the
 same resources at the same paths. The `deploy` script runs
-`scripts/openbao-config.sh rehydrate` before `tofu apply`: on the first deploy of a
+`scripts/provision/openbao-config.sh rehydrate` before `tofu apply`: on the first deploy of a
 lineage that is a plain `init`, and on every deploy after it restores the newest
 snapshot into a freshly initialised node. See
 [The lineage, and rehydrate at boot](https://cnref.ogenki.io/docs/platform/security/openbao/#the-lineage-and-rehydrate-at-boot).
@@ -102,7 +102,7 @@ snapshot into a freshly initialised node. See
      on disk before `tofu init`:
 
      ```console
-     ../../../../scripts/openbao-config.sh ca \
+     ../../../../scripts/provision/openbao-config.sh ca \
        --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain \
        --ca-output-file .tls/ca.pem
      ```

@@ -10,7 +10,7 @@ provider "google" {
 # The CA file is not optional in practice: OpenBao's certificate is issued by
 # the offline root, which no system trust store knows about. `terramate script
 # run deploy` writes it first via
-#   scripts/openbao-config.sh ca --cloud gcp ...
+#   scripts/provision/openbao-config.sh ca --cloud gcp ...
 # See workflows.tm.hcl.
 provider "vault" {
   address      = local.openbao_address

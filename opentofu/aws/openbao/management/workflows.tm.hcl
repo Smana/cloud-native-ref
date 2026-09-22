@@ -97,7 +97,7 @@ script "destroy" {
         # teardown that then aborted, on exactly the path the comments above say
         # must not be blocked.
         bash "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-run \
-          bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
           --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file .tls/ca.pem \
           --region "${global.region}" --profile "${global.profile}"
         ${global.provisioner} init -lock-timeout=5m
@@ -167,7 +167,7 @@ script "deploy" {
         "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
         "--tm-run",
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
+        "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh",
         "rehydrate",
         "--url",
         global.openbao_url,

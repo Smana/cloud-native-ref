@@ -239,7 +239,7 @@ project.
   records what actually wrapped the bytes; the timestamp stays leading and
   fixed-width, so lexicographic order remains chronological across seals. Both
   selection paths — the gate in `rehydrate_openbao`
-  (`scripts/openbao-config.sh`) and the one in `restore`
+  (`scripts/provision/openbao-config.sh`) and the one in `restore`
   (`container-images/openbao-snapshot/openbao-snapshot.sh`) — compare the newest
   object's segment against the node's own seal and **refuse before
   `bao operator init` and before `snapshot restore -force`**, naming both seals.
@@ -270,7 +270,7 @@ project.
 
 Stage 1 plan: `docs/superpowers/plans/2026-09-02-openbao-store-of-record-stage1.md`.
 Lineage stacks: `opentofu/aws/openbao/lineage/`, `opentofu/gcp/openbao/lineage/`.
-Rehydrate: `./scripts/openbao-config.sh rehydrate`, called by both management
+Rehydrate: `./scripts/provision/openbao-config.sh rehydrate`, called by both management
 stacks' deploy scripts. Auth mounts: `opentofu/{aws/eks,gcp/gke}/configure/openbao.tf`.
 Fallback runbook: [Cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 

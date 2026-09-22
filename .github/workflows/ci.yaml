@@ -287,7 +287,7 @@ jobs:
       - name: Run ShellCheck
         run: |
           # `-type l` as well as `-type f`, and it is load-bearing rather than
-          # belt-and-braces. scripts/openbao-snapshot.sh is a symlink (git mode
+          # belt-and-braces. scripts/provision/openbao-snapshot.sh is a symlink (git mode
           # 120000) into container-images/openbao-snapshot/, and `-type f` tests
           # the LINK, not its target -- so the plain predicate matched 40 files
           # and silently skipped that one, the largest script in the tree.

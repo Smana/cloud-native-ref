@@ -1,1 +1,0 @@
-../container-images/openbao-snapshot/openbao-snapshot.sh

@@ -71,7 +71,7 @@ The hierarchy the slashes expressed is kept as a prefix convention, so sorting a
 listing still groups by component. Nothing depended on the slashes being path
 separators — neither store has directories.
 
-`aws-0`'s existing entries are migrated by `scripts/secret-store.sh
+`aws-0`'s existing entries are migrated by `scripts/provision/secret-store.sh
 migrate-aws`, which copies old names to new ones. It never overwrites a target
 and never deletes a source, so it is re-runnable and reversible.
 
@@ -80,7 +80,7 @@ and never deletes a source, so it is re-runnable and reversible.
 The OpenBao CA chain is **not** renamed into the shared base. Its *shape*
 differs by cloud, not just its name: `aws-0` stores a JSON object and selects
 the `ca` property out of it, while `gcp-0` stores raw PEM by deliberate design
-(`scripts/openbao-config.sh:51`: "by design no root-CA secret exists on GCP,
+(`scripts/provision/openbao-config.sh:51`: "by design no root-CA secret exists on GCP,
 only the chain"). No rename reconciles that, so `observability/gcp-0` patches
 the whole `spec.data` list instead.
 
@@ -115,7 +115,7 @@ base someone writes.
 - Names are longer, and the longest is 63 characters
   (`observability-victoria-metrics-k8s-stack-alertmanager-slack-app`) against a
   255-character limit in both stores.
-- `./scripts/secret-store.sh check --cloud aws|gcp` reports which keys a cluster
+- `./scripts/provision/secret-store.sh check --cloud aws|gcp` reports which keys a cluster
   needs and which are missing, so an unseeded secret surfaces immediately
   instead of as a ten-minute HelmRelease timeout.
 - `seed` creates the three secrets the platform **generates** rather than
