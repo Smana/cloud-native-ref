@@ -68,6 +68,11 @@ REDIRECT_URI=""
 # and reconcile_openbao_oidc rotates that same role -- nothing on the platform
 # creates a second one.
 ROLE="default"
+# Where the full recovery command lives. Printing it here instead would mean a
+# second copy of IDP_URL, PRIVATE_DOMAIN and the --openbao-* flags, and a
+# partial one fails -- or, with a wrong PRIVATE_DOMAIN, rewrites every app's
+# redirect URIs.
+RECOVERY_DOC='website/content/docs/platform/security/openbao.md, section "OIDC client rotation"'
 # The liveness probe's retry budget. Only the probe retries: everything before
 # it compares values already at rest, so a second read would say the same.
 PROBE_ATTEMPTS=5
@@ -165,7 +170,7 @@ check() {
     if [ "$secret_present" = false ] && [ "$mount_present" = true ]; then
         echo "[FAILED ] OpenBao already has an oidc/ auth mount, but ${OIDC_SECRET} is not in the store."
         echo "          The next management apply has no client id to ignore_changes onto, and will DESTROY the mount."
-        echo "          Run scripts/zitadel-oidc-clients.sh sync --apply to (re)create ${OIDC_SECRET} first."
+        echo "          Run the sync in ${RECOVERY_DOC} to (re)create ${OIDC_SECRET} first."
         exit 1
     fi
 
@@ -200,7 +205,7 @@ check() {
         echo "          store:            ${stored_id}"
         echo "          auth/oidc/config: ${have_id:-<none>}"
         echo "          role audience:    ${have_aud}"
-        echo "          Fix: re-run zitadel-oidc-clients.sh sync --apply with the --openbao-url/--openbao-root-token-secret/--openbao-ca-file flags."
+        echo "          Fix: run the sync in ${RECOVERY_DOC}."
         exit 1
     fi
 

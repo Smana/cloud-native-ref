@@ -36,6 +36,7 @@ absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3
 # The subject is still at scripts/ root. When it moves, this path moves with it.
 SUBJECT="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../openbao-oidc-check.sh}"
 [ -f "$SUBJECT" ] || { echo "  FAIL $SUBJECT does not exist" >&2; exit 1; }
+OPENBAO_DOC="${OPENBAO_DOC:-$HERE/../../../website/content/docs/platform/security/openbao.md}"
 REAL_JQ="$(command -v jq)"
 rjq() { "$REAL_JQ" "$@"; }
 
@@ -170,6 +171,7 @@ BAO_URL="https://bao.priv.aws.ogenki.io:8200"
 OIDC_SECRET_NAME="openbao-oidc"  # pragma: allowlist secret -- a store KEY name, not a secret value
 ROOT_SECRET_NAME="openbao/cloud-native-ref/tokens/root"  # pragma: allowlist secret
 REDIRECT_URI="http://localhost:8250/oidc/callback"
+RECOVERY_DOC='website/content/docs/platform/security/openbao.md, section "OIDC client rotation"'
 ID="222222222222222222"
 CS="CS-SENTINEL-4b1d"
 ROOT="ROOT-TOKEN-SENTINEL-9e7c"
@@ -205,6 +207,11 @@ run_check() {
     rc=$?
 }
 
+echo "== the recovery section the fix lines point at exists =="
+check "openbao.md has an \"OIDC client rotation\" heading" "yes" \
+    "$(grep -qx '### OIDC client rotation' "$OPENBAO_DOC" && echo yes || echo no)"
+
+echo
 echo "== exit 0: consistent =="
 world; run_check
 check "consistent: returns 0" "0" "$rc"
@@ -238,6 +245,8 @@ rm -f "$STORE/${OIDC_SECRET_NAME//\//_}"
 run_check
 check "mount, no secret: returns 1" "1" "$rc"
 contains "$out" "DESTROY the mount" "mount, no secret: warns the next apply destroys it"
+contains "$out" "$RECOVERY_DOC" "mount, no secret: points at the recovery section"
+absent "$out" "sync --apply" "mount, no secret: prints no partial command"
 
 echo
 echo "== exit 2: cannot read auth/oidc/config =="
@@ -267,7 +276,11 @@ contains "$out" "does not match the store" "config id mismatch: names the mismat
 contains "$out" "store:            ${ID}" "config id mismatch: prints the store id"
 contains "$out" "auth/oidc/config: 111111111111111111" "config id mismatch: prints the config id"
 contains "$out" "role audience:" "config id mismatch: prints the role audience"
-contains "$out" "sync --apply" "config id mismatch: prints the fix command"
+# The sync needs IDP_URL, PRIVATE_DOMAIN and the --openbao-* flags to be
+# right; a partial command here fails, or with a wrong PRIVATE_DOMAIN
+# rewrites every app's redirect URIs. The docs section carries the full one.
+contains "$out" "$RECOVERY_DOC" "config id mismatch: points at the recovery section"
+absent "$out" "sync --apply" "config id mismatch: prints no partial command"
 check "config id mismatch: not retried -- one config read" "1" "$(count_calls auth/oidc/config)"
 check "config id mismatch: not retried -- no auth_url POST" "0" "$(count_calls auth/oidc/oidc/auth_url)"
 
