@@ -57,6 +57,7 @@ TFVARS_SRC="${OPENBAO_MANAGEMENT_TFVARS:-$REPO_ROOT/opentofu/aws/openbao/managem
 OIDC_TF_SRC="${OPENBAO_OIDC_TF:-$REPO_ROOT/opentofu/aws/openbao/management/oidc.tf}"
 AWS_WORKFLOWS_SRC="${AWS_EKS_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/eks/init/workflows.tm.hcl}"
 GCP_WORKFLOWS_SRC="${GCP_GKE_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl}"
+CHECK_SRC="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../openbao-oidc-check.sh}"
 
 echo "== contract: the openbao CONSUMERS key matches variables.tfvars (#2011) =="
 consumers_line="$(grep -E '^[[:space:]]*"openbao\|' "$CONSUMERS_SRC" || true)"
@@ -184,6 +185,31 @@ check_call="$(grep -F 'scripts/openbao-oidc-check.sh' <<< "$stage5_body" || true
 contains "$check_call" 'scripts/openbao-oidc-check.sh' "stage5 calls openbao-oidc-check.sh"
 contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
     "stage5 probes with the UI callback oidc.tf registers"
+
+# The check exits 2 on an unknown argument and stage5 halts on 2, so a
+# misspelt flag breaks every deploy -- visible only on a live run.
+stage5_flags_known() { # workflows file -> "yes", or "no: <first unknown flag>"
+    local call flags labels f
+    call="$(job_body "$1" stage5-verify-openbao-oidc | grep -F 'scripts/openbao-oidc-check.sh' || true)"
+    flags="$(grep -oE -- '(^|[[:space:]])--[a-z][a-z-]*' <<< "$call" | tr -d '[:blank:]')"
+    labels="$(awk '/^while \[ \$# -gt 0 \]/ { on = 1 } on && /^done/ { exit } on' "$CHECK_SRC" \
+              | grep -oE '^[[:space:]]*[-a-z|]+\)' | grep -oE -- '--[a-z][a-z-]*')"
+    [ -n "$flags" ] || { echo "no: stage5's check call has no flags"; return; }
+    for f in $flags; do
+        grep -qxF -- "$f" <<< "$labels" || { echo "no: $f"; return; }
+    done
+    echo yes
+}
+check "every flag stage5 passes is a case label in openbao-oidc-check.sh" \
+    "yes" "$(stage5_flags_known "$AWS_WORKFLOWS_SRC")"
+MUTANT_FLAG="$WORK/workflows-mutant-unknown-flag.tm.hcl"
+awk -v n='"stage5-verify-openbao-oidc"' '
+    !on && $1 == "name" && index($0, n) { on = 1 }
+    on && !done && sub(/--root-token-secret-name /, "--root-token-secret ") { done = 1 }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_FLAG"
+check "mutant (--root-token-secret, unknown): now FAILS" \
+    "no: --root-token-secret" "$(stage5_flags_known "$MUTANT_FLAG")"
 
 echo
 echo "== contract: stage5's check call is the heredoc's LAST statement, alone (design §7) =="
