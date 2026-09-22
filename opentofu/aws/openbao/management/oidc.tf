@@ -124,6 +124,11 @@ resource "vault_jwt_auth_backend" "oidc" {
     # replays the discovery check while ZITADEL is still down mid-rebuild and
     # fails. scripts/zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates
     # both fields after Terraform creates the mount (design fact 8).
+    #
+    # Caveat: ANY other in-place update to this resource re-sends the whole
+    # config (the provider's jwtAuthBackendUpdate), oidc_client_secret taken
+    # from state -- restoring the creation-time secret. After one, re-run the
+    # sync with --openbao-*. The real fix, oidc_client_secret_wo, is a follow-up.
     ignore_changes = [oidc_client_id, oidc_client_secret]
   }
 }
