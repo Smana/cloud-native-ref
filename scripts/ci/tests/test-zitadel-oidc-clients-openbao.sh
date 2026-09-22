@@ -151,6 +151,11 @@ contains "$openbao_args" '--openbao-root-token-secret "${global.root_token_secre
     "OPENBAO_ARGS carries the root token's secret NAME"
 contains "$openbao_args" '--openbao-ca-file ' "OPENBAO_ARGS carries the CA file"
 
+# An absence guard reads nothing from a missing file, so it would pass on
+# one: prove the file is there and still holds the syncs it is about.
+check "gcp/gke/init's workflows file exists" "yes" "$([ -f "$GCP_WORKFLOWS_SRC" ] && echo yes || echo no)"
+gcp_syncs="$(logical_lines "$GCP_WORKFLOWS_SRC" 2>/dev/null | grep -cF 'zitadel-oidc-clients.sh" sync')"
+check "gcp/gke/init runs at least one sync" "yes" "$([ "${gcp_syncs:-0}" -ge 1 ] && echo yes || echo no)"
 gcp_openbao="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -E -- '--openbao-|OPENBAO_ARGS' || true)"
 check "gcp/gke/init passes no --openbao-* flag" "" "$gcp_openbao"
 
