@@ -3,7 +3,7 @@ title: Human access to OpenBao is ZITADEL OIDC, authorised by project roles, wit
 linkTitle: 0034 · OpenBao OIDC
 weight: 340
 description: Operators log in to OpenBao through ZITADEL rather than a shared userpass credential, and their policies come from ZITADEL project roles flattened into the platform's existing `groups` claim. Google Workspace group membership is rejected as the authorisation source because nothing carries it into ZITADEL. The userpass admin survives on purpose — Stage 2 makes ZITADEL's own masterkey an OpenBao secret, so an OIDC-only login would have no way back in.
-lastVerified: 2026-09-05
+lastVerified: 2026-09-22
 ---
 
 **Status**: Accepted
@@ -16,6 +16,15 @@ declarative-client-registration pattern followed here;
 the break-glass credential load-bearing
 
 ---
+
+> **Amendment (2026-09-22)** — The decision is unchanged; who owns the client is not. Its id,
+> secret and `bound_audiences` are no longer Terraform's: a rebuild restores ZITADEL from a seed
+> older than the current client, so any fixed value goes stale on every rebuild
+> ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)). `oidc.tf` creates the mount
+> and its role once and puts all three fields under `ignore_changes`;
+> `scripts/zitadel-oidc-clients.sh`'s `sync` rotates them on every AWS deploy, and the
+> `stage5-verify-openbao-oidc` job halts the deploy when OpenBao, the secret store and ZITADEL
+> disagree.
 
 ## Context
 
@@ -181,10 +190,6 @@ should be rare enough to be worth asking about.
   **false**, and when it is false the roles claim is empty while every request
   still reports success — the failure is silent on both sides. This has already
   cost this platform a debugging session once.
-- The client's id, secret and `bound_audiences` are rotated by
-  `scripts/zitadel-oidc-clients.sh`, not by Terraform — a rebuild restores
-  ZITADEL from a seed that predates the current client, so a fixed value would
-  go stale on every rebuild ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)).
 
 ### Neutral
 
