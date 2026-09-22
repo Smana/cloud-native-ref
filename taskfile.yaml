@@ -10,6 +10,8 @@ includes:
     taskfile: scripts/ops/tasks.yaml
   docs:
     taskfile: scripts/docs/tasks.yaml
+  provision:
+    taskfile: scripts/provision/tasks.yaml
 
 tasks:
   default:

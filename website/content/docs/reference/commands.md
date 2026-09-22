@@ -235,10 +235,10 @@ each gate actually checks.
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
 | `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
 | `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
-| `openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
-| `openbao-snapshot.sh` | OpenBao Raft snapshot automation |
-| `openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
-| `secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`) |
+| `scripts/provision/openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
+| `scripts/provision/openbao-snapshot.sh` | OpenBao Raft snapshot automation (`task provision:openbao-snapshot`) |
+| `scripts/provision/openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
+| `scripts/provision/secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`; `task provision:secret-store`) |
 | `terramate-destroy-confirm.sh` | Single y/n prompt every stack's destroy script calls first, cached so `--reverse destroy` asks once |
 | `eks-prepare-destroy.sh` | Pre-destroy EKS cleanup — suspends Flux, disables blocking webhooks, sweeps orphaned EBS volumes; the CSI volume reclaim itself moved to `reclaim-csi-volumes.sh` |
 | `eks-recycle-bootstrap-nodes.sh` | Recycles Stage 1 node-group nodes so they pick up Cilium prefix delegation |
