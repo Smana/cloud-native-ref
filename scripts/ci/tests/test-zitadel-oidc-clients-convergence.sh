@@ -74,10 +74,12 @@ ensure_project_roles() { :; }
 grant_admin_role() { :; }
 app_set_redirect() { :; }
 app_id_by_name() { echo "app-1"; }
-# Explicit, not left to fall through undefined: the OpenBao reconcile (#2045)
-# cmd_sync now calls after the loop. Its own behaviour is covered by
-# test-zitadel-oidc-clients-openbao.sh.
+# Explicit, not left to fall through undefined: the two reconciles cmd_sync
+# calls after the loop. Their own behaviour is covered by
+# test-zitadel-oidc-clients-openbao.sh (#2045) and
+# test-zitadel-workforce-audience.sh.
 reconcile_openbao_oidc() { :; }
+reconcile_workforce_audience() { :; }
 # New-shape call (defect 4): the whole app entry.
 app_get() {
     jq -n --arg redirect "$REDIRECT" --arg cid "$EXISTING_CLIENT_ID" \
@@ -138,7 +140,10 @@ APPLY=true
 # a subshell's writes would vanish from.
 OUT_FILE="$(mktemp)"
 trap 'rm -f "$OUT_FILE"; rm -rf "$STORE_DIR"' EXIT
-( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1 || true
+# No `|| true`: a subshell on the left of `||` runs with errexit IGNORED,
+# whatever it sets, so an undefined function would fail silently mid-run.
+( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1
+check "converge: cmd_sync exits 0 under errexit" "0" "$?"
 out="$(cat "$OUT_FILE")"
 after="$(store_read headlamp-envvars)"
 
@@ -156,7 +161,8 @@ case "$out" in
 esac
 
 # ── second run: idempotent -- already converged, nothing written again ─────
-( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1 || true
+( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1
+check "converge: second run exits 0 under errexit" "0" "$?"
 out2="$(cat "$OUT_FILE")"
 check "converge: second run leaves the payload unchanged" "$after" "$(store_read headlamp-envvars)"
 case "$out2" in
