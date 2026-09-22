@@ -180,6 +180,15 @@ every AWS deploy's `stage4-oidc-clients` job reconciles OpenBao's client against
 currently issues, and `stage5-verify-openbao-oidc` halts the deploy if OpenBao, the secret store
 and ZITADEL ever disagree (#2045).
 
+**The first deploy on a new platform ends red at `stage5`, and that is expected.** The management
+stack ran before ZITADEL issued the client, so there is no `oidc/` mount yet. Apply it once, from
+the repository root, then resume by re-running the deploy — or, for the GCP stacks the halt
+skipped, `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`:
+
+```bash
+terramate -C opentofu/aws/openbao/management script run deploy
+```
+
 Recover a stale client by hand with the same sync, pointed at OpenBao, from the repository root:
 
 ```bash
