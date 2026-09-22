@@ -42,6 +42,11 @@ contains() { if grep -qF -- "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
 absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3" "$2"; fail=1
            else printf '  ok   %s\n' "$3"; fi }
 
+# Moved up from the stub section below: the contract guards need it too, to
+# hold mutated temp copies of workflows.tm.hcl for the stage5 guard proofs.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
 # ── contract guards against the real repo files ─────────────────────────────
 #
 # Overridable so a guard-failure proof can point at a temp copy instead of the
@@ -172,15 +177,92 @@ in_job "$stage5_body" '${global.cloud_gate}' "stage5 carries the cloud gate"
 in_job "$stage5_body" 'set -euo pipefail' "stage5 runs under errexit"
 check_call="$(grep -F 'scripts/openbao-oidc-check.sh' <<< "$stage5_body" || true)"
 contains "$check_call" 'scripts/openbao-oidc-check.sh' "stage5 calls openbao-oidc-check.sh"
-# stage4's `|| echo "[warn]"` style is exactly what must not reach this call:
-# swallowing the exit code turns the check into a log line (owner: halt).
-absent "$check_call" '||' "stage5 does not swallow the check's exit code"
 contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
     "stage5 probes with the UI callback oidc.tf registers"
 
+echo
+echo "== contract: stage5's check call is the heredoc's LAST statement (design §7) =="
+# grep for a `||` on the call's own line -- this guard's earlier shape -- never
+# sees either of these: `if ! check; then echo; fi` moves the interesting part
+# off that line, and a `set +e` earlier plus a harmless trailing command after
+# the call reaches the same effect. Neither ever writes `||` anywhere near the
+# call. Anchoring on "last statement of the heredoc" catches both, because
+# each one puts something else after the call.
+heredoc_body() { # file, job name -> logical lines of ONLY that job's bash -c heredoc
+    awk -v n="\"$2\"" '
+        !on && $1 == "name" && index($0, n) { on = 1; next }
+        on && !inh && /<<-BASH/ { inh = 1; next }
+        inh && /^[[:space:]]*BASH[[:space:]]*$/ { exit }
+        inh' "$1" | logical_lines
+}
+check_call_last() { # file -> yes/no: the check call is the heredoc's last statement
+    local last
+    last="$(heredoc_body "$1" stage5-verify-openbao-oidc | grep -v '^[[:space:]]*$' | tail -1 \
+            | sed -E 's/^[[:space:]]+//')"
+    case "$last" in
+        'bash "$${ROOT}/scripts/openbao-oidc-check.sh"'*) echo yes ;;
+        *)                                                echo no  ;;
+    esac
+}
+check "the committed file: the check call is the heredoc's last statement" \
+    "yes" "$(check_call_last "$AWS_WORKFLOWS_SRC")"
+
+# Both mutants are built from the COMMITTED file, not a hand-written fixture,
+# so a future reformat of the real heredoc cannot make this proof stale
+# without also touching the strings below.
+CALL_START='        bash "$${ROOT}/scripts/openbao-oidc-check.sh" \'
+CALL_END='          --redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"'
+
+MUTANT_IF="$WORK/workflows-mutant-if-then-fi.tm.hcl"
+awk -v start="$CALL_START" -v end="$CALL_END" '
+    $0 == start { print "        if ! bash \"$${ROOT}/scripts/openbao-oidc-check.sh\" \\"; next }
+    $0 == end   { print end "; then echo \"[warn] oidc drift, continuing anyway\"; fi"; next }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_IF"
+check "mutant \`if ! check; then echo; fi\`: the file actually changed" "changed" \
+    "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_IF" && echo unchanged || echo changed)"
+check "mutant \`if ! check; then echo; fi\`: now FAILS (not the last statement)" \
+    "no" "$(check_call_last "$MUTANT_IF")"
+
+MUTANT_SETE="$WORK/workflows-mutant-sete-trailing.tm.hcl"
+awk -v start="$CALL_START" -v end="$CALL_END" '
+    $0 == start { print "        set +e"; print; next }
+    $0 == end   { print; print "        true"; next }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_SETE"
+check "mutant \`set +e\` + trailing command: the file actually changed" "changed" \
+    "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_SETE" && echo unchanged || echo changed)"
+check "mutant \`set +e\` + trailing command: now FAILS (not the last statement)" \
+    "no" "$(check_call_last "$MUTANT_SETE")"
+
+echo
+echo "== contract: stage5's primary_cloud skip is pinned -- deleting it must fail =="
+has_primary_cloud_skip() { # file -> yes/no: stage5 still skips a non-aws primary
+    if grep -qF 'if [ "${global.primary_cloud}" != "aws" ]; then' \
+        <<< "$(job_body "$1" stage5-verify-openbao-oidc)"; then
+        echo yes
+    else
+        echo no
+    fi
+}
+check "the committed file: stage5 skips when primary_cloud is not aws" \
+    "yes" "$(has_primary_cloud_skip "$AWS_WORKFLOWS_SRC")"
+
+SKIP_START='        if [ "${global.primary_cloud}" != "aws" ]; then'
+MUTANT_NOSKIP="$WORK/workflows-mutant-no-skip.tm.hcl"
+awk -v n='"stage5-verify-openbao-oidc"' -v start="$SKIP_START" '
+    !on && $1 == "name" && index($0, n) { on = 1 }
+    on && $0 == start { del = 1; next }
+    del && /^        fi$/ { del = 0; next }
+    del { next }
+    { print }
+' "$AWS_WORKFLOWS_SRC" > "$MUTANT_NOSKIP"
+check "mutant (skip deleted): the file actually changed" "changed" \
+    "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_NOSKIP" && echo unchanged || echo changed)"
+check "mutant (skip deleted): now FAILS -- stage5 no longer skips a non-aws primary" \
+    "no" "$(has_primary_cloud_skip "$MUTANT_NOSKIP")"
+
 # ── stubs ───────────────────────────────────────────────────────────────────
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
 REAL_JQ="$(command -v jq)"
 # The harness's own jq, which bypasses the argv-logging wrapper below.
 rjq() { "$REAL_JQ" "$@"; }
