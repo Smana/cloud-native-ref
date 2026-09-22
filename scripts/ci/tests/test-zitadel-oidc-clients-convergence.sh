@@ -74,6 +74,10 @@ ensure_project_roles() { :; }
 grant_admin_role() { :; }
 app_set_redirect() { :; }
 app_id_by_name() { echo "app-1"; }
+# Explicit, not left to fall through undefined: the OpenBao reconcile (#2045)
+# cmd_sync now calls after the loop. Its own behaviour is covered by
+# test-zitadel-oidc-clients-openbao.sh.
+reconcile_openbao_oidc() { :; }
 # New-shape call (defect 4): the whole app entry.
 app_get() {
     jq -n --arg redirect "$REDIRECT" --arg cid "$EXISTING_CLIENT_ID" \

@@ -678,6 +678,130 @@ world; touch "$CURL_STATE/ignore_writes"; recon "$KEY" "$NEW_ID"
 check "writes that do not stick: returns 1" "1" "$rc"
 contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED ]"
 
+# ── Task 3: the flags, and cmd_sync's wiring ─────────────────────────────────
+#
+# WHY A STUB reconcile_openbao_oidc HERE, RATHER THAN THE REAL ONE ABOVE. This
+# section proves cmd_sync CALLS the reconcile with the right (key, id) pair and
+# reacts to its exit status; the reconcile's own behaviour is every case above.
+# Redefining the function is safe: nothing above re-runs after this point.
+#
+# WHY `out="$( ( set -o errexit ...; cmd_sync ) 2>&1 )"; rc=$?`, NEVER
+# `(...) || true` (design fact 14, plan Global Constraints). Measured directly:
+# a subshell that is the LEFT side of `||` has bash ignore its OWN `set -o
+# errexit` for every command inside it, even though the subshell set it itself
+# -- an undefined function inside then prints "command not found" and EXECUTION
+# CONTINUES to the next line, instead of aborting. Capturing via `$( )` and
+# reading `$?` afterward is not "tested with `||`" in that sense and preserves
+# errexit correctly. Reproduced with a two-line repro before writing this.
+echo
+echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
+
+for f in cmd_sync oidc_config_payload; do
+    body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
+    [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
+    eval "$body"
+done
+
+# Every OTHER thing cmd_sync calls, stubbed: this section is about the ONE new
+# call, not a restatement of the redirect/convergence suites' own coverage.
+ensure_project() { echo "proj-1"; }
+ensure_project_role_assertion() { :; }
+ensure_project_roles() { :; }
+grant_admin_role() { :; }
+reconcile_workforce_audience() { :; }
+app_set_redirect() { :; }
+merge_secret() { echo '{}'; }
+converge_secret() { echo '{}'; }
+store_exists() { return 0; }
+store_read()   { echo '{}'; }
+store_write()  { cat >/dev/null; }
+
+RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
+RECONCILE_RC=0
+reconcile_openbao_oidc() {
+    printf 'CALL %s %s\n' "$1" "$2" >> "$RECONCILE_LOG"
+    return "$RECONCILE_RC"
+}
+
+# Read only by cmd_sync's eval'd body above -- the file-wide SC2034 disable
+# at the top of this file already covers these.
+CLUSTER="aws-0"; CLOUD="aws"; IDP_URL="https://auth.priv.aws.ogenki.io"
+ZITADEL_PROJECT_NAME="platform"; GRANT_ADMIN=""
+WIRE_CB="https://bao.priv.aws.ogenki.io:8200/ui/vault/auth/oidc/oidc/callback"
+
+run_cmd_sync() {
+    set +e
+    out="$( ( set -o errexit -o nounset -o pipefail; cmd_sync ) 2>&1 )"
+    rc=$?
+}
+
+echo "-- the existing-app path --"
+: > "$RECONCILE_LOG"
+CONSUMERS=("openbao|${WIRE_CB}|openbao-oidc")
+app_id_by_name() { echo "app-1"; }
+app_get() { jq -n --arg r "$WIRE_CB" --arg cid "existing-openbao-id" \
+                  '{app: {oidcConfig: {redirectUris: [$r], clientId: $cid}}}'; }
+APPLY=true
+run_cmd_sync
+check "existing-app path: cmd_sync succeeds"     "0" "$rc"
+check "existing-app path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
+check "existing-app path: called with (key, id)" "CALL openbao-oidc existing-openbao-id" \
+    "$(cat "$RECONCILE_LOG")"
+
+echo
+echo "-- the create path --"
+: > "$RECONCILE_LOG"
+app_id_by_name() { echo ""; }
+api_or_fail() { printf '{"clientId":"created-openbao-id","clientSecret":"created-secret"}'; }  # pragma: allowlist secret
+APPLY=true
+run_cmd_sync
+check "create path: cmd_sync succeeds"     "0" "$rc"
+check "create path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
+check "create path: called with (key, id)" "CALL openbao-oidc created-openbao-id" \
+    "$(cat "$RECONCILE_LOG")"
+
+echo
+echo "-- a reconcile failure exits 1, after the summary --"
+: > "$RECONCILE_LOG"
+RECONCILE_RC=1
+app_id_by_name() { echo "app-1"; }
+run_cmd_sync
+check "reconcile fails: cmd_sync exits 1"        "1" "$rc"
+contains "$out" "created: "                      "reconcile fails: the summary line still prints"
+RECONCILE_RC=0
+
+echo
+echo "== flags: --openbao-url requires --openbao-root-token-secret and --openbao-ca-file =="
+REAL_CA="$WORK/real-ca.pem"
+: > "$REAL_CA"
+
+out="$(timeout 10 bash "$CONSUMERS_SRC" sync --cluster wiretest --cloud aws \
+    --openbao-url https://bao.invalid.example:8200 2>&1)"
+rc=$?
+check "neither flag given: exits 2" "2" "$rc"
+contains "$out" "--openbao-root-token-secret" "neither flag given: names the missing flag"
+
+out="$(timeout 10 bash "$CONSUMERS_SRC" sync --cluster wiretest --cloud aws \
+    --openbao-url https://bao.invalid.example:8200 --openbao-ca-file "$REAL_CA" 2>&1)"
+rc=$?
+check "a URL without a token secret: exits 2" "2" "$rc"
+contains "$out" "--openbao-root-token-secret" "a URL without a token secret: names it"
+
+out="$(timeout 10 bash "$CONSUMERS_SRC" sync --cluster wiretest --cloud aws \
+    --openbao-url https://bao.invalid.example:8200 \
+    --openbao-root-token-secret openbao/cloud-native-ref/tokens/root 2>&1)"  # pragma: allowlist secret
+rc=$?
+check "a URL without a CA file flag: exits 2" "2" "$rc"
+contains "$out" "--openbao-ca-file" "a URL without a CA file flag: names it"
+
+out="$(timeout 10 bash "$CONSUMERS_SRC" sync --cluster wiretest --cloud aws \
+    --openbao-url https://bao.invalid.example:8200 \
+    --openbao-root-token-secret openbao/cloud-native-ref/tokens/root \
+    --openbao-ca-file "$WORK/does-not-exist.pem" 2>&1)"  # pragma: allowlist secret
+rc=$?
+check "a CA file that does not exist: exits 2" "2" "$rc"
+contains "$out" "--openbao-ca-file" "a CA file that does not exist: names it"
+
 echo
 if [ "$fail" -eq 0 ]; then echo "PASS"; else echo "==> failure(s) above"; fi
 exit "$fail"

@@ -25,6 +25,12 @@
 #      running cluster).
 #   4. Writes the client id and secret into the store under the key the
 #      consumer's ExternalSecret reads.
+#   5. Points OpenBao's own auth/oidc at the client id ZITADEL just issued for
+#      it (--openbao-url and friends; #2045). A rebuild restores ZITADEL from
+#      a seed that predates the app, so its id is new every time and
+#      Terraform, which created the mount, ignores this field afterwards.
+#      No-op when --openbao-url is empty, which is every call except aws-0's
+#      own sync.
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -102,6 +108,13 @@ ZITADEL_PROJECT_ROLES=(admin backend frontend data)
 # nobody can reproduce, which is how gcp-0 ended up with no groups claim at all.
 GRANT_ADMIN=""
 
+# Empty means reconcile_openbao_oidc (#2045) is a no-op -- correct on GCP and
+# for the gcp-0 consumer call, since OpenBao OIDC exists only on AWS (design
+# fact 1). Only aws-0's own sync passes these.
+OPENBAO_URL=""
+OPENBAO_ROOT_TOKEN_SECRET=""
+OPENBAO_CA_FILE=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
@@ -112,12 +125,25 @@ while [ $# -gt 0 ]; do
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
         --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
+        --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
+        --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
+        --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+
+# A URL with no way to verify OpenBao's certificate or read its root token is
+# a wiring bug, not something to fall back from quietly -- TLS is never
+# skipped (openbao-api.sh), so an unreadable/missing CA file is refused here
+# rather than surfacing later as every reconcile_openbao_oidc call failing.
+if [ -n "$OPENBAO_URL" ]; then
+    [ -n "$OPENBAO_ROOT_TOKEN_SECRET" ] || { echo "--openbao-url requires --openbao-root-token-secret" >&2; exit 2; }
+    [ -n "$OPENBAO_CA_FILE" ] || { echo "--openbao-url requires --openbao-ca-file" >&2; exit 2; }
+    [ -f "$OPENBAO_CA_FILE" ] || { echo "--openbao-ca-file ${OPENBAO_CA_FILE} not found" >&2; exit 2; }
+fi
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
 # one receives the client secrets this script writes. They are the same cloud
@@ -999,6 +1025,11 @@ cmd_sync() {
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
     local created=0 skipped=0 updated=0 converged=0
+    # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
+    # branches below for where each is set. Empty stays empty on a dry run
+    # (reconcile_openbao_oidc treats that as its own skip) and on any topology
+    # missing the "openbao" consumer entirely.
+    local openbao_key="" openbao_client_id=""
     for entry in "${CONSUMERS[@]}"; do
         # TWO names, and conflating them is a bug this script has already made.
         #
@@ -1052,6 +1083,10 @@ cmd_sync() {
             if [ -z "$client_id" ]; then
                 echo "[FAILED ] ${name}: app ${existing_id} has no oidcConfig.clientId in ZITADEL's response" >&2
                 exit 1
+            fi
+            if [ "$consumer" = "openbao" ]; then
+                openbao_key="$key"
+                openbao_client_id="$client_id"
             fi
 
             # EVERY wanted URI must be registered, not just one of them. With a
@@ -1161,6 +1196,10 @@ cmd_sync() {
             echo "$resp" | jq -r '.message // .' | head -3 >&2
             exit 1
         fi
+        if [ "$consumer" = "openbao" ]; then
+            openbao_key="$key"
+            openbao_client_id="$client_id"
+        fi
 
         merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
@@ -1173,12 +1212,22 @@ cmd_sync() {
     # is an app client id rather than the project id.
     reconcile_workforce_audience "$project_id"
 
+    # Same reasoning as the workforce provider above: OpenBao's client id is
+    # only known once the "openbao" consumer's app has been found or created.
+    # `|| openbao_failed=1` rather than exit here so the summary below still
+    # prints -- the operator's dry-run habit is to read that line, and a
+    # reconcile failure should not hide it.
+    local openbao_failed=0
+    reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" || openbao_failed=1
+
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
     fi
+
+    [ "$openbao_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in
