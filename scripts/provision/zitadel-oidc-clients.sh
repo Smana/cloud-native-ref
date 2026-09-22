@@ -57,13 +57,13 @@ set -o pipefail
 
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
-. "$(dirname "$0")/lib/gcloud-adc.sh"
+. "$(dirname "$0")/../lib/gcloud-adc.sh"
 # shellcheck source=scripts/lib/cloud-secret-store.sh
-. "$(dirname "$0")/lib/cloud-secret-store.sh"
+. "$(dirname "$0")/../lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/zitadel-pat.sh
-. "$(dirname "$0")/lib/zitadel-pat.sh"
+. "$(dirname "$0")/../lib/zitadel-pat.sh"
 # shellcheck source=scripts/lib/openbao-api.sh
-. "$(dirname "$0")/lib/openbao-api.sh"
+. "$(dirname "$0")/../lib/openbao-api.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift

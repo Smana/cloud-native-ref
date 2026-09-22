@@ -96,7 +96,7 @@ spec:
       # ZITADEL project, so no token carried roles at all AND `ctx.v1.user.grants`
       # was empty inside the action -- it early-returned and set no claim, while
       # logging success. Fixed at the project (see ensure_project_role_assertion
-      # in scripts/zitadel-oidc-clients.sh), so the claim now exists and the gate
+      # in scripts/provision/zitadel-oidc-clients.sh), so the claim now exists and the gate
       # is meaningful again rather than a filter on nothing.
       #
       # IF A LOGIN IS REFUSED HERE, read the pod log before changing this: it
@@ -111,7 +111,7 @@ spec:
       # The workforce identity provider (opentofu/gcp/workforce-identity) pins
       # its client_id to the ZITADEL PROJECT id, deliberately: the project id is
       # stable and known before any OIDC client exists, which is what lets that
-      # stack apply before scripts/zitadel-oidc-clients.sh has run.
+      # stack apply before scripts/provision/zitadel-oidc-clients.sh has run.
       #
       # But ZITADEL only puts the project id in a token's `aud` when the token
       # was REQUESTED with this scope. Plain `openid profile email` yields

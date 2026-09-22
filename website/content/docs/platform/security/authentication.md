@@ -32,7 +32,7 @@ Everything below is machinery in service of those three.
 ### Google Workspace → ZITADEL
 
 ZITADEL holds a Google identity provider at **instance level**, so every
-organisation inherits it. It is created by `scripts/zitadel-idp.sh` from
+organisation inherits it. It is created by `scripts/provision/zitadel-idp.sh` from
 credentials in the secret store, never by hand in a console.
 
 `isAutoCreation` is on: a Workspace user logging in for the first time gets a
@@ -55,7 +55,7 @@ ZITADEL has **no groups**. It has *project roles*, emitted as a nested object
 keyed by role and then by organisation. Every consumer here wants a flat array of
 strings instead.
 
-`scripts/zitadel-actions/groups-from-roles.js` bridges that: an Action on the
+`scripts/provision/zitadel-actions/groups-from-roles.js` bridges that: an Action on the
 token flow flattens the user's role grants and sets two claims — `groups`
 (Headlamp, Flux UI) and `roles` (Grafana). Two names, one list, because the
 consumers disagree and both are already deployed.

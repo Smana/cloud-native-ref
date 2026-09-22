@@ -154,7 +154,7 @@ script "deploy" {
         done
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
           echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
-          echo "       Re-run by hand once it is up -- see scripts/zitadel-oidc-clients.sh."
+          echo "       Re-run by hand once it is up -- see scripts/provision/zitadel-oidc-clients.sh."
           exit 0
         fi
 
@@ -179,7 +179,7 @@ script "deploy" {
 
         echo "== registering ${global.eks_cluster_name}'s own OIDC clients"
         IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-          bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
             --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
             $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} || \
           echo "[warn] registration for ${global.eks_cluster_name} failed; re-run it by hand"
@@ -214,7 +214,7 @@ script "deploy" {
             # waiting for someone to notice an invalid_grant.
             WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
             IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${GCP_PRIVATE}" \
-              bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+              bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
                 --cluster "$${GCP_CLUSTER}" \
                 --cloud gcp --project "$${GCP_PROJECT}" \
                 --workforce-pool "$${WORKFORCE_POOL}" \

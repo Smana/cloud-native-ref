@@ -88,8 +88,7 @@ check "flow: empty document -> not bound, no error" "" "$bound_empty"
 # the source distinguishes them, so that's what this checks, against the real
 # file rather than a restatement of it.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# The subject is still at scripts/ root. When it moves, this path moves with it.
-leaks="$(grep -n -- '--arg[[:space:]]\+cs\b' "$HERE/../../zitadel-idp.sh" || true)"
+leaks="$(grep -n -- '--arg[[:space:]]\+cs\b' "$HERE/../../provision/zitadel-idp.sh" || true)"
 check "no client secret passed as a jq argv value" "" "$leaks"
 
 # Functional companion: google_idp_payload's actual construction (restated,

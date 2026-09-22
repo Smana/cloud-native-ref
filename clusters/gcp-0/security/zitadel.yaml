@@ -59,7 +59,7 @@ spec:
   #
   # CLOSED, and left here because the gap it describes is the kind people
   # rediscover: gcp-0's OIDC clients ARE registered in aws-0's directory
-  # automatically. scripts/zitadel-oidc-clients.sh grew the cross-cluster mode
+  # automatically. scripts/provision/zitadel-oidc-clients.sh grew the cross-cluster mode
   # this comment was waiting for -- `--idp-cloud aws` reads the admin PAT from
   # the cluster that HOSTS the directory while writing client secrets into the
   # CONSUMING cluster's store -- and aws/eks/init's stage4-oidc-clients job

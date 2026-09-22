@@ -223,7 +223,7 @@ script "deploy" {
 
           echo "== registering this cluster's OIDC clients in $${CONSUMED_IDP}"
           IDP_URL="$${CONSUMED_IDP}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-            bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+            bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
               --cluster "$${NAME}" \
               --cloud gcp --project "$${PROJECT}" \
               --idp-cloud "${global.primary_cloud}" --region "${global.region}" \
@@ -274,7 +274,7 @@ script "deploy" {
           echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
           echo "       Re-run by hand once it is up:"
           echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
-          echo "         scripts/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
+          echo "         scripts/provision/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
           exit 0
         fi
 
@@ -286,7 +286,7 @@ script "deploy" {
         WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-          bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
             --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
             --workforce-pool "$${WORKFORCE_POOL}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"

@@ -62,7 +62,7 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    groups action, so every consumer authenticates and then has no groups.
 #    On aws-0, $OPENBAO points OpenBao at whatever client ZITADEL now holds;
 #    after a restore, leaving it out strands OpenBao on a client ZITADEL forgot.
-./scripts/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
+./scripts/provision/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
 ```
 
 ```bash
@@ -77,7 +77,7 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 # 3. The Google identity provider, the LOGIN POLICY entry that actually enables
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
-IDP_URL=$IDP_URL ./scripts/zitadel-idp.sh sync $CL --apply
+IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL --apply
 ```
 
 **There is no manual step for Harbor.** Step 1 already wrote its client id and
@@ -94,7 +94,7 @@ authorise before it. Afterwards:
 ```bash
 # 4. Give yourself the admin role. Group-based RBAC (cluster-admin via the
 #    `admin` group) does nothing until a user actually holds it.
-./scripts/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
+./scripts/provision/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
 ```
 
 ## The one step no script can do

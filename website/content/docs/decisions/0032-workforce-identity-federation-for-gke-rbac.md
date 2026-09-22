@@ -267,7 +267,7 @@ presents the user's token and needs no service account of its own.
   Narrowing to one client is therefore not a regression from the original
   design but the only form of it that functions — and it is the tighter grant
   besides. The client id is not knowable at apply time, so
-  `reconcile_workforce_audience` in `scripts/zitadel-oidc-clients.sh` sets it
+  `reconcile_workforce_audience` in `scripts/provision/zitadel-oidc-clients.sh` sets it
   once the app exists, and the tofu resource keeps `lifecycle.ignore_changes`
   on the field so the next apply cannot revert it.
 - A new component (the shim) briefly holds user tokens in memory, which is

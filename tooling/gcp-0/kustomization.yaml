@@ -15,7 +15,7 @@ kind: Kustomization
 # client has been registered against it. The sequence is:
 #
 #   1. cluster up, zitadel Kustomization resumed  (see ADR-0024's two gates)
-#   2. ./scripts/zitadel-oidc-clients.sh sync --cluster gcp-0
+#   2. ./scripts/provision/zitadel-oidc-clients.sh sync --cluster gcp-0
 #   3. Flux retries; headlamp goes Ready on its own
 #
 # Nothing here can express step 2, which is why it is written down.

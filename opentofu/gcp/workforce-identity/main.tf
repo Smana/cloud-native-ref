@@ -31,7 +31,7 @@ resource "google_iam_workforce_pool_provider" "zitadel" {
   display_name      = "zitadel oidc"
 
   # google.groups is what makes RBAC group bindings work: ZITADEL's `groups`
-  # claim (produced by scripts/zitadel-actions/groups-from-roles.js) arrives at
+  # claim (produced by scripts/provision/zitadel-actions/groups-from-roles.js) arrives at
   # the API server as principalSet://.../group/<role>.
   attribute_mapping = {
     "google.subject"      = "assertion.sub"
@@ -44,7 +44,7 @@ resource "google_iam_workforce_pool_provider" "zitadel" {
 
     # A BOOTSTRAP PLACEHOLDER. The real value is the OIDC client id of the app
     # whose token is exchanged (headlamp-proxy), and it is set out of band by
-    # `reconcile_workforce_audience` in scripts/zitadel-oidc-clients.sh once that
+    # `reconcile_workforce_audience` in scripts/provision/zitadel-oidc-clients.sh once that
     # app exists. Read that function's header comment before changing anything
     # here -- it carries the measurement this design rests on.
     #
