@@ -31,8 +31,8 @@ script "deploy" {
       # The configure stack's vault provider needs the CA chain on disk before
       # `tofu init`. Same step the management stack runs; configure/.tls/ is
       # gitignored.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       # The lineage restores OpenBao's storage from a snapshot on every deploy,
       # so `jwt/<cluster>` and its roles come back -- while THIS stack's state
       # is destroyed on every teardown. Without this the apply below tries to
@@ -40,8 +40,8 @@ script "deploy" {
       # already in use". Worse, the restored mount is stale: its issuer names
       # the destroyed cluster, so every JWT login would fail against it. Adopt
       # it so the apply updates the issuer in place.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh' --cluster-name '${global.eks_cluster_name}' --url '${global.openbao_url}' --root-token-secret-name '${global.root_token_secret_name}' --ca-file .tls/ca.pem --cloud aws --region '${global.region}' -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/provision/openbao-adopt-jwt-mount.sh' --cluster-name '${global.eks_cluster_name}' --url '${global.openbao_url}' --root-token-secret-name '${global.root_token_secret_name}' --ca-file .tls/ca.pem --cloud aws --region '${global.region}' -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
       # Forget flux-operator here, in the job that just created it -- NOT only in
       # eks/configure's own `deploy`, which this job bypasses. Leaving it in state
       # means the standalone eks/configure stack, running later in the same
@@ -49,7 +49,7 @@ script "deploy" {
       # state -- which is a destroy, i.e. a real `helm uninstall`. A whole-platform
       # deploy uninstalled the operator that way on 2026-09-16 and still exited 0.
       # Rationale for the forget itself: see eks/configure/workflows.tm.hcl.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && tofu state rm helm_release.flux_operator 2>/dev/null || true"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && tofu state rm helm_release.flux_operator 2>/dev/null || true"],
     ]
   }
 
@@ -77,7 +77,7 @@ script "deploy" {
     name        = "stage3-recycle-bootstrap-nodes"
     description = "Recycle node-group nodes whose ENIs predate Cilium (no-op once they use prefix delegation)"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "${terramate.root.path.fs.absolute}/scripts/ops/aws/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c", "${terramate.root.path.fs.absolute}/scripts/ops/aws/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
     ]
   }
 
@@ -314,14 +314,14 @@ script "destroy" {
     commands = [
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
       # Init before anything is torn down: a lock file predating a new provider
       # must fail here, not after Flux has been suspended. Same stack dir as the
       # stage1-destroy-cluster job below, so that job inherits this init.
       [global.provisioner, "init", "-lock-timeout=5m"],
       [
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
         "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/ops/aws/eks-prepare-destroy.sh",
@@ -384,9 +384,9 @@ script "destroy" {
       # fetch hard-blocked a destroy here.
       #
       # The `cd` is inside the guard so that neither half can abort the script.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "if ! (cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'); then echo '[warn] CA chain fetch failed -- continuing anyway.'; echo '       The vault provider will fail to configure and destroy-stage2.sh will'; echo '       fall through to its tolerant path. Failing here instead would strand'; echo '       the live EKS cluster stage 1 is about to delete.'; fi"],
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "bash '${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
@@ -429,7 +429,7 @@ script "destroy" {
     commands = [
       [
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
         "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/ops/aws/sweep-teardown-blockers.sh",
@@ -450,7 +450,7 @@ script "destroy" {
     commands = [
       [
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
         "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/ops/aws/sweep-orphaned-volumes.sh",
@@ -477,7 +477,7 @@ script "destroy" {
     name        = "stage4-reconcile-state"
     description = "Drop stage-2 state entries whose cluster no longer exists"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "bash '${terramate.root.path.fs.absolute}/scripts/ops/teardown/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
     ]
   }

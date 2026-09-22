@@ -53,7 +53,7 @@ default behaviour".
 
 | Variable | `=true` | unset (the default) | Gates |
 |---|---|---|---|
-| `TM_CLOUD` | *not a boolean* — a comma list of lanes, or `all` | `aws`: AWS stacks run, GCP stacks echo `[skip]` and exit 0, `opentofu/shared/**` runs under every value | Every `tofu` call, via `scripts/tm-provisioner.sh` behind `global.provisioner`; plus the non-tofu jobs that carry `--tm-run` or `${global.cloud_gate}` |
+| `TM_CLOUD` | *not a boolean* — a comma list of lanes, or `all` | `aws`: AWS stacks run, GCP stacks echo `[skip]` and exit 0, `opentofu/shared/**` runs under every value | Every `tofu` call, via `scripts/provision/tm-provisioner.sh` behind `global.provisioner`; plus the non-tofu jobs that carry `--tm-run` or `${global.cloud_gate}` |
 | `TM_LLM_PLATFORM_ENABLED` | the stack's `deploy`/`preview`/`drift detect`/`destroy` run | `[skip]`, exit 0 — the platform is never built by a bare `terramate script run deploy` | `opentofu/aws/llm-platform/workflows.tm.hcl` |
 | `TM_DESTROY_CONFIRMED` | the y/n prompt is bypassed (this is the CI escape hatch) | prompts once on `/dev/tty`, cached 10 min so `--reverse destroy` asks once; **exits 1** when there is no tty | `scripts/ops/teardown/terramate-destroy-confirm.sh`, called first by every stack's `destroy` |
 | `TM_LINEAGE_DESTROY` | the four lineage-bearing stacks are destroyed | `[skip]`, exit 0 — a `--reverse destroy` sweep leaves the seal key, both snapshot buckets, the PKI mount and the JWT auth mounts standing | `destroy` in `opentofu/aws/openbao/{lineage,management}` and `opentofu/gcp/openbao/{lineage,management}` |

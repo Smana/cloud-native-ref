@@ -39,7 +39,7 @@ one OpenTofu root module. Terramate turns the separate stacks into one graph:
   of the same variable.
 - **Cloud selection** — one variable, `TM_CLOUD`, decides which lanes an
   invocation may touch (`aws` by default, or `gcp`, `aws,gcp`, `all`). It is
-  enforced in `scripts/tm-provisioner.sh`, the wrapper every stack reaches
+  enforced in `scripts/provision/tm-provisioner.sh`, the wrapper every stack reaches
   OpenTofu through, so a single interception point covers the shared scripts and
   every per-stack override. The AWS `llm-platform` stack keeps its own
   `TM_LLM_PLATFORM_ENABLED` gate — that is a feature axis, not a cloud one.

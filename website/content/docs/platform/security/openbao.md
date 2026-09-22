@@ -107,7 +107,7 @@ cluster that no longer exists. Two things then go wrong at once: the cluster's
 (`path is already in use at jwt/<cluster>/`), and if it could, the stale issuer
 would fail every workload login against a mount reporting perfectly healthy.
 
-`scripts/openbao-adopt-jwt-mount.sh` runs before that apply on both clouds — it
+`scripts/provision/openbao-adopt-jwt-mount.sh` runs before that apply on both clouds — it
 imports the restored mount and its roles into state so the apply *updates* the
 issuer instead of failing to create it. Observed doing exactly that on a
 2026-09-06 rebuild:

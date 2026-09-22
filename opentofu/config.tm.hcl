@@ -2,12 +2,12 @@
 # Use your own values for these variables
 globals {
   # Not `tofu` directly -- a wrapper that gates on TM_CLOUD, then execs tofu.
-  # See scripts/tm-provisioner.sh for why the cloud selector lives here rather
+  # See scripts/provision/tm-provisioner.sh for why the cloud selector lives here rather
   # than in a flag or a tag: this is the one point every stack reaches OpenTofu
   # through, so intercepting it covers the global scripts and every per-stack
   # override at once, without wrapping commands in bash and losing Terramate
   # Cloud's sync annotations.
-  provisioner = "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh"
+  provisioner = "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh"
 
   # Which lane a stack belongs to, read from its own tags. Anything tagged
   # neither `aws` nor `gcp` -- shared/tailscale, shared/aws-gcp-federation -- is
@@ -22,7 +22,7 @@ globals {
   # It delegates rather than restating the rule: the previous gate was fifteen
   # hand-copied blocks, and four scripts ended up missing one entirely.
   cloud_gate = <<-EOT
-    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-check ${global.stack_cloud} || {
+    "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-check ${global.stack_cloud} || {
       echo "[skip] ${global.stack_cloud} stack — TM_CLOUD=$${TM_CLOUD:-aws} does not include it."
       echo "       Set TM_CLOUD=${global.stack_cloud}, a list like aws,gcp, or all."
       exit 0
@@ -177,7 +177,7 @@ globals {
 globals "openbao_ca_cmd" {
   args = [
     "bash",
-    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+    "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
     "--tm-run",
     "bash",
     "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",

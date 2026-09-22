@@ -17,7 +17,7 @@ script "destroy" {
     name        = "destroy"
     description = "Confirm, snapshot, destroy"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"],
       # The CA fetch and the snapshot share ONE gate, in one bash step.
       #
       # They were two separate ungated steps, and that made

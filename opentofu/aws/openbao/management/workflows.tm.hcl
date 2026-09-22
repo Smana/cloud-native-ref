@@ -89,14 +89,14 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/terramate-destroy-confirm.sh"
         # CA fetch BEFORE `tofu init`, as in this file's `deploy` and in both
         # openbao/cluster stacks. The fetch is the step that can fail -- an
         # unreadable or missing ca-chain secret -- and `tofu init` is a backend
         # handshake plus a provider download. Running init first spent both on a
         # teardown that then aborted, on exactly the path the comments above say
         # must not be blocked.
-        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-run \
           bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
           --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file .tls/ca.pem \
           --region "${global.region}" --profile "${global.profile}"
@@ -115,7 +115,7 @@ script "destroy" {
         # Only `vault_*` is ever dropped. The aws_secretsmanager_* secrets and
         # random_password in this same state are real resources, do not match
         # the prefix, and tofu still has to delete them.
-        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-run \
           bash "${terramate.root.path.fs.absolute}/scripts/ops/teardown/tofu-destroy-contained.sh" \
           --contained-prefix vault_ -- \
           -auto-approve -parallelism=1 -var-file=variables.tfvars
@@ -164,7 +164,7 @@ script "deploy" {
       #    Idempotent: an initialised, unsealed node is left alone.
       [
         "bash",
-        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh",
         "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",

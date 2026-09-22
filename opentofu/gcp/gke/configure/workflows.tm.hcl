@@ -62,7 +62,7 @@ script "deploy" {
         #
         # No `cd` either, unlike AWS -- that call runs from eks/init and has to
         # reach ../configure, while this one is already in the stack directory.
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-adopt-jwt-mount.sh" \
           --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
           --root-token-secret-name openbao-priv-gcp-root-token \
           --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
@@ -82,7 +82,7 @@ script "deploy" {
       # the two owners overwriting each other.
       #
       # Idempotent: a no-op once the resource is already out of state.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh", "--tm-run", "bash", "-c",
       "tofu state rm helm_release.flux_operator 2>/dev/null || true"],
 
     ]

@@ -29,7 +29,7 @@ TM_CLOUD=all     terramate script run deploy
 ```
 
 A stack's lane is its directory. `opentofu/shared/**` is owned by neither cloud and always runs.
-Enforced in `scripts/tm-provisioner.sh`, which `global.provisioner` points at, so it wraps every
+Enforced in `scripts/provision/tm-provisioner.sh`, which `global.provisioner` points at, so it wraps every
 `tofu` call in the shared scripts *and* every per-stack override at once. Jobs that run something
 other than tofu carry `${global.cloud_gate}` or `--tm-run`; the destructive ones must, since
 `eks-prepare-destroy.sh` deletes every PVC.

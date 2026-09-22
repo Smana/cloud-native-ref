@@ -139,7 +139,7 @@ You are editing a working configuration, not writing one:
    bootstrap (`cilium_version`, `flux_operator_version`,
    `flux_instance_version`), shared with the AWS lane.
    (There is no GCP-specific config file to edit; the cloud gate lives in
-   `scripts/tm-provisioner.sh` and applies to both lanes.)
+   `scripts/provision/tm-provisioner.sh` and applies to both lanes.)
 2. Each stack's `variables.tfvars` under `opentofu/gcp/` — the committed values
    point at the reference project (`europe-west4-a`, `COS_CONTAINERD`,
    2 × `e2-standard-4` spot). Project, region/zone and the private domain live
