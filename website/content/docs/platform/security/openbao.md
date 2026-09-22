@@ -142,10 +142,11 @@ context — its `vault` provider reads it straight out of Secrets Manager.
 that its own `bao operator init` returns, and after the restore with one minted
 from the lineage's recovery keys. It never reads the stored root token at all,
 which is what lets a rehydrate work on a node whose token store is about to be
-replaced wholesale. Retiring it needs an OIDC login for humans, which is a
-follow-up. `gcp-0` has no `userpass`, see [On GCP](#on-gcp-gcp-0). The
-backend and user are provisioned by Terraform
-(`opentofu/aws/openbao/management/auth.tf`), not created by hand:
+replaced wholesale. Human OIDC login exists too
+([ADR-0034]({{< relref "/docs/decisions/0034-openbao-oidc-via-zitadel-project-roles.md" >}})) —
+`userpass` stays anyway, as its break-glass fallback. `gcp-0` has no
+`userpass`, see [On GCP](#on-gcp-gcp-0). The backend and user are provisioned
+by Terraform (`opentofu/aws/openbao/management/auth.tf`), not created by hand:
 
 ```bash
 export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
@@ -169,6 +170,37 @@ no `token_bound_cidrs`, unlike the tenant AppRole below — the only route to
 the API is the internal NLB, so the network is already constrained, and a
 CIDR bind on the one break-glass credential buys nothing against the risk of
 locking yourself out of the secrets store.
+
+### OIDC client rotation
+
+Terraform creates the `oidc/` mount once (`opentofu/aws/openbao/management/oidc.tf`) and then
+ignores `oidc_client_id`, `oidc_client_secret` and `bound_audiences` on it — those three rotate
+with ZITADEL, not with a re-apply. `scripts/zitadel-oidc-clients.sh`'s `sync` command owns them:
+every AWS deploy's `stage4-oidc-clients` job reconciles OpenBao's client against whatever ZITADEL
+currently issues, and `stage5-verify-openbao-oidc` halts the deploy if OpenBao, the secret store
+and ZITADEL ever disagree (#2045).
+
+**The first deploy on a new platform ends red at `stage5`, and that is expected.** The management
+stack ran before ZITADEL issued the client, so there is no `oidc/` mount yet. Apply it once, from
+the repository root, then resume by re-running the deploy — or, for the GCP stacks the halt
+skipped, `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`:
+
+```bash
+terramate -C opentofu/aws/openbao/management script run deploy
+```
+
+Recover a stale client by hand with the same sync, pointed at OpenBao, from the repository root:
+
+```bash
+IDP_URL=https://auth.cloud.ogenki.io PRIVATE_DOMAIN=priv.aws.ogenki.io \
+  scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --region eu-west-3 --apply \
+  --openbao-url https://bao.priv.aws.ogenki.io:8200 \
+  --openbao-root-token-secret openbao/cloud-native-ref/tokens/root \
+  --openbao-ca-file opentofu/aws/openbao/management/.tls/ca.pem
+```
+
+`PRIVATE_DOMAIN` must be `aws-0`'s: the sync rewrites every app's redirect URIs from it. The CA file
+is the one the management stack's deploy writes.
 
 ## JWT: machine authentication
 

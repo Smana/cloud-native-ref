@@ -25,6 +25,12 @@
 #      running cluster).
 #   4. Writes the client id and secret into the store under the key the
 #      consumer's ExternalSecret reads.
+#   5. Points OpenBao's own auth/oidc at the client id ZITADEL just issued for
+#      it (--openbao-url and friends; #2045). A rebuild restores ZITADEL from
+#      a seed that predates the app, so its id is new every time and
+#      Terraform, which created the mount, ignores this field afterwards.
+#      No-op when --openbao-url is empty, which is every call except aws-0's
+#      own sync.
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -56,6 +62,8 @@ set -o pipefail
 . "$(dirname "$0")/lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/zitadel-pat.sh
 . "$(dirname "$0")/lib/zitadel-pat.sh"
+# shellcheck source=scripts/lib/openbao-api.sh
+. "$(dirname "$0")/lib/openbao-api.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -100,6 +108,13 @@ ZITADEL_PROJECT_ROLES=(admin backend frontend data)
 # nobody can reproduce, which is how gcp-0 ended up with no groups claim at all.
 GRANT_ADMIN=""
 
+# Empty means reconcile_openbao_oidc (#2045) is a no-op -- correct on GCP and
+# for the gcp-0 consumer call, since OpenBao OIDC exists only on AWS (design
+# fact 1). Only aws-0's own sync passes these.
+OPENBAO_URL=""
+OPENBAO_ROOT_TOKEN_SECRET=""
+OPENBAO_CA_FILE=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
@@ -110,12 +125,25 @@ while [ $# -gt 0 ]; do
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
         --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
+        --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
+        --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
+        --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+
+# A URL with no way to verify OpenBao's certificate or read its root token is
+# a wiring bug, not something to fall back from quietly -- TLS is never
+# skipped (openbao-api.sh), so an unreadable/missing CA file is refused here
+# rather than surfacing later as every reconcile_openbao_oidc call failing.
+if [ -n "$OPENBAO_URL" ]; then
+    [ -n "$OPENBAO_ROOT_TOKEN_SECRET" ] || { echo "--openbao-url requires --openbao-root-token-secret" >&2; exit 2; }
+    [ -n "$OPENBAO_CA_FILE" ] || { echo "--openbao-url requires --openbao-ca-file" >&2; exit 2; }
+    [ -f "$OPENBAO_CA_FILE" ] || { echo "--openbao-ca-file ${OPENBAO_CA_FILE} not found" >&2; exit 2; }
+fi
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
 # one receives the client secrets this script writes. They are the same cloud
@@ -793,6 +821,183 @@ reconcile_workforce_audience() {
     fi
 }
 
+# OpenBao's auth/oidc config as it must be written: the current one minus
+# `status`, plus the client ZITADEL issued.
+#
+# A read-modify-write, because a config write REPLACES the whole config: a field
+# the POST omits is reset, not kept (design fact 6). stdin is two JSON
+# documents, the `.data` of GET auth/oidc/config and then the store payload
+# {client_id, client_secret, endpoint}, so the secret never reaches jq's argv.
+#
+# Refuses a non-empty provider_config, because the read strips its sensitive
+# keys and writing it back would blank them. Refuses an empty id or secret,
+# which would write a config that authenticates nobody.
+openbao_oidc_config_payload() {
+    jq -n '
+        input as $cfg | input as $s |
+        if (($cfg.provider_config // {}) | length) > 0 then
+            "[FAILED ] openbao -- auth/oidc/config has a provider_config, whose sensitive keys a read strips; not writing it back\n" | halt_error(1)
+        elif ($s.client_id // "") == "" or ($s.client_secret // "") == "" then
+            "[FAILED ] openbao -- the store payload has no client_id or client_secret\n" | halt_error(1)
+        else
+            ($cfg | del(.status)) + {oidc_client_id: $s.client_id, oidc_client_secret: $s.client_secret}
+        end' || return 1
+}
+
+# Point OpenBao's auth/oidc at the client ZITADEL issued. Two resources carry
+# it: the config (id and secret) and the default role's bound_audiences. Moving
+# only the config leaves every login failing on audience (design fact 5).
+#
+# Every rebuild restores ZITADEL from a seed older than the `openbao` app, so the
+# app, and its id, are new each time. Terraform creates the mount and ignores
+# these three fields afterwards; this rotates them, the way
+# reconcile_workforce_audience rotates the workforce provider's client id.
+#
+# The body is a subshell so that its EXIT trap, which removes the root-token
+# file, stays private: bash keeps one EXIT trap per shell, and the script's own
+# (the PAT file) must survive. The caller tests this with `||`, which turns
+# errexit off in here (fact 14), so every call is checked explicitly.
+reconcile_openbao_oidc() {
+    (
+    # xtrace would print the stored payload, and the client secret with it.
+    set +x
+    local key="${1:-}" want_id="${2:-}" role="default"
+    local stored stored_id attempt auth_json mount want_aud
+    local cfg_json cfg have_id role_json have_aud need_cfg=false need_role=false
+    local payload body out
+
+    [ -n "${OPENBAO_URL:-}" ] || exit 0
+    # A dry run of a create has no client id yet. Under --apply the consumer loop
+    # always yields one, so its absence is a wiring bug, not a skip.
+    if [ -z "$key" ] || [ -z "$want_id" ]; then
+        if [ "${APPLY:-false}" = "true" ]; then
+            echo "[FAILED ] openbao -- called without a store key or client id (key '${key}', id '${want_id}')" >&2
+            exit 1
+        fi
+        echo "[skip   ] openbao -- no client id from ZITADEL this run"
+        exit 0
+    fi
+    if ! store_exists "$key"; then
+        echo "[skip   ] openbao -- ${key} is not in the secret store"
+        exit 0
+    fi
+
+    # Secrets Manager is eventually consistent: a read right after this run's own
+    # write can still return the previous client. A dry run wrote nothing, so it
+    # has nothing to wait for.
+    attempt=0
+    while :; do
+        stored="$(store_read "$key")" || stored=""
+        stored_id="$(jq -r '.client_id // empty' <<< "$stored" 2>/dev/null)" || stored_id=""
+        [ "$stored_id" = "$want_id" ] && break
+        if [ "${APPLY:-false}" != "true" ]; then
+            echo "[dry-run] openbao -- ${key} holds client ${stored_id:-<none>}; the sync converges it to ${want_id} first"
+            break
+        fi
+        if [ "$attempt" -ge 6 ]; then
+            echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+            exit 1
+        fi
+        attempt=$((attempt + 1))
+        sleep "${OPENBAO_RETRY_SLEEP:-5}"
+    done
+
+    OPENBAO_TOKEN_CONFIG="$(umask 077 && mktemp -t openbao-oidc-curl.XXXXXX)" || exit 1
+    # shellcheck disable=SC2064
+    trap "rm -f '$OPENBAO_TOKEN_CONFIG'" EXIT
+    if ! openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}"; then
+        echo "[FAILED ] openbao -- no root token readable from ${OPENBAO_ROOT_TOKEN_SECRET:-<unset>}" >&2
+        exit 1
+    fi
+
+    # Only a mount map that lacks oidc/ means "no mount". An error, an empty body,
+    # `null` or `{}` says nothing, and skipping on it would pass a stale client
+    # off as a first bootstrap.
+    if ! auth_json="$(openbao_req GET sys/auth 2>&1)"; then
+        echo "[FAILED ] openbao -- cannot list the auth mounts at ${OPENBAO_URL}: ${auth_json}" >&2
+        exit 1
+    fi
+    mount="$(jq -r '.data | objects | has("oidc/")' <<< "$auth_json" 2>/dev/null)" || mount=""
+    case "$mount" in
+        true) ;;
+        false)
+            echo "[skip   ] openbao -- no oidc/ auth mount yet. First bootstrap: with ZITADEL up, apply the management stack once:"
+            echo "           terramate -C opentofu/aws/openbao/management script run deploy"
+            exit 0 ;;
+        *)
+            echo "[FAILED ] openbao -- no auth mount map from ${OPENBAO_URL}/v1/sys/auth: ${auth_json:-<empty body>}" >&2
+            exit 1 ;;
+    esac
+
+    want_aud="$(jq -cn --arg id "$want_id" '[$id]')" || exit 1
+    # Both reads, for the comparison now and for the read-back after the writes.
+    read_oidc() {
+        cfg_json="$(openbao_req GET auth/oidc/config)" || return 1
+        role_json="$(openbao_req GET "auth/oidc/role/${role}")" || return 1
+        cfg="$(jq -ce '.data | objects' <<< "$cfg_json")" || return 1
+        have_id="$(jq -r '.oidc_client_id // ""' <<< "$cfg")" || return 1
+        have_aud="$(jq -ce '.data.bound_audiences // [] | arrays' <<< "$role_json")" || return 1
+    }
+    if ! read_oidc; then
+        echo "[FAILED ] openbao -- cannot read auth/oidc/config or its ${role} role" >&2
+        exit 1
+    fi
+    [ "$have_id" = "$want_id" ] || need_cfg=true
+    [ "$have_aud" = "$want_aud" ] || need_role=true
+
+    if [ "$need_cfg" = false ] && [ "$need_role" = false ]; then
+        echo "[ok     ] openbao -- auth/oidc already uses client ${want_id}"
+        exit 0
+    fi
+    if [ "${APPLY:-false}" != "true" ]; then
+        [ "$need_cfg" = false ] || echo "[dry-run] openbao -- auth/oidc/config client ${have_id:-<none>} -> ${want_id}, and its secret"
+        [ "$need_role" = false ] || echo "[dry-run] openbao -- auth/oidc/role/${role} bound_audiences ${have_aud} -> ${want_aud}"
+        exit 0
+    fi
+
+    if [ "$need_cfg" = true ]; then
+        payload="$(printf '%s\n%s\n' "$cfg" "$stored" | openbao_oidc_config_payload)" || exit 1
+        # The write validates the discovery URL, and on a rebuild ZITADEL's
+        # public route can lag its pods. Any other refusal is final.
+        attempt=0
+        until out="$(printf '%s' "$payload" | openbao_req POST auth/oidc/config --data-binary @- 2>&1)"; do
+            if [[ "$out" != *"error checking oidc discovery URL"* ]] || [ "$attempt" -ge 6 ]; then
+                echo "[FAILED ] openbao -- auth/oidc/config not written, so the role is left alone: ${out}" >&2
+                exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep "${OPENBAO_DISCOVERY_RETRY_SLEEP:-10}"
+        done
+        echo "[reconciled] openbao -- auth/oidc/config client ${have_id:-<none>} -> ${want_id}"
+    fi
+
+    if [ "$need_role" = true ]; then
+        # Partial: a role write merges (fact 7), except for four fields that an
+        # omission resets. role_type is sent; oidc.tf leaves bound_claims_type,
+        # callback_mode and oidc_disable_confirmation at those same defaults.
+        body="$(jq -cn --arg id "$want_id" '{role_type: "oidc", bound_audiences: [$id]}')" || exit 1
+        if ! out="$(printf '%s' "$body" | openbao_req POST "auth/oidc/role/${role}" --data-binary @- 2>&1)"; then
+            echo "[FAILED ] openbao -- auth/oidc/role/${role} not written: ${out}" >&2
+            if [ "$need_cfg" = true ]; then
+                echo "           The config has already moved to client ${want_id}, so logins fail on" >&2
+                echo "           audience until the role follows. Re-running sync --apply finishes it." >&2
+            fi
+            exit 1
+        fi
+        echo "[reconciled] openbao -- auth/oidc/role/${role} bound_audiences ${have_aud} -> ${want_aud}"
+    fi
+
+    if ! read_oidc; then
+        echo "[FAILED ] openbao -- cannot read auth/oidc back after the write" >&2
+        exit 1
+    fi
+    if [ "$have_id" != "$want_id" ] || [ "$have_aud" != "$want_aud" ]; then
+        echo "[FAILED ] openbao -- read back client ${have_id:-<none>}, audience ${have_aud}; want ${want_id}" >&2
+        exit 1
+    fi
+    )
+}
+
 cmd_sync() {
     echo "cluster:  ${CLUSTER} (${CLOUD})"
     echo "idp:      ${IDP_URL}"
@@ -820,6 +1025,11 @@ cmd_sync() {
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
     local created=0 skipped=0 updated=0 converged=0
+    # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
+    # branches below for where each is set. Empty stays empty on a dry run
+    # (reconcile_openbao_oidc treats that as its own skip) and on any topology
+    # missing the "openbao" consumer entirely.
+    local openbao_key="" openbao_client_id=""
     for entry in "${CONSUMERS[@]}"; do
         # TWO names, and conflating them is a bug this script has already made.
         #
@@ -873,6 +1083,10 @@ cmd_sync() {
             if [ -z "$client_id" ]; then
                 echo "[FAILED ] ${name}: app ${existing_id} has no oidcConfig.clientId in ZITADEL's response" >&2
                 exit 1
+            fi
+            if [ "$consumer" = "openbao" ]; then
+                openbao_key="$key"
+                openbao_client_id="$client_id"
             fi
 
             # EVERY wanted URI must be registered, not just one of them. With a
@@ -982,6 +1196,10 @@ cmd_sync() {
             echo "$resp" | jq -r '.message // .' | head -3 >&2
             exit 1
         fi
+        if [ "$consumer" = "openbao" ]; then
+            openbao_key="$key"
+            openbao_client_id="$client_id"
+        fi
 
         merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
@@ -994,12 +1212,22 @@ cmd_sync() {
     # is an app client id rather than the project id.
     reconcile_workforce_audience "$project_id"
 
+    # Same reasoning as the workforce provider above: OpenBao's client id is
+    # only known once the "openbao" consumer's app has been found or created.
+    # `|| openbao_failed=1` rather than exit here so the summary below still
+    # prints -- the operator's dry-run habit is to read that line, and a
+    # reconcile failure should not hide it.
+    local openbao_failed=0
+    reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" || openbao_failed=1
+
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
     fi
+
+    [ "$openbao_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in

@@ -40,7 +40,12 @@ tags = {
 #   ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
 #     --region eu-west-3 --apply
 #
-# The next apply then picks the secret up on its own -- no edit here.
+# First bootstrap still needs ONE management apply after that registration,
+# while ZITADEL is up, so this stack creates the mount with a working client.
+# From then on, oidc.tf's `ignore_changes` hands the three rotating fields
+# (oidc_client_id, oidc_client_secret, bound_audiences) to the script's own
+# reconcile_openbao_oidc -- a later apply must not rewrite them while ZITADEL
+# is down mid-rebuild (design facts 6 and 8).
 #
 # Granting a human the role the external group binds to remains a separate step,
 # because a human does not exist in ZITADEL until their first login:

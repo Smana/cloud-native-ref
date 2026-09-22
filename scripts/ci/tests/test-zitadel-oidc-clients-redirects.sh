@@ -77,6 +77,9 @@ app_id_by_name() { echo "app-1"; }
 # redirect work has printed nothing, which reads as "no output" rather than as a
 # missing stub.
 reconcile_workforce_audience() { :; }
+# Same reasoning, for the OpenBao reconcile (#2045) cmd_sync now calls after
+# the loop: its own behaviour is covered by test-zitadel-oidc-clients-openbao.sh.
+reconcile_openbao_oidc() { :; }
 
 # REGISTERED is what ZITADEL currently holds, one URI per line.
 REGISTERED=""

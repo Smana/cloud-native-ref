@@ -85,12 +85,13 @@ script "deploy" {
   #
   # WHY IT LIVES HERE, ON THE PRIMARY CLOUD
   #
-  # A consuming cluster cannot register its own clients. `terramate list
-  # --run-order` puts gcp/gke/init at position 6 and aws/eks/init at 11, so on a
-  # TM_CLOUD=all run GCP is fully deployed five stacks before aws-0 exists --
-  # there is no directory to register into and no admin PAT yet. Putting the step
-  # in the consumer's own deploy (the first attempt) can only work when GCP is
-  # added to an already-running AWS platform, which is not the normal case.
+  # A consuming cluster cannot register its own clients. No `after` edge orders
+  # gcp/gke/init against aws/eks/init (see both stacks' stack.tm.hcl), so on a
+  # TM_CLOUD=all run Terramate is free to run either one first -- gcp/gke/init
+  # can finish before aws-0 exists at all, with no directory to register into
+  # and no admin PAT yet. Putting the step in the consumer's own deploy (the
+  # first attempt) can only work when GCP is added to an already-running AWS
+  # platform, which is not the normal case.
   #
   # The primary cloud has neither problem: by the time this runs its ZITADEL is
   # up and it holds the admin PAT. ADR-0027 already says the primary owns what
@@ -106,6 +107,7 @@ script "deploy" {
     description = "Register OIDC clients for this cluster and for any cluster consuming its identity provider"
     commands = [
       ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
         set -euo pipefail
         ROOT="${terramate.root.path.fs.absolute}"
 
@@ -156,10 +158,30 @@ script "deploy" {
           exit 0
         fi
 
+        # OpenBao's OIDC client rotates with ZITADEL's (#2045), and only this
+        # sync may reconcile it: OpenBao OIDC exists only on AWS, and the gcp-0
+        # consumer call below must never touch it. A failed CA fetch registers
+        # without reconciling; stage5 then fails the run too, though on its own
+        # CA fetch (its `set -euo pipefail`, no swallow) rather than on a
+        # diagnosed mismatch -- it does not always get to say what drifted.
+        OPENBAO_ARGS=()
+        TLS_DIR="$(mktemp -d)"
+        trap 'rm -rf "$${TLS_DIR}"' EXIT
+        if bash "$${ROOT}/scripts/openbao-config.sh" ca \
+            --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file "$${TLS_DIR}/ca.pem" \
+            --region "${global.region}" --profile "${global.profile}"; then
+          OPENBAO_ARGS=(--openbao-url "${global.openbao_url}" \
+            --openbao-root-token-secret "${global.root_token_secret_name}" \
+            --openbao-ca-file "$${TLS_DIR}/ca.pem")
+        else
+          echo "[warn] could not fetch OpenBao's CA chain; registering without reconciling its OIDC client"
+        fi
+
         echo "== registering ${global.eks_cluster_name}'s own OIDC clients"
         IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
-            --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply || \
+            --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
+            $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} || \
           echo "[warn] registration for ${global.eks_cluster_name} failed; re-run it by hand"
 
         # Consuming clusters. TM_CLOUD is the right source for "which lanes is
@@ -200,6 +222,49 @@ script "deploy" {
               echo "[warn] registration for $${GCP_CLUSTER} failed; re-run it by hand"
             ;;
         esac
+      BASH
+      ],
+    ]
+  }
+
+  # Stage 5: prove OpenBao's OIDC client agrees with the store and that ZITADEL
+  # still knows it (#2045). stage4 swallows its failures (`|| echo "[warn]"`);
+  # this job must not, or a rotation that silently never happened surfaces
+  # days later as "SSO worked yesterday".
+  #
+  # A failure HALTS the run (owner decision, design §7): aws/eks/configure is
+  # always skipped, since it depends on this stack. gcp/gke/init is skipped too
+  # UNLESS it already ran -- no `after` edge orders it against aws/eks/init
+  # (see both stacks' stack.tm.hcl), so on a given invocation it may finish
+  # before this failure happens. Exit 2 ("cannot tell") halts it too. The
+  # check's message names the fix.
+  job {
+    name        = "stage5-verify-openbao-oidc"
+    description = "Fail the deploy when OpenBao's OIDC client disagrees with the store or ZITADEL no longer knows it"
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        set -euo pipefail
+        ROOT="${terramate.root.path.fs.absolute}"
+
+        if [ "${global.primary_cloud}" != "aws" ]; then
+          echo "== skipping: primary_cloud is \"${global.primary_cloud}\", so this cluster does not host the directory"
+          exit 0
+        fi
+
+        echo "== verifying OpenBao's OIDC client"
+        TLS_DIR="$(mktemp -d)"
+        trap 'rm -rf "$${TLS_DIR}"' EXIT
+        bash "$${ROOT}/scripts/openbao-config.sh" ca \
+          --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file "$${TLS_DIR}/ca.pem" \
+          --region "${global.region}" --profile "${global.profile}"
+
+        bash "$${ROOT}/scripts/openbao-oidc-check.sh" \
+          --url "${global.openbao_url}" \
+          --root-token-secret-name "${global.root_token_secret_name}" \
+          --ca-file "$${TLS_DIR}/ca.pem" \
+          --cloud aws --region "${global.region}" \
+          --redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"
       BASH
       ],
     ]

@@ -26,6 +26,7 @@ Everything below is the same on both clouds except these:
 | `IDP_URL` | `https://auth.cloud.ogenki.io` | `https://auth.gcp.cloud.ogenki.io` |
 | `PRIVATE_DOMAIN` | `priv.aws.ogenki.io` | `priv.gcp.ogenki.io` |
 | step 2 | **not needed** — External Secrets uses EKS Pod Identity, granted by OpenTofu | **required** |
+| `OPENBAO` | the `--openbao-*` flags: step 1 re-points OpenBao's OIDC client too ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)) | empty — OpenBao OIDC exists only on `aws-0` |
 
 Set them once and the rest of the page copies straight into a shell:
 
@@ -33,16 +34,18 @@ On `aws-0`:
 
 ```bash
 CL="--cluster aws-0 --cloud aws --region eu-west-3"
-IDP_URL=https://auth.cloud.ogenki.io
-PRIVATE_DOMAIN=priv.aws.ogenki.io
+OPENBAO="--openbao-url https://bao.priv.aws.ogenki.io:8200 --openbao-root-token-secret openbao/cloud-native-ref/tokens/root --openbao-ca-file opentofu/aws/openbao/management/.tls/ca.pem"
+export IDP_URL=https://auth.cloud.ogenki.io
+export PRIVATE_DOMAIN=priv.aws.ogenki.io
 ```
 
 On `gcp-0`:
 
 ```bash
 CL="--cluster gcp-0 --cloud gcp --project ogenki-435905"
-IDP_URL=https://auth.gcp.cloud.ogenki.io
-PRIVATE_DOMAIN=priv.gcp.ogenki.io
+OPENBAO=""
+export IDP_URL=https://auth.gcp.cloud.ogenki.io
+export PRIVATE_DOMAIN=priv.gcp.ogenki.io
 ```
 
 ## The steps
@@ -57,7 +60,9 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    projectRoleAssertion. That last one is not optional: with it off ZITADEL
 #    puts NO roles in any token AND leaves ctx.v1.user.grants empty inside the
 #    groups action, so every consumer authenticates and then has no groups.
-./scripts/zitadel-oidc-clients.sh sync $CL --apply
+#    On aws-0, $OPENBAO points OpenBao at whatever client ZITADEL now holds;
+#    after a restore, leaving it out strands OpenBao on a client ZITADEL forgot.
+./scripts/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
 ```
 
 ```bash

@@ -96,6 +96,7 @@ suite**; if a change stops that being true, it has regressed to testing nothing.
 | `verify-doc-paths.sh` | every **backticked** repository path in `website/content/` still exists. Runs in the website workflow, not in `validate-manifests.sh`, and catches what `validate-links.sh` cannot: a path in prose, or one linked by absolute GitHub URL. No allowlist by design — fix the path or drop the reference |
 | `validate-doc-claims.sh` | docs still agree with config, per `.doc-claims.yaml` |
 | `validate-idp-topology.sh` | exactly one cloud hosts ZITADEL (ADR-0027) |
+| `openbao-oidc-check.sh` | OpenBao's `auth/oidc` config agrees with the secret store and that ZITADEL still knows the client (#2045); the `stage5-verify-openbao-oidc` deploy job halts on exit 1, and treats exit 2 ("cannot tell") as a halt too |
 | `ci/tests/test-terramate-script-refs.sh` | every script path on an **executed** `.tf`/`.tm.hcl`/`.tfvars` line is resolved or fails loudly — the apply- and destroy-time calls no CI job runs. Comments are skipped; `echo` hints are not |
 | `docs/diagram-icons.py audit` | boxes naming a product that render without an icon. Advisory, never a CI gate |
 | `docs/export-diagrams.sh` | regenerates every SVG the site embeds. Pins the drawio version on purpose |

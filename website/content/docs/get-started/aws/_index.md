@@ -58,8 +58,24 @@ terramate script run deploy
 
 **That is the whole deploy.** One command, from `opentofu/`, for all three
 stages — that is what Terramate is for. It resolves the dependency graph and
-applies every stack in order; there is no second command, and no stage you have
-to drive by hand.
+applies every stack in order; there is no stage you have to drive by hand. The
+one exception is the very first deploy on a new platform:
+
+{{< callout type="warning" >}}
+**The first deploy on a new platform ends red at `stage5-verify-openbao-oidc`,
+and that is expected.** OpenBao's management stack runs before ZITADEL has
+issued OpenBao's OIDC client, so it cannot create the `oidc/` mount yet. Create
+it once, then resume — from the repository root:
+
+```bash
+terramate -C opentofu/aws/openbao/management script run deploy
+cd opentofu && terramate script run deploy
+```
+
+On a `TM_CLOUD=aws,gcp` run, `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`
+resumes just the GCP stacks the halt skipped. See
+[OIDC client rotation]({{< relref "/docs/platform/security/openbao.md#oidc-client-rotation" >}}).
+{{< /callout >}}
 
 No cloud flag either: `TM_CLOUD` defaults to `aws`, so this builds the AWS lane
 and skips GCP. Set `TM_CLOUD=aws,gcp` (or `all`) to build both clouds in the same
