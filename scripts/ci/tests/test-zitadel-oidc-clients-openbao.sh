@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# The OpenBao OIDC client rotation (#2045): two contract guards, the curl
-# helper in scripts/lib/openbao-api.sh, and the reconcile in
-# zitadel-oidc-clients.sh that points OpenBao at the client ZITADEL issued.
+# The OpenBao OIDC client rotation (#2045): contract guards, the curl helper
+# in scripts/lib/openbao-api.sh, and the reconcile in zitadel-oidc-clients.sh
+# that points OpenBao at the client ZITADEL issued.
 #
-# WHY A CONTRACT GUARD, NOT JUST A UNIT TEST. Both guards below protect an
+# WHY A CONTRACT GUARD, NOT JUST A UNIT TEST. The guards below protect an
 # agreement between files that nothing else checks:
 #   * the "openbao" CONSUMERS entry's secret key and variables.tfvars'
 #     openbao_oidc_secret_id name the SAME store key by coincidence, not by
@@ -15,6 +15,10 @@
 #     (referencing the mount resource would invert the create order) -- so
 #     nothing in OpenTofu stops it drifting from what the CONSUMERS table
 #     registers in ZITADEL.
+#   * the reconcile is only as good as its invocation: the unit tests below
+#     pass whether or not any deploy ever hands the script --openbao-url. The
+#     Terramate guards pin who passes it (aws-0's own sync, nobody else) and
+#     that stage5 runs the check without swallowing its exit code.
 #
 # WHY PATH STUBS. curl, jq and sleep are executables on a stub PATH, not shell
 # functions: a function is bypassed by `command curl` or `env curl`, and a jq
@@ -46,6 +50,8 @@ absent() { if grep -qF -- "$2" <<< "$1"; then printf '  FAIL %s: %q found\n' "$3
 CONSUMERS_SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../zitadel-oidc-clients.sh}"
 TFVARS_SRC="${OPENBAO_MANAGEMENT_TFVARS:-$REPO_ROOT/opentofu/aws/openbao/management/variables.tfvars}"
 OIDC_TF_SRC="${OPENBAO_OIDC_TF:-$REPO_ROOT/opentofu/aws/openbao/management/oidc.tf}"
+AWS_WORKFLOWS_SRC="${AWS_EKS_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/eks/init/workflows.tm.hcl}"
+GCP_WORKFLOWS_SRC="${GCP_GKE_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl}"
 
 echo "== contract: the openbao CONSUMERS key matches variables.tfvars (#2011) =="
 consumers_line="$(grep -E '^[[:space:]]*"openbao\|' "$CONSUMERS_SRC" || true)"
@@ -100,6 +106,77 @@ else
     role_ignore=no
 fi
 check "vault_jwt_auth_backend_role.oidc_default ignores bound_audiences" "yes" "$role_ignore"
+
+# One shell command per output line: comment lines dropped (a flag named in a
+# comment must not satisfy a guard), backslash continuations joined.
+logical_lines() {
+    awk '/^[[:space:]]*#/ { next }
+         { if (sub(/\\[[:space:]]*$/, "")) { buf = buf $0 " "; next }
+           print buf $0; buf = "" }' "${1:--}"
+}
+# A job's body: from its `name = "<job>"` line to the next job or the end of
+# its script block.
+job_body() { # file, job name
+    awk -v n="\"$2\"" '
+        !on && $1 == "name" && index($0, n) { on = 1; next }
+        on && (/^[[:space:]]*job[[:space:]]*\{/ || /^\}/) { exit }
+        on' "$1" | logical_lines
+}
+# contains(), minus the haystack on failure: a whole job body buries the signal.
+in_job() { # body, needle, label
+    if grep -qF -- "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
+    else printf '  FAIL %s: %q not found\n' "$3" "$2"; fail=1; fi
+}
+
+echo
+echo "== contract: only aws-0's own sync passes the --openbao-* flags (design §2) =="
+aws_syncs="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' || true)"
+own_sync="$(grep -F -- '--cluster "${global.eks_cluster_name}"' <<< "$aws_syncs" || true)"
+consumer_sync="$(grep -F -- '--idp-cloud aws' <<< "$aws_syncs" || true)"
+check "aws/eks/init runs two syncs: its own and gcp-0's" "2" "$(grep -c . <<< "$aws_syncs")"
+contains "$own_sync" '"$${OPENBAO_ARGS[@]}"' "aws-0's own sync expands OPENBAO_ARGS"
+check "exactly one command expands OPENBAO_ARGS" "1" \
+    "$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -cF 'OPENBAO_ARGS[@]')"
+contains "$consumer_sync" '--cloud gcp' "the gcp-0 consumer sync is found"
+absent "$consumer_sync" 'OPENBAO_ARGS' "the gcp-0 consumer sync does not expand OPENBAO_ARGS"
+absent "$consumer_sync" '--openbao-' "the gcp-0 consumer sync passes no --openbao-* flag"
+openbao_args="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'OPENBAO_ARGS=(' || true)"
+contains "$openbao_args" '--openbao-url "${global.openbao_url}"' "OPENBAO_ARGS carries the OpenBao URL"
+contains "$openbao_args" '--openbao-root-token-secret "${global.root_token_secret_name}"' \
+    "OPENBAO_ARGS carries the root token's secret NAME"
+contains "$openbao_args" '--openbao-ca-file ' "OPENBAO_ARGS carries the CA file"
+
+gcp_openbao="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -E -- '--openbao-|OPENBAO_ARGS' || true)"
+check "gcp/gke/init passes no --openbao-* flag" "" "$gcp_openbao"
+
+echo
+echo "== contract: stage5 runs the check after stage4, and its failure halts the deploy =="
+line_of() { grep -nE "$1" "$AWS_WORKFLOWS_SRC" | head -1 | cut -d: -f1; }
+deploy_start="$(line_of '^script "deploy" \{')"
+deploy_end="$(awk -v s="${deploy_start:-0}" 'NR > s && /^script / { print NR; exit }' "$AWS_WORKFLOWS_SRC")"
+stage4_line="$(line_of 'name[[:space:]]*=[[:space:]]*"stage4-oidc-clients"')"
+stage5_line="$(line_of 'name[[:space:]]*=[[:space:]]*"stage5-verify-openbao-oidc"')"
+if [ -n "$deploy_start" ] && [ -n "$stage4_line" ] && [ -n "$stage5_line" ] \
+   && [ "$stage4_line" -gt "$deploy_start" ] && [ "$stage5_line" -gt "$stage4_line" ] \
+   && [ "$stage5_line" -lt "${deploy_end:-999999}" ]; then
+    order=yes
+else
+    order=no
+fi
+check "stage5-verify-openbao-oidc follows stage4-oidc-clients in script \"deploy\"" "yes" "$order"
+
+stage4_body="$(job_body "$AWS_WORKFLOWS_SRC" stage4-oidc-clients)"
+stage5_body="$(job_body "$AWS_WORKFLOWS_SRC" stage5-verify-openbao-oidc)"
+in_job "$stage4_body" '${global.cloud_gate}' "stage4 carries the cloud gate"
+in_job "$stage5_body" '${global.cloud_gate}' "stage5 carries the cloud gate"
+in_job "$stage5_body" 'set -euo pipefail' "stage5 runs under errexit"
+check_call="$(grep -F 'scripts/openbao-oidc-check.sh' <<< "$stage5_body" || true)"
+contains "$check_call" 'scripts/openbao-oidc-check.sh' "stage5 calls openbao-oidc-check.sh"
+# stage4's `|| echo "[warn]"` style is exactly what must not reach this call:
+# swallowing the exit code turns the check into a log line (owner: halt).
+absent "$check_call" '||' "stage5 does not swallow the check's exit code"
+contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
+    "stage5 probes with the UI callback oidc.tf registers"
 
 # ── stubs ───────────────────────────────────────────────────────────────────
 WORK="$(mktemp -d)"
