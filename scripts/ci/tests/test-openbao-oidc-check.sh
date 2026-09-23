@@ -491,5 +491,14 @@ check "the first hop was made" "yes" "$([ -n "$first_hop" ] && echo yes || echo 
 absent "$first_hop" "-K " "the first hop carries no -K (no root token to ZITADEL)"
 
 echo
+echo "== every call has a time ceiling (#2083) =="
+# A deadlocked OpenBao, or a ZITADEL that accepts and never answers, would
+# otherwise hang stage5 -- and the probe's retry budget with it.
+world; run_check
+check "every call carries --max-time" "$(grep -c '^CALL:' "$CURL_LOG")" "$(grep -c -- '--max-time' "$CURL_LOG")"
+contains "$first_hop" "--max-time" "the first hop carries --max-time"
+contains "$first_hop" "--connect-timeout" "the first hop carries --connect-timeout"
+
+echo
 if [ "$fail" -eq 0 ]; then echo "PASS"; else echo "==> failure(s) above"; fi
 exit "$fail"

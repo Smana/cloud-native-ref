@@ -515,6 +515,10 @@ contains "$call_line" "${OPENBAO_URL}/v1/sys/auth"     "curl receives the full U
 # The body of a 400 is how the reconcile tells a discovery error, worth a
 # retry, from any other. Plain -f discards it.
 contains "$call_line" '--fail-with-body'               "curl keeps the body of an HTTP error"
+# A deadlocked OpenBao core accepts the connection and never answers, so a call
+# without a ceiling hangs stage4 and stage5 for good (#2083).
+contains "$call_line" '--connect-timeout 10'           "curl gives up connecting after 10s"
+contains "$call_line" '--max-time 30'                  "curl gives up on the whole call after 30s"
 tls_verified "GET: curl never uses -k" "$call_line"
 absent "$call_line" "s3cr3t-token" "GET: the token appears in no argv"
 kfile_contents="$(sed -n '/^KFILE_CONTENTS:/,/^KFILE_CONTENTS_END:/p' "$CURL_LOG" | sed '1d;$d')"

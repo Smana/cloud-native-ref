@@ -255,7 +255,8 @@ check() {
         # still verified against the system trust store -- never -k -- which
         # is correct here: ZITADEL's route is public (design fact 1's topology
         # table), so its certificate chains to a public CA.
-        if ! hop="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$url" 2>&1)"; then
+        if ! hop="$(curl -sS --connect-timeout "$OPENBAO_CONNECT_TIMEOUT" --max-time "$OPENBAO_MAX_TIME" \
+                -o /dev/null -w '%{http_code} %{redirect_url}' "$url" 2>&1)"; then
             transient="cannot reach the authorize URL's first hop: ${hop}"
             continue
         fi
