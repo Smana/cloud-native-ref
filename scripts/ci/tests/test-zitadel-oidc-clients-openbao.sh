@@ -56,6 +56,7 @@ TFVARS_SRC="${OPENBAO_MANAGEMENT_TFVARS:-$REPO_ROOT/opentofu/aws/openbao/managem
 OIDC_TF_SRC="${OPENBAO_OIDC_TF:-$REPO_ROOT/opentofu/aws/openbao/management/oidc.tf}"
 AWS_WORKFLOWS_SRC="${AWS_EKS_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/eks/init/workflows.tm.hcl}"
 GCP_WORKFLOWS_SRC="${GCP_GKE_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl}"
+MGMT_WORKFLOWS_SRC="${OPENBAO_MANAGEMENT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/openbao/management/workflows.tm.hcl}"
 CHECK_SRC="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../provision/openbao-oidc-check.sh}"
 
 echo "== contract: the openbao CONSUMERS key matches variables.tfvars (#2011) =="
@@ -187,18 +188,19 @@ contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc
 
 # The check exits 2 on an unknown argument and stage5 halts on 2, so a
 # misspelt flag breaks every deploy -- visible only on a live run.
-stage5_flags_known() { # workflows file -> "yes", or "no: <first unknown flag>"
+check_flags_known() { # workflows file, job name -> "yes", or "no: <first unknown flag>"
     local call flags labels f
-    call="$(job_body "$1" stage5-verify-openbao-oidc | grep -F 'scripts/provision/openbao-oidc-check.sh' || true)"
+    call="$(job_body "$1" "$2" | grep -F 'scripts/provision/openbao-oidc-check.sh' || true)"
     flags="$(grep -oE -- '(^|[[:space:]])--[a-z][a-z-]*' <<< "$call" | tr -d '[:blank:]')"
     labels="$(awk '/^while \[ \$# -gt 0 \]/ { on = 1 } on && /^done/ { exit } on' "$CHECK_SRC" \
               | grep -oE '^[[:space:]]*[-a-z|]+\)' | grep -oE -- '--[a-z][a-z-]*')"
-    [ -n "$flags" ] || { echo "no: stage5's check call has no flags"; return; }
+    [ -n "$flags" ] || { echo "no: $2's check call has no flags"; return; }
     for f in $flags; do
         grep -qxF -- "$f" <<< "$labels" || { echo "no: $f"; return; }
     done
     echo yes
 }
+stage5_flags_known() { check_flags_known "$1" stage5-verify-openbao-oidc; }
 check "every flag stage5 passes is a case label in openbao-oidc-check.sh" \
     "yes" "$(stage5_flags_known "$AWS_WORKFLOWS_SRC")"
 MUTANT_FLAG="$WORK/workflows-mutant-unknown-flag.tm.hcl"
@@ -325,6 +327,55 @@ check "mutant (skip deleted): the file actually changed" "changed" \
     "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_NOSKIP" && echo unchanged || echo changed)"
 check "mutant (skip deleted): now FAILS -- stage5 no longer skips a non-aws primary" \
     "no" "$(has_primary_cloud_skip "$MUTANT_NOSKIP")"
+
+echo
+echo "== contract: drift detect runs the check, and reports its drift without stopping the walk (#2084) =="
+# oidc.tf ignores the three fields the sync rotates, so the management plan can
+# no longer see a stale client. The drift job runs the check in its place.
+DRIFT_JOB="openbao-management-drift"
+drift_body="$(job_body "$MGMT_WORKFLOWS_SRC" "$DRIFT_JOB")"
+in_job "$drift_body" 'global.openbao_ca_cmd.args' "the drift job fetches the CA first"
+in_job "$drift_body" '${global.cloud_gate}' "the drift check carries the cloud gate"
+drift_call="$(grep -F 'scripts/provision/openbao-oidc-check.sh' <<< "$drift_body" || true)"
+contains "$drift_call" '--ca-file .tls/ca.pem' "the drift check uses the CA the job fetched"
+contains "$drift_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
+    "the drift check probes with the same callback as stage5"
+check "every flag the drift job passes is a case label in openbao-oidc-check.sh" \
+    "yes" "$(check_flags_known "$MGMT_WORKFLOWS_SRC" "$DRIFT_JOB")"
+
+# Run the step itself: pull its heredoc, render the Terramate interpolations,
+# and swap the real check for one that exits $STUB_RC.
+drift_script() { # primary_cloud -> the rendered bash of the drift check step
+    awk -v n="\"$DRIFT_JOB\"" '
+        !job && $1 == "name" && index($0, n) { job = 1; next }
+        job && !on && /<<-BASH/ { on = 1; next }
+        on && /^[[:space:]]*BASH[[:space:]]*$/ { exit }
+        on' "$MGMT_WORKFLOWS_SRC" \
+    | sed -e 's|\${global\.cloud_gate}|:|g' \
+          -e "s|\\\${global\\.primary_cloud}|$1|g" \
+          -e "s|\\\${terramate\\.root\\.path\\.fs\\.absolute}|$DRIFT_ROOT|g" \
+          -e 's|\${terramate\.stack\.path\.relative}|/opentofu/aws/openbao/management|g' \
+          -e 's|\${global\.[a-z_]*}|x|g' \
+          -e 's|\$\$|$|g'
+}
+DRIFT_ROOT="$WORK/drift-root"
+mkdir -p "$DRIFT_ROOT/scripts/provision"
+cat > "$DRIFT_ROOT/scripts/provision/openbao-oidc-check.sh" <<'EOF'
+echo "CHECK-CALLED $*"
+exit "${STUB_RC:-0}"
+EOF
+check "the drift step's heredoc is found" "yes" \
+    "$(grep -qF 'openbao-oidc-check.sh' <<< "$(drift_script aws)" && echo yes || echo no)"
+for want in "0:0:no" "1:0:yes" "2:2:no"; do
+    IFS=: read -r stub_rc job_rc banner <<< "$want"
+    drift_out="$(STUB_RC="$stub_rc" bash -c "$(drift_script aws)" 2>&1)"; drift_rc=$?
+    check "check exits ${stub_rc}: the drift step exits ${job_rc}" "$job_rc" "$drift_rc"
+    has="$(grep -qF 'OIDC CLIENT DRIFT DETECTED' <<< "$drift_out" && echo yes || echo no)"
+    check "check exits ${stub_rc}: drift banner printed = ${banner}" "$banner" "$has"
+done
+drift_out="$(STUB_RC=1 bash -c "$(drift_script gcp)" 2>&1)"; drift_rc=$?
+check "primary_cloud gcp: the drift step exits 0" "0" "$drift_rc"
+absent "$drift_out" "CHECK-CALLED" "primary_cloud gcp: the check is not run"
 
 # ── stubs ───────────────────────────────────────────────────────────────────
 REAL_JQ="$(command -v jq)"

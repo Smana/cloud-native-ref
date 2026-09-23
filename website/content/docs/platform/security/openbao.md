@@ -178,7 +178,8 @@ ignores `oidc_client_id`, `oidc_client_secret` and `bound_audiences` on it — t
 with ZITADEL, not with a re-apply. `scripts/provision/zitadel-oidc-clients.sh`'s `sync` command owns them:
 every AWS deploy's `stage4-oidc-clients` job reconciles OpenBao's client against whatever ZITADEL
 currently issues, and `stage5-verify-openbao-oidc` halts the deploy if OpenBao, the secret store
-and ZITADEL ever disagree (#2045).
+and ZITADEL ever disagree (#2045). Because the plan no longer sees those fields, the management
+stack's `drift detect` runs the same check and reports a disagreement as drift (#2084).
 
 **The first deploy on a new platform ends red at `stage5`, and that is expected.** The management
 stack ran before ZITADEL issued the client, so there is no `oidc/` mount yet. Apply it once, from
