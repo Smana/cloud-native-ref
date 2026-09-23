@@ -581,7 +581,19 @@ check "the reconcile calls printf only as the builtin" "" "$(printf_not_builtin 
 # next N reads return <key>.stale, Secrets Manager's eventual consistency.
 STORE="$WORK/store"
 store_file()   { printf '%s/%s' "$STORE" "${1//\//_}"; }
-store_exists() { printf 'exists %s\n' "$1" >> "$STORE/calls.log"; [ -f "$(store_file "$1")" ]; }
+# <key>.probe_fail makes the probe answer "cannot tell", as a throttle does.
+store_probe() {
+    printf 'exists %s\n' "$1" >> "$STORE/calls.log"
+    STORE_PROBE_ERR=""
+    if [ -f "$(store_file "$1").probe_fail" ]; then
+        STORE_PROBE_ERR="An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded"
+        return 2
+    fi
+    [ -f "$(store_file "$1")" ] && return 0
+    STORE_PROBE_ERR="An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation"
+    return 1
+}
+store_exists() { store_probe "$1"; }
 store_read() {
     local f n
     f="$(store_file "$1")"
@@ -717,10 +729,29 @@ world; recon "" "$NEW_ID"
 check "apply, no store key: returns 1"         "1" "$rc"
 contains "$out" "[FAILED ]"                    "apply, no store key: says [FAILED ]"
 
+# A dry run wrote nothing, so an absent key is a skip. Under --apply the sync
+# wrote it moments ago: absent is eventual consistency or a failed write, so
+# it is retried like a stale read and then fails -- never a silent skip (#2082).
+world; APPLY=false; rm -f "$(store_file "$KEY")"; recon "$KEY" "$NEW_ID"
+check "dry run, key not in the store: returns 0"       "0" "$rc"
+contains "$out" "[skip   ]"                            "dry run, key not in the store: says [skip   ]"
+check "dry run, key not in the store: no OpenBao call" ""  "$(reqs)"
+
 world; rm -f "$(store_file "$KEY")"; recon "$KEY" "$NEW_ID"
-check "key not in the store: returns 0"       "0" "$rc"
-contains "$out" "[skip   ]"                   "key not in the store: says [skip   ]"
-check "key not in the store: no OpenBao call" ""  "$(reqs)"
+check "apply, key not in the store: returns 1"         "1" "$rc"
+contains "$out" "[FAILED ]"                            "apply, key not in the store: says [FAILED ]"
+absent "$out" "[skip   ]"                              "apply, key not in the store: never says [skip   ]"
+check "apply, key not in the store: retried before failing" "7" "$(n_reads)"
+check "apply, key not in the store: no OpenBao call"   ""  "$(reqs)"
+
+for mode in true false; do
+    world; APPLY=$mode; : > "$(store_file "$KEY").probe_fail"; recon "$KEY" "$NEW_ID"
+    check "apply=$mode, store unreadable: returns 1"          "1" "$rc"
+    contains "$out" "[FAILED ]"                               "apply=$mode, store unreadable: says [FAILED ]"
+    contains "$out" "ThrottlingException"                     "apply=$mode, store unreadable: shows the store's error"
+    absent "$out" "[skip   ]"                                 "apply=$mode, store unreadable: never says [skip   ]"
+    check "apply=$mode, store unreadable: no OpenBao call"    ""  "$(reqs)"
+done
 
 world; echo '{"data":{"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"; recon "$KEY" "$NEW_ID"
 check "no oidc/ mount: returns 0"                 "0" "$rc"
@@ -956,6 +987,7 @@ app_set_redirect() { :; }
 merge_secret() { echo '{}'; }
 converge_secret() { echo '{}'; }
 store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { echo '{}'; }
 store_write()  { cat >/dev/null; }
 

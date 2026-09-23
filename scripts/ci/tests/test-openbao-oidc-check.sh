@@ -61,8 +61,17 @@ for ((i = 0; i < ${#args[@]}; i++)); do
     [ "${args[$i]}" = "--secret-id" ] && secret_id="${args[$((i + 1))]}"
 done
 file="$STORE/${secret_id//\//_}"
+# describe-secret fails the way the real CLI does, so store_probe can tell
+# "absent" from $DESCRIBE_FAIL's "cannot tell" (#2082).
 case "$service $action" in
-    "secretsmanager describe-secret")   [ -f "$file" ] ;;
+    "secretsmanager describe-secret")
+        if [ "${DESCRIBE_FAIL:-0}" = 1 ]; then
+            echo "An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded" >&2
+            exit 254
+        fi
+        [ -f "$file" ] && exit 0
+        echo "An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: Secrets Manager can't find the specified secret." >&2
+        exit 254 ;;
     "secretsmanager get-secret-value")  [ -f "$file" ] && cat "$file" ;;
     *) echo "aws stub: unhandled $service $action" >&2; exit 1 ;;
 esac
@@ -182,7 +191,7 @@ world() {
     rm -rf "$CURL_STATE" "$STORE"
     mkdir -p "$CURL_STATE" "$STORE"
     : > "$CURL_LOG"
-    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL AUTH_URL_EMPTY_TIMES AUTHORIZE_FAIL_TIMES AUTHORIZE_LOCATION
+    unset AUTHORIZE_CURL_FAIL AUTH_URL_ERROR CFG_READ_FAIL ROLE_READ_FAIL AUTH_URL_EMPTY_TIMES AUTHORIZE_FAIL_TIMES AUTHORIZE_LOCATION DESCRIBE_FAIL
     export AUTHORIZE_HTTP_CODE=302
     export AUTH_URL_VALUE="https://auth.cloud.ogenki.io/authorize?client_id=${ID}"
     echo '{"data":{"oidc/":{"type":"oidc"},"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
@@ -246,6 +255,24 @@ check "mount, no secret: returns 1" "1" "$rc"
 contains "$out" "DESTROY the mount" "mount, no secret: warns the next apply destroys it"
 contains "$out" "$RECOVERY_DOC" "mount, no secret: points at the recovery section"
 absent "$out" "sync --apply" "mount, no secret: prints no partial command"
+
+echo
+echo "== exit 2: the store cannot say whether the secret exists (#2082) =="
+# A throttled or denied describe is not "absent": read as absent, it once
+# printed "will DESTROY the mount" with the mount present, and "not
+# bootstrapped" (exit 0, a pass) with it absent.
+world
+export DESCRIBE_FAIL=1
+run_check
+check "store unreadable, mount present: returns 2" "2" "$rc"
+contains "$out" "cannot tell" "store unreadable, mount present: says cannot tell"
+contains "$out" "ThrottlingException" "store unreadable, mount present: shows the store's error"
+absent "$out" "DESTROY" "store unreadable, mount present: no destroy warning"
+echo '{"data":{"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"
+run_check
+check "store unreadable, no mount: returns 2, not a bootstrap pass" "2" "$rc"
+absent "$out" "not bootstrapped" "store unreadable, no mount: does not claim first bootstrap"
+unset DESCRIBE_FAIL
 
 echo
 echo "== exit 2: cannot read auth/oidc/config =="
