@@ -797,6 +797,7 @@ check "apply, key not in the store: returns 1"         "1" "$rc"
 contains "$out" "[FAILED ]"                            "apply, key not in the store: says [FAILED ]"
 absent "$out" "[skip   ]"                              "apply, key not in the store: never says [skip   ]"
 check "apply, key not in the store: retried before failing" "7" "$(n_reads)"
+contains "$out" "still not in the secret store"        "apply, key not in the store: says the key is absent"
 check "apply, key not in the store: no OpenBao call"   ""  "$(reqs)"
 
 for mode in true false; do
@@ -923,6 +924,14 @@ check "discovery answers on the 4th try: returns 0"  "0" "$rc"
 check "discovery answers on the 4th try: 4 writes"   "4" "$(n_req "$POST_CFG")"
 check "discovery answers on the 4th try: the role"   "1" "$(n_req "$POST_ROLE")"
 check "discovery answers on the 4th try: 3 waits"    "0 0 0" "$(sleeps)"
+# A route that drops packets makes OpenBao's own discovery fetch outlast
+# openbao_req's --max-time: curl times out before OpenBao can say "discovery".
+# Same cause, same retry (#2083 review).
+world; fail_next POST auth/oidc/config 2 "curl: (28) Operation timed out after 30002 milliseconds with 0 bytes received"
+recon "$KEY" "$NEW_ID"
+check "the write times out twice, then lands: returns 0" "0" "$(printf '%s' "$rc")"
+check "the write times out twice, then lands: 3 writes"  "3" "$(n_req "$POST_CFG")"
+check "the write times out twice, then lands: the role"  "1" "$(n_req "$POST_ROLE")"
 world; fail_next POST auth/oidc/config 1 "$DISCOVERY_ERROR"
 unset OPENBAO_DISCOVERY_RETRY_SLEEP; recon "$KEY" "$NEW_ID"; OPENBAO_DISCOVERY_RETRY_SLEEP=0
 check "the discovery wait defaults to 10s"           "10" "$(sleeps)"

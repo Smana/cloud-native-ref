@@ -903,7 +903,11 @@ reconcile_openbao_oidc() {
             break
         fi
         if [ "$attempt" -ge 6 ]; then
-            echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+            if [ "$probe" -eq 1 ]; then
+                echo "[FAILED ] openbao -- ${key} is still not in the secret store after this run wrote it; ZITADEL issued ${want_id}" >&2
+            else
+                echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+            fi
             exit 1
         fi
         attempt=$((attempt + 1))
@@ -966,10 +970,13 @@ reconcile_openbao_oidc() {
     if [ "$need_cfg" = true ]; then
         payload="$(printf '%s\n%s\n' "$cfg" "$stored" | openbao_oidc_config_payload)" || exit 1
         # The write validates the discovery URL, and on a rebuild ZITADEL's
-        # public route can lag its pods. Any other refusal is final.
+        # public route can lag its pods. A route that drops packets makes that
+        # fetch outlast openbao_req's --max-time, so curl's timeout (28) is the
+        # same cause. Any other refusal is final. The write is idempotent.
         attempt=0
         until out="$(printf '%s' "$payload" | openbao_req POST auth/oidc/config --data-binary @- 2>&1)"; do
-            if [[ "$out" != *"error checking oidc discovery URL"* ]] || [ "$attempt" -ge 6 ]; then
+            if { [[ "$out" != *"error checking oidc discovery URL"* ]] && [[ "$out" != *"curl: (28)"* ]]; } \
+                || [ "$attempt" -ge 6 ]; then
                 echo "[FAILED ] openbao -- auth/oidc/config not written, so the role is left alone: ${out}" >&2
                 exit 1
             fi
