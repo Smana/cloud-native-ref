@@ -24,6 +24,28 @@ store_exists() {
     esac
 }
 
+# 0 present, 1 absent, 2 cannot tell -- with the CLI's error in STORE_PROBE_ERR.
+# store_exists folds 1 and 2 into one false, which is right for store_write (a
+# failed read makes the create fail loudly) and wrong wherever "absent" drives
+# advice: a throttled describe once read as "the next apply will DESTROY the
+# mount" (#2082). Only the provider's own not-found error means absent.
+store_probe() {
+    local rc=0
+    STORE_PROBE_ERR=""
+    case "$CLOUD" in
+        aws) STORE_PROBE_ERR="$(aws secretsmanager describe-secret ${REGION:+--region "$REGION"} \
+                 --secret-id "$1" 2>&1 >/dev/null)" || rc=$? ;;
+        gcp) STORE_PROBE_ERR="$(gcp_gcloud secrets describe "$1" ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
+                 2>&1 >/dev/null)" || rc=$? ;;
+        *) STORE_PROBE_ERR="unknown cloud '${CLOUD}'"; return 2 ;;
+    esac
+    [ "$rc" -eq 0 ] && return 0
+    case "$STORE_PROBE_ERR" in
+        *ResourceNotFoundException*|*NOT_FOUND*) return 1 ;;
+    esac
+    return 2
+}
+
 store_read() {
     case "$CLOUD" in
         aws) aws secretsmanager get-secret-value \

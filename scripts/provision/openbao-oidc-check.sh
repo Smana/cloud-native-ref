@@ -126,11 +126,21 @@ check() {
     local -
     set +x
 
-    local secret_present=false mount_present="" auth_json mount
+    local secret_present=false mount_present="" auth_json mount probe=0
     local stored stored_id cfg_json role_json cfg have_id have_aud want_aud
     local token_file auth_body resp url hop code location err attempt=0 transient=""
 
-    store_exists "$OIDC_SECRET" && secret_present=true
+    # Only a not-found answer means absent. Any other failed read, taken as
+    # absent, would pass a stranded platform as "not bootstrapped" or warn that
+    # an apply will destroy a mount it would not (#2082).
+    store_probe "$OIDC_SECRET" || probe=$?
+    case "$probe" in
+        0) secret_present=true ;;
+        1) secret_present=false ;;
+        *)
+            echo "[FAILED ] cannot tell -- cannot read ${OIDC_SECRET} from the ${CLOUD} secret store: ${STORE_PROBE_ERR}" >&2
+            exit 2 ;;
+    esac
 
     token_file="$(umask 077 && mktemp -t openbao-oidc-check-curl.XXXXXX)" || exit 2
     # shellcheck disable=SC2064
@@ -245,7 +255,8 @@ check() {
         # still verified against the system trust store -- never -k -- which
         # is correct here: ZITADEL's route is public (design fact 1's topology
         # table), so its certificate chains to a public CA.
-        if ! hop="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$url" 2>&1)"; then
+        if ! hop="$(curl -sS --connect-timeout "$OPENBAO_CONNECT_TIMEOUT" --max-time "$OPENBAO_MAX_TIME" \
+                -o /dev/null -w '%{http_code} %{redirect_url}' "$url" 2>&1)"; then
             transient="cannot reach the authorize URL's first hop: ${hop}"
             continue
         fi

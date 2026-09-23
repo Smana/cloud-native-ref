@@ -56,6 +56,7 @@ TFVARS_SRC="${OPENBAO_MANAGEMENT_TFVARS:-$REPO_ROOT/opentofu/aws/openbao/managem
 OIDC_TF_SRC="${OPENBAO_OIDC_TF:-$REPO_ROOT/opentofu/aws/openbao/management/oidc.tf}"
 AWS_WORKFLOWS_SRC="${AWS_EKS_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/eks/init/workflows.tm.hcl}"
 GCP_WORKFLOWS_SRC="${GCP_GKE_INIT_WORKFLOWS:-$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl}"
+MGMT_WORKFLOWS_SRC="${OPENBAO_MANAGEMENT_WORKFLOWS:-$REPO_ROOT/opentofu/aws/openbao/management/workflows.tm.hcl}"
 CHECK_SRC="${OPENBAO_OIDC_CHECK_SCRIPT:-$HERE/../../provision/openbao-oidc-check.sh}"
 
 echo "== contract: the openbao CONSUMERS key matches variables.tfvars (#2011) =="
@@ -187,18 +188,19 @@ contains "$check_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc
 
 # The check exits 2 on an unknown argument and stage5 halts on 2, so a
 # misspelt flag breaks every deploy -- visible only on a live run.
-stage5_flags_known() { # workflows file -> "yes", or "no: <first unknown flag>"
+check_flags_known() { # workflows file, job name -> "yes", or "no: <first unknown flag>"
     local call flags labels f
-    call="$(job_body "$1" stage5-verify-openbao-oidc | grep -F 'scripts/provision/openbao-oidc-check.sh' || true)"
+    call="$(job_body "$1" "$2" | grep -F 'scripts/provision/openbao-oidc-check.sh' || true)"
     flags="$(grep -oE -- '(^|[[:space:]])--[a-z][a-z-]*' <<< "$call" | tr -d '[:blank:]')"
     labels="$(awk '/^while \[ \$# -gt 0 \]/ { on = 1 } on && /^done/ { exit } on' "$CHECK_SRC" \
               | grep -oE '^[[:space:]]*[-a-z|]+\)' | grep -oE -- '--[a-z][a-z-]*')"
-    [ -n "$flags" ] || { echo "no: stage5's check call has no flags"; return; }
+    [ -n "$flags" ] || { echo "no: $2's check call has no flags"; return; }
     for f in $flags; do
         grep -qxF -- "$f" <<< "$labels" || { echo "no: $f"; return; }
     done
     echo yes
 }
+stage5_flags_known() { check_flags_known "$1" stage5-verify-openbao-oidc; }
 check "every flag stage5 passes is a case label in openbao-oidc-check.sh" \
     "yes" "$(stage5_flags_known "$AWS_WORKFLOWS_SRC")"
 MUTANT_FLAG="$WORK/workflows-mutant-unknown-flag.tm.hcl"
@@ -325,6 +327,55 @@ check "mutant (skip deleted): the file actually changed" "changed" \
     "$(cmp -s "$AWS_WORKFLOWS_SRC" "$MUTANT_NOSKIP" && echo unchanged || echo changed)"
 check "mutant (skip deleted): now FAILS -- stage5 no longer skips a non-aws primary" \
     "no" "$(has_primary_cloud_skip "$MUTANT_NOSKIP")"
+
+echo
+echo "== contract: drift detect runs the check, and reports its drift without stopping the walk (#2084) =="
+# oidc.tf ignores the three fields the sync rotates, so the management plan can
+# no longer see a stale client. The drift job runs the check in its place.
+DRIFT_JOB="openbao-management-drift"
+drift_body="$(job_body "$MGMT_WORKFLOWS_SRC" "$DRIFT_JOB")"
+in_job "$drift_body" 'global.openbao_ca_cmd.args' "the drift job fetches the CA first"
+in_job "$drift_body" '${global.cloud_gate}' "the drift check carries the cloud gate"
+drift_call="$(grep -F 'scripts/provision/openbao-oidc-check.sh' <<< "$drift_body" || true)"
+contains "$drift_call" '--ca-file .tls/ca.pem' "the drift check uses the CA the job fetched"
+contains "$drift_call" '--redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback"' \
+    "the drift check probes with the same callback as stage5"
+check "every flag the drift job passes is a case label in openbao-oidc-check.sh" \
+    "yes" "$(check_flags_known "$MGMT_WORKFLOWS_SRC" "$DRIFT_JOB")"
+
+# Run the step itself: pull its heredoc, render the Terramate interpolations,
+# and swap the real check for one that exits $STUB_RC.
+drift_script() { # primary_cloud -> the rendered bash of the drift check step
+    awk -v n="\"$DRIFT_JOB\"" '
+        !job && $1 == "name" && index($0, n) { job = 1; next }
+        job && !on && /<<-BASH/ { on = 1; next }
+        on && /^[[:space:]]*BASH[[:space:]]*$/ { exit }
+        on' "$MGMT_WORKFLOWS_SRC" \
+    | sed -e 's|\${global\.cloud_gate}|:|g' \
+          -e "s|\\\${global\\.primary_cloud}|$1|g" \
+          -e "s|\\\${terramate\\.root\\.path\\.fs\\.absolute}|$DRIFT_ROOT|g" \
+          -e 's|\${terramate\.stack\.path\.relative}|/opentofu/aws/openbao/management|g' \
+          -e 's|\${global\.[a-z_]*}|x|g' \
+          -e 's|\$\$|$|g'
+}
+DRIFT_ROOT="$WORK/drift-root"
+mkdir -p "$DRIFT_ROOT/scripts/provision"
+cat > "$DRIFT_ROOT/scripts/provision/openbao-oidc-check.sh" <<'EOF'
+echo "CHECK-CALLED $*"
+exit "${STUB_RC:-0}"
+EOF
+check "the drift step's heredoc is found" "yes" \
+    "$(grep -qF 'openbao-oidc-check.sh' <<< "$(drift_script aws)" && echo yes || echo no)"
+for want in "0:0:no" "1:0:yes" "2:2:no"; do
+    IFS=: read -r stub_rc job_rc banner <<< "$want"
+    drift_out="$(STUB_RC="$stub_rc" bash -c "$(drift_script aws)" 2>&1)"; drift_rc=$?
+    check "check exits ${stub_rc}: the drift step exits ${job_rc}" "$job_rc" "$drift_rc"
+    has="$(grep -qF 'OIDC CLIENT DRIFT DETECTED' <<< "$drift_out" && echo yes || echo no)"
+    check "check exits ${stub_rc}: drift banner printed = ${banner}" "$banner" "$has"
+done
+drift_out="$(STUB_RC=1 bash -c "$(drift_script gcp)" 2>&1)"; drift_rc=$?
+check "primary_cloud gcp: the drift step exits 0" "0" "$drift_rc"
+absent "$drift_out" "CHECK-CALLED" "primary_cloud gcp: the check is not run"
 
 # ── stubs ───────────────────────────────────────────────────────────────────
 REAL_JQ="$(command -v jq)"
@@ -515,6 +566,10 @@ contains "$call_line" "${OPENBAO_URL}/v1/sys/auth"     "curl receives the full U
 # The body of a 400 is how the reconcile tells a discovery error, worth a
 # retry, from any other. Plain -f discards it.
 contains "$call_line" '--fail-with-body'               "curl keeps the body of an HTTP error"
+# A deadlocked OpenBao core accepts the connection and never answers, so a call
+# without a ceiling hangs stage4 and stage5 for good (#2083).
+contains "$call_line" '--connect-timeout 10'           "curl gives up connecting after 10s"
+contains "$call_line" '--max-time 30'                  "curl gives up on the whole call after 30s"
 tls_verified "GET: curl never uses -k" "$call_line"
 absent "$call_line" "s3cr3t-token" "GET: the token appears in no argv"
 kfile_contents="$(sed -n '/^KFILE_CONTENTS:/,/^KFILE_CONTENTS_END:/p' "$CURL_LOG" | sed '1d;$d')"
@@ -581,7 +636,19 @@ check "the reconcile calls printf only as the builtin" "" "$(printf_not_builtin 
 # next N reads return <key>.stale, Secrets Manager's eventual consistency.
 STORE="$WORK/store"
 store_file()   { printf '%s/%s' "$STORE" "${1//\//_}"; }
-store_exists() { printf 'exists %s\n' "$1" >> "$STORE/calls.log"; [ -f "$(store_file "$1")" ]; }
+# <key>.probe_fail makes the probe answer "cannot tell", as a throttle does.
+store_probe() {
+    printf 'exists %s\n' "$1" >> "$STORE/calls.log"
+    STORE_PROBE_ERR=""
+    if [ -f "$(store_file "$1").probe_fail" ]; then
+        STORE_PROBE_ERR="An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded"
+        return 2
+    fi
+    [ -f "$(store_file "$1")" ] && return 0
+    STORE_PROBE_ERR="An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation"
+    return 1
+}
+store_exists() { store_probe "$1"; }
 store_read() {
     local f n
     f="$(store_file "$1")"
@@ -717,10 +784,30 @@ world; recon "" "$NEW_ID"
 check "apply, no store key: returns 1"         "1" "$rc"
 contains "$out" "[FAILED ]"                    "apply, no store key: says [FAILED ]"
 
+# A dry run wrote nothing, so an absent key is a skip. Under --apply the sync
+# wrote it moments ago: absent is eventual consistency or a failed write, so
+# it is retried like a stale read and then fails -- never a silent skip (#2082).
+world; APPLY=false; rm -f "$(store_file "$KEY")"; recon "$KEY" "$NEW_ID"
+check "dry run, key not in the store: returns 0"       "0" "$rc"
+contains "$out" "[skip   ]"                            "dry run, key not in the store: says [skip   ]"
+check "dry run, key not in the store: no OpenBao call" ""  "$(reqs)"
+
 world; rm -f "$(store_file "$KEY")"; recon "$KEY" "$NEW_ID"
-check "key not in the store: returns 0"       "0" "$rc"
-contains "$out" "[skip   ]"                   "key not in the store: says [skip   ]"
-check "key not in the store: no OpenBao call" ""  "$(reqs)"
+check "apply, key not in the store: returns 1"         "1" "$rc"
+contains "$out" "[FAILED ]"                            "apply, key not in the store: says [FAILED ]"
+absent "$out" "[skip   ]"                              "apply, key not in the store: never says [skip   ]"
+check "apply, key not in the store: retried before failing" "7" "$(n_reads)"
+contains "$out" "still not in the secret store"        "apply, key not in the store: says the key is absent"
+check "apply, key not in the store: no OpenBao call"   ""  "$(reqs)"
+
+for mode in true false; do
+    world; APPLY=$mode; : > "$(store_file "$KEY").probe_fail"; recon "$KEY" "$NEW_ID"
+    check "apply=$mode, store unreadable: returns 1"          "1" "$rc"
+    contains "$out" "[FAILED ]"                               "apply=$mode, store unreadable: says [FAILED ]"
+    contains "$out" "ThrottlingException"                     "apply=$mode, store unreadable: shows the store's error"
+    absent "$out" "[skip   ]"                                 "apply=$mode, store unreadable: never says [skip   ]"
+    check "apply=$mode, store unreadable: no OpenBao call"    ""  "$(reqs)"
+done
 
 world; echo '{"data":{"token/":{"type":"token"}}}' > "$CURL_STATE/sys_auth.json"; recon "$KEY" "$NEW_ID"
 check "no oidc/ mount: returns 0"                 "0" "$rc"
@@ -837,6 +924,14 @@ check "discovery answers on the 4th try: returns 0"  "0" "$rc"
 check "discovery answers on the 4th try: 4 writes"   "4" "$(n_req "$POST_CFG")"
 check "discovery answers on the 4th try: the role"   "1" "$(n_req "$POST_ROLE")"
 check "discovery answers on the 4th try: 3 waits"    "0 0 0" "$(sleeps)"
+# A route that drops packets makes OpenBao's own discovery fetch outlast
+# openbao_req's --max-time: curl times out before OpenBao can say "discovery".
+# Same cause, same retry (#2083 review).
+world; fail_next POST auth/oidc/config 2 "curl: (28) Operation timed out after 30002 milliseconds with 0 bytes received"
+recon "$KEY" "$NEW_ID"
+check "the write times out twice, then lands: returns 0" "0" "$(printf '%s' "$rc")"
+check "the write times out twice, then lands: 3 writes"  "3" "$(n_req "$POST_CFG")"
+check "the write times out twice, then lands: the role"  "1" "$(n_req "$POST_ROLE")"
 world; fail_next POST auth/oidc/config 1 "$DISCOVERY_ERROR"
 unset OPENBAO_DISCOVERY_RETRY_SLEEP; recon "$KEY" "$NEW_ID"; OPENBAO_DISCOVERY_RETRY_SLEEP=0
 check "the discovery wait defaults to 10s"           "10" "$(sleeps)"
@@ -956,6 +1051,7 @@ app_set_redirect() { :; }
 merge_secret() { echo '{}'; }
 converge_secret() { echo '{}'; }
 store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { echo '{}'; }
 store_write()  { cat >/dev/null; }
 

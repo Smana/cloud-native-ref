@@ -101,7 +101,18 @@ app_redirect_uris() { printf '%s\n' "$REDIRECT"; }
 # in-process variable -- so this stub is fixed to match that: real
 # filesystem I/O, which a subshell cannot make disappear.
 STORE_DIR="$(mktemp -d)"
-store_exists() { [ -f "$STORE_DIR/$1" ]; }
+# Like the real one, false for "absent" and "cannot tell" alike.
+store_exists() { store_probe "$1"; }
+# $PROBE_FAIL answers "cannot tell", as a throttled describe does (#2082).
+store_probe() {
+    STORE_PROBE_ERR=""
+    if [ -n "${PROBE_FAIL:-}" ]; then
+        STORE_PROBE_ERR="An error occurred (ThrottlingException) when calling the DescribeSecret operation"
+        return 2
+    fi
+    [ -f "$STORE_DIR/$1" ] && return 0
+    return 1
+}
 store_read()   { cat "$STORE_DIR/$1" 2>/dev/null || true; }
 store_write()  { cat > "$STORE_DIR/$1"; }
 
@@ -171,6 +182,32 @@ esac
 case "$out2" in
     *"converged: 0"*) printf '  ok   converge: second run summary shows converged: 0\n' ;;
     *) printf '  FAIL converge: second run summary does not show converged: 0\n'; fail=1 ;;
+esac
+
+# ── an unreadable store is not a missing secret (#2082) ────────────────────
+# The missing-secret advice is "restore it, or delete the app in ZITADEL".
+# Given on a throttled describe, that deletes a working app.
+rc=0
+( set -o errexit -o nounset -o pipefail; PROBE_FAIL=1 cmd_sync ) > "$OUT_FILE" 2>&1 || rc=$?
+out3="$(cat "$OUT_FILE")"
+check "store unreadable: cmd_sync exits 1" "1" "$rc"
+case "$out3" in
+    *"ThrottlingException"*) printf '  ok   store unreadable: shows the store error\n' ;;
+    *) printf '  FAIL store unreadable: the store error is not shown\n'; fail=1 ;;
+esac
+case "$out3" in
+    *"delete the app"*) printf '  FAIL store unreadable: advises deleting the app\n'; fail=1 ;;
+    *) printf '  ok   store unreadable: does not advise deleting the app\n' ;;
+esac
+check "store unreadable: the payload is untouched" "$after" "$(store_read headlamp-envvars)"
+
+rm -f "$STORE_DIR/headlamp-envvars"
+rc=0
+( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1 || rc=$?
+check "secret truly absent: cmd_sync exits 1" "1" "$rc"
+case "$(cat "$OUT_FILE")" in
+    *"delete the app"*) printf '  ok   secret truly absent: still gives the restore-or-recreate advice\n' ;;
+    *) printf '  FAIL secret truly absent: the restore-or-recreate advice is gone\n'; fail=1 ;;
 esac
 
 exit "$fail"

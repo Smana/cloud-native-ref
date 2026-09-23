@@ -864,7 +864,7 @@ reconcile_openbao_oidc() {
     local key="${1:-}" want_id="${2:-}" role="default"
     local stored stored_id attempt auth_json mount want_aud
     local cfg_json cfg have_id role_json have_aud need_cfg=false need_role=false
-    local payload body out
+    local payload body out probe=0
 
     [ -n "${OPENBAO_URL:-}" ] || exit 0
     # A dry run of a create has no client id yet. Under --apply the consumer loop
@@ -877,7 +877,15 @@ reconcile_openbao_oidc() {
         echo "[skip   ] openbao -- no client id from ZITADEL this run"
         exit 0
     fi
-    if ! store_exists "$key"; then
+    # A failed read is not "absent" (#2082). Under --apply the loop wrote $key
+    # moments ago, so absent there is eventual consistency or a failed write:
+    # the read loop below retries it like a stale value, then fails.
+    store_probe "$key" || probe=$?
+    if [ "$probe" -ge 2 ]; then
+        echo "[FAILED ] openbao -- cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
+        exit 1
+    fi
+    if [ "$probe" -eq 1 ] && [ "${APPLY:-false}" != "true" ]; then
         echo "[skip   ] openbao -- ${key} is not in the secret store"
         exit 0
     fi
@@ -895,7 +903,11 @@ reconcile_openbao_oidc() {
             break
         fi
         if [ "$attempt" -ge 6 ]; then
-            echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+            if [ "$probe" -eq 1 ]; then
+                echo "[FAILED ] openbao -- ${key} is still not in the secret store after this run wrote it; ZITADEL issued ${want_id}" >&2
+            else
+                echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+            fi
             exit 1
         fi
         attempt=$((attempt + 1))
@@ -958,10 +970,13 @@ reconcile_openbao_oidc() {
     if [ "$need_cfg" = true ]; then
         payload="$(printf '%s\n%s\n' "$cfg" "$stored" | openbao_oidc_config_payload)" || exit 1
         # The write validates the discovery URL, and on a rebuild ZITADEL's
-        # public route can lag its pods. Any other refusal is final.
+        # public route can lag its pods. A route that drops packets makes that
+        # fetch outlast openbao_req's --max-time, so curl's timeout (28) is the
+        # same cause. Any other refusal is final. The write is idempotent.
         attempt=0
         until out="$(printf '%s' "$payload" | openbao_req POST auth/oidc/config --data-binary @- 2>&1)"; do
-            if [[ "$out" != *"error checking oidc discovery URL"* ]] || [ "$attempt" -ge 6 ]; then
+            if { [[ "$out" != *"error checking oidc discovery URL"* ]] && [[ "$out" != *"curl: (28)"* ]]; } \
+                || [ "$attempt" -ge 6 ]; then
                 echo "[FAILED ] openbao -- auth/oidc/config not written, so the role is left alone: ${out}" >&2
                 exit 1
             fi
@@ -1151,7 +1166,16 @@ cmd_sync() {
             # `groups`) never reached a cluster whose app already existed.
             # This runs regardless of whether the redirect was stale, because
             # the two can drift independently.
-            if ! store_exists "$key"; then
+            #
+            # Only a not-found answer earns the advice below (#2082): given
+            # on a throttled read, "delete the app" destroys a working one.
+            local probe=0
+            store_probe "$key" || probe=$?
+            if [ "$probe" -ge 2 ]; then
+                echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
+                exit 1
+            fi
+            if [ "$probe" -eq 1 ]; then
                 echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
                 echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
                 echo "           creation -- it cannot be recovered from here, so writing the" >&2

@@ -23,7 +23,8 @@ check_log_absent() {
 # real AWS call). describe-secret reports "not found" only for a secret
 # named notfound-secret, so store_write's create-vs-put branch is exercised
 # both ways while the pre-existing checks (which use "any") keep seeing
-# "exists".
+# "exists". denied-secret fails the way a missing grant or a throttle does:
+# a non-zero exit that says nothing about whether the secret exists.
 cat > "$STUB/aws" <<'EOF'
 #!/usr/bin/env bash
 {
@@ -44,7 +45,12 @@ for a in "$@"; do [ "$a" = "get-secret-value" ] && { echo '{"token":"aws-secret"
 for a in "$@"; do
     if [ "$a" = "describe-secret" ]; then
         case " $* " in
-            *" notfound-secret "*) exit 1 ;;
+            *" notfound-secret "*)
+                echo "An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: Secrets Manager can't find the specified secret." >&2
+                exit 254 ;;
+            *" denied-secret "*)
+                echo "An error occurred (AccessDeniedException) when calling the DescribeSecret operation: not authorized" >&2
+                exit 254 ;;
             *) exit 0 ;;
         esac
     fi
@@ -64,7 +70,12 @@ for a in "$@"; do [ "$a" = "access" ] && { echo '{"token":"gcp-secret"}'; exit 0
 for a in "$@"; do
     if [ "$a" = "describe" ]; then
         case " $* " in
-            *" notfound-secret "*) exit 1 ;;
+            *" notfound-secret "*)
+                echo "ERROR: (gcloud.secrets.describe) NOT_FOUND: Secret [projects/proj/secrets/notfound-secret] not found or has no versions." >&2
+                exit 1 ;;
+            *" denied-secret "*)
+                echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission 'secretmanager.secrets.get' denied" >&2
+                exit 1 ;;
             *) exit 0 ;;
         esac
     fi
@@ -85,6 +96,25 @@ check "aws exists"  yes "$r"
 
 CLOUD=gcp REGION="" GCP_PROJECT=proj
 check "gcp read"    '{"token":"gcp-secret"}' "$(store_read any)"
+
+# --- store_probe: present / absent / cannot tell (#2082) ---
+# store_exists folds "absent" and "the read failed" into one false. A caller
+# that advises on "absent" then gives the wrong advice -- "the next apply will
+# DESTROY the mount" -- on a throttled API call.
+probe() { local rc=0; store_probe "$1" || rc=$?; echo "$rc"; }
+for c in aws gcp; do
+    if [ "$c" = aws ]; then CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""; else CLOUD=gcp REGION="" GCP_PROJECT=proj; fi
+    check "$c probe: present -> 0"   0 "$(probe any)"
+    check "$c probe: not found -> 1" 1 "$(probe notfound-secret)"
+    check "$c probe: denied -> 2"    2 "$(probe denied-secret)"
+    STORE_PROBE_ERR=""; store_probe denied-secret || true
+    case "$STORE_PROBE_ERR" in *DENIED*|*AccessDenied*) r=yes ;; *) r=no ;; esac
+    check "$c probe: denied leaves the CLI's error in STORE_PROBE_ERR" yes "$r"
+    store_exists denied-secret && r=yes || r=no
+    check "$c exists: denied is still false (store_write's contract)" no "$r"
+done
+( CLOUD=azure; rc=0; store_probe any || rc=$?; exit "$rc" ); r=$?
+check "unknown cloud probe -> 2" 2 "$r"
 
 # --- store_write: AWS ---
 # store_write's aws branch pipes the payload through `jq . | tostring`

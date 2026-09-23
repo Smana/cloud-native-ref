@@ -40,6 +40,7 @@ script "drift" "detect" {
   description = "Detect drifts in Opentofu configuration and synchronize it to Terramate Cloud"
 
   job {
+    name = "openbao-management-drift"
     commands = [
       global.openbao_ca_cmd.args,
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
@@ -47,6 +48,32 @@ script "drift" "detect" {
         sync_drift_status = true
         tofu_plan_file    = "out.tfplan"
       }],
+      # oidc.tf ignores the client id, secret and audience the deploy's sync
+      # rotates, so the plan above cannot see a stale OIDC client (#2084). The
+      # check's exit 1 is drift: reported, then exit 0 so the walk continues,
+      # like global.drift_verdict does for a plan. Exit 2 is "cannot tell" and
+      # still fails.
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        set -uo pipefail
+        if [ "${global.primary_cloud}" != "aws" ]; then
+          echo "== skipping the OIDC client check: primary_cloud is \"${global.primary_cloud}\", so this OpenBao has no directory"
+          exit 0
+        fi
+        rc=0
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-oidc-check.sh" \
+          --url "${global.openbao_url}" \
+          --root-token-secret-name "${global.root_token_secret_name}" \
+          --ca-file .tls/ca.pem \
+          --cloud aws --region "${global.region}" \
+          --redirect-uri "${global.openbao_url}/ui/vault/auth/oidc/oidc/callback" || rc=$?
+        if [ "$rc" -eq 1 ]; then
+          echo "=== OIDC CLIENT DRIFT DETECTED in ${terramate.stack.path.relative}: see the check above (reported as success so the walk continues) ==="
+          exit 0
+        fi
+        exit "$rc"
+      BASH
+      ],
     ]
   }
 }
