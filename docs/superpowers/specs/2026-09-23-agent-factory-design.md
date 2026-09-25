@@ -393,7 +393,7 @@ sub-project so parallel drafts cannot collide (0039 and 0040 are already taken o
 | 0043 | GitHub credentials for agents | octo-sts | PATs, ESO GitHub generator, git proxy | SP1 |
 | 0044 | Session protocol | AHP-shaped room log we own | OpenHands shared conversations, ACP-only | SP2 |
 | 0045 | Merge policy gate | palantir/policy-bot, its status required through a repository ruleset | Required reviews, rulesets alone, a custom check, Prow/tide, Mergify, Kodiak | SP3 |
-| 0046 | Frontier providers | Z.ai for public data; Anthropic through Bedrock EU with Pod Identity for internal data | A native Anthropic API key; Vertex-only | SP4 |
+| 0046 | Frontier providers | Z.ai for public data; Anthropic keyless per cloud — Bedrock EU with Pod Identity on aws-0, Vertex with Workload Identity on gcp-0 | A native Anthropic API key; one provider for both clouds (Vertex-only); aggregators; self-hosted only | SP4 |
 | 0047 | Complexity classification | SR complexity signal default, Jev pluggable in shadow | Jev in the request path, LiteLLM complexity router | SP4 |
 | 0048 | Factory orchestrator | Custom `Task` controller + Kueue admission | Argo Workflows, Tekton, Temporal, a Crossplane Task XR, gh-aw | SP3 |
 | 0049 | Room client and human auth | Web UI served by the broker, behind oauth2-proxy *(OD-15)* | Headlamp plugin, CLI only, AHP facade, browser PKCE app | SP2 |
