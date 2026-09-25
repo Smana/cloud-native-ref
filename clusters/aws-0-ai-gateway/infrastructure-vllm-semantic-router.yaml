@@ -19,6 +19,11 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-aws-0-vars
+  dependsOn:
+    # vmservicescrape.yaml needs the VMServiceScrape CRD, shipped by the
+    # always-on `crds` Kustomization. Applied from bootstrap now (this used to
+    # be ordered after crds implicitly, as a child of llm-platform).
+    - name: crds
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

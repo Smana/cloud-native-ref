@@ -109,11 +109,14 @@ spec:
   # ai-gateway's proxies only. Every Envoy Gateway proxy lands in this
   # namespace, and agent-router's (SP1) carries its own policy: without this
   # label, this policy's Z.ai egress and in-cluster ingress would leak onto it.
+  # owning-gateway-namespace is required alongside owning-gateway-name: a
+  # same-named Gateway in another namespace must not inherit this policy.
   endpointSelector:
     matchLabels:
       app.kubernetes.io/managed-by: envoy-gateway
       app.kubernetes.io/component: proxy
       gateway.envoyproxy.io/owning-gateway-name: ai-gateway
+      gateway.envoyproxy.io/owning-gateway-namespace: envoy-ai-gateway-system
   ingress:
     # AI Gateway data-plane is now ClusterIP; the only entry point is
     # the Tailscale Cilium Gateway. Traffic enters from Cilium's
