@@ -124,7 +124,7 @@ rolls out gVisor bumps, and is capped at 16 CPU / 64 Gi.
 | Kyverno policy (validate only: a mutation would hide composition bugs) | Scope · `failurePolicy` | Rule |
 |---|---|---|
 | `agents-pod-shape` | pods in `agents` · Fail | `runtimeClassName == 'gvisor'`, `automountServiceAccountToken == false`, owned by a `Sandbox`. This is the admission control agent-sandbox's threat model asks for on bare Sandboxes |
-| `agentrun-admission` | `AgentRun` CREATE · Fail | Name matches `^xplane-run-[a-z2-7]{8}$`. **One creator (C3)** is not this rule. It is a Kyverno rule **shipped with SP3** that denies every creator but the factory SA, cluster-admins included; break-glass is suspending it through Flux. Until then the owner creates runs directly, bounded only by the gateway's 5 M ceiling. The factory's API derives `spec.principal` from the caller's token |
+| `agentrun-admission` | `AgentRun` CREATE · Fail | Name matches `^xplane-run-[a-z2-7]{8}$` (the XRD's CEL enforces it too, since every composed name derives from it) and the namespace is `agents`. **One creator (C3)** is not this rule. It is a Kyverno rule **shipped with SP3** that denies every creator but the factory SA, cluster-admins included; break-glass is suspending it through Flux. Until then the owner creates runs directly, bounded only by the gateway's 5 M ceiling. The factory's API derives `spec.principal` from the caller's token |
 | `agents-no-secret-import` | `agents` · Fail | No `ExternalSecret`, `PushSecret` or `SecretStore` |
 | `agent-audience-reservation` | pods outside `agents` and `kube-system` · **Ignore** (cluster-wide, so an outage must not block every pod) | No projected audience may start with `agent-router.`, `octo-sts/` or `room-broker` |
 | `agentrun-gc` | `DeletingPolicy`, daily | Deletes runs in a terminal phase. Deleting only runs older than 24 h would need a CEL time function, **UNVERIFIED** |
@@ -147,10 +147,13 @@ The XRD is `cloud.ogenki.io/v1alpha1`, namespaced, in `crossplane-configuration`
 | `spec.budget.maxTokens` | 2 M | XRD `maximum: 5000000`, the gateway's per-run ceiling (C3, C5) |
 | `spec.dataClass` | **required**, no default | `public` or `internal`. It picks the gateway audience, the proxy port and so the listener, and which MCP tools the run sees. Classifying data is a decision, never a default |
 | `spec.budget.maxMinutes` | 120, max 480 | Becomes `activeDeadlineSeconds` |
-| `spec.harness` | `openhands` | A profile, which the composition maps to an image digest |
+| `spec.harness` | `openhands` | A profile, which the composition maps to an image digest: the upstream agent-server until the repo-built harness is published, then `agent-harness` (a second release) |
 | `spec.size` | `small` | `small`/`medium`/`large` = 1→2 / 2→4 / 4→8 CPU (request→limit), 2 GiB per CPU, 10/20/40 Gi scratch |
 | `spec.egress.profiles` | `[]` | Any of `pypi`, `npm`, `golang`, `crates`. `github` is always on |
 | `status.runId` · `conversationId` · `startedAt` · `finishedAt` · `reason` | — | `conversationId` = `metadata.uid` |
+
+`role`, `repository`, `branch`, `task`, `principal` and `dataClass` are immutable (CEL): a run's
+profile never widens (SP2 S9). `spec.model` is one of the four C5 names.
 
 **Composed resources.** Each one is named `xplane-run-<runId>[-suffix]` and labelled with
 `agents.ogenki.io/run-id` and `agents.ogenki.io/role`, plus `agents.ogenki.io/task` when the claim
@@ -172,11 +175,12 @@ sandbox** (C4).
 |---|---|---|
 | `harness` | `emptyDir`s only, with the GitHub token cache in memory | Probes `/health` and `/ready` on :8000. `preStop` revokes the GitHub token |
 | `identity-proxy` (native sidecar) | the projected gateway and octo-sts tokens | The only token holder for those two audiences |
-| `room-bridge` (SP2 image, only with `roomRef`) | a projected token with audience `room-broker`, plus the harness session key on a shared in-memory volume | Dials `room-broker.agent-system:8443`. The broker validates it by TokenReview (SP2) |
+| `room-bridge` (SP2 image, only with `roomRef`; SP2 adds it to the composition) | a projected token with audience `room-broker`, plus the harness session key on a shared in-memory volume | Dials `room-broker.agent-system:8443`. The broker validates it by TokenReview (SP2) |
 
 **CNP.** DNS goes to kube-dns only, through an L7 rule that answers only allowed names. TCP is
 allowed to the `agent-router` data plane (its class's listener only: 8080 `public`, 8081 `internal`), octo-sts (8080), the profile FQDNs (443), and the
-broker (8443) only with `roomRef`. Ingress is from `host` only, for probes.
+broker (8443) only with `roomRef`. Ingress is from `host` only, for probes. A namespace-wide
+default-deny CNP in `agents` denies any pod its run's CNP does not open.
 
 | Profile | FQDNs (443) |
 |---|---|
@@ -201,12 +205,13 @@ is evaluated top-down:
 | 1 | `revoked=budget-*` | `BudgetExhausted` |
 | 2 | `revoked=manual` | `Revoked` |
 | 3 | Sandbox `Finished=PodSucceeded` | `Succeeded` |
-| 4 | Sandbox `Finished=PodFailed` | `Failed` (reason `DeadlineExceeded` or `PodFailed`) |
+| 4 | Sandbox `Finished=PodFailed` | `Failed` (reason `PodFailed`: the `Finished` condition carries no pod reason, so a deadline kill reads the same) |
 | 5 | Sandbox `Ready` | `Running` |
 | 6 | otherwise | `Pending` |
 
 Rules 1 and 2 *are* revocation. The composition stops rendering the Sandbox and the
-ServiceAccount, and keeps the record. Nothing the harness reports reaches status.
+ServiceAccount, and keeps the record. Revocation and terminal phases latch on the previous status, so
+removing an annotation never resurrects a run. Nothing the harness reports reaches status.
 
 ## 3. Identity
 
@@ -290,7 +295,8 @@ prompt. SP1 relies on none of them. Each such rule has an enforcer outside the s
 `ghcr.io/openhands/agent-server:1.49.5-python` runs as UID 10001 and serves `/health`, `/ready` and
 `/api/*` (research: standard stack). `container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
 trailer hook, and `git-credential-agent`, which exchanges through `:4001` and caches in memory.
-`agent-run` does five things:
+agent-server binds 127.0.0.1 unless given `--host 0.0.0.0`, and kubelet probes the pod IP, so the
+profile (upstream image) or `agent-run` (harness image) passes it. `agent-run` does five things:
 
 1. Start agent-server.
 2. POST the conversation: `conversation_id`, LLM `openai/$MODEL` at `$LLM_BASE_URL` with a placeholder key,
@@ -316,11 +322,11 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 
 | Object (`agent-system`) | Content |
 |---|---|
-| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080 and `internal` :8081, Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selects every EG proxy, so it is narrowed to `ai-gateway`, or its allows would leak onto this Gateway (R5) |
+| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080 and `internal` :8081, Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
 | `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `platform/agents/zai`, the agents' own key (SP4 S12) |
 | `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
-| `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new role and policy in `opentofu/aws/openbao/management` grant read on `platform/data/agents/*` only |
+| `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new policy in `opentofu/aws/openbao/management` grants read on `platform/data/agents/*` only; its JWT role sits with the per-cluster mount in `opentofu/aws/eks/configure/openbao.tf`. A namespaced store reads its CA from its own namespace, so the public OpenBao chain (certificates only) is copied into `agent-system` from the cloud store |
 
 **MCP servers.** All three are read-only and reachable only from the `agent-router` data plane.
 
@@ -331,14 +337,15 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 
 Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences for `oauth`.
 
-- Both set `defaultAction: Deny`, add one allow rule per role on `aud` (`StringArray`), and use
-  `toolSelector.include` to hide every mutating tool.
+- Both set `defaultAction: Deny`, add allow rules per role on `aud` (`StringArray`), one per role and
+  backend since a rule's target holds at most 16 tools, and use `toolSelector.include` to hide every
+  mutating tool.
 - **Cluster reads are internal data (OD-13), so the `public` route exposes documentation tools
   only.** Those are `search_flux_docs` and the VictoriaMetrics and VictoriaLogs `documentation`
   tools. Resources, metrics and logs are on `internal`.
 - On `internal`, logs (Flux `get_kubernetes_logs`, VictoriaLogs) are for reviewer, tester and
   triager only, because a log carries whatever a process printed; that is RunLore's reason too.
-- **SP2's `room_*` tools are on both routes**, per role:
+- **SP2's `room_*` tools are on both routes**, per role (SP2 adds this backend and these rules):
   - `room_read` and `room_post` for every role;
   - `room_handoff` for implementer, tester and triager;
   - `room_verdict` for reviewer and tester.
@@ -503,12 +510,12 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | Phase | Delivers | Gate |
 |---|---|---|
 | 0 — spike (branch only) | One hand-made Sandbox on an AL2023 gVisor node; answers Q1–Q6, Q8, Q9 | SC-01, 02, 06, 09, 15 |
-| 1 — crossplane-configuration | `apis/agentrun/` (XRD, KCL, README, settings, two examples, golden render); release | `task check`; annotation projection (SC-13) |
-| 2 — runtime | ADR-0041; umbrella; controller, pool and RuntimeClass; Kyverno; `gen-catalog.sh`; Vector toleration; aggregate RBAC; pin bump plus the App Wizard tag | SC-01–03 |
-| 3 — gateway and secrets | ADR-0042; `agent-router` and its policies; the Z.ai route; the SecretStore and OpenBao role; the CNP split | SC-05, 10, 17 |
+| 1 — crossplane-configuration | `apis/agentrun/` (XRD, KCL, README, settings, two examples, golden render); release `v0.8.0`, the aws package's core floor raised with it | `task check`; annotation projection (SC-13) |
+| 2 — runtime | ADR-0041; umbrella; controller, pool and RuntimeClass; Kyverno; the proxy ConfigMap (no pod starts without it); `gen-catalog.sh`; Vector toleration; aggregate RBAC; pin bump plus the App Wizard tag | SC-01–03 |
+| 3 — gateway and secrets (after SP4's first PR) | ADR-0042; `agent-router` and its policies; the Z.ai route; the SecretStore and OpenBao role; its data-plane CNP; the umbrella's `dependsOn: ai-gateway` | SC-05, 10, 17 |
 | 4 — GitHub | ADR-0043; octo-sts; trust policies; ruleset script | SC-11 |
-| 5 — harness and MCP | `container-images/agent-harness`; the proxy ConfigMap; MCP servers and MCPRoute | SC-08, 12 |
-| 6 — end to end | Dashboards, VMRules, `task agent:run`, `/verify-spec` | SC-04, 07, 13, 14, 16 |
+| 5 — harness and MCP | `container-images/agent-harness`; MCP servers and MCPRoutes | SC-08, 12 |
+| 6 — end to end | Composition `v0.8.1` with the harness digest; dashboards, VMRules, `task agent:run`, `/verify-spec` | SC-04, 07, 13, 14, 16 |
 
 **Owner actions:** create and install the agents' App (OD-6); create a dedicated Z.ai key at
 `platform/agents/zai`; run the ruleset script.
