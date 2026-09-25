@@ -124,7 +124,13 @@ check("a listener-scoped policy does not cover the whole Gateway",
       len(gate.check_identity_strips([gateway(), ctp(STRIPS, section="http")])) == 1)
 check("header names are case-insensitive",
       gate.check_identity_strips([gateway(), ctp([h.upper() for h in STRIPS])]) == [])
-check("other GatewayClasses are out of scope", gate.check_identity_strips([gateway(cls="cilium")]) == [])
+check("other GatewayClasses are out of scope, alongside a compliant envoy-ai-gateway one",
+      gate.check_identity_strips([gateway(cls="cilium"), gateway(), ctp(STRIPS)]) == [])
+errs = gate.check_identity_strips([])
+check("zero envoy-ai-gateway Gateways in the bundle fails, not passes vacuously",
+      len(errs) == 1 and "no Gateway of class" in errs[0], str(errs))
+check("a bundle with only a different-class Gateway also fails",
+      len(gate.check_identity_strips([gateway(cls="cilium")])) == 1)
 
 print("main()")
 with tempfile.TemporaryDirectory() as d:
