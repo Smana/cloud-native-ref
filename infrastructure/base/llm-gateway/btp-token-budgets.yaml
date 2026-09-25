@@ -38,8 +38,9 @@ spec:
                 key: llm_total_token
           shared: true
           shadowMode: true
-        # B4 — each API-key client (RunLore, OpenWebUI, promptfoo), from the
-        # client id apiKeyAuth forwards after matching the key.
+        # B4 — each API-key client (OpenWebUI, promptfoo; RunLore moves behind
+        # the gateway later), from the client id apiKeyAuth forwards after
+        # matching the key.
         - clientSelectors:
             - headers:
                 - name: x-ai-gateway-client-id
