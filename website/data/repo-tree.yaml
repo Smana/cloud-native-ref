@@ -76,6 +76,9 @@ entries:
       - path: clusters/aws-0-llm-platform/
         kind: dir
         desc: The suspended LLM umbrella's children, kept a sibling so the recursive sync cannot reach them
+      - path: clusters/aws-0-ai-gateway/
+        kind: dir
+        desc: The always-on, CPU-only ai-gateway umbrella's children — the gateway controllers, the Semantic Router and the human/system Gateway's routes
       - path: clusters/gcp-0/
         kind: dir
         desc: Same shape as aws-0 — one Kustomization per domain, over the GCP overlays
