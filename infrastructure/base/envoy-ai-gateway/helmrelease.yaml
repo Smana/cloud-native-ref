@@ -51,6 +51,9 @@ spec:
     #       value: "ai-gateway"
     # -------------------------------------------------------------------------
     controller:
+      # Per-principal token counters: the run meter (SP3) and the budget alerts
+      # read these labels. Per-run labels cost ~30 series per run (design R11).
+      metricsRequestHeaderAttributes: "x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client"
       resources:
         requests:
           cpu: 100m
