@@ -31,9 +31,13 @@ spec:
           # Mirrors B5 from the gen_ai counters, so it also fires in shadow
           # mode, where the limiter never answers 429. A rolling 24 h covers at
           # least the limiter's fixed UTC day, so this fires no later than B5
-          # would trip.
+          # would trip. gen_ai_token_type is restricted to input|output because
+          # Agent Router v1.1.0 also emits cached_input (subset of input) and
+          # reasoning (subset of output) as separate observations — summing
+          # every type double-counts and trips the alert under 20M real tokens
+          # (B5 charges llm_total_token, i.e. input + output only).
           expr: |
-            sum(increase(gen_ai_client_token_usage_sum{gen_ai_original_model=~"tier-frontier|claude-.*"}[24h])) > 20e6
+            sum(increase(gen_ai_client_token_usage_sum{gen_ai_original_model=~"tier-frontier|claude-.*", gen_ai_token_type=~"input|output"}[24h])) > 20e6
           for: 5m
           labels:
             severity: warning
@@ -42,6 +46,7 @@ spec:
             summary: "Human and system frontier spend crossed the B5 guard (20M tokens in 24h)"
             description: |
               tier-frontier and claude-* traffic on the ai-gateway Gateway used more than
-              20M tokens over the last 24h. B5 in ai-gateway-token-budgets would reject
-              further frontier requests once enforced. Split by principal with the
-              ar_human and ar_client labels on gen_ai_client_token_usage_sum.
+              20M input+output tokens (llm_total_token) over the last 24h. B5 in
+              ai-gateway-token-budgets would reject further frontier requests once enforced.
+              Split by principal with the ar_human and ar_client labels on
+              gen_ai_client_token_usage_sum.
