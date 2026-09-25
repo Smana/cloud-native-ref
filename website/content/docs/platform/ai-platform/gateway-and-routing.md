@@ -2,7 +2,7 @@
 title: Gateway & routing
 weight: 30
 description: "How one OpenAI-compatible request crosses two gateways and up to two filters before it reaches a GPU — and what `model: MoM` does."
-lastVerified: 2026-09-25
+lastVerified: 2026-08-27
 ---
 
 The platform speaks the OpenAI API. A client points at one endpoint, names a
@@ -136,9 +136,9 @@ curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
 
 The gateway strips `x-ar-agent`, `x-ar-human` and `x-ai-gateway-client-id` from every request before
 authentication runs, so a client-forged value never survives to be charged. Today only
-`x-ai-gateway-client-id` is then set — from the API key that matched; `x-ar-agent` and `x-ar-human`
-get set once PR 2 lands the `agent-router` and its `oidc` listener. A client cannot choose whose
-budget it spends.
+`x-ai-gateway-client-id` is then set — from the API key that matched; `x-ar-agent` gets set once the
+`agent-router` ships, and `x-ar-human` once `ai-gateway` gains its `oidc` listener. A client cannot
+choose whose budget it spends.
 
 Daily token budgets per API-key client (5M), per human (10M) and on all frontier spend (20M) are
 counted in **shadow mode**: nothing is rejected yet

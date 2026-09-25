@@ -30,8 +30,8 @@ frontier spend. They must be enforced at the gateways, the only path to a provid
 ### Option 1: Envoy Gateway global rate limit, cost from response metadata, Valkey
 
 **Pros**:
-- A GA Envoy Gateway API. Agent Router's `llmRequestCosts` writes the token count into metadata, which
-  the rule charges after the response.
+- Envoy Gateway's own global rate-limit API. Agent Router's `llmRequestCosts` writes the token count
+  into metadata, which the rule charges after the response.
 - `shared: true` gives one bucket across routes, and `shadowMode` gives a measured dry run.
 
 **Cons**:
@@ -44,7 +44,7 @@ frontier spend. They must be enforced at the gateways, the only path to a provid
 - Purpose-built for token quotas.
 
 **Cons**:
-- `v1alpha1` and partly unimplemented: `ServiceQuota` is not wired.
+- Partly unimplemented: `ServiceQuota` is not wired.
 - In its only mode (Shared), a request passes if **any** matching bucket has room, so a per-principal
   cap never binds while a default bucket has headroom.
 
@@ -68,8 +68,8 @@ frontier spend. They must be enforced at the gateways, the only path to a provid
 
 **Chosen option**: "Option 1"
 
-**Rationale**: It enforces in the data path with GA APIs and no custom code, and `shared` plus
-`shadowMode` make it both correct and safe to roll out.
+**Rationale**: It enforces in the data path with no custom code, and `shared` plus `shadowMode`
+make it both correct and safe to roll out.
 
 ## Consequences
 
