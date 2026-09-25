@@ -1,0 +1,33 @@
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: llm-gateway
+  namespace: llm-gateway
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: ai-gateway
+      namespace: envoy-ai-gateway-system
+  # Without this the response carries no token metadata, and every budget rule
+  # on ai-gateway charges these requests nothing.
+  llmRequestCosts:
+    - metadataKey: llm_total_token
+      type: TotalToken
+  rules:
+    # The Semantic Router's hard-band target once PR 4 lands; callable by name
+    # today. One backend at 100 %: no cross-model fallback (design S7, S8).
+    - name: tier-frontier
+      matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: tier-frontier
+      backendRefs:
+        - name: zai
+          modelNameOverride: glm-5.2
+          weight: 100
+      # Agent Router defaults a rule to 60 s. A reasoning completion from a
+      # frontier model, streamed or not, routinely runs longer.
+      timeouts:
+        request: 600s
