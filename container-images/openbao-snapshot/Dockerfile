@@ -15,7 +15,7 @@ FROM debian:bookworm-slim
 ARG OPENBAO_SNAPSHOT_VERSION=v0.3.1
 
 # renovate: datasource=github-releases depName=openbao/openbao
-ARG BAO_VERSION=2.6.2
+ARG BAO_VERSION=2.7.0
 # Google's apt repo publishes google-cloud-cli for both amd64 and arm64;
 # pinning the exact version keeps the image reproducible.
 #
