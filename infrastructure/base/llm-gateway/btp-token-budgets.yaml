@@ -1,0 +1,80 @@
+# Token budgets on the human/system Gateway (design section 6, OD-10, ADR-0050).
+# Envoy Gateway accepts ONE Gateway-level BackendTrafficPolicy per Gateway and
+# marks a second Conflicted, so B3–B5 are three rules of this one.
+#
+# All rules: shared (one bucket across every route; the default is a bucket per
+# route), costed in tokens from the response (charged after it completes, so a
+# stream can overshoot by one response), and in SHADOW for the first week:
+# counted, never enforced. Enforcement is SP4 PR 7.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: ai-gateway-token-budgets
+  namespace: envoy-ai-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: ai-gateway
+  rateLimit:
+    global:
+      rules:
+        # B3 — each human, from the verified OIDC sub (the oidc listener, PR 2).
+        - clientSelectors:
+            - headers:
+                - name: x-ar-human
+                  type: Distinct
+          limit:
+            requests: 10000000
+            unit: Day
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token
+          shared: true
+          shadowMode: true
+        # B4 — each API-key client (RunLore, OpenWebUI, promptfoo), from the
+        # client id apiKeyAuth forwards after matching the key.
+        - clientSelectors:
+            - headers:
+                - name: x-ai-gateway-client-id
+                  type: Distinct
+          limit:
+            requests: 5000000
+            unit: Day
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token
+          shared: true
+          shadowMode: true
+        # B5 — kill switch on all human and system frontier spend together.
+        - clientSelectors:
+            - headers:
+                - name: x-ai-eg-model
+                  type: RegularExpression
+                  value: "^(tier-frontier|claude-.*)$"
+          limit:
+            requests: 20000000
+            unit: Day
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token
+          shared: true
+          shadowMode: true
