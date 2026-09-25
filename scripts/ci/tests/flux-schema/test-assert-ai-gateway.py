@@ -103,6 +103,12 @@ no_cost = rule()
 del no_cost["cost"]
 check("a rule with no cost fails (it would count calls, not tokens)",
       len(gate.check_rate_limit_rules([btp([no_cost])])) == 2)
+errs = gate.check_rate_limit_rules([btp([rule(shadowMode=False)])])
+check("shadowMode: false fails", len(errs) == 1 and "shadowMode" in errs[0], str(errs))
+no_shadow = rule()
+del no_shadow["shadowMode"]
+check("absent shadowMode fails (OD-10 requires one week in shadow)",
+      len(gate.check_rate_limit_rules([btp([no_shadow])])) == 1)
 local_only = btp([])
 local_only["spec"]["rateLimit"] = {"local": {"rules": [{"limit": {"requests": 5, "unit": "Second"}}]}}
 check("a local-only rate limit is out of scope", gate.check_rate_limit_rules([local_only]) == [])
