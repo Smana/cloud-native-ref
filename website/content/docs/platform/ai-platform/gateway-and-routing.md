@@ -2,7 +2,7 @@
 title: Gateway & routing
 weight: 30
 description: "How one OpenAI-compatible request crosses two gateways and up to two filters before it reaches a GPU — and what `model: MoM` does."
-lastVerified: 2026-08-27
+lastVerified: 2026-09-25
 ---
 
 The platform speaks the OpenAI API. A client points at one endpoint, names a
@@ -122,6 +122,27 @@ endpoint picker: the EPP is implemented but enabled on zero claims, because the
 only gateway-enabled claim uses a canary. See the
 [roadmap]({{< relref "/docs/platform/ai-platform/roadmap.md" >}}) for what
 turning it on would take.
+
+## Frontier models and token budgets
+
+`tier-frontier` is served by GLM-5.2 through Z.ai with the **platform** key, which only the gateway
+holds. It needs no GPU, so it answers with `llm-platform` suspended.
+
+```bash
+curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
+  -H "Authorization: Bearer $LLM_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model": "tier-frontier", "messages": [{"role": "user", "content": "Say hi"}]}'
+```
+
+The gateway strips `x-ar-agent`, `x-ar-human` and `x-ai-gateway-client-id` from every request before
+authentication runs, so a client-forged value never survives to be charged. Today only
+`x-ai-gateway-client-id` is then set — from the API key that matched; `x-ar-agent` and `x-ar-human`
+get set once PR 2 lands the `agent-router` and its `oidc` listener. A client cannot choose whose
+budget it spends.
+
+Daily token budgets per API-key client (5M), per human (10M) and on all frontier spend (20M) are
+counted in **shadow mode**: nothing is rejected yet
+([ADR-0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}})).
 
 ## Known gaps
 
