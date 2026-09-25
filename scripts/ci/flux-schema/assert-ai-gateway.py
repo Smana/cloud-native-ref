@@ -13,7 +13,9 @@ wrong:
   A3  Every Gateway of class envoy-ai-gateway is covered by a whole-Gateway
       ClientTrafficPolicy that removes the identity headers before
       authentication. Envoy's claim_to_headers APPENDS, so a client-sent value
-      would otherwise survive beside the verified one (C5).
+      would otherwise survive beside the verified one (C5). At least one such
+      Gateway must exist in the bundle -- zero is a layout regression, not
+      compliance, and used to pass this check vacuously.
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -85,9 +87,12 @@ def check_identity_strips(objs):
             if target.get("kind") == "Gateway" and not target.get("sectionName"):
                 removed_by_gateway.setdefault((ns, target.get("name")), set()).update(removed)
     errors = []
-    for obj in objs:
-        if obj.get("kind") != "Gateway" or spec_of(obj).get("gatewayClassName") != AI_GATEWAY_CLASS:
-            continue
+    gateways = [obj for obj in objs if obj.get("kind") == "Gateway"
+                and spec_of(obj).get("gatewayClassName") == AI_GATEWAY_CLASS]
+    if not gateways:
+        errors.append(f"no Gateway of class {AI_GATEWAY_CLASS} found in the bundle "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+    for obj in gateways:
         meta = obj.get("metadata") or {}
         have = removed_by_gateway.get((meta.get("namespace", ""), meta.get("name")), set())
         missing = [h for h in IDENTITY_HEADERS if h not in have]
