@@ -69,6 +69,17 @@ reads, RunLore findings) may reach only EU-resident Anthropic or self-hosted mod
 - The fleet's 7–8B models are not agent-capable. It also ties agents to GPU capacity, which the
   programme exists to avoid.
 
+### Option 5: One Anthropic provider for both clouds (Vertex-only)
+
+**Pros**:
+- Unified provider: aws-0 and gcp-0 both call Vertex.
+
+**Cons**:
+- aws-0's internal data leaves AWS via cross-cloud identity federation (EKS token exchange to GCP).
+  This breaks ADR-0007's rule that each cloud uses its own native service.
+- Workload Identity is less favourable than Pod Identity: it requires a GCP service account and
+  longer token paths.
+
 ## Decision Outcome
 
 **Chosen option**: "Option 1"
