@@ -1,0 +1,29 @@
+---
+# AI gateway layer — always on (programme OD-3), CPU only.
+#
+# The Envoy Gateway and Agent Router controllers, the Semantic Router, and the
+# human/system Gateway `ai-gateway`, with its frontier backends in namespace
+# llm-gateway. Both the GPU fleet (llm-platform) and the agents
+# (agent-platform) route through it. Agents run on frontier models with zero
+# GPUs, which is impossible while these controllers live in the GPU umbrella.
+#
+# deletionPolicy Orphan: removing this object (a revert, a rename) must not
+# cascade into uninstalling Envoy Gateway and every Gateway on the cluster.
+# Tearing the layer down is explicit: aws-0-ai-gateway/README.md.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-gateway
+  namespace: flux-system
+spec:
+  prune: true
+  deletionPolicy: Orphan
+  interval: 5m0s
+  timeout: 5m0s
+  # A sibling of clusters/aws-0/, not a sub-path: flux-system syncs that tree
+  # recursively and would otherwise own the children itself, outside this
+  # umbrella's inventory.
+  path: ./clusters/aws-0-ai-gateway
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

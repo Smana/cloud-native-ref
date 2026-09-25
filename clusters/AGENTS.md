@@ -45,9 +45,15 @@ default Flux reconciliation both leave the cluster LLM-free.
 | AWS (S3 Files filesystem + IAM) | `opentofu/aws/llm-platform/` tagged `opt-in` | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy` |
 | Kubernetes | `aws-0/llm-platform.yaml`, `spec.suspend: true` | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella aggregates 8 children under `aws-0-llm-platform/`, kept a **sibling** of `aws-0/` so
+The umbrella aggregates 5 children under `aws-0-llm-platform/`, kept a **sibling** of `aws-0/` so
 that `flux-system`'s recursive sync cannot auto-apply the children and bypass the umbrella suspend.
 See `aws-0-llm-platform/README.md` for the child manifests and the teardown procedure.
+
+The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
+`ai-gateway` — is the **always-on** `ai-gateway` umbrella (`aws-0/ai-gateway.yaml` →
+`aws-0-ai-gateway/`, OD-3). Its children kept their names when they moved, so `dependsOn` edges
+from `llm-platform` children still resolve. Read `aws-0-ai-gateway/README.md` before resuming
+`llm-platform` on a cluster that ran it before the move.
 
 **Autoscaling** (composition v0.5.0+, SPEC-001): every model defaults `min=1` with a KEDA
 `ScaledObject` driven by leading vLLM saturation metrics — the `running/max-num-seqs` ratio plus

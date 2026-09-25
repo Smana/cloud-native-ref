@@ -1,6 +1,6 @@
 # LLM Platform — opt-in Flux umbrella
 
-The 8 child Flux Kustomizations in this directory are aggregated by the
+The 5 child Flux Kustomizations in this directory are aggregated by the
 umbrella at `../aws-0/llm-platform.yaml`. This directory is a
 **sibling** of `clusters/aws-0/` — not a sub-path — so that
 `flux-system` (which recursively syncs `clusters/aws-0/`) does
@@ -11,14 +11,14 @@ the LLM-platform resources — are created on a fresh cluster.
 
 | Child Kustomization | Path | Resources |
 |---|---|---|
-| `vllm-semantic-router` | `infrastructure/base/vllm-semantic-router` | Iris router HelmRelease (`MoM` virtual model + cascade decisions[]) |
 | `runtimeclass-nvidia` | `infrastructure/base/runtimeclass-nvidia` | RuntimeClass `nvidia` (Bottlerocket NVIDIA AMI advertises GPU natively — no DaemonSet) |
 | `llm-platform-gpu-nodepools` | `infrastructure/base/karpenter-nodepools-gpu` | Karpenter `gpu-l4` NodePool + EC2NodeClass |
-| `envoy-gateway` | `infrastructure/base/envoy-gateway` | Envoy Gateway controller (provides the GatewayClass `envoy-ai-gateway` consumes) |
-| `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Envoy AI Gateway `1.0.0`: AIGatewayRoute → AIServiceBackend → per-model `Backend` (FQDN of the vLLM Service), direct — no proxy hop. Also carries the `EnvoyPatchPolicy` that inserts the Semantic Router ext_proc filter |
 | `llm-platform-apps` | `apps/llm` | InferenceService claims + OpenWebUI + AIGatewayRoute |
 | `llm-platform-security-epi` | `security/base/epis-llm` | `xplane-llm-models-preload` writable EPI |
 | `llm-platform-promptfoo` | `tooling/base/promptfoo` | Nightly Promptfoo eval CronJob — gated under the LLM umbrella so it doesn't fire when SR is suspended |
+
+The gateway layer these children attach to is the always-on `ai-gateway` umbrella; see
+`../aws-0-ai-gateway/README.md`.
 
 ## Client tier
 
@@ -96,8 +96,7 @@ explicitly removed.
 ```bash
 flux suspend kustomization llm-platform -n flux-system
 flux delete kustomization \
-  llm-platform-apps llm-platform-gpu-nodepools envoy-ai-gateway envoy-gateway \
-  llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia vllm-semantic-router \
+  llm-platform-apps llm-platform-gpu-nodepools llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia \
   -n flux-system --silent
 
 # Then drop the AWS-side resources:
@@ -116,8 +115,7 @@ opt-in, so the env var must be set:
 #    destroy runs).
 flux suspend kustomization llm-platform -n flux-system
 flux delete kustomization \
-  llm-platform-apps llm-platform-gpu-nodepools envoy-ai-gateway envoy-gateway \
-  llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia vllm-semantic-router \
+  llm-platform-apps llm-platform-gpu-nodepools llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia \
   -n flux-system --silent
 
 # 2. Walk all stacks in reverse — single y/n prompt at the start.
