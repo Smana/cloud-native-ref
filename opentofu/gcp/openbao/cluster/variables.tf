@@ -67,7 +67,7 @@ variable "openbao_version" {
   # (opentofu/aws/openbao/cluster/variables.tf) if the same symptom shows up
   # here: apply the management stack with -parallelism=1.
   # renovate: datasource=github-releases depName=openbao/openbao
-  default = "2.6.2"
+  default = "2.7.0"
 }
 
 variable "data_disk_size_gb" {
