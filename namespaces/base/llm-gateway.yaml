@@ -1,0 +1,10 @@
+# Human and system frontier routes and backends behind the ai-gateway Gateway
+# (programme C1). The platform Z.ai key lands here, and only here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-gateway
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
