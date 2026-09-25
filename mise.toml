@@ -7,7 +7,7 @@ min_version = "2024.11.1"
 
 [tools]
 go = "1.27.1"
-"aqua:golangci/golangci-lint" = "2.13.2"
+"aqua:golangci/golangci-lint" = "2.14.0"
 nodejs = "24.21.0"
 opentofu = "1.12.6"
 pre-commit = "4.6.2"
