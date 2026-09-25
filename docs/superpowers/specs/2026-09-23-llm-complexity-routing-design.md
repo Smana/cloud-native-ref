@@ -282,10 +282,10 @@ SP3 scores tier fit per classifier against task outcomes on `ref`.
 | OpenAI format: OpenWebUI, OpenCode, OpenHands | yes | yes | **no**: no translator (PR #2127 open) |
 | Anthropic format: Claude Code, `/anthropic/v1/messages` | yes, translated; tool and thinking fidelity is open question R8 | yes | yes |
 
-**Humans.** On `ai-gateway`, the existing `http` listener keeps API keys (OpenWebUI, promptfoo,
-RunLore). A new `oidc` listener validates ZITADEL tokens. Each listener gets its own
-`SecurityPolicy` through `sectionName`. Claude Code users point `ANTHROPIC_BASE_URL` at
-`…/anthropic` on the `oidc` listener.
+**Humans.** On `ai-gateway`, the `http` listener keeps API keys (OpenWebUI, promptfoo, RunLore). A
+new `oidc` listener validates ZITADEL JWTs whose `aud` carries the project id (`zitadel_project_id`).
+Each listener has its own `SecurityPolicy` via `sectionName`. Claude Code users point
+`ANTHROPIC_BASE_URL` at `…/anthropic` there; a CLI login client for humans is open (R12).
 
 **RunLore.** It moves behind `ai-gateway`: `base_url` becomes the `http` listener, and it holds a
 gateway API key (`system:runlore`) instead of the Z.ai key. Per OD-13 it requests
@@ -321,8 +321,8 @@ Until the Bedrock slice (PR 2) lands, `internal` runs have **no backend** (C5):
 Gateways means two routes that never meet: `agent-router` only accepts routes from its own
 namespace (`allowedRoutes: Same`).
 
-Prices are also recording rules. `label_replace(vector(1.40), "model", "glm-5.2", "", "")` is
-PromQL-valid for `validate-vmrules.sh`, and these are the price table SP3 needs.
+Prices are also recording rules, the price table SP3 needs: `expr: vector(1.40)` with static `labels`
+(model, token type). A `label_replace` form trips `validate-vmrules.sh`'s `--lint-fatal` duplicate check.
 
 **Pinning rules** (S7):
 
@@ -341,9 +341,10 @@ same way. API-key clients carry the existing `x-ai-gateway-client-id`. A `Client
 each Gateway strips all three, and `agent-session-id`, via `earlyRequestHeaders.remove`
 before authentication.
 
-**Rules.** Each rule is a `BackendTrafficPolicy`, global, `shared: true`, with `cost.request: 0` and
-`cost.response` = metadata `io.envoy.ai_gateway/llm_total_token`. `shared` matters: its default
-`false` gives every generated route its own bucket. The defaults are OD-10's.
+**Rules.** A Gateway's rules share its one `BackendTrafficPolicy` (EG marks a second `Conflicted`): global,
+`shared: true` (the default is a bucket per route), `cost.request: 0`, `cost.response` = metadata
+`io.envoy.ai_gateway/llm_total_token`. Only routes declaring `llmRequestCosts` are charged, so claim
+routes count once the composition sets it (PR 3). The defaults are OD-10's.
 
 | Rule | Gateway | Selector | Default / Day | ≈ $ at GLM-5.2 | Covers |
 |---|---|---|---|---|---|
@@ -364,12 +365,12 @@ before authentication.
 - **What the client sees.** A `429` with `x-envoy-ratelimited: true` (UNVERIFIED, R5), which
   separates it from a provider's own 429. SP1's harness treats one with reset > 60 s as
   `BudgetExhausted` and does not retry.
-- **Metrics.** `extProc.metricsRequestHeaderAttributes: "x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client"`.
-  Recording rules derive `agent:<runId>` and `human:<sub>` from these labels. Per-run labels add ~30
+- **Metrics.** `controller.metricsRequestHeaderAttributes` (chart 1.1.0): "x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client"`.
+  Recording rules (PR 2) derive `agent:<runId>` and `human:<sub>` from these labels. Per-run labels add ~30
   series per run. Alerts: `AgentRunNearCeiling` (80% of B1), `FleetBudgetNearCap` (80% of B2),
   `FrontierSpendGuardTripped` (B5).
 - **Store.** A `KVStore` claim (`xplane-ai-gateway-ratelimit`, `nano`, Harbor's pattern) behind EG
-  `rateLimit.backend.redis.urlRef`. `REDIS_AUTH` comes in through the rate-limit Deployment's env.
+  `rateLimit.backend.redis.url`. `REDIS_AUTH` comes in through the rate-limit Deployment's env.
   CNP: only the rate-limit pod reaches Valkey.
 
 ## 7. Measurement
@@ -401,14 +402,13 @@ The umbrellas and their dependencies are C1. SP4's placement within them:
 | `agent-platform` | `agent-models` and `agent-models-internal` tiers, B1–B2, `ExternalSecret`s on SP1's `agents-secrets` store (agents' Z.ai key, Jev key), `complexity-classifier`. These sit under SP3's gate paths |
 | `llm-platform` | claims declaring `gateway.aliases`, OpenWebUI, promptfoo arms |
 
-- **The move.** The three children leave `clusters/<c>-llm-platform/` with their Kustomization names
-  unchanged, so existing `dependsOn` edges hold. Doing it while `llm-platform` is suspended (the
-  default) leaves the old parent nothing to prune.
+- **The move.** The three children leave `clusters/<c>-llm-platform/` with their names unchanged, so
+  `dependsOn` edges hold. Doing it while `llm-platform` is suspended leaves it nothing to prune.
 - **Naming.** C1's human/system `llm-gateway` is the existing `ai-gateway` Gateway object, kept
   because the composition's `parentRef` names it, plus a new namespace `llm-gateway` for its routes
   and backends. `namespaces/base/` gains it, and the Gateway's `allowedRoutes` selector adds it.
-- **Keys.** The platform Z.ai key moves from `runlore/credentials` to `platform/llm/zai`. The
-  `platform/` mount is already granted.
+- **Keys.** PR 1 copies the platform Z.ai key from `runlore/credentials` to `platform/llm/zai`; PR 6
+  removes it from `runlore/credentials` (SC-10). The `platform/` mount is already granted.
 
 ## Threat model
 
@@ -463,6 +463,8 @@ Switchyard or Plano; training a router; gcp-0 in the first slices.
 | R9 | A principal's daily cap on *runs* is admission-time (SP3), not at the gateway | Accepted: a token carries only `sub`. B2 bounds the fleet synchronously |
 | R10 | Within its class, a run can request any of the four names. Binding it to its own `spec.model` is unverified (C5) | Budgets bound the cost. Open: per-route authorization after the Agent Router extproc (filter order UNVERIFIED) |
 | R11 | Per-run metric cardinality | Revisit above 1,000 runs a day |
+| R12 | No ZITADEL client issues a human a JWT for the `oidc` listener from the CLI (device code) | Follow-up in `zitadel-oidc-clients.sh`; until then the listener takes tokens minted another way |
+| R13 | Until PR 4, SR's ext_proc fails closed (60 s) on every `http`-listener request, `tier-frontier` included | Accepted for slice 1; PR 4's fail-open patch closes it |
 
 ## Implementation outline
 
@@ -473,13 +475,12 @@ model early. gcp-0 (Vertex, tier map, umbrella) follows as its own workstream.
 |---|---|---|---|
 | 1 | this | `ai-gateway` umbrella and the move. `llm-gateway` namespace, platform Z.ai backend, `tier-frontier`. EG rate limit + `KVStore`. Header strips, metrics attributes, price rules, B3–B5 in shadow | 0046, 0050 |
 | — | this (SP1) | `agent-router` Gateway, JWT, agents' Z.ai backend, `agent-models` with `agent-default` | — |
-| 2 | this (+ SP1 audiences) | `agent-models` / `agent-models-internal` tiers, B1–B2 in shadow, Bedrock (`EPI`s, `claude-*`), `oidc` listener, `/anthropic` | — |
+| 2 | this (+ SP1 audiences) | `agent-models` / `agent-models-internal` tiers, B1–B2 in shadow, `agent:`/`human:` recording rules, Bedrock (`EPI`s, `claude-*`), `oidc` listener, `/anthropic` | — |
 | 3 | crossplane-configuration → this | `spec.gateway.aliases`, fixtures, release, pin bump, claim aliases, Kyverno uniqueness | — |
 | 4 | this | SR 0.3.0 (migrate, explicit values, render assertion, Renovate), HA, fail-open patch, complexity and guard decisions, replay without bodies | — |
 | 5 | shared repo (OD-4) + this | `complexity-classifier`, Jev off | 0047 |
-| 6 | this | RunLore behind `ai-gateway` | — |
+| 6 | this | Controller PDB and 2 Envoy replicas on `ai-gateway`, then RunLore behind it | — |
 | 7 | this | promptfoo arms and held-out set, routing dashboard, verdict rule, budgets enforced | — |
-
 
 ## ADRs
 
