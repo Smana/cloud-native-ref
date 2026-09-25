@@ -8,3 +8,4 @@ resources:
   - infrastructure-envoy-gateway.yaml
   - infrastructure-envoy-ai-gateway.yaml
   - infrastructure-vllm-semantic-router.yaml
+  - infrastructure-llm-gateway.yaml

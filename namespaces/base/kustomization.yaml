@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - llm.yaml
+  - llm-gateway.yaml
   - apps.yaml
   - crossplane-system.yaml
   - demo.yaml
