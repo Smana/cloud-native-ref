@@ -83,5 +83,7 @@ single-file fixes never need one.
 | [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
+| [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and Anthropic on Bedrock, behind the gateways | Accepted | 2026-09-25 |
+| [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).
