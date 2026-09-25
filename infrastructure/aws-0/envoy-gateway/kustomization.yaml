@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# aws-0 adds the global rate limit and its store to the shared base.
+# gcp-0's llm-platform keeps applying ../../base/envoy-gateway unchanged.
+resources:
+  - ../../base/envoy-gateway
+  - kvstore.yaml
+  - externalsecret-ratelimit-valkey.yaml
+  - network-policy-ratelimit.yaml
+  - vmpodscrape-ratelimit.yaml
+patches:
+  - path: helmrelease-ratelimit.yaml
