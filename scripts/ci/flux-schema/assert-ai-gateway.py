@@ -66,6 +66,9 @@ def check_rate_limit_rules(objs):
             if response.get("from") != "Metadata" or response.get("metadata") != COST_METADATA:
                 errors.append(f"{where}: response cost must be Metadata "
                               f"{COST_METADATA['namespace']}/{COST_METADATA['key']}")
+            # OD-10 requires one week in shadow mode; PR 7 removes this check when enforcement starts.
+            if rule.get("shadowMode") is not True:
+                errors.append(f"{where}: shadowMode must be true for one week in shadow before enforcement")
     return errors
 
 
