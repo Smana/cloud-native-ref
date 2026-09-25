@@ -146,7 +146,7 @@ jobs:
       # commits the merge introduced. `fetch-depth: 0` above is what makes both
       # ends reachable in the local clone.
       - name: Detect secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@64d939a56362f519781c53ea09b27f8d1dc0140a # v3.97.6
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
