@@ -30,6 +30,17 @@ the sandbox dies within **600 s** (C3).
 | S11 | The composition lives in the **core** package and is cloud-neutral | A per-cloud pair | Every rendered name is the same on both clouds |
 | S12 | GC is a daily Kyverno **`DeletingPolicy`** on terminal phases, a backstop behind SP3 deleting runs after harvest | TTL labels (their family is deprecated in 1.19); a CronJob | The current API of a tool already installed |
 
+## Amendments from the CC-1 reviews (2026-09-25)
+
+These supersede the sections they name; the reasoning is in the plan's departure rows P12–P13.
+
+| Section | Now |
+|---|---|
+| §2 lifecycle | Terminal phase and reason latch. Any terminal phase withholds the ServiceAccount. Succeeded/Failed Sandboxes are `operatingMode: Suspended` and stay Ready. Every spec field is immutable except `budget.maxTokens` |
+| §2 CNP | Router egress pins `owning-gateway-namespace: agent-system` as well as the Gateway name. Host ingress only on the proxy health port |
+| §5 harness | agent-server stays on loopback with `exec` probes; `:8000` is not in the CNP |
+| §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network |
+
 ## Architecture
 
 ```mermaid
