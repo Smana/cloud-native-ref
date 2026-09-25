@@ -1,0 +1,47 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: llm-gateway
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: ai
+spec:
+  groups:
+    # List price per 1M tokens, keyed by the model actually served
+    # (gen_ai_request_model, after modelNameOverride). This is data, not a
+    # measurement: SP3's cost reports and the routing dashboard multiply token
+    # counters by it. Cached-input prices are left out, because budgets assume
+    # no cache discount (design section 6).
+    - name: llm-gateway-prices
+      interval: 5m
+      rules:
+        - record: llm_gateway:price_usd_per_mtoken
+          expr: vector(1.40)
+          labels:
+            gen_ai_request_model: "glm-5.2"
+            gen_ai_token_type: input
+        - record: llm_gateway:price_usd_per_mtoken
+          expr: vector(4.40)
+          labels:
+            gen_ai_request_model: "glm-5.2"
+            gen_ai_token_type: output
+    - name: llm-gateway-budgets
+      rules:
+        - alert: FrontierSpendGuardTripped
+          # Mirrors B5 from the gen_ai counters, so it also fires in shadow
+          # mode, where the limiter never answers 429. A rolling 24 h covers at
+          # least the limiter's fixed UTC day, so this fires no later than B5
+          # would trip.
+          expr: |
+            sum(increase(gen_ai_client_token_usage_sum{gen_ai_original_model=~"tier-frontier|claude-.*"}[24h])) > 20e6
+          for: 5m
+          labels:
+            severity: warning
+            component: ai
+          annotations:
+            summary: "Human and system frontier spend crossed the B5 guard (20M tokens in 24h)"
+            description: |
+              tier-frontier and claude-* traffic on the ai-gateway Gateway used more than
+              20M tokens over the last 24h. B5 in ai-gateway-token-budgets would reject
+              further frontier requests once enforced. Split by principal with the
+              ar_human and ar_client labels on gen_ai_client_token_usage_sum.

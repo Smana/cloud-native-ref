@@ -5,3 +5,5 @@ resources:
   - externalsecret-zai.yaml
   - zai.yaml
   - aigatewayroute.yaml
+  - btp-token-budgets.yaml
+  - vmrule-llm-gateway.yaml
