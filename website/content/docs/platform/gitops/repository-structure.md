@@ -44,11 +44,12 @@ Every domain Kustomization then points `sourceRef` at its own slice —
 `infrastructure.yaml` at `infra-artifact`, `security.yaml` at
 `security-artifact`, and so on — instead of at the full repository.
 
-Two Kustomizations are the exception, necessarily: `flux-artifact-generators`
+Three kinds of Kustomization are the exception, necessarily: `flux-artifact-generators`
 (which applies the `ArtifactGenerator` above, so it has to read the
 `GitRepository` directly — the `ExternalArtifact`s don't exist until it
-runs) and the opt-in `llm-platform` umbrellas, whose paths
-(`clusters/aws-0-llm-platform/`, `clusters/gcp-0-llm-platform/`) fall outside
+runs) and the always-on `ai-gateway` umbrella and the opt-in
+`llm-platform` umbrellas, whose paths (`clusters/aws-0-ai-gateway/`,
+`clusters/aws-0-llm-platform/`, `clusters/gcp-0-llm-platform/`) fall outside
 every `copy.from` glob above.
 
 The `from: "@repo/<dir>/**"` / `to: "@artifact/<dir>/"` shape matters: a

@@ -3,8 +3,8 @@
 #
 # Default: spec.suspend = true → none of the LLM-specific Flux
 # Kustomizations under clusters/aws-0-llm-platform/ are created,
-# so no LLM resources land in the cluster (no vllm-semantic-router,
-# no NVIDIA device plugin, no GPU NodePool, no LLM apps, no LLM EPI).
+# so no LLM resources land in the cluster (no NVIDIA device plugin,
+# no GPU NodePool, no LLM apps, no LLM EPI).
 #
 # Mirrors the OpenTofu opt-in (opentofu/aws/llm-platform/workflows.tm.hcl,
 # gated by $TM_LLM_PLATFORM_ENABLED). Together they form the complete
@@ -20,8 +20,8 @@
 # Full teardown (suspend AND remove children + their resources):
 #   flux suspend kustomization llm-platform -n flux-system
 #   flux delete kustomization \
-#     llm-platform-apps llm-platform-gpu-nodepools \
-#     llm-platform-security-epi runtimeclass-nvidia vllm-semantic-router \
+#     llm-platform-apps llm-platform-gpu-nodepools llm-platform-promptfoo \
+#     llm-platform-security-epi runtimeclass-nvidia \
 #     -n flux-system --silent
 #   # Then delete the OpenTofu-side resources via:
 #   #   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run destroy
@@ -35,6 +35,9 @@ spec:
   prune: true
   interval: 1m0s
   timeout: 5m0s
+  # C1: the GPU fleet attaches to the ai-gateway Gateway and its controllers.
+  dependsOn:
+    - name: ai-gateway
   # MUST be a sibling of clusters/aws-0/ (not a sub-path), otherwise the
   # `flux-system` Kustomization that syncs `clusters/aws-0/` recursively
   # would auto-discover the child Flux Kustomizations and apply them
