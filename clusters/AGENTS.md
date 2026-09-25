@@ -38,7 +38,9 @@ keys are created in-cluster at runtime so they cannot be checked here — those 
 ## The self-hosted LLM platform — two gates on AWS
 
 Both must be released for an end-to-end deploy. The default `terramate script run deploy` and the
-default Flux reconciliation both leave the cluster LLM-free.
+default Flux reconciliation both leave the cluster LLM-free — except for the always-on `ai-gateway`
+layer below, which deploys unconditionally (CPU only, no self-hosted models) with neither gate
+released.
 
 | Layer | Gate | Release with |
 |---|---|---|

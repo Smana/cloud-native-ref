@@ -51,35 +51,10 @@ The OpenTofu side (`opentofu/aws/llm-platform/`) is gated separately with
 `$TM_LLM_PLATFORM_ENABLED=true`. Both gates must be released for an
 end-to-end deploy. See `opentofu/aws/llm-platform/README.md`.
 
-### One-time AWS Secrets Manager bootstrap
+### AWS Secrets Manager bootstrap
 
-The AI Gateway's API keys live in AWS SM at `platform-llm-api-keys`,
-**deliberately outside of OpenTofu** so they survive cluster teardown +
-recreation (rotating keys would invalidate every coding-client config —
-that pain is worse than the bootstrap step). Three ExternalSecrets
-fan out from this single SM entry:
-
-- `envoy-ai-gateway-system/ai-gateway-api-keys` (gateway-side compare)
-- `apps/openwebui-llm-api-key` (OpenWebUI's `OPENAI_API_KEY`)
-- `promptfoo/promptfoo-llm-api-key` (nightly eval CronJob)
-
-If `aws secretsmanager describe-secret --secret-id platform-llm-api-keys`
-returns `ResourceNotFoundException`, seed it once (idempotent — re-running
-fails harmlessly with `ResourceExistsException`):
-
-```bash
-OPENWEBUI_KEY="sk-$(openssl rand -hex 24)"
-PROMPTFOO_KEY="sk-$(openssl rand -hex 24)"
-aws secretsmanager create-secret \
-  --region eu-west-3 \
-  --name platform-llm-api-keys \
-  --description "AI Gateway client API keys (raw, no Bearer prefix). JSON: {openwebui_apikey, promptfoo_apikey}" \
-  --secret-string "{\"openwebui_apikey\":\"${OPENWEBUI_KEY}\",\"promptfoo_apikey\":\"${PROMPTFOO_KEY}\"}"
-```
-
-To onboard a new client identity, add a property to the JSON
-(e.g. `developer_apikey`) and append a matching key to the gateway-side
-ESO template at `infrastructure/base/envoy-ai-gateway/api-keys-externalsecret.yaml`.
+Moved to [`../aws-0-ai-gateway/README.md`](../aws-0-ai-gateway/README.md#secrets-this-layer-reads) —
+`platform-llm-api-keys` backs the always-on gateway's own auth, not just this umbrella's apps.
 
 ## Disable (preserve cluster state)
 

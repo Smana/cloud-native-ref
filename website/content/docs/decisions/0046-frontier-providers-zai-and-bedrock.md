@@ -1,8 +1,8 @@
 ---
-title: Frontier models through Z.ai and Anthropic on Bedrock, behind the gateways
+title: Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0)
 linkTitle: 0046 · Frontier providers
 weight: 460
-description: Frontier models reach the platform through two providers chosen by data class — Z.ai GLM for public data, with its key held by the gateways, and Anthropic's Claude on Amazon Bedrock EU for internal data, with no key at all (EKS Pod Identity). A native Anthropic API key and aggregators such as OpenRouter were rejected.
+description: Frontier models reach the platform through two providers chosen by data class — Z.ai GLM for public data, with its key held by the gateways, and Anthropic's Claude for internal data with no key at all — Amazon Bedrock EU via EKS Pod Identity on aws-0, Vertex AI via Workload Identity on gcp-0. A native Anthropic API key and aggregators such as OpenRouter were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -77,8 +77,6 @@ reads, RunLore findings) may reach only EU-resident Anthropic or self-hosted mod
 **Cons**:
 - aws-0's internal data leaves AWS via cross-cloud identity federation (EKS token exchange to GCP).
   This breaks ADR-0007's rule that each cloud uses its own native service.
-- Workload Identity is less favourable than Pod Identity: it requires a GCP service account and
-  longer token paths.
 
 ## Decision Outcome
 
