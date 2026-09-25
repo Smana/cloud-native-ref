@@ -5,7 +5,7 @@ is what lets agents run on frontier models with no GPU node.
 
 | Child Kustomization | Path | Holds |
 |---|---|---|
-| `envoy-gateway` | `infrastructure/base/envoy-gateway` | Envoy Gateway |
+| `envoy-gateway` | `infrastructure/aws-0/envoy-gateway` | Envoy Gateway, its global rate limit, and the Valkey KVStore behind it |
 | `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Agent Router, the human/system Gateway `ai-gateway`, API-key auth, and the Semantic Router `EnvoyPatchPolicy` |
 | `vllm-semantic-router` | `infrastructure/base/vllm-semantic-router` | The Semantic Router (`MoM`) |
 | `llm-gateway` | `infrastructure/base/llm-gateway` | Frontier routes and backends in namespace llm-gateway, token budgets B3–B5, price rules |

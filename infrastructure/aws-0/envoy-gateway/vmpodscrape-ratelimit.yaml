@@ -1,0 +1,19 @@
+# Shadow-mode counters: the only evidence, during the shadow week, of what the
+# budgets WOULD have rejected (SC-3).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: envoy-ratelimit
+  namespace: envoy-gateway-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-ratelimit
+      app.kubernetes.io/component: ratelimit
+  namespaceSelector:
+    matchNames:
+      - envoy-gateway-system
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

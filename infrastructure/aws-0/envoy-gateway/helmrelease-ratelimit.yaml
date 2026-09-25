@@ -1,0 +1,41 @@
+# Enables Envoy Gateway's global rate limit: the token budgets are rules on it
+# (ADR-0050). aws-0 only, because gcp-0 has no store behind it yet.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  values:
+    config:
+      envoyGateway:
+        rateLimit:
+          # failClosed stays false (the default): a store or rate-limit outage
+          # admits traffic rather than failing every model call. Budgets bound
+          # cost; they are not an availability dependency.
+          backend:
+            type: Redis
+            redis:
+              url: xplane-ai-gateway-ratelimit-valkey.envoy-gateway-system.svc.cluster.local:6379
+        provider:
+          type: Kubernetes
+          kubernetes:
+            rateLimitDeployment:
+              replicas: 1
+              container:
+                # Envoy Gateway has no auth field for Redis. The rate-limit
+                # binary reads REDIS_AUTH from its environment, which is the
+                # pattern Envoy Gateway's own test fixtures use (research, R5).
+                env:
+                  - name: REDIS_AUTH
+                    valueFrom:
+                      secretKeyRef:
+                        name: ai-gateway-ratelimit-valkey
+                        key: REDIS_PASSWORD
+                # The chart default requests 512Mi and sets no limit.
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    memory: 256Mi
