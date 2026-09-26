@@ -85,3 +85,13 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 > `gcp-0` is also closed. **But none of it has run on a live GKE cluster** — that is a static read
 > of the pinned package's golden fixture, not a cluster result. Treat the first resume as a
 > validation run; `gcp-0-llm-platform/README.md` lists what to watch, in failure order.
+
+## The agent platform — one gate on AWS
+
+`aws-0/agent-platform.yaml`, `spec.suspend: true`, children in `aws-0-agent-platform/` (a sibling, for
+the same reason as `llm-platform`). Release with `flux resume kustomization agent-platform -n
+flux-system`, after resuming `ai-gateway`, which is suspended by default too (OD-3, amended
+2026-09-26) — an operating order, not yet a Flux `dependsOn` edge (that wiring lands in phase 3).
+Resume order is `ai-gateway` before `agent-platform`, never `llm-platform`: agents run on frontier
+models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
+start.
