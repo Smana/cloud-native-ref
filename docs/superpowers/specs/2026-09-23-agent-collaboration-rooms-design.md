@@ -170,7 +170,9 @@ for more than 2 min or idle for more than 15 min falls back to the previous syst
 
 **Room tools** are MCP, reached only through the `agent-router` Gateway (C1, C5). The broker derives `agent:<runId>`
 from `x-ar-agent` and reads the role from the `AgentRun`, never from a header. **Fallback** if identity is not
-projected to MCP backends (C5, unverified): the bridge relays these calls over its authenticated socket.
+projected to MCP backends (C5, unverified): the bridge relays these calls over its authenticated socket. Agent
+Router 1.1.0 authorizes only `tools/call` and `tools/list` (SP1 §6): the room MCP backend must expose no
+`resources` or `prompts`, since either would reach the broker unchecked by role.
 
 | Tool | Roles | Appends |
 |---|---|---|

@@ -397,6 +397,9 @@ Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences fo
 - Both set `defaultAction: Deny`, add allow rules per role on `aud` (`StringArray`), one per role and
   backend since a rule's target holds at most 16 tools, and use `toolSelector.include` to hide every
   mutating tool.
+- Agent Router 1.1.0 authorizes only `tools/call` and `tools/list`; `resources/*` and `prompts/*` reach
+  the backend unchecked. Harmless for these three read-only, docs-only servers — but SP2's room
+  broker must expose nothing through them.
 - **Cluster reads are internal data (OD-13), so the `public` route exposes documentation tools
   only.** Those are `search_flux_docs` and the VictoriaMetrics and VictoriaLogs `documentation`
   tools. Resources, metrics and logs are on `internal`.
