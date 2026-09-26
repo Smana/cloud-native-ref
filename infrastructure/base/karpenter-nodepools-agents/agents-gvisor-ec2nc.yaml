@@ -45,10 +45,17 @@ spec:
 
     #!/bin/bash
     set -euo pipefail
+    # Fail closed: a failed download/checksum must not leave a Ready-but-broken
+    # node that silently swallows sandbox pods until expireAfter (24h) rotates
+    # it out. shutdown terminates this one-time spot instance immediately, and
+    # Karpenter launches a fresh replacement attempt.
+    trap 'shutdown -h now' ERR
     command -v bzip2 >/dev/null || dnf install -y bzip2
-    curl -fsSLo /tmp/gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20260921.0/gvisor-x86_64.tar.bz2
+    curl -fsSL --retry 5 --retry-all-errors -o /tmp/gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20260921.0/gvisor-x86_64.tar.bz2
     echo "3dd478770dd751d09c257ba14d739b179348a36c5f2d9e954b773f5f90bff646  /tmp/gvisor.tar.bz2" | sha256sum -c -
-    tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin
+    # --no-same-owner: extracting as root would otherwise preserve the
+    # archive's recorded UIDs/GIDs instead of normalizing to root:root.
+    tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin --no-same-owner
     rm -f /tmp/gvisor.tar.bz2
     printf '[runsc_config]\n  oci-seccomp = "true"\n' > /etc/containerd/runsc.toml
     --//

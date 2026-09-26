@@ -53,6 +53,13 @@ data:
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                     stat_prefix: public
+                    # The routes below allowlist by path prefix; without normalization a
+                    # traversal (/v1/../x) or an escaped slash (%2F) could reach an
+                    # unlisted upstream path instead of matching (and being blocked by)
+                    # the catch-all 404 route.
+                    normalize_path: true
+                    merge_slashes: true
+                    path_with_escaped_slashes_action: REJECT_REQUEST
                     stream_idle_timeout: 300s
                     route_config:
                       virtual_hosts:
@@ -92,6 +99,10 @@ data:
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                     stat_prefix: internal
+                    # Same path-confusion guard as the public listener above.
+                    normalize_path: true
+                    merge_slashes: true
+                    path_with_escaped_slashes_action: REJECT_REQUEST
                     stream_idle_timeout: 300s
                     route_config:
                       virtual_hosts:
@@ -131,6 +142,10 @@ data:
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                     stat_prefix: sts
+                    # Same path-confusion guard as the public listener above.
+                    normalize_path: true
+                    merge_slashes: true
+                    path_with_escaped_slashes_action: REJECT_REQUEST
                     route_config:
                       virtual_hosts:
                         - name: octo-sts

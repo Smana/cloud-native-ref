@@ -81,8 +81,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: jwt-echo
-        # The label the composed run CNP selects (R5).
+        # The labels the composed run CNP ANDs together to select its peer (R5):
+        # name here, namespace pinned to agent-system even though this fixture
+        # itself lives in envoy-gateway-system.
         gateway.envoyproxy.io/owning-gateway-name: agent-router
+        gateway.envoyproxy.io/owning-gateway-namespace: agent-system
     spec:
       securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:

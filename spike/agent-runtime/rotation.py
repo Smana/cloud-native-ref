@@ -10,6 +10,10 @@ while time.time() - start < 45 * 60:
         code = urllib.request.urlopen("http://127.0.0.1:4000/v1/models", timeout=10).status
     except urllib.error.HTTPError as err:
         code = err.code
+    except (urllib.error.URLError, OSError):
+        # A policy drop or connect timeout raises here, not HTTPError; count it
+        # as a failure instead of letting it kill the loop before RESULT prints.
+        code = -1
     sent, bad = sent + 1, bad + (code != 200)
     print(time.strftime("%H:%M:%S"), code, flush=True)
     time.sleep(30)
