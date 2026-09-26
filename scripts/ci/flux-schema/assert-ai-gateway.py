@@ -29,6 +29,15 @@ wrong:
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
       A1/A2.
+  A5  On agent-system/agent-router, whose one-listener-per-data-class split
+      is what keeps an `internal` token away from Z.ai (ADR-0042): every route
+      (any kind) naming it sets `sectionName`, since without one it attaches
+      to all three listeners; and every SecurityPolicy targeting such a route
+      sets `mergeType`, since without one it replaces the listener's JWT check
+      for that route. A target this bundle cannot resolve (an MCPRoute's
+      generated HTTPRoute) or a label selector is assumed in scope. At least
+      one route must attach -- zero is a layout regression. Other Gateways'
+      routes may omit sectionName.
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -165,7 +174,48 @@ def check_identity_strips(objs):
     return errors
 
 
-CHECKS = [check_rate_limit_rules, check_identity_strips]
+AGENT_ROUTER = ("agent-system", "agent-router")
+
+
+def check_agent_router_routes(objs):
+    errors = []
+    attached, elsewhere = set(), set()
+    for obj in objs:
+        kind = obj.get("kind", "")
+        if not kind.endswith("Route"):
+            continue
+        meta = obj.get("metadata") or {}
+        ns, name = meta.get("namespace", ""), meta.get("name")
+        parents = [p for p in spec_of(obj).get("parentRefs") or []
+                   if (p.get("kind") or "Gateway") == "Gateway"
+                   and ((p.get("namespace") or ns), p.get("name")) == AGENT_ROUTER]
+        # An AIGatewayRoute generates the HTTPRoute a SecurityPolicy targets, under the same name.
+        keys = {(ns, kind, name)} | ({(ns, "HTTPRoute", name)} if kind == "AIGatewayRoute" else set())
+        (attached if parents else elsewhere).update(keys)
+        if any(not p.get("sectionName") for p in parents):
+            errors.append(f"{ref(obj)}: parentRef agent-router has no sectionName, so it attaches to every "
+                          "listener (public, internal and sts)")
+    if not attached:
+        errors.append(f"no route attaches to Gateway {'/'.join(AGENT_ROUTER)} "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+
+    # targetRefs are namespace-local, so only agent-system's policies can reach its routes.
+    for obj in objs:
+        spec = spec_of(obj)
+        ns = (obj.get("metadata") or {}).get("namespace", "")
+        if obj.get("kind") != "SecurityPolicy" or spec.get("mergeType") or ns != AGENT_ROUTER[0]:
+            continue
+        refs = (spec.get("targetRefs") or []) + ([spec["targetRef"]] if spec.get("targetRef") else [])
+        keys = [(ns, t.get("kind"), t.get("name")) for t in refs if (t.get("kind") or "").endswith("Route")]
+        by_ref = any(key in attached or key not in elsewhere for key in keys)
+        by_selector = any((s.get("kind") or "").endswith("Route") for s in spec.get("targetSelectors") or [])
+        if by_ref or by_selector:
+            errors.append(f"{ref(obj)}: targets an agent-router route without mergeType, so it replaces "
+                          "the listener's JWT check for that route")
+    return errors
+
+
+CHECKS = [check_rate_limit_rules, check_identity_strips, check_agent_router_routes]
 
 
 def main(argv):
