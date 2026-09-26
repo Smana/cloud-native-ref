@@ -165,6 +165,13 @@
         "/^ghcr\\.io/smana/crossplane-configuration-/"
       ],
       "enabled": false
+    },
+    {
+      "description": "Hold function-kcl below v0.12.3. That release only bumps dependencies, including the KCL runtime, yet rendering the InferenceService composition with it drops the leading space of a `\"\"\" --revision \"\"\"` fragment, so the preload Job runs `hf download Qwen/Qwen3-8B--revision main` and no base model ever downloads. The golden renders in Smana/crossplane-configuration caught it (16/20 match; v0.12.2 renders 20/20), which is also why that repo's functions.yaml must move in lockstep with this one. Lift this bound in the same PR that bumps both, once main.k builds that command without depending on whitespace inside a triple-quoted string, and the goldens match on the new version.",
+      "matchPackageNames": [
+        "xpkg.upbound.io/crossplane-contrib/function-kcl"
+      ],
+      "allowedVersions": "<0.12.3"
     }
   ],
   "registryAliases": {
