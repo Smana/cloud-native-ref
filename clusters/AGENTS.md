@@ -82,4 +82,5 @@ flux-system`, after resuming `ai-gateway`, which is suspended by default too (OD
 2026-09-26) — an operating order, not yet a Flux `dependsOn` edge (that wiring lands in phase 3).
 Resume order is `ai-gateway` before `agent-platform`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
-start.
+start. Resume only once the crossplane-configuration pin serves `AgentRun`: before it,
+`agent-policies` targets an API nobody serves and still reports Ready.
