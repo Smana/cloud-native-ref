@@ -17,5 +17,5 @@ spec:
       # Both fields are Go regexes matched unanchored by default (Flux docs'
       # own example anchors them); `charts/*` matched zero-or-more `/`, not
       # "any workflow" -- a substring match looser than intended (review M8).
-      - issuer: "^https://token.actions.githubusercontent.com$"
-        subject: "^https://github.com/controlplaneio-fluxcd/charts/.*$"
+      - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
+        subject: "^https://github\\.com/controlplaneio-fluxcd/charts/.*$"
