@@ -11,7 +11,7 @@ Applying an `AgentRun` claim starts a gVisor-sandboxed OpenHands agent under its
 It calls models through Agent Router without ever holding a provider key (GLM-5.2 for `public` runs, never Z.ai for `internal` ones), reads the cluster through
 read-only MCP tools, and pushes `spec.branch` (`agent/<taskId|roomId|runId>`) to open one PR with a ≤ 1 h, single-repo,
 role-scoped GitHub token. Deleting the claim deletes everything it composed. A token copied out of
-the sandbox dies within **600 s** (C3).
+the sandbox dies at the **run's deadline**, `max(600, maxMinutes × 60)` s (C3, R2).
 
 ## Decisions
 

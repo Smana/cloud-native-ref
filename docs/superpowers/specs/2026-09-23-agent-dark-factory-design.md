@@ -287,10 +287,16 @@ approval_rules:
       file_not_deleted:         { paths: ['.*'] }
       modified_lines:           { total: '< 21' }
   - name: "low-risk: factory revert"
-    if:
+    if:   # docs-links' allowlist, exclusions and caps: promoting a class widens both rules
       has_author_in:      { users: ["ogenki-agent-factory[bot]"] }
       title:              { matches: ['^Revert "'] }
-      only_changed_files: { paths: ['^(docs|website/content)/.+\.md$'] }  # union of live allowlists
+      only_changed_files: { paths: ['^(docs|website/content)/.+\.md$'] }
+      no_changed_files:   { paths: ['<gate paths>', '^docs/(superpowers|specs)/',
+                                    '^website/content/docs/decisions/',
+                                    '^docs/platform-constitution\.md$'] }
+      file_not_added:     { paths: ['.*'] }
+      file_not_deleted:   { paths: ['.*'] }
+      modified_lines:     { total: '< 21' }
   - name: agent change approved by a maintainer
     if:
       has_author_in:    { users: ["ogenki-agents[bot]"] }
@@ -304,7 +310,7 @@ approval_rules:
 | Class | State at v1 | Allowlist and caps | Why it is low-risk |
 |---|---|---|---|
 | `docs-links` | **live** | Markdown under `docs/` or `website/content/`, excluding designs, the archive, ADRs and the constitution. No file added or deleted. Fewer than 21 changed lines | Mechanical: `validate-links.sh` in CI proves the result. It changes no behaviour |
-| `revert` | **live** | Factory-authored, title `Revert "…`, confined to the live allowlists | It restores a state that was already accepted |
+| `revert` | **live** | Factory-authored, title `Revert "…`, and exactly `docs-links`' paths, exclusions and caps | It restores a state that was already accepted |
 | `docs` | shadow | Same paths, fewer than 201 lines | Editorial: the owner reviews docs |
 | `tests` | shadow | `^scripts/ci/tests/`, no deletions | This code runs in CI |
 | `dashboards` | shadow | `^observability/base/grafana-operator/dashboards/`, fewer than 301 lines | Display only, but the `$${}` substitution trap applies |
@@ -356,10 +362,11 @@ non-author-approval rule on gate paths). **Author spoofing only adds review**: a
 | Stop object | global | `kubectl -n agent-system create configmap agent-factory-stop`, or `factory/stop` on the pinned control issue. Pauses intake; every running task goes to `Stopped`, its `AgentRun`s annotated `revoked: manual` then deleted | no | ≤ 30 s |
 | Per task | one task | `factory/stop` on the issue or PR, or annotation `agents.ogenki.io/stop=true` on the `Task` | no | ≤ 60 s |
 | Kueue | every factory sandbox | `flux suspend` the Kueue child, then `stopPolicy: HoldAndDrain` | yes | seconds |
-| Gateway | every agent model call | Agent fleet daily cap set to 0 (SP4). It stops human-launched runs too | yes | Flux interval |
+| Gateway | every agent model call | Agent fleet daily cap set to 0 (SP4). It stops human-launched runs too | yes, **once SP4 PR 7 enforces B1–B2**; until then they run in `shadowMode` and stop nothing | Flux interval |
 | GitHub | every agent write | Suspend the agents' App installation | **yes, and cluster-independent** | immediate |
 
-The stop object is deliberately **not in Git**, which Flux never reverts. Deleted runs' tokens live ≤ 600 s (C3); the GitHub layer closes that.
+The stop object is deliberately **not in Git**, which Flux never reverts. A deleted run's copied
+tokens stay valid until its deadline, up to 8 h (C3, R2); the GitHub layer closes that for writes.
 
 ### 6.2 Caps and budgets
 
@@ -451,7 +458,7 @@ truth) → PR → policy-bot status → merge actor → `Verifying`; a `Task` en
 | T3 | An agent widens its own autonomy | Edits the policy, trust policies, workflows, factory config or budgets; forges the status; self-approves; pushes after approval; manipulates labels | Policy read from `main`; gate paths → `error`; no `workflows` permission; expected-source status; approvals only from listed humans via GitHub reviews; `invalidate_on_push`; `Agent-Run` trailer check before arming; labels are never trust inputs | policy-bot's push-time estimate can lag an approval by seconds. The error is towards pending |
 | T4 | Auto-merge abuse | A flood of small PRs; a class drawn too wide | 10 auto-merges and 20 tasks per day; revert watch; circuit breaker; tiny live classes | Merged docs changes are public until reverted |
 | T5 | Runaway cost | Loops, stuck runs, trigger storms, runs created around the budget | One creator of `AgentRun`s (run-request API + Kyverno rule); three budget levels; bounded rounds and retries; stuck detection; RunLore coalescing plus 5/day; alert at 80 % | Up to one day's cap |
-| T6 | Factory compromise | Its App key (issues, PRs, contents write) | Arming auto-merge cannot pass the gate; its PRs match only the `revert` rule, confined to live allowlists; its RBAC cannot read `merge-gate` Secrets | A crafted docs "revert": the same blast radius as `docs-links` |
+| T6 | Factory compromise | Its App key (issues, PRs, contents write) | Arming auto-merge cannot pass the gate; its PRs match only the `revert` rule, which carries `docs-links`' paths, exclusions and caps; its RBAC cannot read `merge-gate` Secrets | A crafted docs "revert": fewer than 21 changed lines in existing docs Markdown outside the designs, the archive, ADRs and the constitution, the same blast radius as `docs-links` |
 | T7 | Gate compromise | policy-bot holds `statuses: write` | Own namespace; default-deny CNP (ingress from the gateway, egress to `api.github.com` only); digest-pinned image; HMAC webhooks | A compromised policy-bot approves anything. It is the most sensitive component |
 | T8 | CI secrets exposed to agent code | Same-repo `agent/**` branches run `pull_request` workflows | The only workflow secret today is `GITHUB_TOKEN` in `build-container-images.yml`. A new CI lint fails when a `pull_request` workflow references any other `secrets.*` | Any future secret-bearing workflow must fence agent heads |
 | T9 | Denial of the gate | policy-bot down, route broken, or its cert rate-limited on a rebuild | Admin and Renovate bypass (OD-7); `PolicyBotUnavailable` | Agent PRs wait. That is acceptable |
