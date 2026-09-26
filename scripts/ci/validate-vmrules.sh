@@ -31,11 +31,12 @@
 #
 # So the skip predicate is read from the data, not from a filename: a group is
 # checkable when its `type` is unset, empty, or `prometheus` — the documented
-# default — and skipped otherwise. Today that skips exactly one group,
-# `loggen` in observability/base/loggen/demo-vmrule.yaml, whose `type: vlogs`
-# expressions are LogsQL against VictoriaLogs and which promtool cannot parse
-# and must not try to. A `graphite` group would be skipped by the same rule
-# without anyone editing this script.
+# default — and skipped otherwise. Today that skips two `type: vlogs` groups,
+# `loggen` in observability/base/loggen/demo-vmrule.yaml and
+# `agent-platform-logs` in observability/base/agent-platform/vmrule-logs.yaml,
+# whose expressions are LogsQL against VictoriaLogs and which promtool cannot
+# parse and must not try to. A `graphite` group would be skipped by the same
+# rule without anyone editing this script.
 #
 # Every skipped group is printed by name with its reason on every run, and the
 # summary states the skipped count separately from the checked count. That is

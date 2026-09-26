@@ -1,0 +1,30 @@
+---
+# LogsQL rules: promtool cannot parse them, so validate-vmrules.sh skips this
+# group by its `type` and says so on every run.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: agent-platform-logs
+  namespace: observability
+  labels:
+    vmlog: "true"
+spec:
+  groups:
+    - name: agent-platform-logs
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: AgentRouterUnauthorizedBurst
+          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:401 | stats count() as unauthorized | filter unauthorized:>20'
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-router rejected {{ $value }} requests in 5 minutes"
+            description: "Replayed or foreign tokens (T8), or identity-proxy rotation broken (R2)."
+        - alert: OctoStsExchangeFailures
+          expr: 'kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
+          labels:
+            severity: warning
+          annotations:
+            summary: "octo-sts logged {{ $value }} failed exchanges in 5 minutes"
+            description: "A run is asking for a repository or role its trust policy does not grant, or the App key is wrong."
