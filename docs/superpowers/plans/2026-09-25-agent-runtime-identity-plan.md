@@ -1384,15 +1384,15 @@ metadata:
   name: xplane-run-k2m4q7wa
   namespace: agents
   labels:
-    agents.ogenki.io/task: t-9f2kq3ma
+    agents.ogenki.io/task: 6f2kq3ma
   annotations:
     agents.ogenki.io/usage-tokens: "184223"
     agents.ogenki.io/pull-request: "https://github.com/Smana/cloud-native-ref/pull/2090"
 spec:
   role: tester
   repository: Smana/cloud-native-ref
-  baseRef: agent/t-9f2kq3ma
-  branch: agent/t-9f2kq3ma
+  baseRef: agent/6f2kq3ma
+  branch: agent/6f2kq3ma
   principal: "system:factory"
   model: tier-standard
   dataClass: internal
@@ -1405,7 +1405,7 @@ spec:
   size: medium
   egress:
     profiles: [pypi, golang]
-  roomRef: r-3kq9x2ma
+  roomRef: 3kq7x2ma
   queueName: agents-standard
 ```
 
@@ -1771,8 +1771,8 @@ test_names_labels_and_principal = lambda {
 }
 
 test_task_label_propagates_from_the_claim = lambda {
-    _res = _render(_xr({}, {}, {"agents.ogenki.io/task" = "t-9f2k"}, {}), {}, _DXR)
-    assert _kind(_res, "Sandbox")[0].spec.podTemplate.metadata.labels["agents.ogenki.io/task"] == "t-9f2k"
+    _res = _render(_xr({}, {}, {"agents.ogenki.io/task" = "6f2kq3ma"}, {}), {}, _DXR)
+    assert _kind(_res, "Sandbox")[0].spec.podTemplate.metadata.labels["agents.ogenki.io/task"] == "6f2kq3ma"
     assert "agents.ogenki.io/task" not in _kind(_run({}), "Sandbox")[0].metadata.labels
 }
 
@@ -1864,7 +1864,7 @@ test_cnp_is_default_deny_with_named_egress = lambda {
 }
 
 test_room_ref_adds_broker_egress = lambda {
-    _egress = _kind(_run({roomRef = "r-3kq9x2ma"}), "CiliumNetworkPolicy")[0].spec.egress
+    _egress = _kind(_run({roomRef = "3kq7x2ma"}), "CiliumNetworkPolicy")[0].spec.egress
     assert any e in _egress {
         e.toEndpoints and e.toEndpoints[0].matchLabels["app.kubernetes.io/name"] == "room-broker" and e.toPorts[0].ports[0].port == "8443"
     }
@@ -1883,8 +1883,8 @@ test_size_presets = lambda {
 
 test_branch_defaults_to_run_id = lambda {
     assert _status(_run({})).branch == "agent/7f3cq2xz"
-    assert _status(_run({branch = "agent/t-9f2k"})).branch == "agent/t-9f2k"
-    assert {e.name: e.value for e in _pod(_run({branch = "agent/t-9f2k"})).containers[0].env}.BRANCH == "agent/t-9f2k"
+    assert _status(_run({branch = "agent/6f2kq3ma"})).branch == "agent/6f2kq3ma"
+    assert {e.name: e.value for e in _pod(_run({branch = "agent/6f2kq3ma"})).containers[0].env}.BRANCH == "agent/6f2kq3ma"
 }
 
 test_queue_label = lambda {

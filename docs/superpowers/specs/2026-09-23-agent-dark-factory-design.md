@@ -177,7 +177,8 @@ Crossplane XR has no timers, events or backoff. The cost is ours: one CRD, one c
 
 **Kueue**: ClusterQueue `agents`, LocalQueues `factory` and `interactive` (`spec.queueName`, C3),
 capping sandbox pods and offering a `stopPolicy: HoldAndDrain` stop independent of the factory.
-**`Task`** (`agents.ogenki.io/v1alpha1`, `agent-system`, name `base32(sha256(key))[:8]`): `spec` =
+**`Task`** (`agents.ogenki.io/v1alpha1`, `agent-system`, name: the first 8 characters of the
+lowercase, unpadded RFC 4648 base32 of `sha256(key)`, so `[a-z2-7]{8}` as C2 requires): `spec` =
 `source {kind, ref, key, requestedBy, trust, contentSHA256}`, `repository`, `text`, `predictedClass`,
 `template`, `budget`; `status` = `phase`, `classification`, `runs[]`, `roomRef`, `pullRequest`,
 `usage.tokens`. Never in Git, so `skipMissingSchemas` is unaffected. Templates, classes, schedules,
