@@ -17,8 +17,8 @@ the LLM-platform resources — are created on a fresh cluster.
 | `llm-platform-security-epi` | `security/base/epis-llm` | `xplane-llm-models-preload` writable EPI |
 | `llm-platform-promptfoo` | `tooling/base/promptfoo` | Nightly Promptfoo eval CronJob — gated under the LLM umbrella so it doesn't fire when SR is suspended |
 
-The gateway layer these children attach to is the always-on `ai-gateway` umbrella; see
-`../aws-0-ai-gateway/README.md`.
+The gateway layer these children attach to is the `ai-gateway` umbrella, suspended by default:
+resume it first. See `../aws-0-ai-gateway/README.md`.
 
 ## Client tier
 
@@ -54,7 +54,7 @@ end-to-end deploy. See `opentofu/aws/llm-platform/README.md`.
 ### AWS Secrets Manager bootstrap
 
 Moved to [`../aws-0-ai-gateway/README.md`](../aws-0-ai-gateway/README.md#secrets-this-layer-reads) —
-`platform-llm-api-keys` backs the always-on gateway's own auth, not just this umbrella's apps.
+`platform-llm-api-keys` backs the gateway layer's own auth, not just this umbrella's apps.
 
 ## Disable (preserve cluster state)
 
