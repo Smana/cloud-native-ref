@@ -1,0 +1,67 @@
+# AL2023, not Bottlerocket: the one deliberate exception to the Bottlerocket rule
+# (ADR-0041). Bottlerocket ships no runsc (bottlerocket-os/bottlerocket#811).
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: agents-gvisor
+spec:
+  amiSelectorTerms:
+    - alias: al2023@v20260909
+  role: Karpenter-${cluster_name}
+  kubelet:
+    maxPods: 100
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    # One hop: a pod, sandboxed or escaped into the pod netns, cannot reach IMDS.
+    httpPutResponseHopLimit: 1
+    httpTokens: required
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeType: gp3
+        volumeSize: 50Gi
+        encrypted: true
+        deleteOnTermination: true
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${environment}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${cluster_name}
+  tags:
+    karpenter.sh/discovery: ${cluster_name}
+  # Karpenter merges its own NodeConfig part into this MIME document. It closes
+  # research pitfalls 1-4: the v3 CRI plugin id (the v2 one is accepted, ignored,
+  # and the node still reports Ready), gvisor-bin/ next to runsc, and oci-seccomp,
+  # without which RuntimeDefault does nothing inside the sandbox.
+  # No shell variables on purpose: Flux postBuild would rewrite ${...} to "".
+  userData: |
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="//"
+
+    --//
+    Content-Type: text/x-shellscript; charset="us-ascii"
+
+    #!/bin/bash
+    set -euo pipefail
+    command -v bzip2 >/dev/null || dnf install -y bzip2
+    curl -fsSLo /tmp/gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20260921.0/gvisor-x86_64.tar.bz2
+    echo "3dd478770dd751d09c257ba14d739b179348a36c5f2d9e954b773f5f90bff646  /tmp/gvisor.tar.bz2" | sha256sum -c -
+    tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin
+    rm -f /tmp/gvisor.tar.bz2
+    printf '[runsc_config]\n  oci-seccomp = "true"\n' > /etc/containerd/runsc.toml
+    --//
+    Content-Type: application/node.eks.aws
+
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      containerd:
+        config: |
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
+            runtime_type = "io.containerd.runsc.v1"
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc.options]
+            TypeUrl = "io.containerd.runsc.v1.options"
+            ConfigPath = "/etc/containerd/runsc.toml"
+    --//--

@@ -1,0 +1,17 @@
+---
+# `runsc` is registered in containerd's v3 CRI table by the agents-gvisor
+# EC2NodeClass user-data. `scheduling` pins every gVisor pod to that pool, so a
+# composed pod spec carries no nodeSelector or toleration of its own.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+scheduling:
+  nodeSelector:
+    agents.ogenki.io/runtime: gvisor
+  tolerations:
+    - key: agents.ogenki.io/runtime
+      operator: Equal
+      value: gvisor
+      effect: NoSchedule

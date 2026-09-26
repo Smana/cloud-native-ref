@@ -1,0 +1,22 @@
+kcl_options:
+  - key: params
+    value:
+      oxr:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: AgentRun
+        metadata:
+          name: xplane-run-spk2test
+          namespace: agents
+          uid: 5f0c2a7e-1b3d-4c8a-9e6f-0d2b4a6c8e10
+        spec:
+          role: implementer
+          repository: Smana/cloud-native-ref
+          principal: "human:spike"
+          dataClass: public
+          budget: {maxMinutes: 180}
+          task: {text: "Spike: idle."}
+      ocds: {}
+      dxr:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: AgentRun
+        metadata: {name: xplane-run-spk2test, namespace: agents}

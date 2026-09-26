@@ -1,0 +1,224 @@
+---
+# The identity-proxy bootstrap shared by every AgentRun sandbox (design §3, S5).
+# Envoy is the ONLY container that mounts the gateway and octo-sts tokens. The
+# harness sees three localhost ports:
+#   127.0.0.1:4000  /v1, /anthropic, /mcp  -> agent-router `public`   :8080
+#   127.0.0.1:4002  /v1, /anthropic, /mcp  -> agent-router `internal` :8081
+#   127.0.0.1:4001  /sts/exchange          -> octo-sts :8080
+# A run's audience names its data class, so the other class's port earns a 401,
+# and the run's CNP does not open it anyway.
+# Admin is a unix socket (not a TCP port) and 0.0.0.0:9902 is a dedicated health
+# listener (review CC-1): the harness shares this pod's network namespace and
+# could otherwise reach an exposed admin API (e.g. POST /logging?level=debug)
+# to leak injected tokens.
+#
+# Rotation (Q2): kubelet rewrites a projected token at 80 % of its 600 s TTL by
+# swapping the volume's ..data symlink. `watched_directory` turns that move into
+# an SDS reload, so the injector always sends a live token.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-identity-proxy
+  namespace: agents
+data:
+  sds-gateway.yaml: |  # pragma: allowlist secret -- SDS metadata (a token filename path), not a credential value
+    resources:
+      - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+        name: gateway-token
+        generic_secret:
+          secret:
+            filename: /var/run/secrets/agents/gateway/token
+  sds-sts.yaml: |  # pragma: allowlist secret -- SDS metadata (a token filename path), not a credential value
+    resources:
+      - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+        name: sts-token
+        generic_secret:
+          secret:
+            filename: /var/run/secrets/agents/sts/token
+  envoy.yaml: |
+    admin:
+      address:
+        # Pathname unix socket in the proxy-tmp emptyDir (the harness container
+        # does not mount it): never 0.0.0.0 and never an abstract (`@...`)
+        # socket, which is netns-scoped and so still reachable from the harness.
+        pipe: {path: /tmp/envoy-admin.sock, mode: 0600}
+    static_resources:
+      listeners:
+        - name: public
+          address:
+            socket_address: {address: 127.0.0.1, port_value: 4000}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: public
+                    stream_idle_timeout: 300s
+                    route_config:
+                      virtual_hosts:
+                        - name: agent-router
+                          domains: ["*"]
+                          routes:
+                            - {match: {prefix: /v1/}, route: {cluster: agent_router_public, timeout: 0s}}
+                            - {match: {prefix: /anthropic/}, route: {cluster: agent_router_public, timeout: 0s}}
+                            - {match: {prefix: /mcp}, route: {cluster: agent_router_public, timeout: 0s}}
+                            - {match: {prefix: /}, direct_response: {status: 404}}
+                    http_filters:
+                      - name: envoy.filters.http.credential_injector
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
+                          overwrite: true
+                          credential:
+                            name: envoy.http.injected_credentials.generic
+                            typed_config:
+                              "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+                              credential:
+                                name: gateway-token
+                                sds_config:
+                                  path_config_source:
+                                    path: /etc/envoy/sds-gateway.yaml
+                                    watched_directory: {path: /var/run/secrets/agents/gateway}
+                              header: Authorization
+                              header_value_prefix: "Bearer "
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+        - name: internal
+          address:
+            socket_address: {address: 127.0.0.1, port_value: 4002}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: internal
+                    stream_idle_timeout: 300s
+                    route_config:
+                      virtual_hosts:
+                        - name: agent-router
+                          domains: ["*"]
+                          routes:
+                            - {match: {prefix: /v1/}, route: {cluster: agent_router_internal, timeout: 0s}}
+                            - {match: {prefix: /anthropic/}, route: {cluster: agent_router_internal, timeout: 0s}}
+                            - {match: {prefix: /mcp}, route: {cluster: agent_router_internal, timeout: 0s}}
+                            - {match: {prefix: /}, direct_response: {status: 404}}
+                    http_filters:
+                      - name: envoy.filters.http.credential_injector
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
+                          overwrite: true
+                          credential:
+                            name: envoy.http.injected_credentials.generic
+                            typed_config:
+                              "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+                              credential:
+                                name: gateway-token
+                                sds_config:
+                                  path_config_source:
+                                    path: /etc/envoy/sds-gateway.yaml
+                                    watched_directory: {path: /var/run/secrets/agents/gateway}
+                              header: Authorization
+                              header_value_prefix: "Bearer "
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+        - name: sts
+          address:
+            socket_address: {address: 127.0.0.1, port_value: 4001}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: sts
+                    route_config:
+                      virtual_hosts:
+                        - name: octo-sts
+                          domains: ["*"]
+                          routes:
+                            - {match: {prefix: /sts/exchange}, route: {cluster: octo_sts, timeout: 30s}}
+                            - {match: {prefix: /}, direct_response: {status: 404}}
+                    http_filters:
+                      - name: envoy.filters.http.credential_injector
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.credential_injector.v3.CredentialInjector
+                          overwrite: true
+                          credential:
+                            name: envoy.http.injected_credentials.generic
+                            typed_config:
+                              "@type": type.googleapis.com/envoy.extensions.http.injected_credentials.generic.v3.Generic
+                              credential:
+                                name: sts-token
+                                sds_config:
+                                  path_config_source:
+                                    path: /etc/envoy/sds-sts.yaml
+                                    watched_directory: {path: /var/run/secrets/agents/sts}
+                              header: Authorization
+                              header_value_prefix: "Bearer "
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+        - name: health
+          address:
+            # Host-reachable on purpose: the CC-1 composition probes
+            # httpGet /ready :9902 for both readiness and liveness, and opens
+            # host ingress on this port only.
+            socket_address: {address: 0.0.0.0, port_value: 9902}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: health
+                    route_config:
+                      virtual_hosts:
+                        - name: health
+                          domains: ["*"]
+                          routes:
+                            - {match: {prefix: /}, direct_response: {status: 404}}
+                    http_filters:
+                      - name: envoy.filters.http.health_check
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.health_check.v3.HealthCheck
+                          # Non-pass-through: answer /ready with 200 directly, never proxy the probe upstream.
+                          pass_through_mode: false
+                          headers:
+                            - name: ":path"
+                              string_match: {exact: /ready}
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+        - name: agent_router_public
+          type: STRICT_DNS
+          connect_timeout: 5s
+          dns_lookup_family: V4_ONLY
+          load_assignment:
+            cluster_name: agent_router_public
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8080}
+        - name: agent_router_internal
+          type: STRICT_DNS
+          connect_timeout: 5s
+          dns_lookup_family: V4_ONLY
+          load_assignment:
+            cluster_name: agent_router_internal
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8081}
+        - name: octo_sts
+          type: STRICT_DNS
+          connect_timeout: 5s
+          dns_lookup_family: V4_ONLY
+          load_assignment:
+            cluster_name: octo_sts
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: octo-sts.agent-system.svc.cluster.local, port_value: 8080}

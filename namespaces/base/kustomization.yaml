@@ -3,6 +3,8 @@ kind: Kustomization
 
 resources:
   - llm.yaml
+  - agents.yaml
+  - agent-system.yaml
   - apps.yaml
   - crossplane-system.yaml
   - demo.yaml

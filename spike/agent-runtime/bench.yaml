@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-bench
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bench
+  namespace: agent-bench
+data:
+  bench.sh: |
+    #!/bin/bash
+    set -uo pipefail
+    export HOME=/work PATH=/work/bin:$PATH MISE_DATA_DIR=/work/mise MISE_CACHE_DIR=/work/cache
+    mkdir -p /work/bin && cd /work
+    t0=$(date +%s)
+    git clone --depth 1 https://github.com/Smana/cloud-native-ref repo
+    t1=$(date +%s)
+    python3 -c "import urllib.request; urllib.request.urlretrieve('https://mise.jdx.dev/mise-latest-linux-x64', '/work/bin/mise')"
+    chmod +x /work/bin/mise
+    cd repo && mise trust -q . && mise install -q && mise exec -- flux plugin install schema
+    t2=$(date +%s)
+    mise exec -- task check > /work/check.log 2>&1; rc=$?
+    t3=$(date +%s)
+    tail -5 /work/check.log
+    echo "RESULT runtime=${RUNTIME} clone=$((t1-t0)) setup=$((t2-t1)) check=$((t3-t2)) check_exit=${rc}"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bench
+  namespace: agent-bench
+spec:
+  restartPolicy: Never
+  runtimeClassName: gvisor
+  nodeSelector:
+    kubernetes.io/hostname: __NODE__
+  tolerations:
+    - {key: agents.ogenki.io/runtime, operator: Equal, value: gvisor, effect: NoSchedule}
+  securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: bench
+      image: ghcr.io/openhands/agent-server:1.49.5-python@sha256:1e7b08ffef732d6520e0b0048931b6ef425a7742c5fb80a82c9397a285c669eb
+      command: ["bash", "/bench/bench.sh"]
+      env: [{name: RUNTIME, value: __RUNTIME__}]
+      resources: {requests: {cpu: "2", memory: 4Gi}, limits: {cpu: "2", memory: 4Gi}}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: ["ALL"]}
+      volumeMounts:
+        - {name: work, mountPath: /work}
+        - {name: tmp, mountPath: /tmp}
+        - {name: bench, mountPath: /bench}
+  volumes:
+    - {name: work, emptyDir: {sizeLimit: 20Gi}}
+    - {name: tmp, emptyDir: {}}
+    - {name: bench, configMap: {name: bench}}

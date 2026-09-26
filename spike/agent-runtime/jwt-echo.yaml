@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwt-echo
+  namespace: envoy-gateway-system
+data:
+  envoy.yaml: |
+    admin:
+      address:
+        socket_address: {address: 127.0.0.1, port_value: 9901}
+    static_resources:
+      listeners:
+        - name: http
+          address:
+            socket_address: {address: 0.0.0.0, port_value: 8080}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: echo
+                    access_log:
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                    route_config:
+                      virtual_hosts:
+                        - name: all
+                          domains: ["*"]
+                          routes:
+                            - match: {prefix: /}
+                              direct_response: {status: 200, body: {inline_string: "ok\n"}}
+                    http_filters:
+                      - name: envoy.filters.http.jwt_authn
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                          providers:
+                            eks:
+                              issuer: __ISSUER__
+                              audiences: [agent-router.implementer.public]
+                              remote_jwks:
+                                http_uri: {uri: __ISSUER__/keys, cluster: eks_oidc, timeout: 5s}
+                                cache_duration: 300s
+                          rules:
+                            - match: {prefix: /}
+                              requires: {provider_name: eks}
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+        - name: eks_oidc
+          type: LOGICAL_DNS
+          connect_timeout: 5s
+          dns_lookup_family: V4_ONLY
+          load_assignment:
+            cluster_name: eks_oidc
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: __ISSUER_HOST__, port_value: 443}
+          transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+              sni: __ISSUER_HOST__
+              common_tls_context:
+                validation_context:
+                  trusted_ca: {filename: /etc/ssl/certs/ca-certificates.crt}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jwt-echo
+  namespace: envoy-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: jwt-echo}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jwt-echo
+        # The label the composed run CNP selects (R5).
+        gateway.envoyproxy.io/owning-gateway-name: agent-router
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: envoy
+          image: docker.io/envoyproxy/envoy:distroless-v1.39.1@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4
+          args: ["-c", "/etc/envoy/envoy.yaml"]
+          ports: [{containerPort: 8080}]
+          readinessProbe: {tcpSocket: {port: 8080}}
+          livenessProbe: {tcpSocket: {port: 8080}}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 128Mi}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: config, mountPath: /etc/envoy}]
+      volumes: [{name: config, configMap: {name: jwt-echo}}]
+---
+# Named like the Service Envoy Gateway will create, so the identity-proxy
+# ConfigMap is tested unchanged.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-router
+  namespace: envoy-gateway-system
+spec:
+  selector: {app.kubernetes.io/name: jwt-echo}
+  ports:
+    - {name: public, port: 8080, targetPort: 8080}
