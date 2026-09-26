@@ -1,0 +1,53 @@
+---
+# Ingress from sandbox pods only: that, not the trust policy's issuer pattern,
+# is what keeps other EKS clusters' tokens out (ADR-0043). Egress to GitHub's
+# API and the EKS issuer (discovery + JWKS).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: octo-sts
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agents
+          matchExpressions:
+            - key: agents.ogenki.io/run-id
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: api.github.com
+        # Host only: ${oidc_issuer_host} carries the issuer's /id/<ID> path,
+        # which matchName's hostname pattern rejects. The JWKS is on this host.
+        - matchName: oidc.eks.${region}.amazonaws.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

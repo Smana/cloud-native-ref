@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Self-hosted octo-sts (ADR-0043): exchanges a run's projected token for a <= 1 h
+# installation token of the agents' App. No webhook component: it would need a
+# public endpoint.
+resources:
+  - serviceaccount.yaml
+  - externalsecret.yaml
+  - deployment.yaml
+  - service.yaml
+  - network-policy.yaml
