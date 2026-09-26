@@ -1,0 +1,82 @@
+# AL2023, not Bottlerocket: the one deliberate exception to the Bottlerocket rule
+# (ADR-0041). Bottlerocket ships no runsc (bottlerocket-os/bottlerocket#811).
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: agents-gvisor
+spec:
+  amiSelectorTerms:
+    # The date must exist for the cluster's Kubernetes version, or Karpenter logs
+    # "failed to discover any AMIs for alias" and the pool never gets a node
+    # (v20260909 does not exist for 1.36). Check before bumping:
+    #   aws ssm get-parameter --name /aws/service/eks/optimized-ami/<k8s>/amazon-linux-2023/x86_64/standard/recommended/release_version
+    - alias: al2023@v20260923
+  role: Karpenter-${cluster_name}
+  kubelet:
+    maxPods: 100
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    # One hop: a pod, sandboxed or escaped into the pod netns, cannot reach IMDS.
+    httpPutResponseHopLimit: 1
+    httpTokens: required
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeType: gp3
+        volumeSize: 50Gi
+        encrypted: true
+        deleteOnTermination: true
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${environment}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${cluster_name}
+  tags:
+    karpenter.sh/discovery: ${cluster_name}
+  # Karpenter merges its own NodeConfig part into this MIME document. It closes
+  # research pitfalls 1-3: the v3 CRI plugin id (the v2 one is accepted, ignored,
+  # and the node still reports Ready) and gvisor-bin/ next to runsc.
+  # oci-seccomp stays OFF (pitfall 4 reversed by the spike): runsc returns EPERM
+  # for every SCMP_ACT_ERRNO and ignores errnoRet (google/gvisor#14688, open), so
+  # RuntimeDefault's clone3 -> ENOSYS becomes EPERM, glibc >= 2.34 never falls back
+  # to clone, and no process can start a thread. The Sentry is the boundary;
+  # re-enable when a release honours errnoRet.
+  # No shell variables on purpose: Flux postBuild would rewrite ${...} to "".
+  userData: |
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="//"
+
+    --//
+    Content-Type: text/x-shellscript; charset="us-ascii"
+
+    #!/bin/bash
+    set -euo pipefail
+    # Fail closed: a failed download/checksum must not leave a Ready-but-broken
+    # node that silently swallows sandbox pods until expireAfter (24h) rotates
+    # it out. shutdown terminates this one-time spot instance immediately, and
+    # Karpenter launches a fresh replacement attempt.
+    trap 'shutdown -h now' ERR
+    command -v bzip2 >/dev/null || dnf install -y bzip2
+    curl -fsSL --retry 5 --retry-all-errors -o /tmp/gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20260921.0/gvisor-x86_64.tar.bz2
+    echo "3dd478770dd751d09c257ba14d739b179348a36c5f2d9e954b773f5f90bff646  /tmp/gvisor.tar.bz2" | sha256sum -c -
+    # --no-same-owner: extracting as root would otherwise preserve the
+    # archive's recorded UIDs/GIDs instead of normalizing to root:root.
+    tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin --no-same-owner
+    rm -f /tmp/gvisor.tar.bz2
+    printf '[runsc_config]\n  oci-seccomp = "false"\n' > /etc/containerd/runsc.toml
+    --//
+    Content-Type: application/node.eks.aws
+
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      containerd:
+        config: |
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
+            runtime_type = "io.containerd.runsc.v1"
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc.options]
+            TypeUrl = "io.containerd.runsc.v1.options"
+            ConfigPath = "/etc/containerd/runsc.toml"
+    --//--
