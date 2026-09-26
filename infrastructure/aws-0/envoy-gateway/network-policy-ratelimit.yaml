@@ -1,0 +1,73 @@
+# Default-deny for Envoy Gateway's rate-limit service. The KVStore composition
+# admits 6379 from its whole namespace; every other pod here has default-deny
+# egress without 6379, so in practice only this pod reaches Valkey.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: envoy-ratelimit
+  namespace: envoy-gateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-ratelimit
+      app.kubernetes.io/component: ratelimit
+  ingress:
+    # Rate-limit checks from every Envoy Gateway data plane: ai-gateway now,
+    # agent-router once SP1 ships it. Which budgets apply is decided by each
+    # Gateway's policy, not by who may ask.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            app.kubernetes.io/managed-by: envoy-gateway
+            app.kubernetes.io/component: proxy
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Kubelet probes on /healthcheck.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "19001"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Rate-limit descriptors over xDS from the controller, on Envoy Gateway's
+    # second xDS port.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            control-plane: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "18001"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: valkey
+            app.kubernetes.io/instance: xplane-ai-gateway-ratelimit-valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP

@@ -18,13 +18,14 @@ spec:
       port: 8080
       allowedRoutes:
         namespaces:
-          # Allow AIGatewayRoutes from the llm namespace (where the
-          # vLLM Services + per-model AIServiceBackends live) to bind
-          # to this Gateway's listener.
+          # llm: the per-model AIGatewayRoutes (claims and llm-fleet).
+          # llm-gateway: the frontier routes (tier-frontier, claude-*).
           from: Selector
           selector:
-            matchLabels:
-              kubernetes.io/metadata.name: llm
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [llm, llm-gateway]
   infrastructure:
     parametersRef:
       group: gateway.envoyproxy.io

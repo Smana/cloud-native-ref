@@ -115,7 +115,7 @@ virtualisation, and lets identity be composed per run.
 `infrastructure/base/karpenter-nodepools-agents/`, `infrastructure/base/runtimeclass-gvisor/`,
 `infrastructure/base/agent-sandbox/`, Kyverno `agents-pod-shape` in `security/base/agent-policies/`,
 all behind the `agent-platform` umbrella. The XR is `AgentRun` in `Smana/crossplane-configuration`.
-Spike results: the SP1 agent-runtime-identity spike notes (superpowers plan artifact, not yet merged).
+Spike results: the SP1 agent-runtime-identity spike notes (a superpowers spec, landing with #2092).
 
 ---
 

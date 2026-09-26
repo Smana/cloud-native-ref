@@ -1,0 +1,26 @@
+---
+# octo-sts for the agents' GitHub App (ADR-0043).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: octo-sts
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 3m0s
+  path: ./security/base/octo-sts
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: agent-secrets
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: octo-sts
+      namespace: agent-system

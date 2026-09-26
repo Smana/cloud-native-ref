@@ -12,6 +12,9 @@ resources:
   - network-policy.yaml
   # API-key authentication on the Gateway listener (B-1).
   - api-keys-externalsecret.yaml
+  # MCP session-encryption seed consumed by helmrelease.yaml's valuesFrom
+  # (phase-5 review I1).
+  - externalsecret-mcp-session-seed.yaml
   - security-policy.yaml
   # GenAI telemetry scrape — VMPodScrape for the extproc `gen_ai.*` metrics
   # emitted on the data-plane pods' aigw-admin sidecar port (SPEC-006).

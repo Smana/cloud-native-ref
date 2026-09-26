@@ -1,0 +1,55 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: zai
+  namespace: agent-system
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.z.ai
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: zai
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: zai
+  validation:
+    wellKnownCACertificates: System
+    hostname: api.z.ai
+---
+# RunLore's working base_url is https://api.z.ai/api/paas/v4/.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: zai
+  namespace: agent-system
+spec:
+  schema:
+    name: OpenAI
+    prefix: /api/paas/v4
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: zai
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: zai-api-key
+  namespace: agent-system
+spec:
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: agents-zai-api-key
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: zai

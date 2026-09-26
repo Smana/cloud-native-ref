@@ -9,4 +9,8 @@ resources:
   - infrastructure-runtimeclass-gvisor.yaml
   - infrastructure-agent-runtime.yaml
   - security-agent-policies.yaml
+  - security-agent-secrets.yaml
+  - infrastructure-agent-router.yaml
+  - security-octo-sts.yaml
+  - infrastructure-agent-mcp.yaml
   - observability-agent-platform.yaml

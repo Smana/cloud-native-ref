@@ -20,6 +20,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
       toPorts:
         - ports:
             - port: "8080"

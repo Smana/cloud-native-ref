@@ -185,6 +185,15 @@
       ],
       "groupName": "openbao",
       "automerge": false
+    },
+    {
+      "description": "agent-sandbox chart and controller: one PR, never automerged. The chart ships only from the git repository (flux/sources/gitrepo-agent-sandbox.yaml `ref.tag`, the flux manager, packageName kubernetes-sigs/agent-sandbox) and the controller image is pinned apart from it (infrastructure/base/agent-sandbox/helmrelease.yaml `image`, the helm-values manager); upstream cuts both from one release. Split, the automerge rule above moves the tag within a week of a release and leaves the image behind: the new chart's controller flags, RBAC and CreateReplace'd CRDs then run against the old binary, and the render gate passes either way, as it did for runlore's chart/image drift (0.9.2 against v0.11.0 crashlooped). Never automerged because CI never starts the controller, and a group PR can still carry only one of the two if the image is published after the tag: the reviewer checks that both lines moved to the same version.",
+      "matchPackageNames": [
+        "kubernetes-sigs/agent-sandbox",
+        "registry.k8s.io/agent-sandbox/agent-sandbox-controller"
+      ],
+      "groupName": "agent-sandbox",
+      "automerge": false
     }
   ],
   "registryAliases": {

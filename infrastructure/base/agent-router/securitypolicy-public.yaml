@@ -1,0 +1,38 @@
+---
+# The `public` listener accepts exactly the four `.public` audiences (C2): an
+# internal-class or octo-sts token is a 403 here (Envoy answers an audience
+# mismatch 403, a missing or unverifiable token 401). EKS JWKS is served at
+# <issuer>/keys; validation is offline, so a copied token lives until exp (the run's deadline, R2).
+#
+# agent-mcp's MCPRoutes carry their own `securityPolicy.oauth.{issuer,audiences}`
+# (infrastructure/base/agent-mcp/mcproutes.yaml) which REPLACES this policy on
+# `/mcp`, not merges with it (Envoy Gateway does not merge route- and
+# listener-scoped SecurityPolicies). Keep the two in sync by hand (review M7).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-public
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: public
+  jwt:
+    providers:
+      - name: eks-agents-public
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - agent-router.implementer.public
+          - agent-router.reviewer.public
+          - agent-router.tester.public
+          - agent-router.triager.public
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        # The verified sub also reaches Z.ai, deliberately: a headerMutation.remove
+        # on the zai backendRef edits the same request headers the access log
+        # reads, so it would blank this Gateway's own x_ar_agent (SC-05).
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent

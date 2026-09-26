@@ -125,8 +125,11 @@ FIXTURE_VARS = {
     # above, whose value reaches a container as an env var.
     "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
-    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
-    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",
+    # Both live values carry the /id/<ID> path (IAM trust conditions and JWT
+    # issuers need it); a bare-host fixture let a CNP toFQDNs.matchName on it
+    # validate while invalid.
+    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
+    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
     "cluster_endpoint_full": "https://example.eks.amazonaws.com",
     "karpenter_queue_name": "karpenter-foobar",
     # GCP. Without these, VAR_RE.sub passes the name through verbatim and CI
