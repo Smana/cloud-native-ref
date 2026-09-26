@@ -1,0 +1,15 @@
+---
+# The AgentRun composition writes Sandboxes; Crossplane's SA is granted only what
+# its providers manage (infrastructure/AGENTS.md, trap 3). ServiceAccounts,
+# ConfigMaps and CNPs are already covered by Crossplane's own role and
+# infrastructure/base/crossplane/rbac/aggregate-rbac.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-sandbox:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes", "sandboxes/status"]
+    verbs: ["*"]

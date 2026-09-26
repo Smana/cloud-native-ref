@@ -1,0 +1,59 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: agents-gvisor
+spec:
+  template:
+    metadata:
+      labels:
+        agents.ogenki.io/runtime: gvisor
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: agents-gvisor
+      taints:
+        - key: agents.ogenki.io/runtime
+          value: gvisor
+          effect: NoSchedule
+      startupTaints:
+        - key: node.cilium.io/agent-not-ready
+          value: "true"
+          effect: NoExecute
+      # Daily replacement also rolls out gVisor and AMI bumps.
+      expireAfter: 24h
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "m"]
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: ["5"]
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: Gt
+          values: ["3"]
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: Lt
+          values: ["17"]
+        # Nitro only, as on the other pools: Cilium ENI prefix delegation needs it.
+        - key: karpenter.k8s.aws/instance-hypervisor
+          operator: In
+          values: ["nitro"]
+        # A label pods select on must also be a requirement, or Karpenter never
+        # matches the pool (research pitfall 5).
+        - key: agents.ogenki.io/runtime
+          operator: In
+          values: ["gvisor"]
+  disruption:
+    # Runs are do-not-disrupt; consolidation would only ever find empty nodes.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
+  limits:
+    cpu: "16"
+    memory: 64Gi
