@@ -400,7 +400,7 @@ compared [in the research](2026-09-23-agent-collaboration-rooms-research.md#prot
 No manifest in the repo selects `cnpg.io/cluster` pods, so SP2 writes the CNPG policy itself.
 
 **Workload.** 2 replicas, PDB `minAvailable: 1`; 100m/128Mi requests, 500m/256Mi limits; PSS restricted; `/healthz`,
-`/readyz` (Postgres), `/startupz` (schema). RBAC: `system:auth-delegator`, read and delete on `agentruns` (never create,
+`/readyz` (Postgres), `/startupz` (schema). RBAC: read and delete on `agentruns` (never create,
 C3), CRUD on `rooms`; no cluster-admin. Secrets come only from the namespaced `agents-secrets` store
 (`platform/agents/*`, C1), never `openbao-platform`; the `rooms-proxy` client is written under that path.
 
