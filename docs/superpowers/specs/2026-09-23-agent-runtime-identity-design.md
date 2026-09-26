@@ -66,6 +66,8 @@ These supersede the sections they name; the reasoning is in the plan's departure
 - §2: `status.usage.tokens` never decreases (CC-1 `68bb570`).
 - §6: the branch ruleset's bypass list gains the `write` and `maintain` roles, so it confines the
   agents' App and no human collaborator.
+- §6: EG 1.9.1 always forwards a validated token upstream; octo-sts relies on it, and no MCP server
+  may receive it.
 
 ## Architecture
 
