@@ -41,6 +41,13 @@ These supersede the sections they name; the reasoning is in the plan's departure
 | §5 harness | agent-server stays on loopback with `exec` probes; `:8000` is not in the CNP |
 | §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network. Runs `--disable-hot-restart --concurrency 1`: hot restart would open an abstract socket and a `/dev/shm` segment the harness shares |
 
+**Amendments from programme r5 (2026-09-26, owner):**
+- §3: every consumer validates offline and issuer-agnostically, including the room broker, which
+  was online by TokenReview (C2 r5).
+- The room bridge speaks HTTPS (`POST` up, SSE down), not WebSocket (C4 r5), so the run's CNP
+  needs no upgrade-capable egress.
+- `ai-gateway` is suspended by default and must be resumed before `agent-platform` (C1, OD-3).
+
 ## Architecture
 
 ```mermaid
@@ -230,7 +237,7 @@ removing an annotation never resurrects a run. Nothing the harness reports reach
 |---|---|---|---|---|
 | Gateway | `agent-router.<role>.<dataClass>` | 600 s, kubelet-rotated at 80 % | `identity-proxy` | offline, EKS JWKS `${oidc_issuer_url}/keys`, by the listener's exact list |
 | octo-sts | `octo-sts/<owner>/<repo>/<role>` | 600 s | `identity-proxy` | offline, by the trust policy (issuer, subject, exact audience) |
-| Room | `room-broker` | 600 s | `room-bridge` | **online**, by TokenReview (SP2) |
+| Room | `room-broker` | 600 s | `room-bridge` | offline, allowlisted issuer's JWKS, plus a live watch of the run's `AgentRun` (SP2, C2 r5) |
 | GitHub installation | — | ≤ 1 h | harness, in memory | GitHub |
 
 **Identity proxy.** A static Envoy bootstrap, ConfigMap `agent-identity-proxy`, shared by every
