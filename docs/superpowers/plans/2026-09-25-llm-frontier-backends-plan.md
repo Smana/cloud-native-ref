@@ -3125,9 +3125,11 @@ spec:
 ```yaml
 # Token budgets on the agents' Gateway (design section 6, OD-10, ADR-0050).
 # The ONLY Gateway-level BackendTrafficPolicy on agent-router: Envoy Gateway
-# marks a second one Conflicted. No sectionName, so B2 is one bucket across
-# both listeners. Shared, token-costed, and in SHADOW for the first week
-# (enforcement is SP4 PR 7).
+# marks a second one Conflicted. No sectionName, so B1 and B2 are one bucket
+# across all three listeners, including sts: once PR 7 enforces them, a
+# zeroed cap blocks octo-sts token exchange too, not just model calls.
+# Shared, token-costed, and in SHADOW for the first week (enforcement is
+# SP4 PR 7).
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -3162,7 +3164,7 @@ spec:
                 key: llm_total_token
           shared: true
           shadowMode: true
-        # B2 — the agent fleet, every run on either listener. Sized at least the
+        # B2 — the agent fleet, every run on any of the three listeners. Sized at least the
         # sum of SP3's admission caps (25M factory + 5M per launching human;
         # 40M for three), so neither kind starves the other (OD-10).
         - limit:

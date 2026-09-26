@@ -352,13 +352,16 @@ routes count once the composition sets it (PR 3). The defaults are OD-10's.
 | Rule | Gateway | Selector | Default / Day | ≈ $ at GLM-5.2 | Covers |
 |---|---|---|---|---|---|
 | B1 run ceiling | `agent-router` | `x-ar-agent` Distinct | 5 M | 8.5 | every run. It **equals** the admission ceiling on `maxTokens` |
-| B2 fleet | `agent-router`, **one bucket** across both listeners | none | ≥ 25 M + 5 M × launching humans (40 M for three) | 68 for 40 M | every agent run, factory- and human-launched. Sized ≥ the sum of SP3's admission caps (OD-10), so neither starves the other |
+| B2 fleet | `agent-router`, **one bucket** across all three listeners (`public`, `internal`, `sts`) | none | ≥ 25 M + 5 M × launching humans (40 M for three) | 68 for 40 M | every agent run, factory- and human-launched. Sized ≥ the sum of SP3's admission caps (OD-10), so neither starves the other |
 | B3 human | `ai-gateway` | `x-ar-human` Distinct | 10 M | 17 | each `human:*` directly |
 | B4 system client | `ai-gateway` | `x-ai-gateway-client-id` Distinct | 5 M | 8.5 | RunLore, OpenWebUI, promptfoo |
 | B5 frontier guard | `ai-gateway` | `x-ai-eg-model` RegularExpression `^(tier-frontier\|claude-.*)$` | 20 M | 34 | kill switch on human and system frontier spend |
 
 - **Assumptions.** Dollars assume 90% input tokens, no cache discount. Windows are fixed UTC days.
   Rules ship with `shadowMode: true` for a week (OD-10).
+- **B1 and B2 also gate the `sts` listener**, since both attach at the Gateway with no `sectionName`
+  (D8). Once PR 7 enforces them (shadow ends), an exhausted B1 or a zeroed B2 fleet cap blocks a
+  run's octo-sts token exchange too, not just its model calls.
 - **Per-principal share of run spend.** The gateway cannot see `spec.principal`, because the token
   carries only `sub`. SP3 therefore checks a principal's day before admitting a run, by summing
   `status.usage.tokens` grouped by `spec.principal` (R9).
