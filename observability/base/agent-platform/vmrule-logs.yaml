@@ -15,12 +15,12 @@ spec:
       interval: 5m
       rules:
         - alert: AgentRouterUnauthorizedBurst
-          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:401 | stats count() as unauthorized | filter unauthorized:>20'
+          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:~"(401|403)" | stats count() as rejected | filter rejected:>20'
           labels:
             severity: warning
           annotations:
             summary: "agent-router rejected {{ $value }} requests in 5 minutes"
-            description: "Replayed or foreign tokens (T8), or identity-proxy rotation broken (R2)."
+            description: "Unauthorized tokens (401) or wrong audience (403). T8: replayed/foreign tokens; R2: identity-proxy rotation broken."
         - alert: OctoStsExchangeFailures
           expr: 'kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
           labels:
