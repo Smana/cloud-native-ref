@@ -22,7 +22,10 @@ data:
     # curl, not python urllib: mise.jdx.dev answers 403 to the Python-urllib user agent.
     curl -fsSL --retry 3 -o /work/bin/mise https://mise.jdx.dev/mise-latest-linux-x64
     chmod +x /work/bin/mise
-    cd repo && mise trust -q . && mise install -q && mise exec -- flux plugin install schema
+    # What ci.yaml installs outside mise: PyYAML (validate-manifests) and the pinned
+    # schema plugin. --user because the root filesystem is read-only (HOME=/work).
+    python3 -m pip install --user --quiet --disable-pip-version-check pyyaml
+    cd repo && mise trust -q . && mise install -q && mise exec -- flux plugin install schema@0.11.0
     t2=$(date +%s)
     mise exec -- task check > /work/check.log 2>&1; rc=$?
     t3=$(date +%s)
