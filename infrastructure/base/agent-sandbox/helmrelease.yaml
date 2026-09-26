@@ -27,6 +27,18 @@ spec:
       retries: 3
   driftDetection:
     mode: enabled
+  # reconcileStrategy: Revision versions the chart `0.1.0+<git sha>`, and the
+  # chart copies that verbatim into every object's `helm.sh/chart` label. `+`
+  # is not legal in a label value, so the API server rejects the release.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              labelSelector: helm.sh/chart
+            patch: |
+              - op: replace
+                path: /metadata/labels/helm.sh~1chart
+                value: agent-sandbox
   values:
     namespace:
       create: false
