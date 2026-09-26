@@ -14,13 +14,9 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact
-  postBuild:
-    substituteFrom:
-      - kind: ConfigMap
-        name: eks-aws-0-vars
   dependsOn:
     # The AIGatewayRoute binds to Gateway ai-gateway, and the Agent Router CRDs
     # ship with that child.
     - name: envoy-ai-gateway
-    # The budget policy (Task 6) needs Envoy Gateway's rate-limit service.
+    # The budget policy needs Envoy Gateway's rate-limit service.
     - name: envoy-gateway

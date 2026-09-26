@@ -89,8 +89,8 @@ make it both correct and safe to roll out.
 
 ### Neutral
 
-- Every rule must set `shared: true`. A render gate (`scripts/ci/flux-schema/assert-ai-gateway.py`)
-  fails the build otherwise.
+- Every rule must set `shared: true` and, for now, `shadowMode: true`. A render gate
+  (`scripts/ci/flux-schema/assert-ai-gateway.py`) fails the build otherwise.
 
 ---
 
