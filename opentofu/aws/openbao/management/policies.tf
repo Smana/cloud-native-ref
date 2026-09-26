@@ -60,3 +60,10 @@ resource "vault_policy" "external_secrets" {
   name   = "external-secrets"
   policy = file("policies/external-secrets.hcl")
 }
+
+# agent-system's own store (SP1 S9): platform/agents/* only. Attached to the
+# `agents-secrets` JWT role in eks/configure by NAME, like `external-secrets`.
+resource "vault_policy" "agents_secrets" {
+  name   = "agents-secrets"
+  policy = file("policies/agents-secrets.hcl")
+}
