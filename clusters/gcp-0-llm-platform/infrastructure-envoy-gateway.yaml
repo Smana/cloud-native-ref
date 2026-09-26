@@ -13,7 +13,7 @@ spec:
   prune: true
   interval: 5m0s
   timeout: 5m0s
-  path: ./infrastructure/base/envoy-gateway
+  path: ./infrastructure/gcp-0/envoy-gateway
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact

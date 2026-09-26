@@ -147,11 +147,13 @@ Then the hard manifest gate — `./scripts/ci/validate-manifests.sh`, as
 `task ci:validate`. It renders the repository the way Flux does (every
 Kustomize overlay with its `postBuild` vars substituted, every `HelmRelease`
 through `helm template` with its own values and `postRenderers`), then applies
-two gates to the *rendered* output:
+four gates to the *rendered* output:
 `flux schema validate` with `skipMissingSchemas: false`, so an unknown Kind
-fails the build rather than being skipped, and `polaris audit`. See
+fails the build rather than being skipped, `polaris audit`,
+`assert-ai-gateway.py` (cross-object AI-gateway invariants), and the
+Alertmanager Slack template render. See
 [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}) for why
-both properties are load-bearing.
+the first two properties are load-bearing.
 
 ### `render-diff` 📝
 

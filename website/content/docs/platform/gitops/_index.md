@@ -374,9 +374,11 @@ Four things about the graph are not obvious from that line:
   directly — it has to, since it is what creates the `ExternalArtifact`s
   everything else sources from. Both still run first in practice, because
   Flux waits for a Kustomization's `sourceRef` artifact to exist.
-- **The opt-in `llm-platform` umbrella sits outside the graph entirely**,
-  suspended, and also sources from the `GitRepository` directly — its path
-  falls outside every `ArtifactGenerator` glob.
+- **The opt-in `llm-platform` and `ai-gateway` umbrellas sit outside this
+  graph**, both suspended by default and sourcing from the `GitRepository`
+  directly — their paths fall outside every `ArtifactGenerator` glob. They do
+  have a `dependsOn` edge of their own, `llm-platform` → `ai-gateway`, but
+  neither depends on anything shown above.
 
 `security` is where the graph forks. Five Kustomizations become eligible once
 it is healthy, though not all at the same hop: two depend on `security`
