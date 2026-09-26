@@ -13,8 +13,12 @@ spec:
       envoyService:
         name: agent-router
         type: ClusterIP
+      # Two replicas and a PDB: a drain or a Karpenter consolidation never takes
+      # every in-flight completion at once, and the harness does not retry.
+      envoyPDB:
+        minAvailable: 1
       envoyDeployment:
-        replicas: 1
+        replicas: 2
         container:
           resources:
             requests:
