@@ -1979,8 +1979,9 @@ Expected: FAIL — `name '_render' is not defined` (there is no `main.k` yet).
 - Consumes: Task 1.2 tests; the identity-proxy ConfigMap name `agent-identity-proxy` and its ports
   (Task 0.1 Step 5); the Service FQDN `agent-router.envoy-gateway-system.svc.cluster.local` and its
   ports 8080/8081 plus 8082 `sts` (Task 3.4). The run's CNP opens 8082 for octo-sts and has no rule
-  or DNS name for octo-sts itself (CC-1 `b8c68c1`); Gateway label
-  `gateway.envoyproxy.io/owning-gateway-name: agent-router` (R5, confirmed in Task 3.8).
+  or DNS name for octo-sts itself (CC-1 `b8c68c1`); Gateway labels
+  `gateway.envoyproxy.io/owning-gateway-name: agent-router` and
+  `gateway.envoyproxy.io/owning-gateway-namespace: agent-system` (R5, confirmed in Task 3.8).
 - Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`; the
   harness env contract of design §5 (`RUN_ID ROLE REPOSITORY BASE_REF BRANCH MODEL DATA_CLASS
   CONVERSATION_ID LLM_BASE_URL MCP_URL STS_URL TASK_FILE RULES_FILE HOME`), consumed by Task 5.1.
@@ -4009,16 +4010,19 @@ Ask the owner to create a **dedicated** Z.ai API key for agents (not RunLore's, 
 - Create: `clusters/aws-0-agent-platform/infrastructure-agent-router.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0/agent-platform.yaml`
   (`dependsOn: ai-gateway`), `clusters/aws-0-agent-platform/README.md` (two rows),
-  `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (`:4001` → the `sts` listener)
+  `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (`:4001` → the `sts` listener),
+  `scripts/ci/flux-schema/render-bundle.py` (the issuer fixtures carry their `/id/<ID>` path)
 - Not set here: `EnvoyProxy.spec.provider.kubernetes.envoyServiceAccount` (SP4 PR 2 adds
   `xplane-agent-router-bedrock` and owns its EPI)
 
 **Interfaces:**
 - Consumes: GatewayClass `envoy-ai-gateway`, Kustomization `envoy-ai-gateway` (SP4 PR 1);
-  `SecretStore agents-secrets` (Task 3.3); `${oidc_issuer_url}`, `${oidc_issuer_host}`.
+  `SecretStore agents-secrets` (Task 3.3); `${oidc_issuer_url}` (JWT issuer and JWKS, path
+  included); `${region}` (the issuer's DNS name in `toFQDNs`, which `${oidc_issuer_host}` is not).
 - Produces: Service `agent-router.envoy-gateway-system.svc.cluster.local` ports 8080/8081/8082 (the
   identity-proxy clusters); listener `sts`, which Task 4.3's `HTTPRoute` attaches to; data-plane pods labelled
-  `gateway.envoyproxy.io/owning-gateway-name: agent-router` (the run CNP of Task 1.3); access-log
+  `gateway.envoyproxy.io/owning-gateway-name: agent-router` and `…/owning-gateway-namespace:
+  agent-system`, both pinned by every selector of this data plane (the run CNP of Task 1.3); access-log
   fields `x_ar_agent`, `listener_port`, `upstream_cluster`, `response_code` (Tasks 3.8, 6.4).
 
 - [ ] **Step 1: Gateway, proxy shape, access log**
@@ -4408,9 +4412,10 @@ spec:
 ```yaml
 ---
 # Data plane of the agents' Gateway. Envoy Gateway runs it in its own namespace
-# whatever the Gateway's, so this CNP lives there. Scoped by gateway name, as is
-# envoy-data-plane (narrowed by SP4 PR 1), so neither Gateway inherits the
-# other's allows (R5). SP4 PR 2 adds the Bedrock egress here.
+# whatever the Gateway's, so this CNP lives there. Scoped by gateway name and
+# namespace (an app claim can name a Gateway agent-router anywhere), as
+# envoy-data-plane is by name (narrowed by SP4 PR 1), so neither Gateway
+# inherits the other's allows (R5). SP4 PR 2 adds the Bedrock egress here.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -4422,6 +4427,7 @@ spec:
       app.kubernetes.io/managed-by: envoy-gateway
       app.kubernetes.io/component: proxy
       gateway.envoyproxy.io/owning-gateway-name: agent-router
+      gateway.envoyproxy.io/owning-gateway-namespace: agent-system
   ingress:
     # Sandbox pods only. EG cannot prefix-match `sub`; this and the Kyverno
     # audience reservation are what keep other namespaces' tokens out.
@@ -4484,10 +4490,11 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
-    # The agents' provider and the JWKS the listeners validate against.
+    # The agents' provider and the JWKS the listeners validate against. The
+    # issuer's host only: ${oidc_issuer_host} carries its /id/<ID> path.
     - toFQDNs:
         - matchName: api.z.ai
-        - matchName: ${oidc_issuer_host}
+        - matchName: oidc.eks.${region}.amazonaws.com
       toPorts:
         - ports:
             - port: "443"
@@ -4529,6 +4536,17 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+```
+
+In `scripts/ci/flux-schema/render-bundle.py`, give the two issuer fixtures the real shape. Without the
+path, `matchName: ${oidc_issuer_host}` renders a valid name in CI and one that never resolves on the
+cluster; with it, `matchName`'s pattern rejects the `/` and `validate-manifests.sh` fails:
+
+```python
+    # The real issuer carries the cluster's /id/<ID> path, so the host variable is
+    # not a DNS name: a toFQDNs rule must use oidc.eks.${region}.amazonaws.com.
+    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com/id/0123456789ABCDEF0123456789ABCDEF",
+    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com/id/0123456789ABCDEF0123456789ABCDEF",
 ```
 
 In `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (Task 2.4), send `:4001` to the
@@ -4597,7 +4615,7 @@ Add to the README table:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infrastructure/base/agent-router infrastructure/base/agent-runtime/identity-proxy-configmap.yaml clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
+git add infrastructure/base/agent-router infrastructure/base/agent-runtime/identity-proxy-configmap.yaml scripts/ci/flux-schema/render-bundle.py clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
 git commit -m "feat(agents): agent-router Gateway with one JWT listener per data class"
 ```
 
@@ -4669,6 +4687,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8080"
@@ -4787,7 +4806,7 @@ Step 3).
 - [ ] **Step 2: R5 — the gateway-name label exists**
 
 ```bash
-kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router -o name
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router,gateway.envoyproxy.io/owning-gateway-namespace=agent-system -o name
 kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-gateway -o name
 ```
 Expected: one pod each. If either is empty, **stop**: both data-plane CNPs select nothing, and the
@@ -5307,9 +5326,10 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    # The issuer's host only: ${oidc_issuer_host} carries its /id/<ID> path.
     - toFQDNs:
         - matchName: api.github.com
-        - matchName: ${oidc_issuer_host}
+        - matchName: oidc.eks.${region}.amazonaws.com
       toPorts:
         - ports:
             - port: "443"
@@ -6427,6 +6447,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "9090"
@@ -6577,6 +6598,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8081"
@@ -6709,6 +6731,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8081"

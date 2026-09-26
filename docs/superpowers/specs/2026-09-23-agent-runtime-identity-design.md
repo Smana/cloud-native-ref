@@ -363,7 +363,7 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 
 | Object (`agent-system`) | Content |
 |---|---|
-| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
+| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name and namespace** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
 | `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `platform/agents/zai`, the agents' own key (SP4 S12) |
 | `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
@@ -539,7 +539,7 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | R2 | Token rotation in the proxy fails (Q2) | **Happened** (spike). Applied: both tokens' `expirationSeconds` = the run deadline, which widens T8 |
 | R3 | FQDN and DNS proxy behaviour for gVisor in ENI mode without kube-proxy (Q3, Q4) | **Spike: passed.** Denied names never resolve, so nothing reaches L4 |
 | R4 | agent-sandbox is `v1beta1` and ships weekly | Pin the tag; its schema is in the CI catalog |
-| R5 | EG pod label `gateway.envoyproxy.io/owning-gateway-name` is assumed | Confirm on first render. Both data-plane CNPs depend on it |
+| R5 | EG pod labels `gateway.envoyproxy.io/owning-gateway-name` and `-namespace` are assumed | Confirm on first render. Every selector of the `agent-router` data plane pins both |
 | R6 | Whether the `DeletingPolicy` time function exists (UNVERIFIED) | Delete terminal runs daily until proven |
 | R7 | A *deleted* pod (spot interruption, expiry) is recreated by the Sandbox controller (**verified** by the spike, same name, same second) | `agent-run` resumes an existing `spec.branch`; retries spend from the same `maxTokens` |
 | R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
