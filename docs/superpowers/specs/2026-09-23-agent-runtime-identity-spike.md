@@ -59,6 +59,10 @@ now replays until the run's deadline, 2 h by default, instead of 600 s. Programm
 match. The alternative that keeps 600 s is a Lua filter re-reading the token file per request (re-reads
 do see the new content); it was not taken.
 
+**Verified live through Crossplane** (CC-1 pre-release `v0.7.2-pr27.dc52209`): an `AgentRun` with
+`maxMinutes: 15` got 900 s tokens and a 900 s deadline, and 23 of 23 requests returned 200 from pod
+age 399 s to 857 s, past the ~660 s point where the spike's 600 s tokens were refused.
+
 ## Q5: `oci-seccomp` breaks every glibc thread
 
 glibc ≥ 2.34 creates threads with `clone3` and falls back to `clone` **only on ENOSYS**.
@@ -97,6 +101,7 @@ once a release honours `errnoRet`.
 | identity-proxy exited: `GenericSecretSdsApi: node 'id' and 'cluster' are required` | a static Envoy `node` in the bootstrap (`2fdd01f1`) |
 | The published agent-server image is the PyInstaller binary: no `/agent-server/.venv`, no importable SDK | Task 5.1 installs `openhands-{sdk,tools,agent-server}==1.49.5` into `/agent-server/.venv` |
 | Benchmark fixture: `mise.jdx.dev` answers 403 to `Python-urllib`; `task check` needs PyYAML | curl, PyYAML, schema plugin pinned like CI (`ebcc29a1`, `b3864af1`) |
+| The composition's status item became a composed, nested `AgentRun` (function-kcl `target: Resources`), so a run never got `phase`, `runId` or `branch` and never turned Ready; the goldens had recorded it | `target: Default`, and `render_check.py` now rejects a nested object of the claim's kind (CC-1 `93aafb1`). Live: Ready in 13 s with `phase: Running` |
 
 Noise, not a defect: the proxy's `LOGICAL_DNS` cluster re-resolves octo-sts every 5 s, and with no
 octo-sts deployed in the spike each search-path variant shows as a DNS drop. It stops once phase 4
