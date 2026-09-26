@@ -25,6 +25,32 @@ spec:
     - expression: "has(object.metadata.ownerReferences) && object.metadata.ownerReferences.exists(o, o.kind == 'Sandbox' && o.apiVersion.startsWith('agents.x-k8s.io/'))"
       message: "pods in agents are created by a Sandbox"
 ---
+# ownerReferences are client-supplied, so the Sandbox check above can be forged by
+# anything allowed to create pods here; the requester cannot. Its own policy
+# because `request` is absent in background scans.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agents-pod-creator
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  validations:
+    - expression: "request.userInfo.username == 'system:serviceaccount:agent-system:agent-sandbox-controller'"
+      message: "pods in agents are created by the agent-sandbox controller"
+---
 # Every composed name, audience and octo-sts subject pattern depends on the name
 # shape (C2). The XRD enforces it too; this also pins the namespace, which the
 # XRD cannot see. SP3's one-creator rule lives beside this one, not in it.
@@ -104,3 +130,38 @@ spec:
               s.serviceAccountToken.audience.startsWith('octo-sts/') ||
               s.serviceAccountToken.audience.startsWith('room-broker'))))
       message: "audiences agent-router.*, octo-sts/* and room-broker* are reserved for namespace agents"
+---
+# The TokenRequest API mints the same audiences with no pod: `kubectl create token
+# --audience`, or ESO's cluster-wide serviceaccounts/token grant driven by any
+# SecretStore. A TokenRequest lands in its ServiceAccount's namespace, and kubelet
+# mints the runs' projected tokens through it in agents. Cluster-wide, hence
+# Ignore, as above. Kyverno's own webhook config already drops kube-system and its
+# own namespace (security) for both rules. No background scan: a TokenRequest is
+# never stored.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agent-audience-token-request
+spec:
+  validationActions: [Deny]
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [agents]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [serviceaccounts/token]
+  validations:
+    - expression: >-
+        !has(object.spec) || !has(object.spec.audiences) ||
+        !object.spec.audiences.exists(a,
+          a.startsWith('agent-router.') || a.startsWith('octo-sts/') || a.startsWith('room-broker'))
+      message: "audiences agent-router.*, octo-sts/* and room-broker* are minted only for ServiceAccounts in namespace agents"

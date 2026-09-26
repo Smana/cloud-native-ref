@@ -15,6 +15,9 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 
 ## Resume
 
+Only once the crossplane-configuration pin serves `AgentRun`. Before it, `agent-policies` installs
+Kyverno policies against an API that does not exist, and Flux still reports it Ready.
+
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
 

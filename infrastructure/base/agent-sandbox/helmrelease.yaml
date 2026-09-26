@@ -32,14 +32,20 @@ spec:
       create: false
       name: agent-system
     image:
-      # Lockstep with flux/sources/gitrepo-agent-sandbox.yaml `ref.tag`. Tag only,
-      # no digest: _helpers.tpl copies image.tag verbatim into the
-      # app.kubernetes.io/version label with no truncation, and a full sha256
-      # digest (71 bytes) is over the 63-byte K8s label limit on its own — the
-      # chart exposes no separate image.digest field to pin without that label.
+      # Lockstep with flux/sources/gitrepo-agent-sandbox.yaml `ref.tag`: one
+      # upstream release cuts both. `repository` restates the chart default so
+      # Renovate's helm-values manager sees the image; the `agent-sandbox`
+      # packageRule in .github/renovate.json moves both in one unmerged PR.
+      # Tag only: the chart copies image.tag verbatim into the
+      # app.kubernetes.io/version label, which a sha256 digest overflows (63
+      # bytes). A digest would need a postRenderers kustomize images override,
+      # a third value to keep in step.
+      repository: registry.k8s.io/agent-sandbox/agent-sandbox-controller
       tag: v1.0.3
     controller:
-      # Bare Sandboxes only (S1): no SandboxTemplate, SandboxClaim or warm pool.
+      # Bare Sandboxes only (S1): the controller runs no SandboxTemplate,
+      # SandboxClaim or warm-pool reconciler. The chart still installs their
+      # three CRDs (helm/crds/) and an unbound extensions ClusterRole.
       extensions: false
     resources:
       requests:
