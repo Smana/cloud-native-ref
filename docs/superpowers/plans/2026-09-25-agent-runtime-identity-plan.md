@@ -95,7 +95,7 @@ owner can take; the executor stops and asks for it.
 
 | Name | What |
 |---|---|
-| Flux Kustomization `ai-gateway` (`flux-system`) | The always-on umbrella, `clusters/aws-0/ai-gateway.yaml` → `./clusters/aws-0-ai-gateway` |
+| Flux Kustomization `ai-gateway` (`flux-system`) | The gateway umbrella, `clusters/aws-0/ai-gateway.yaml` → `./clusters/aws-0-ai-gateway`. Suspended by default (OD-3, amended 2026-09-26): resume it before `agent-platform` |
 | Flux Kustomization `envoy-ai-gateway` (`flux-system`) | Moved into `ai-gateway`, name unchanged. Its health check is the Agent Router HelmRelease |
 | GatewayClass `envoy-ai-gateway` | Controller `gateway.envoyproxy.io/gatewayclass-controller` |
 | Gateway `ai-gateway` in `envoy-ai-gateway-system` | The human/system Gateway. SP4 PR 1 narrows the `envoy-data-plane` CNP to it (`owning-gateway-name: ai-gateway`); Task 3.5 only checks that |
@@ -2672,7 +2672,8 @@ git commit -m "docs(adr): 0041 agent sandbox runtime"
 # no agent-router, no octo-sts. The AgentRun XRD ships in the always-on
 # Crossplane package; without this umbrella a claim has no RuntimeClass to run on.
 #
-# Enable:   flux resume kustomization agent-platform -n flux-system
+# Enable:   flux resume kustomization ai-gateway -n flux-system   (first: this depends on it)
+#           flux resume kustomization agent-platform -n flux-system
 # Teardown: see clusters/aws-0-agent-platform/README.md
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -2726,6 +2727,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 
 ## Resume
 
+    flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
 
 ## Teardown
@@ -2746,7 +2748,8 @@ In `clusters/AGENTS.md`, after the "self-hosted LLM platform" section, add:
 
 `aws-0/agent-platform.yaml`, `spec.suspend: true`, children in `aws-0-agent-platform/` (a sibling, for
 the same reason as `llm-platform`). Release with `flux resume kustomization agent-platform -n
-flux-system`. It depends on `ai-gateway`, never on `llm-platform`: agents run on frontier models with
+flux-system`, after resuming `ai-gateway`, which is suspended by default too (OD-3, amended 2026-09-26). It
+depends on `ai-gateway`, never on `llm-platform`: agents run on frontier models with
 zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can start.
 ```
 
@@ -3445,6 +3448,7 @@ in Task 2.9 on the branch cluster.
 
 ```bash
 cd opentofu && TF_VAR_flux_git_ref=refs/heads/feat/agent-runtime terramate script run deploy
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization agent-platform -n flux-system
 flux get kustomizations -n flux-system agent-platform agent-sandbox agents-nodepool runtimeclass-gvisor agent-runtime agent-policies
 kubectl get xrd agentruns.cloud.ogenki.io -o jsonpath='{.status.conditions[?(@.type=="Established")].status}{"\n"}'
@@ -4626,6 +4630,7 @@ owner's Z.ai key at `platform/agents/zai`.
 
 ```bash
 cd opentofu && TF_VAR_flux_git_ref=refs/heads/feat/agent-router terramate script run deploy
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization agent-platform -n flux-system
 flux get kustomizations -n flux-system agent-secrets agent-router
 kubectl get secretstore -n agent-system agents-secrets -o jsonpath='{.status.conditions[0].status}{"\n"}'
@@ -5442,6 +5447,7 @@ Check: `gh api repos/Smana/cloud-native-ref/rulesets --jq '.[] | select(.name=="
 
 ```bash
 cd opentofu && terramate script run deploy
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization agent-platform -n flux-system
 flux get kustomizations -n flux-system octo-sts
 ```
@@ -7101,6 +7107,7 @@ composition switches to it in CC-2 (phase 6).
 
 ```bash
 cd opentofu && TF_VAR_flux_git_ref=refs/heads/feat/agent-harness terramate script run deploy
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization agent-platform -n flux-system
 flux get kustomizations -n flux-system agent-mcp
 kubectl get mcproute -n agent-system -o custom-columns=NAME:.metadata.name,ACCEPTED:'.status.conditions[?(@.type=="Accepted")].status'
@@ -7628,6 +7635,7 @@ Tasks 6.6–6.8 pasted in.
 
 ```bash
 cd opentofu && TF_VAR_flux_git_ref=refs/heads/feat/agent-e2e terramate script run deploy
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization agent-platform -n flux-system
 flux get kustomizations -n flux-system | grep -E 'agent-|octo-sts|runtimeclass-gvisor|agents-nodepool'
 kubectl get composition xagentruns.cloud.ogenki.io -o yaml | grep -c 'ghcr.io/smana/agent-harness:v0.1.0@sha256'

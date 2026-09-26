@@ -188,6 +188,44 @@ file and the programme's *Verified during design* table overlap, they agree.
 | Q8 | Does the Envoy admin `config_dump` redact generic SDS secrets? | The harness shares the pod network namespace with the proxy's admin port | Spike |
 | Q9 | What is the file-I/O overhead of `git` and the test toolchain under gVisor on `systrap`? | Anthropic's guide warns that open/close-heavy workloads suffer. Not re-measured here | Spike SC in the design |
 
+## Later evaluation: Agent Substrate and google/ax (2026-09-26)
+
+**Rejected for now, watched.** [google/ax](https://github.com/google/ax) (Apache-2.0, "Google's
+open agentic orchestration runtime") is a thin task orchestrator. It runs every task as an actor on
+[Agent Substrate](https://github.com/agent-substrate/substrate). Substrate is pre-1.0, and 16 of its
+19 maintainers are Google. It multiplexes gVisor actors onto shared worker pods, with suspend and
+resume from memory and filesystem snapshots. kagent now builds on it. Everything below was read at
+`google/ax@d0bc38b` and `substrate@c7b5469`.
+
+| Finding | Evidence |
+|---|---|
+| The ax control plane has no authentication and no authorization. Google's OSS VRP triaged it as a **critical** vulnerability | [ax#376](https://github.com/google/ax/issues/376), open, 0 comments |
+| Remote code execution through an unvalidated branch (`--upload-pack=…`) during workspace setup | [ax#363](https://github.com/google/ax/issues/363), open |
+| Only Gemini is implemented (`unsupported provider %q`). The controller copies `GEMINI_API_KEY` into every task's environment | `internal/model/client.go` L487–495; `internal/controller/reconciler.go` L154 |
+| v0.3.0 (2026-09-20) deleted the durable event log and the Python harness the May launch described | commit [`dc4f36c`](https://github.com/google/ax/commit/dc4f36c): 151 files, −19,988 lines |
+| Substrate needs `certificates.k8s.io/v1beta1` PodCertificateRequest and ClusterTrustBundle, and says "do not use spot or preemptible nodes" for workers | Substrate `tools/setup-gcp/README.md` |
+| Substrate's sandbox egress blocks WebSocket | Substrate `docs/egress-traffic.md` |
+| Actors share worker pods, so there is no per-run ServiceAccount, CNP or admission | Inference from the actor/worker model |
+
+**Why it stays out.** ax/Substrate would replace this design wholesale. The blockers are upstream,
+not in our code:
+- the unauthenticated control plane;
+- a key in every sandbox;
+- APIs that are GKE-first;
+- no spot nodes;
+- no per-pod policy for our constitution's rules to attach to.
+
+**What we kept open (programme r5).** Consumers validate issuer-agnostically (C2), and the room
+bridge avoids WebSocket (C4). A Substrate backend would then be a new composition behind
+`AgentRun`, not a contract change.
+
+**Re-check at SP2 planning or on 2026-12-15, whichever comes first.** Move to a pilot if any of
+these hold:
+- ax closes #376 and #363 and stops putting provider keys in sandboxes;
+- Substrate documents an EKS profile, with v1 ClusterTrustBundle, ECR pulls and a spot story;
+- two minor releases ship without an architectural rewrite;
+- parking a run with `operatingMode: Suspended` plus a PVC workspace proves too lossy for rooms.
+
 ## References
 
 - agent-sandbox: [releases](https://github.com/kubernetes-sigs/agent-sandbox/releases) ·
