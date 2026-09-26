@@ -40,6 +40,9 @@ tasks:
   k8s:cnpg-promote-seed:
     desc: Promote a live CNPG archive to a frozen restore seed, or verify one
     cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-promote-seed.sh {{.CLI_ARGS}}"]
+  github:agent-branch-ruleset:
+    desc: Apply the agents' branch ruleset (agent/** only for the agents' App) to one repository
+    cmds: ["{{.TASKFILE_DIR}}/github/agent-branch-ruleset.sh {{.CLI_ARGS}}"]
   demo:load:
     desc: Run an image-gallery load-generator scenario in-cluster
     cmds: ["{{.TASKFILE_DIR}}/demo/load.sh {{.CLI_ARGS}}"]
