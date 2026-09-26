@@ -1,0 +1,16 @@
+---
+# Every pod in `agents` starts from deny-all in both directions. Each run's own
+# CNP (composed with the run) adds exactly its allows; a pod with no run CNP
+# reaches nothing. `- {}` selects no peer: it switches enforcement on and allows
+# nothing.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agents
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}

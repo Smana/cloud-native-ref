@@ -1,0 +1,11 @@
+# The agent control plane: sandbox controller, octo-sts, MCP servers, and later
+# the room broker and factory (C1). Its secrets come only through the namespaced
+# `agents-secrets` store (security/base/agent-secrets).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

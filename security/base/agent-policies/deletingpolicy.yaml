@@ -1,0 +1,18 @@
+---
+# Backstop GC behind SP3 deleting runs after harvest (S12). Terminal phases
+# only; an age condition needs a CEL time function that is UNVERIFIED (R6).
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
+metadata:
+  name: agentrun-gc
+spec:
+  schedule: "17 3 * * *"
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cloud.ogenki.io]
+        apiVersions: [v1alpha1]
+        operations: ["*"]
+        resources: [agentruns]
+  conditions:
+    - name: terminal-phase
+      expression: "has(object.status) && has(object.status.phase) && object.status.phase in ['Succeeded', 'Failed', 'BudgetExhausted', 'Revoked']"

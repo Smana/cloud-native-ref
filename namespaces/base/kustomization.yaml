@@ -16,3 +16,5 @@ resources:
   - security.yaml
   - tailscale.yaml
   - tooling.yaml
+  - agents.yaml
+  - agent-system.yaml

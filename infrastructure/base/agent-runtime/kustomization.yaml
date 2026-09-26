@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Shared by every AgentRun sandbox. The per-run objects are composed by the
+# AgentRun XR (Smana/crossplane-configuration apis/agentrun).
+resources:
+  - identity-proxy-configmap.yaml
+  - network-policy-default-deny.yaml
