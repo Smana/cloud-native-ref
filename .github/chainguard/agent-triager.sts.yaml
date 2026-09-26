@@ -1,0 +1,10 @@
+# Agents' App, triager runs (ADR-0043). Read-only. A gate path.
+issuer_pattern: 'https://oidc\.eks\.eu-west-3\.amazonaws\.com/id/[0-9A-F]{32}'
+subject_pattern: 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'
+audience: octo-sts/Smana/cloud-native-ref/triager
+permissions:
+  contents: read
+  pull_requests: read
+  issues: read
+  checks: read
+  actions: read

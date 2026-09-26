@@ -1,0 +1,11 @@
+# Agents' App, reviewer runs (ADR-0043). Read-only: a reviewer's output goes to
+# the room, and system components post it under their own identity. A gate path.
+issuer_pattern: 'https://oidc\.eks\.eu-west-3\.amazonaws\.com/id/[0-9A-F]{32}'
+subject_pattern: 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'
+audience: octo-sts/Smana/cloud-native-ref/reviewer
+permissions:
+  contents: read
+  pull_requests: read
+  issues: read
+  checks: read
+  actions: read
