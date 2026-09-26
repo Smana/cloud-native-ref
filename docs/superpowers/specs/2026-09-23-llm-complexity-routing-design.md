@@ -1,6 +1,6 @@
 # LLM Complexity Routing — SP4 Design
 
-**Date:** 2026-09-23 · **Status:** draft, aligned to programme r4 — owner review pending
+**Date:** 2026-09-23 · **Status:** draft, aligned to programme r5 — owner review pending
 **Programme:** [Agent Factory](2026-09-23-agent-factory-design.md). SP4 owns **C7**, and the model
 mapping and budget enforcement of **C5**. The contracts are not restated here.
 **Research:** [2026-09-23-llm-complexity-routing-research.md](2026-09-23-llm-complexity-routing-research.md),
@@ -289,9 +289,9 @@ Each listener has its own `SecurityPolicy` via `sectionName`. Claude Code users 
 
 **RunLore.** It moves behind `ai-gateway`: `base_url` becomes the `http` listener, and it holds a
 gateway API key (`system:runlore`) instead of the Z.ai key. Per OD-13 it requests
-`claude-sonnet-5` once Bedrock lands, and `tier-frontier` until then. This depends on OD-3. Since
-OD-3's 2026-09-26 amendment suspends `ai-gateway` by default, RunLore keeps its own Z.ai key
-wherever the umbrella is not resumed. PR 6 must switch on whether the gateway is present.
+`claude-sonnet-5` once Bedrock lands, and `tier-frontier` until then. OD-3 suspends `ai-gateway`
+by default, so RunLore keeps its own Z.ai key wherever the umbrella is not resumed: PR 6 must
+switch on whether the gateway is present.
 
 **Data egress.**
 
@@ -306,8 +306,9 @@ wherever the umbrella is not resumed. PR 6 must switch on whether the gateway is
 ## 5. Logical names and pinning
 
 `AIGatewayRoute agent-models` (the `public` listener) is the C5 mapping. SP1 seeds it with
-`agent-default` only, and SP4 owns the file from its first PR and adds `agent-models-internal`. It is frontier-backed
-so it works with zero GPUs, and local 7–8B models are never agent tiers. One route per class listener:
+`agent-default` only, and SP4 owns the file from its first PR and adds `agent-models-internal`. It
+is frontier-backed so it works with zero GPUs, and local 7–8B models are never agent tiers. One
+route per class listener:
 
 | Name | `public` → Z.ai ($/1M in · cached · out) | `internal` → Bedrock EU (first-party list $/1M) |
 |---|---|---|
@@ -361,15 +362,17 @@ routes count once the composition sets it (PR 3). The defaults are OD-10's.
 - **Per-principal share of run spend.** The gateway cannot see `spec.principal`, because the token
   carries only `sub`. SP3 therefore checks a principal's day before admitting a run, by summing
   `status.usage.tokens` grouped by `spec.principal` (R9).
-- **Exact caps.** SP3 writes `status.usage.tokens` from `agent_router:run_tokens:total{principal="agent:<runId>"}`
-  and revokes the run at `maxTokens`, which ends it as `BudgetExhausted` (C3). Overshoot is bounded
-  by one scrape interval plus one response.
+- **Exact caps.** SP3 writes `status.usage.tokens` from
+  `agent_router:run_tokens:total{principal="agent:<runId>"}` and revokes the run at `maxTokens`,
+  which ends it as `BudgetExhausted` (C3). Overshoot is bounded by one scrape interval plus one
+  response.
 - **What the client sees.** A `429` with `x-envoy-ratelimited: true` (UNVERIFIED, R5), which
   separates it from a provider's own 429. SP1's harness treats one with reset > 60 s as
   `BudgetExhausted` and does not retry.
-- **Metrics.** `controller.metricsRequestHeaderAttributes` (chart 1.1.0): "x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client"`.
-  Recording rules (PR 2) derive `agent:<runId>` and `human:<sub>` from these labels. Per-run labels add ~30
-  series per run. Alerts: `AgentRunNearCeiling` (80% of B1), `FleetBudgetNearCap` (80% of B2),
+- **Metrics.** `controller.metricsRequestHeaderAttributes` (chart 1.1.0):
+  `x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client`. Recording rules
+  (PR 2) derive `agent:<runId>` and `human:<sub>` from these labels. Per-run labels add ~30 series
+  per run. Alerts: `AgentRunNearCeiling` (80% of B1), `FleetBudgetNearCap` (80% of B2),
   `FrontierSpendGuardTripped` (B5).
 - **Store.** A `KVStore` claim (`xplane-ai-gateway-ratelimit`, `nano`, Harbor's pattern) behind EG
   `rateLimit.backend.redis.url`. `REDIS_AUTH` comes in through the rate-limit Deployment's env.
@@ -410,8 +413,8 @@ The umbrellas and their dependencies are C1. SP4's placement within them:
   because the composition's `parentRef` names it, plus a new namespace `llm-gateway` for its routes
   and backends. `namespaces/base/` gains it, and the Gateway's `allowedRoutes` selector adds it.
 - **Keys.** PR 1 reads the platform Z.ai key from `runlore/credentials` directly, so a bootstrap
-  copies nothing (amended 2026-09-26; it used to copy it to `platform/llm/zai`). PR 6 moves it to
-  `platform/llm/zai` and removes it from `runlore/credentials` (SC-10). The `platform/` mount is
+  copies nothing. PR 6 moves it to `platform/llm/zai` and removes it from `runlore/credentials`
+  (SC-10). The `platform/` mount is
   already granted. The Valkey password is generated in-cluster by ESO, so nothing is seeded.
 
 ## Threat model
@@ -499,6 +502,6 @@ The umbrella and Gateway splits are layout and the SR bump is a version change, 
 ## Owner decisions
 
 SP4 raises no decision of its own beyond the programme's consolidated table:
-[OD-3](2026-09-23-agent-factory-design.md#owner-decisions-consolidated) (`ai-gateway` umbrella, suspended by default since 2026-09-26),
-OD-10 (budget defaults: B1–B5 above), OD-11 (Jev shadow only), OD-12 (Bedrock), OD-13 (data per
-provider), and OD-14 (10% control group).
+[OD-3](2026-09-23-agent-factory-design.md#owner-decisions-consolidated) (`ai-gateway` umbrella,
+suspended by default since 2026-09-26), OD-10 (budget defaults: B1–B5 above), OD-11 (Jev shadow
+only), OD-12 (Bedrock), OD-13 (data per provider), and OD-14 (10% control group).
