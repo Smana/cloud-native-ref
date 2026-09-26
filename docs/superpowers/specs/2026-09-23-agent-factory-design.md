@@ -252,8 +252,9 @@ gateway's per-run ceiling, and `status.pullRequest` stays empty.
   `tester` and `triager` never get `contents: write` (C6).
 - **Revocation is bounded by token lifetime.** Deleting the claim deletes the ServiceAccount, the
   sandbox and its policies, but the gateway and octo-sts validate tokens offline, so a token already
-  copied out stays valid until it expires. Token TTL is therefore ≤ 600 s, and SP1's success
-  criteria measure the window. The room broker also validates offline, but it watches the
+  copied out stays valid until it expires. Token TTL is the run's deadline,
+  `max(600, maxMinutes × 60)` s: under gVisor a rotated token never reaches the in-pod proxy (SP1
+  spike Q2, fallback R2). SP1's success criteria measure the window. The room broker also validates offline, but it watches the
   `AgentRun`: once the run is terminal or `revoked`, it drops the room connection straight away
   (C2 r5).
 
