@@ -1,4 +1,5 @@
 """git-credential-agent against a stub octo-sts and a stub GitHub. Stdlib only."""
+import fcntl
 import http.server
 import io
 import json
@@ -125,6 +126,40 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(results, ["ghs_stub1", "ghs_stub1"], "the second call must reuse the cached token")
         gets = [c for c in Stub.calls if c[0] == "GET"]
         self.assertEqual(len(gets), 1, "the flock should have serialized the two exchanges")
+
+    def test_revoke_waits_for_the_cache_lock(self):
+        """revoke() must hold the same lock that token() takes, so it
+        atomically reads, revokes, and deletes the cache without a concurrent
+        token() exchange leaving a live, unrevoked token behind."""
+        self.get("github.com")  # populate cache with ghs_stub1
+
+        # Acquire the lock as token() does, simulating an in-flight operation
+        lock_fd = os.open(helper.CACHE + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        # Track whether revoke() completed
+        revoke_done = threading.Event()
+
+        def run_revoke():
+            helper.revoke()
+            revoke_done.set()
+
+        revoke_thread = threading.Thread(target=run_revoke)
+        revoke_thread.start()
+
+        # Wait a moment and check that revoke() is still blocked on the lock
+        time.sleep(0.1)
+        self.assertFalse(revoke_done.is_set(), "revoke() should block waiting for the cache lock")
+
+        # Release the lock and wait for revoke() to complete
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+        revoke_thread.join(timeout=5)
+
+        # Verify that revoke() completed and cleaned up
+        self.assertTrue(revoke_done.is_set(), "revoke() should complete after lock is released")
+        self.assertFalse(os.path.exists(helper.CACHE), "cache should be deleted")
+        self.assertEqual(Stub.calls[-1], ("DELETE", "/installation/token", "Bearer ghs_stub1"))
 
 
 if __name__ == "__main__":

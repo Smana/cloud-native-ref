@@ -15,7 +15,7 @@ ARG TARGETARCH
 USER root
 # gh, checksum-pinned per architecture. The upstream image gives its user
 # passwordless sudo; nothing here needs it and NoNewPrivileges is not reliable
-# under gVisor (design §1), so sudo and every setuid bit go.
+# under gVisor (design §1), so sudo and every setuid and setgid bit go.
 RUN set -eux; \
     case "${TARGETARCH}" in amd64) sum="${GH_SHA256_AMD64}" ;; arm64) sum="${GH_SHA256_ARM64}" ;; *) exit 1 ;; esac; \
     /usr/local/bin/python -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], '/tmp/gh.tgz')" \

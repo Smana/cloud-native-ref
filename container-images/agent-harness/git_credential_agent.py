@@ -81,16 +81,26 @@ def token() -> str:
 
 
 def revoke() -> None:
+    # Serialize with token() on the same lock to ensure revoke atomically
+    # reads, revokes, and deletes the cache. Without this, a concurrent
+    # token() exchange can write a new token after we read the old one but
+    # before we delete the cache, leaving it unrevoked.
+    lock_fd = os.open(CACHE + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        with open(CACHE) as f:
-            value = json.load(f)["token"]
-    except (OSError, ValueError, KeyError):
-        return
-    _revoke_value(value)
-    try:
-        os.remove(CACHE)
-    except OSError:
-        pass
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            with open(CACHE) as f:
+                value = json.load(f)["token"]
+        except (OSError, ValueError, KeyError):
+            return
+        _revoke_value(value)
+        try:
+            os.remove(CACHE)
+        except OSError:
+            pass
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def main(argv: list[str]) -> int:
