@@ -1,15 +1,16 @@
 # SP1 — Agent runtime & identity
 
-**Date:** 2026-09-23 · **Status:** draft, aligned with programme r4. Awaiting the owner's review
-**Programme:** [Agent Factory r3](2026-09-23-agent-factory-design.md). D1–D11, C1–C7 and OD-1…OD-17 are binding here and not restated
+**Date:** 2026-09-23 · **Status:** draft, aligned with programme r5. Awaiting the owner's review
+**Programme:** [Agent Factory](2026-09-23-agent-factory-design.md). D1–D11, C1–C7 and OD-1…OD-17 are binding here and not restated
 **Research:** [versions, sources, pitfalls, snippets](2026-09-23-agent-runtime-identity-research.md)
 **Target:** aws-0. The [gcp-0 follow-up](#gcp-0-follow-up) is scoped at the end
 
 ## Outcome
 
 Applying an `AgentRun` claim starts a gVisor-sandboxed OpenHands agent under its own ServiceAccount.
-It calls models through Agent Router without ever holding a provider key (GLM-5.2 for `public` runs, never Z.ai for `internal` ones), reads the cluster through
-read-only MCP tools, and pushes `spec.branch` (`agent/<taskId|roomId|runId>`) to open one PR with a ≤ 1 h, single-repo,
+It calls models through Agent Router without ever holding a provider key (GLM-5.2 for `public`
+runs, never Z.ai for `internal` ones), reads the cluster through read-only MCP tools, and pushes
+`spec.branch` (`agent/<taskId|roomId|runId>`) to open one PR with a ≤ 1 h, single-repo,
 role-scoped GitHub token. Deleting the claim deletes everything it composed. A token copied out of
 the sandbox dies at the **run's deadline**, `max(600, maxMinutes × 60)` s (C3, R2).
 
@@ -172,9 +173,9 @@ rolls out gVisor bumps, and is capped at 16 CPU / 64 Gi.
 
 **Restricted PSS under runsc.** runsc enforces UIDs, `drop: [ALL]` and the read-only root.
 `RuntimeDefault` seccomp is **not enforced inside the sandbox**: it needs `oci-seccomp`, and with it
-runsc answers every errno rule with EPERM ([#14688](https://github.com/google/gvisor/issues/14688)), which stops glibc starting threads (spike Q5). The
-pod still declares it for PSS. NoNewPrivileges is not reliable (GKE documents that its sandbox ignores
-it). The gVisor boundary is the control.
+runsc answers every errno rule with EPERM ([#14688](https://github.com/google/gvisor/issues/14688)),
+which stops glibc starting threads (spike Q5). The pod still declares it for PSS. NoNewPrivileges is
+not reliable (GKE documents that its sandbox ignores it). The gVisor boundary is the control.
 
 ## 2. The `AgentRun` API
 
@@ -218,12 +219,13 @@ sandbox** (C4).
 |---|---|---|
 | `harness` | `emptyDir`s only, with the GitHub token cache in memory | Probes `/health` and `/ready` on :8000. `preStop` revokes the GitHub token |
 | `identity-proxy` (native sidecar) | the projected gateway and octo-sts tokens | The only token holder for those two audiences |
-| `room-bridge` (SP2 image, only with `roomRef`; SP2 adds it to the composition) | a projected token with audience `room-broker`, plus the harness session key on a shared in-memory volume | Dials `room-broker.agent-system:8443`. The broker validates it by TokenReview (SP2) |
+| `room-bridge` (SP2 image, only with `roomRef`; SP2 adds it to the composition) | a projected token with audience `room-broker`, plus the harness session key on a shared in-memory volume | Dials `room-broker.agent-system:8443` (validation: §3) |
 
 **CNP.** DNS goes to kube-dns only, through an L7 rule that answers only allowed names. TCP is
-allowed to the `agent-router` data plane (its class's listener, 8080 `public` or 8081 `internal`, and 8082 `sts` for octo-sts), the profile FQDNs (443), and the
-broker (8443) only with `roomRef`. Ingress is from `host` only, for probes. A namespace-wide
-default-deny CNP in `agents` denies any pod its run's CNP does not open.
+allowed to the `agent-router` data plane (its class's listener, 8080 `public` or 8081 `internal`,
+and 8082 `sts` for octo-sts), the profile FQDNs (443), and the broker (8443) only with `roomRef`.
+Ingress is from `host` only, for probes. A namespace-wide default-deny CNP in `agents` denies any
+pod its run's CNP does not open.
 
 | Profile | FQDNs (443) |
 |---|---|
@@ -266,15 +268,17 @@ removing an annotation never resurrects a run. Nothing the harness reports reach
 | GitHub installation | — | ≤ 1 h | harness, in memory | GitHub |
 
 **Identity proxy.** A static Envoy bootstrap, ConfigMap `agent-identity-proxy`, shared by every
-run. `127.0.0.1:4000` and `:4002` carry `/v1/*` and `/mcp` to the `public` and `internal` listeners with the
-gateway token. The composition points `LLM_BASE_URL` and `MCP_URL` at the run's class, and the other
-port is useless to it: its audience does not match.
-`127.0.0.1:4001` carries `/sts/exchange` with the octo-sts token to the `sts` listener, which routes
-it to octo-sts. It uses generic
-`credential_injector` with `header_value_prefix: "Bearer "`, fed by SDS files. The spike settled both
-open points. Rotation never reaches the injector: kubelet swaps the token on the host, and gVisor
-raises no inotify for that, so the tokens outlive the run instead (R2). And the admin API is off the
-pod network, so the harness has no channel to `config_dump` (Q8).
+run. It uses generic `credential_injector` with `header_value_prefix: "Bearer "`, fed by SDS files.
+
+- `127.0.0.1:4000` and `:4002` carry `/v1/*` and `/mcp` to the `public` and `internal` listeners
+  with the gateway token. The composition points `LLM_BASE_URL` and `MCP_URL` at the run's class,
+  and the other port is useless to it: its audience does not match.
+- `127.0.0.1:4001` carries `/sts/exchange` with the octo-sts token to the `sts` listener, which
+  routes it to octo-sts.
+
+The spike settled both open points. Rotation never reaches the injector: kubelet swaps the token on
+the host, and gVisor raises no inotify for that, so the tokens outlive the run instead (R2). And the
+admin API is off the pod network, so the harness has no channel to `config_dump` (Q8).
 
 **`agent-router` authentication.** SP1 owns the JWT providers (D11), the listeners, the agents'
 Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behind each listener
@@ -344,7 +348,8 @@ prompt. SP1 relies on none of them. Each such rule has an enforcer outside the s
 
 `ghcr.io/openhands/agent-server:1.49.5-python` runs as UID 10001 and serves `/health`, `/ready` and
 `/api/*` (research: standard stack). It is upstream's PyInstaller **binary** target: its Python cannot
-import `openhands.*`, so the harness image installs the same SDK release into `/agent-server/.venv`. `container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
+import `openhands.*`, so the harness image installs the same SDK release into `/agent-server/.venv`.
+`container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
 trailer hook, and `git-credential-agent`, which exchanges through `:4001` and caches in memory.
 agent-server stays on 127.0.0.1 (P13): its API is unauthenticated, so the probes run inside the
 container (`exec`) and `:8000` is not in the CNP. `agent-run` does five things:
@@ -451,8 +456,10 @@ not on its bypass list, so the bypass is the repository roles `admin` (the owner
 `write`, Renovate and the factory's App, all `always` (OD-7). The factory's App must still arm
 merges and create `revert-*` branches. No human collaborator is confined, and an App holds no role,
 so only the agents' App is confined (SC-11 proves it); it cannot update `main`, so **it cannot
-merge**. SP3's merge-gate ruleset is a
-separate ruleset, and it is the one where the owner bypasses for pull requests only. **CI** (checked 2026-09-24): `default_workflow_permissions: read`; no `pull_request` workflow reads
+merge**. SP3's merge-gate ruleset is a separate ruleset, and it is the one where the owner bypasses
+for pull requests only.
+
+**CI** (checked 2026-09-24): `default_workflow_permissions: read`; no `pull_request` workflow reads
 secrets; `id-token: write` only on push and schedule workflows.
 
 ## 7. Threat model
@@ -509,10 +516,10 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 
 ## gcp-0 follow-up
 
-- **Nodes** (the composition is unchanged): a GKE Sandbox pool (`--sandbox type=gvisor`, `cos_containerd`, spot) with GKE's own
-  `gvisor` RuntimeClass and its `sandbox.gke.io/runtime` label and taint. A ComputeClass for it is
-  **UNVERIFIED** (the vendored CRD has no `sandbox` field), so the pool is tofu-managed, as an
-  exception to ADR-0006.
+- **Nodes** (the composition is unchanged): a GKE Sandbox pool (`--sandbox type=gvisor`,
+  `cos_containerd`, spot) with GKE's own `gvisor` RuntimeClass and its `sandbox.gke.io/runtime`
+  label and taint. A ComputeClass for it is **UNVERIFIED** (the vendored CRD has no `sandbox`
+  field), so the pool is tofu-managed, as an exception to ADR-0006.
 - **Cilium:** set `socketLB.hostNamespaceOnly: true` (commented out on gcp-0). That may change the
   known gcp-0 hairpin, where socket-LB rewrites the port before policy (**UNVERIFIED**). Re-test
   oauth2-proxy → ZITADEL and every `toEntities: [all]` workaround.
@@ -557,8 +564,8 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | R5 | EG pod labels `gateway.envoyproxy.io/owning-gateway-name` and `-namespace` are assumed | Confirm on first render. Every selector of the `agent-router` data plane pins both |
 | R6 | Whether the `DeletingPolicy` time function exists (UNVERIFIED) | Delete terminal runs daily until proven |
 | R7 | A *deleted* pod (spot interruption, expiry) is recreated by the Sandbox controller (**verified** by the spike, same name, same second) | `agent-run` resumes an existing `spec.branch`; retries spend from the same `maxTokens` |
-| R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
 | R8 | A run can request any logical name on its listener, and binding it to `spec.model` at the gateway is unverified (C5) | Within a class the blast radius is cost, capped by R1 and `maxTokens`. SP4 carries the route-level check |
+| R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
 
 | # | Open item (SP1-specific) |
 |---|---|
