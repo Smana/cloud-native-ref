@@ -44,7 +44,10 @@ and returns an installation token with that policy's permissions.
 **Pros**:
 - Trust policies are files in the repository, on a gate path
 - Resolves installations by account login, so a user-owned installation works
-- Records issuer, subject and the token's SHA-256 on every exchange
+- Every exchange is recorded outside the sandbox. agent-router's `sts` access log holds the verified
+  `sub` and time, and octo-sts logs the requested repository and trust policy. What the token then
+  does is in GitHub's own record: the repository's activity and each PR's timeline, where every push,
+  PR and comment is attributed to the App's bot, never to a human
 
 **Cons**:
 - The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). The pattern alone
@@ -92,17 +95,34 @@ repository it grants.
 
 - A stolen implementer token can push to `agent/**` of one repository for ≤ 1 h; a reviewer's cannot
   push at all
-- The App has no `workflows` permission, so no agent PR can rewrite CI
+- The App has no `workflows` permission, so no agent PR can change a workflow file. PR CI still runs
+  repository scripts the agent can edit, without secrets, and `render-diff`'s `GITHUB_TOKEN` can write
+  PR comments and labels
 
 ### Negative
 
 - All runs share one App and the ruleset is `agent/**`-wide: a run can push another task's agent
   branch (R9). SP3's gate checks the head commit's `Agent-Run` trailer
 - A copied octo-sts audience token verifies until `exp`, the run's deadline (R2)
+- No record ties an installation token to a run. octo-sts 0.10.0 logs no subject or token hash: they
+  are in its exchange event, which needs `METRICS=true` and a CloudEvents sink (`EVENT_INGRESS_URI`),
+  and neither is set. A push is traced to its run by time against the `sts` access log and by the
+  commit's `Agent-Run` trailer
+- `contents: write` also lets the implementer create tags and releases and send `repository_dispatch`,
+  which a branch ruleset does not cover. No workflow triggers on any of them today; one that does
+  needs a tag ruleset first
+- The App's private key is the strongest credential here: it mints implementer-level tokens for every
+  installed repository without octo-sts's per-role scoping, and only the ruleset still bounds its
+  pushes to `agent/**`. `openbao-platform` lets any namespace with ExternalSecret rights read it
+  (design T14, fix deferred as O1)
+- Dependabot is off on this repository (no `dependabot.yml`, security updates disabled, checked
+  2026-09-26). Enabling it means adding its App to the bypass list, or its branches are refused
 
 ### Neutral
 
-- A repository opts in twice: its trust policies, and the App's installation
+- A repository opts in three times, in this order: the ruleset, its trust policies, the App's
+  installation. The ruleset comes first because `main` needs no approval, so until it exists nothing
+  stops the implementer from merging its own green PR
 
 ---
 
@@ -110,7 +130,8 @@ repository it grants.
 
 `security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
 `.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` applied by
-`task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`.
+`task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
+it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
 
 ---
 

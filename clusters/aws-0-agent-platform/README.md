@@ -14,6 +14,11 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 
 ## Resume
 
+The owner prerequisites come first, in this order (ADR-0043): the branch ruleset
+(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its
+key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
+`CreateContainerConfigError` and its child fails the health check.
+
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
 
