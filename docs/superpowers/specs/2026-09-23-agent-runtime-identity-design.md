@@ -476,21 +476,26 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T7 | Resource abuse | Requests and limits, ephemeral storage, `activeDeadlineSeconds`, pool limits, R1 + `BudgetExhausted` | One `large` run for `maxMinutes` |
 | T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; octo-sts only behind the `sts` listener, which pins this cluster's issuer where the trust policies match any EKS issuer in the region (OD-5); audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), not 600 s. The admin-port path is closed (Q8) |
 | T9 | Kubernetes API abuse | Four layers (§3) | none known |
-| T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in twice: trust policies + App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
+| T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in three times: the branch ruleset, trust policies and App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
 | T12 | MCP data exposure | Read-only, no `secrets`, per-role tools | Logs and ConfigMaps may hold secrets |
-| T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | A modified script sees only a read-only `GITHUB_TOKEN` |
+| T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | A modified script runs with its job's own scope: `contents: read` everywhere, plus `security-events: write` (`ci.yaml`'s SARIF upload) or `pull-requests: write` (`render-diff`, same-repo PRs only) on some jobs — never repository content, secrets or deploy credentials |
 | T14 | **Pre-existing:** the `openbao-platform` ClusterSecretStore has no namespace `conditions`, so any namespace can read any `platform/` path | SP1 never uses it (S9). `agents-no-secret-import` blocks ESO objects in `agents` | Any *other* namespace with ExternalSecret rights can read `platform/agents/*`. Fixing the cluster store is out of scope (O1) |
 | T15 | `internal` data reaching a SaaS model | `dataClass` is required at creation. The audience binds the class. Z.ai routes only on `public`. Cluster-read MCP tools only on `internal` | A human creating a run can misclassify internal content as `public`. Once SP3 ships it sets the class from the task source |
+| T16 | Reserved-audience minting from an excluded namespace | Kyverno's global config excludes `kube-system` and `security` (its own namespace) from admission, so a pod there (ESO, cert-manager) can still mint the reserved audiences with a live `TokenRequest` call; `agent-audience-token-request` covers every other namespace | **Accepted:** needs a compromised platform controller in `kube-system` or `security` |
 
 ## 8. Observability and constitution
 
 **Signals.** `gen_ai_client_token_usage{ar_agent}` (SP4's attributes), which SP3's run meter writes to the
-`usage-tokens` annotation. JSON access logs carry `x-ar-agent`. octo-sts logs record issuer, subject and
-token SHA-256. Harness JSON logs go through Vector, which **needs a toleration** for the `agents`
-taint (it has none today). The agent-sandbox `ServiceMonitor` and Karpenter pool metrics cover the
-controllers. **VMRules:** a pod `Pending` > 15 min; a burst of 401s at `agent-router` (T8); the pool
-above 90 % of its limit; octo-sts failures, as a `vlogs` group that promtool skips visibly.
+`usage-tokens` annotation. JSON access logs carry `x-ar-agent`. octo-sts v0.10.0 emits issuer, subject
+and the token's SHA-256 only in a CloudEvent, sent only with `METRICS` on and a sink configured —
+neither is here (ADR-0043). What is recorded instead: `agent-router`'s `sts` access log (with
+`x-ar-agent`), octo-sts's own repository and policy log lines, and GitHub's own record of the App's
+actions; no record ties an installation token to a run. Harness JSON logs go through Vector, which
+**needs a toleration** for the `agents` taint (it has none today). The agent-sandbox `ServiceMonitor`
+and Karpenter pool metrics cover the controllers. **VMRules:** a pod `Pending` > 15 min; a burst of
+401s at `agent-router` (T8); the pool above 90 % of its limit; octo-sts failures, as a `vlogs` group
+that promtool skips visibly.
 
 **Constitution.** §1 `xplane-run-` names. §2.1 the phase is computed first, and conditional
 resources are single-element lists. §3.1 per-run CNP, plus the `agent-router`, octo-sts, MCP and

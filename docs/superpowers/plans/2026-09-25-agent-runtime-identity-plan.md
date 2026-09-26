@@ -4974,7 +4974,8 @@ an installation token with that policy's permissions.
 **Pros**:
 - Trust policies are files in the repository, on a gate path
 - Resolves installations by account login, so a user-owned installation works
-- Records issuer, subject and the token's SHA-256 on every exchange
+- octo-sts logs the repository and policy checked on every exchange, and `agent-router`'s `sts`
+  access log carries `x-ar-agent`
 
 **Cons**:
 - The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5), and the pattern
@@ -4983,6 +4984,9 @@ an installation token with that policy's permissions.
   `agent-router`'s `sts` listener, whose `SecurityPolicy` pins this cluster's exact issuer (owner
   decision 2026-09-26), and its CNP admits only that data plane
 - One more service in `agent-system`
+- octo-sts v0.10.0 emits issuer, subject and the token's SHA-256 only in a CloudEvent, gated on
+  `METRICS` and a sink — neither is configured here, so no record ties an installation token to a
+  run. GitHub's own audit log covers the App's actions instead
 
 ### Option 2: Personal access tokens
 
