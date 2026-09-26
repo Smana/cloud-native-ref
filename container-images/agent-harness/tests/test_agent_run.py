@@ -12,6 +12,8 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+from unittest import mock
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, HERE)
@@ -44,14 +46,20 @@ class BuildRequestTest(unittest.TestCase):
         self.assertEqual(self.body["conversation_id"], ENV["CONVERSATION_ID"])
         self.assertEqual(self.body["workspace"]["working_dir"], "/workspace/repo")
 
+    def test_autotitle_is_disabled(self):
+        # Each auto-title is an extra model call that spends the run's budget.
+        self.assertFalse(self.body["autotitle"])
+
 
 class OutcomeTest(unittest.TestCase):
     def test_terminal_statuses(self):
-        self.assertEqual(agent_run.outcome("finished"), 0)
-        self.assertEqual(agent_run.outcome("error"), 1)
-        self.assertEqual(agent_run.outcome("stuck"), 1)
-        self.assertIsNone(agent_run.outcome("running"))
-        self.assertIsNone(agent_run.outcome("waiting_for_confirmation"))
+        from openhands.sdk.conversation.state import ConversationExecutionStatus as Status
+
+        self.assertEqual(agent_run.outcome(Status.FINISHED.value), 0)
+        self.assertEqual(agent_run.outcome(Status.ERROR.value), 1)
+        self.assertEqual(agent_run.outcome(Status.STUCK.value), 1)
+        self.assertIsNone(agent_run.outcome(Status.RUNNING.value))
+        self.assertIsNone(agent_run.outcome(Status.WAITING_FOR_CONFIRMATION.value))
 
 
 class AgentServerTest(unittest.TestCase):
@@ -59,12 +67,49 @@ class AgentServerTest(unittest.TestCase):
         cmd = agent_run.SERVER_CMD
         self.assertEqual(cmd[cmd.index("--host") + 1], "127.0.0.1", "its API is unauthenticated (P13)")
 
+    def test_starts_from_the_filesystem_root(self):
+        # agent-server's conversations_path and bash_events_dir are relative
+        # to its cwd; pin it to "/" so they land in the intended paths no
+        # matter what workingDir the pod sets.
+        with mock.patch("agent_run.subprocess.Popen", side_effect=RuntimeError("stop")) as popen:
+            with self.assertRaises(RuntimeError):
+                agent_run.main()
+        self.assertEqual(popen.call_args.kwargs.get("cwd"), "/")
+
+
+class PollTest(unittest.TestCase):
+    def test_tolerates_up_to_five_consecutive_poll_errors(self):
+        from openhands.sdk.conversation.state import ConversationExecutionStatus as Status
+
+        calls = {"n": 0}
+
+        def flaky(method, path, body=None, timeout=30):
+            calls["n"] += 1
+            if calls["n"] <= 5:
+                raise TimeoutError("simulated")
+            return {"execution_status": Status.FINISHED.value}
+
+        with mock.patch("agent_run.http", side_effect=flaky), mock.patch("agent_run.time.sleep"):
+            self.assertEqual(agent_run.poll("cid"), 0)
+        self.assertEqual(calls["n"], 6, "5 tolerated errors, then the successful poll")
+
+    def test_gives_up_after_six_consecutive_poll_errors(self):
+        calls = {"n": 0}
+
+        def always_fails(method, path, body=None, timeout=30):
+            calls["n"] += 1
+            raise urllib.error.URLError("simulated")
+
+        with mock.patch("agent_run.http", side_effect=always_fails), mock.patch("agent_run.time.sleep"):
+            self.assertEqual(agent_run.poll("cid"), 1)
+        self.assertEqual(calls["n"], 6)
+
 
 class GitHub(http.server.BaseHTTPRequestHandler):
     revoked = []
 
     def do_DELETE(self):
-        GitHub.revoked.append((self.path, self.headers.get("Authorization")))
+        GitHub.revoked.append((self.path, self.headers.get("Authorization"), time.time()))
         self.send_response(204)
         self.end_headers()
 
@@ -73,9 +118,10 @@ class GitHub(http.server.BaseHTTPRequestHandler):
 
 
 class SigtermTest(unittest.TestCase):
-    """Deleting the pod must still revoke the run's token and stop agent-server."""
+    """Deleting the pod must stop agent-server before revoking the run's
+    token, so a still-running agent cannot mint a fresh one after the revoke."""
 
-    def test_sigterm_runs_the_cleanup(self):
+    def test_sigterm_stops_the_server_before_revoking_and_exits_143(self):
         github = http.server.HTTPServer(("127.0.0.1", 0), GitHub)
         threading.Thread(target=github.serve_forever, daemon=True).start()
         self.addCleanup(github.server_close)
@@ -85,10 +131,11 @@ class SigtermTest(unittest.TestCase):
         with open(cache, "w") as f:
             json.dump({"token": "ghs_run", "expires_at": time.time() + 3600}, f)
         # A stand-in agent-server that never answers /ready, so the driver is
-        # still waiting when the signal lands, and that records being stopped.
+        # still waiting when the signal lands, and that records WHEN it was
+        # actually stopped (not merely signalled), to check cleanup order.
         stand_in = (
             "import signal, sys, time\n"
-            "signal.signal(signal.SIGTERM, lambda *_: (open(sys.argv[2], 'w').close(), sys.exit(0)))\n"
+            "signal.signal(signal.SIGTERM, lambda *_: (open(sys.argv[2], 'w').write(repr(time.time())), sys.exit(0)))\n"
             "open(sys.argv[1], 'w').close()\n"
             "time.sleep(60)\n"
         )
@@ -111,12 +158,20 @@ class SigtermTest(unittest.TestCase):
         driver.send_signal(signal.SIGTERM)
         driver.wait(timeout=30)
 
-        self.assertEqual(GitHub.revoked, [("/installation/token", "Bearer ghs_run")])
+        self.assertEqual(driver.returncode, 143, "SIGTERM is 128 + 15")
+        self.assertEqual([r[:2] for r in GitHub.revoked], [("/installation/token", "Bearer ghs_run")])
         self.assertFalse(os.path.exists(cache))
         deadline = time.monotonic() + 10
         while not os.path.exists(stopped) and time.monotonic() < deadline:
             time.sleep(0.1)
         self.assertTrue(os.path.exists(stopped), "agent-server was left running")
+        with open(stopped) as f:
+            stopped_at = float(f.read())
+        self.assertLess(
+            stopped_at, GitHub.revoked[0][2],
+            "agent-server must be fully stopped before the token is revoked, "
+            "so it cannot mint a fresh one in between",
+        )
 
 
 if __name__ == "__main__":

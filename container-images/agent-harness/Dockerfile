@@ -26,12 +26,19 @@ RUN set -eux; \
     rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_${TARGETARCH}"; \
     rm -f /etc/sudoers.d/*; \
     if [ -f /etc/sudoers ]; then sed -i '/NOPASSWD/d' /etc/sudoers; fi; \
-    find / -xdev -perm -4000 -type f -exec chmod u-s {} +
+    find / -xdev -type f -perm /6000 -exec chmod ug-s {} +
 
 # The SDK agent-run imports; see requirements.in for why it is not in the base image.
+# --only-binary refuses any sdist build, which QEMU makes slow or breaks for
+# arm64 (SP1 design). func-timeout (via openhands-tools) ships no wheel for
+# any platform on PyPI, but is pure Python, so its sdist build is a plain
+# setuptools invocation with no compiler involved either way; verified with
+# `pip download --only-binary=:all: -r requirements.txt` for both
+# manylinux_x86_64 and manylinux_aarch64 that every other package has a wheel.
 COPY requirements.txt /tmp/requirements.txt
 RUN /usr/local/bin/python -m venv /agent-server/.venv \
- && /agent-server/.venv/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt \
+ && /agent-server/.venv/bin/pip install --no-cache-dir --require-hashes \
+      --only-binary=:all: --no-binary=func-timeout -r /tmp/requirements.txt \
  && rm /tmp/requirements.txt
 
 COPY --chmod=0755 agent_run.py git_credential_agent.py /opt/agent/
@@ -44,6 +51,8 @@ RUN ln -s /opt/agent/agent_run.py /usr/local/bin/agent-run \
 # agent-server otherwise starts openvscode-server on 0.0.0.0:8001, putting a
 # terminal on the pod network that nothing in a headless run uses.
 ENV OH_ENABLE_VSCODE=false
+# git must never fall back to an interactive prompt in a sandbox with no tty.
+ENV GIT_TERMINAL_PROMPT=0
 USER 10001
 ENTRYPOINT ["tini", "--", "/usr/local/bin/agent-run"]
 

@@ -24,6 +24,10 @@ TERMINAL_OK = {"finished"}
 TERMINAL_FAIL = {"error", "stuck"}
 # The model key is a placeholder: identity-proxy overwrites Authorization (S5).
 PLACEHOLDER_KEY = "injected-by-identity-proxy"
+POLL_INTERVAL_S = 15
+# A blip in the loopback connection to agent-server shouldn't fail the run;
+# a run that's actually gone stays gone, so this still fails fast.
+MAX_POLL_ERRORS = 5
 
 
 def build_request(env: dict, task: str, rules: str) -> dict:
@@ -53,6 +57,8 @@ def build_request(env: dict, task: str, rules: str) -> dict:
         "initial_message": {"role": "user", "content": [{"type": "text", "text": task}], "run": True},
         "agent_launch_additions": {"system_message_suffix_append": rules},
         "max_iterations": 500,
+        # Each auto-title is an extra model call that spends the run's budget.
+        "autotitle": False,
     })
     return json.loads(request.model_dump_json(exclude_none=True, context=plain))
 
@@ -84,6 +90,30 @@ def outcome(status: str) -> int | None:
     return None
 
 
+def poll(cid: str) -> int:
+    """Poll the conversation until it reaches a terminal status, tolerating
+    up to MAX_POLL_ERRORS consecutive network errors so one slow or dropped
+    connection to the loopback agent-server doesn't fail the run."""
+    status = ""
+    errors = 0
+    while True:
+        try:
+            status = http("GET", "/api/conversations/" + cid).get("execution_status", "")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            errors += 1
+            if errors > MAX_POLL_ERRORS:
+                print("agent-run: giving up after %d consecutive poll errors: %s" % (errors, exc), file=sys.stderr)
+                return 1
+            time.sleep(POLL_INTERVAL_S)
+            continue
+        errors = 0
+        code = outcome(status)
+        if code is not None:
+            print("agent-run: conversation ended with execution_status=%s" % status, file=sys.stderr)
+            return code
+        time.sleep(POLL_INTERVAL_S)
+
+
 def _verified(ref: str) -> bool:
     return subprocess.run(["git", "-C", REPO_DIR, "rev-parse", "--verify", "--quiet", ref], capture_output=True).returncode == 0
 
@@ -109,22 +139,29 @@ def _on_sigterm(signum, frame):
 def main() -> int:
     signal.signal(signal.SIGTERM, _on_sigterm)
     env = dict(os.environ)
-    server = subprocess.Popen(SERVER_CMD)
+    # agent-server's conversations_path and bash_events_dir are relative to
+    # its cwd; pin it to "/" so its state lands in the intended paths
+    # whatever workingDir the pod sets, rather than wherever agent-run itself
+    # happens to be launched from.
+    server = subprocess.Popen(SERVER_CMD, cwd="/")
     try:
         wait_ready()
         clone(env)
         with open(env["TASK_FILE"]) as t, open(env["RULES_FILE"]) as r:
             request = build_request(env, t.read(), r.read())
         conversation = http("POST", "/api/conversations", request)
-        cid = conversation["id"]
-        while True:
-            code = outcome(http("GET", "/api/conversations/" + cid).get("execution_status", ""))
-            if code is not None:
-                return code
-            time.sleep(15)
+        return poll(conversation["id"])
     finally:
-        subprocess.run(["/usr/local/bin/git-credential-agent", "revoke"], check=False)
+        # A second SIGTERM during cleanup must not abort the revoke, and
+        # agent-server must be stopped BEFORE the token is revoked so it
+        # cannot mint a fresh one between the revoke and its own exit.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         server.terminate()
+        try:
+            server.wait(10)
+        except subprocess.TimeoutExpired:
+            server.kill()
+        subprocess.run(["/usr/local/bin/git-credential-agent", "revoke"], check=False)
 
 
 if __name__ == "__main__":
