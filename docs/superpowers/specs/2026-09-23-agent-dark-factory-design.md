@@ -189,9 +189,9 @@ caps and maintainers sit in one config file parsed strictly at startup: a bad co
 gateway metrics, and revokes via `agents.ogenki.io/revoked`: `budget-run` at `maxTokens`,
 `budget-principal` past the daily cap, gateway budget 429s mapped to the matching `budget-*`. The
 factory writes `agents.ogenki.io/pull-request`; a stop writes `revoked: manual`. The composition
-projects them into `status.usage.tokens`, `status.pullRequest` and `phase` (`BudgetExhausted` for
-`budget-*`, `Revoked` for `manual`). The gateway counter the meter reads resets when a data-plane
-pod restarts, so its reading can drop; `status.usage.tokens` never does (SP1 §2). **Before SP3 ships**, the owner creates runs directly.
+projects them into status and phase (C3). The gateway counter the meter reads resets when a
+data-plane pod restarts, so its reading can drop; `status.usage.tokens` never does (SP1 §2).
+**Before SP3 ships**, the owner creates runs directly.
 
 **Run-request API** (C3/C5: once SP3 ships, only the factory creates `AgentRun`s). `POST /v1/runs`
 takes `{role, repository, baseRef, task, dataClass, roomRef}`, optionally `model` (default
@@ -384,7 +384,7 @@ gateway holds the 5 M per-run and fleet/day ceilings; SP3 the exact run, task an
 | Run wall-clock | light 20 min · standard 45 min · frontier 90 min | Stuck detection |
 | Run tokens (C5) | light 300 k · standard 1.5 M · frontier 4 M | `spec.budget.maxTokens`; the meter writes `revoked: budget-run` at the cap → `BudgetExhausted` |
 | Task tokens (C5) | light 0.6 M · standard 3 M · frontier 8 M | Σ run usage; no new run past the cap |
-| Daily tokens (C5) | 25 M for `system:factory`; 5 M per human for runs they launch | **SP3 at admission**: sums the principal's runs today before creating one (the token carries only `sub`); the meter revokes any principal's runs past its cap (`budget-principal`). The gateway holds the 5 M per-run ceiling and the fleet/day cap |
+| Daily tokens (C5) | 25 M for `system:factory`; 5 M per human for runs they launch | **SP3 at admission**: sums the principal's runs today before creating one (the token carries only `sub`); the meter revokes any principal's runs past its cap (`budget-principal`) |
 
 ### 6.3 Escalation
 
