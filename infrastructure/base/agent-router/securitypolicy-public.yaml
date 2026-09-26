@@ -1,0 +1,29 @@
+---
+# The `public` listener accepts exactly the four `.public` audiences (C2): an
+# internal-class or octo-sts token is a 401 here. EKS JWKS is served at
+# <issuer>/keys; validation is offline, so a copied token lives until exp (the run's deadline, R2).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-public
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: public
+  jwt:
+    providers:
+      - name: eks-agents-public
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - agent-router.implementer.public
+          - agent-router.reviewer.public
+          - agent-router.tester.public
+          - agent-router.triager.public
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent

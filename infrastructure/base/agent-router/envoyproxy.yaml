@@ -1,0 +1,56 @@
+---
+# Data-plane shape of the agents' Gateway. The Service name is pinned because
+# the identity-proxy bootstrap and every run CNP name it.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: agent-router-proxy
+  namespace: agent-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        name: agent-router
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 1
+        container:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+  # x_ar_agent is the VERIFIED sub (the client's copy is stripped first), so
+  # every line attributes a request to the run that made it (SC-05, T8).
+  telemetry:
+    accessLog:
+      settings:
+        - format:
+            type: JSON
+            json:
+              start_time: "%START_TIME%"
+              method: "%REQ(:METHOD)%"
+              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              response_code: "%RESPONSE_CODE%"
+              response_flags: "%RESPONSE_FLAGS%"
+              listener_port: "%DOWNSTREAM_LOCAL_PORT%"
+              upstream_cluster: "%UPSTREAM_CLUSTER%"
+              upstream_host: "%UPSTREAM_HOST%"
+              x_ar_agent: "%REQ(X-AR-AGENT)%"
+              model: "%REQ(X-AI-EG-MODEL)%"
+              duration_ms: "%DURATION%"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout

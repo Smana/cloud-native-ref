@@ -1,0 +1,30 @@
+---
+# C5 logical names on the `public` listener. SP1 seeds `agent-default` only;
+# SP4 owns this file from its PR 2 and adds agent-models-internal on `internal`.
+# One backendRef at weight 100 per rule: nothing re-routes a trajectory.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: agent-models
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: public
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: agent-default
+      backendRefs:
+        - name: zai
+          modelNameOverride: glm-5.2
+          weight: 100
+      # Agent Router defaults a rule to 60 s, and the identity proxy sets no
+      # timeout of its own: a long GLM-5.2 completion would 504 here. Same value
+      # as SP4's tier-frontier on the same backend.
+      timeouts:
+        request: 600s

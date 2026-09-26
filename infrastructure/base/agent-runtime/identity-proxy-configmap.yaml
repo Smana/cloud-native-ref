@@ -4,7 +4,8 @@
 # harness sees three localhost ports:
 #   127.0.0.1:4000  /v1, /anthropic, /mcp  -> agent-router `public`   :8080
 #   127.0.0.1:4002  /v1, /anthropic, /mcp  -> agent-router `internal` :8081
-#   127.0.0.1:4001  /sts/exchange          -> octo-sts :8080
+#   127.0.0.1:4001  /sts/exchange          -> agent-router `sts`      :8082 -> octo-sts
+#                   (the listener pins this cluster's issuer; octo-sts matches a pattern)
 # A run's audience names its data class, so the other class's port earns a 401,
 # and the run's CNP does not open it anyway.
 # Admin is a unix socket (not a TCP port) and 0.0.0.0:9902 is a dedicated health
@@ -156,7 +157,7 @@ data:
                         - name: octo-sts
                           domains: ["*"]
                           routes:
-                            - {match: {prefix: /sts/exchange}, route: {cluster: octo_sts, timeout: 30s}}
+                            - {match: {prefix: /sts/exchange}, route: {cluster: agent_router_sts, timeout: 30s}}
                             - {match: {prefix: /}, direct_response: {status: 404}}
                     http_filters:
                       - name: envoy.filters.http.credential_injector
@@ -231,14 +232,14 @@ data:
                   - endpoint:
                       address:
                         socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8081}
-        - name: octo_sts
+        - name: agent_router_sts
           type: STRICT_DNS
           connect_timeout: 5s
           dns_lookup_family: V4_ONLY
           load_assignment:
-            cluster_name: octo_sts
+            cluster_name: agent_router_sts
             endpoints:
               - lb_endpoints:
                   - endpoint:
                       address:
-                        socket_address: {address: octo-sts.agent-system.svc.cluster.local, port_value: 8080}
+                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8082}

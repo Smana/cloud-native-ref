@@ -1,0 +1,32 @@
+---
+# The `sts` listener in front of octo-sts. octo-sts's trust policies match the
+# EKS issuer by PATTERN (it changes on every rebuild), which any EKS cluster in
+# the region satisfies; this pins the exact issuer of THIS cluster, and the four
+# octo-sts audiences, before a token reaches octo-sts. Envoy Gateway 1.9.1
+# always forwards the validated JWT (its translator sets jwt_authn
+# `forward: true`; the API has no knob), so octo-sts still gets the bearer token.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-sts
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  jwt:
+    providers:
+      - name: eks-agents-sts
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - octo-sts/Smana/cloud-native-ref/implementer
+          - octo-sts/Smana/cloud-native-ref/reviewer
+          - octo-sts/Smana/cloud-native-ref/tester
+          - octo-sts/Smana/cloud-native-ref/triager
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent
