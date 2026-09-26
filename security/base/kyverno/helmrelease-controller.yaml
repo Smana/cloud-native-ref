@@ -22,6 +22,17 @@ spec:
     fullnameOverride: kyverno
     crds:
       install: false
+    # The admission controller serves fail-closed webhooks: with no ready endpoint,
+    # every matching create in the cluster is rejected. Two replicas (the chart's
+    # default anti-affinity prefers separate nodes) and a PDB mean one lost node or
+    # spot instance never empties the Service. platform-critical stops it being the
+    # first pod evicted for a DaemonSet (priorityclass.yaml has the incident).
+    admissionController:
+      replicas: 2
+      priorityClassName: platform-critical
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
 # No `resources:` override on purpose. The chart already sets requests and a
 # memory limit on every container it renders — admission (init + main),
 # background, cleanup and reports controllers, and the three hook Jobs — so
