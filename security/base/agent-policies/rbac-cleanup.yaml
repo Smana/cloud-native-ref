@@ -1,0 +1,13 @@
+---
+# The Kyverno cleanup controller runs DeletingPolicies with its own identity and
+# holds no grant on our XRs until this aggregates into it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:agentrun-gc
+  labels:
+    rbac.kyverno.io/aggregate-to-cleanup-controller: "true"
+rules:
+  - apiGroups: [cloud.ogenki.io]
+    resources: [agentruns]
+    verbs: [get, list, watch, delete]

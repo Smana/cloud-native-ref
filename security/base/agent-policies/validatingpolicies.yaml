@@ -1,0 +1,106 @@
+---
+# The admission control agent-sandbox's threat model asks for on bare Sandboxes:
+# the gVisor boundary, no API token, and nothing but a Sandbox creating pods here.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agents-pod-shape
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  validations:
+    - expression: "has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'gvisor'"
+      message: "every pod in agents runs under RuntimeClass gvisor"
+    - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"
+      message: "a pod in agents never mounts a Kubernetes API token"
+    - expression: "has(object.metadata.ownerReferences) && object.metadata.ownerReferences.exists(o, o.kind == 'Sandbox' && o.apiVersion.startsWith('agents.x-k8s.io/'))"
+      message: "pods in agents are created by a Sandbox"
+---
+# Every composed name, audience and octo-sts subject pattern depends on the name
+# shape (C2). The XRD enforces it too; this also pins the namespace, which the
+# XRD cannot see. SP3's one-creator rule lives beside this one, not in it.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agentrun-admission
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cloud.ogenki.io]
+        apiVersions: [v1alpha1]
+        operations: [CREATE]
+        resources: [agentruns]
+  validations:
+    - expression: "object.metadata.name.matches('^xplane-run-[a-z2-7]{8}$')"
+      message: "an AgentRun is named xplane-run-<runId>, runId being 8 characters of [a-z2-7]"
+    - expression: "object.metadata.namespace == 'agents'"
+      message: "AgentRuns live in namespace agents"
+---
+# agents holds no secret (S9). Blocks the ESO objects that could pull one in.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agents-no-secret-import
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agents
+    resourceRules:
+      - apiGroups: [external-secrets.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [externalsecrets, pushsecrets, secretstores]
+  validations:
+    - expression: "false"
+      message: "namespace agents holds no secret: External Secrets objects are refused (SP1 S9)"  # pragma: allowlist secret
+---
+# Envoy Gateway can neither prefix-match `sub` nor read the kubernetes.io claim,
+# so the audiences agents use are reserved. Cluster-wide, hence Ignore: an
+# outage of this policy must not block every pod in the cluster.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agent-audience-reservation
+spec:
+  validationActions: [Deny]
+  failurePolicy: Ignore
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [agents, kube-system]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  validations:
+    - expression: >-
+        !has(object.spec.volumes) || object.spec.volumes.all(v,
+          !has(v.projected) || !has(v.projected.sources) || v.projected.sources.all(s,
+            !has(s.serviceAccountToken) || !has(s.serviceAccountToken.audience) ||
+            !(s.serviceAccountToken.audience.startsWith('agent-router.') ||
+              s.serviceAccountToken.audience.startsWith('octo-sts/') ||
+              s.serviceAccountToken.audience.startsWith('room-broker'))))
+      message: "audiences agent-router.*, octo-sts/* and room-broker* are reserved for namespace agents"
