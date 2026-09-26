@@ -18,8 +18,12 @@ spec:
   interval: 4m0s
   timeout: 30m
   install:
-    remediation:
-      retries: 3
+    # Retry in place rather than uninstall and reinstall. A failed first install
+    # (2026-09-26: a Kyverno webhook briefly without an endpoint) then heals on
+    # its own, and the uninstall path, destructive for this chart, never runs.
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 2m
   valuesFrom:
     - kind: ConfigMap
       name: vm-common-helm-values
