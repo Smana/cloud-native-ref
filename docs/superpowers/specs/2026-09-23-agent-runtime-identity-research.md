@@ -99,7 +99,9 @@ file and the programme's *Verified during design* table overlap, they agree.
 4. **runsc ignores OCI seccomp by default** (`oci-seccomp=false`, "Enables loading OCI seccomp
    filters inside the sandbox"). PSS `restricted` admission passes on the field alone, so a
    `RuntimeDefault` profile looks enforced when it is not. GKE Sandbox documents the same for
-   seccomp and NoNewPrivileges.
+   seccomp and NoNewPrivileges. **Spike (2026-09-26): turning it on is worse.** runsc answers every
+   errno rule with EPERM, ignoring `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)), so RuntimeDefault's `clone3` → ENOSYS becomes
+   EPERM and glibc ≥ 2.34 cannot start a thread. The platform keeps `oci-seccomp` off.
    A reference user-data that avoids pitfalls 1–4. Karpenter merges its own NodeConfig part into
    it. The `runsc.toml` key syntax and `bzip2` on the AMI are still open (Q5, Q6):
 

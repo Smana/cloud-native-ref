@@ -5,12 +5,13 @@
 **Goal:** Applying an `AgentRun` claim on aws-0 starts a gVisor-sandboxed OpenHands agent under its own
 ServiceAccount. The agent reaches models and read-only MCP tools only through the `agent-router`
 Gateway, and opens one PR with a ≤ 1 h, single-repo, role-scoped GitHub token. Deleting the claim
-revokes everything, and a token copied out dies within 600 s.
+revokes everything, and a token copied out dies at the run's deadline (R2: under gVisor a rotated
+token never reaches the proxy).
 
 **Architecture:** A namespaced Crossplane XR, `AgentRun`, lives in `Smana/crossplane-configuration`'s
 core package. It composes a ServiceAccount, a task ConfigMap, a CiliumNetworkPolicy and a bare
 agent-sandbox `Sandbox` on a Karpenter AL2023 spot pool where runsc is installed. Inside the pod, an
-Envoy native sidecar (`identity-proxy`) is the only holder of the two 600 s projected tokens. It injects
+Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live until the run's deadline (R2). It injects
 them towards `agent-router` (Envoy Gateway JWT on one listener per data class) and a self-hosted
 octo-sts. Everything outside the XR ships behind the suspended `agent-platform` Flux umbrella.
 
@@ -42,8 +43,8 @@ task; OD-1…OD-17 are accepted at their recommended defaults).
   `clusters/aws-0/agent-platform.yaml`, `spec.suspend: true`, path `./clusters/aws-0-agent-platform`.
   From phase 3 it `dependsOn` `ai-gateway`, never `llm-platform`.
 - **Audiences (C2).** Gateway `agent-router.<role>.<dataClass>`; octo-sts
-  `octo-sts/<owner>/<repo>/<role>`; room `room-broker` (SP2). Every projected token has
-  `expirationSeconds: 600`.
+  `octo-sts/<owner>/<repo>/<role>`; room `room-broker` (SP2). The gateway and octo-sts tokens have
+  `expirationSeconds: max(600, maxMinutes × 60)`, the run's deadline (R2, spike Q2).
 - **Ports.** `agent-router` listeners `public` :8080 and `internal` :8081. identity-proxy
   `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` → octo-sts, health `0.0.0.0:9902` (`/ready`).
   Admin is the pathname socket `/tmp/envoy-admin.sock` in `proxy-tmp`, never on the pod network, and
@@ -59,7 +60,7 @@ task; OD-1…OD-17 are accepted at their recommended defaults).
   |---|---|
   | agent-sandbox | git tag `v1.0.3`, chart `./helm`, image `registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.3@sha256:8c8f5814c16bd68631af0496a5fa4eb9bedce4d032de88b956130a041d9f438e` |
   | gVisor | `release-20260921.0`, `gvisor-x86_64.tar.bz2` sha256 `3dd478770dd751d09c257ba14d739b179348a36c5f2d9e954b773f5f90bff646` |
-  | Node AMI | Karpenter alias `al2023@v20260909` |
+  | Node AMI | Karpenter alias `al2023@v20260923` |
   | Identity proxy | `docker.io/envoyproxy/envoy:distroless-v1.39.1@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4` |
   | OpenHands | `ghcr.io/openhands/agent-server:1.49.5-python@sha256:1e7b08ffef732d6520e0b0048931b6ef425a7742c5fb80a82c9397a285c669eb` |
   | octo-sts | `ghcr.io/octo-sts/app:0.10.0@sha256:921cd6711ac2ed99f9b12efb2c55372baa0ec4c4facead1eac55dd871e50ffa6` |
@@ -205,7 +206,7 @@ three manifest directories over with `git checkout spike/agent-gvisor -- <paths>
 | SC-03 admission denies bad pods and branches | 1.1 (CEL, offline), **2.9** | `kubectl apply --dry-run=server` |
 | SC-04 implementer run → PR in ≤ 30 min | **6.7** | `kubectl get agentrun`, `gh pr list` |
 | SC-05 `agent-router` 401 matrix, forged header | **3.8** | probe Sandbox, access log |
-| SC-06 ≥ 4 rotations, no 401 | 0.3 (mechanism), **6.7** | SDS stats, access log |
+| SC-06 no 401 in a 45-min run (R2) | 0.3 (failed → R2), **6.7** | access log |
 | SC-07 revocation timings | **6.8** | timestamps |
 | SC-08 no API token, no API route | **5.6** | exec |
 | SC-09 egress allowlist | 0.4 (spike), **6.7** | exec, `hubble observe --type l7` |
@@ -241,7 +242,7 @@ design change, amend the design in PR 1 too; the decision gate in Task 0.6 names
 | Check | Answers | Task |
 |---|---|---|
 | runsc in the v3 CRI table, pinned version; `bzip2` on the AMI; node Ready → first gVisor pod | SC-02, Q6, Q1 | 0.2 |
-| gVisor banner; `oci-seccomp` in effect and agent-server healthy under it | SC-01, Q5 | 0.3 |
+| gVisor banner; agent-server healthy (Q5: `oci-seccomp` off, gVisor #14688) | SC-01, Q5 | 0.3 |
 | 45 min through `identity-proxy` against a JWT-validating upstream | Q2 (SC-06 mechanism) | 0.3 |
 | The harness has no channel into the proxy (admin port, admin socket, hot-restart socket) | Q8 | 0.3 |
 | A deleted sandbox pod is recreated | R7 | 0.3 |
@@ -252,6 +253,11 @@ design change, amend the design in PR 1 too; the decision gate in Task 0.6 names
 
 **Files** (all on branch `spike/agent-gvisor`; the first four directories are carried into PR 2
 unchanged unless the spike corrects them):
+
+> **The code in this task is the first draft.** The files on `spike/agent-gvisor` are authoritative:
+> they carry the review rulings (admin on a unix socket, the `:9902` health listener, fail-closed
+> user-data) and the spike's fixes (Envoy `node` identity for file SDS, AMI alias, `oci-seccomp` off,
+> Cilium `devices`). Task 2.4 copies them from the branch, never from this text.
 - Create: `namespaces/base/agents.yaml`, `namespaces/base/agent-system.yaml`
 - Create: `infrastructure/base/runtimeclass-gvisor/{kustomization.yaml,runtimeclass.yaml}`
 - Create: `infrastructure/base/karpenter-nodepools-agents/{kustomization.yaml,agents-gvisor-ec2nc.yaml,agents-gvisor-nodepool.yaml}`
@@ -370,7 +376,11 @@ metadata:
   name: agents-gvisor
 spec:
   amiSelectorTerms:
-    - alias: al2023@v20260909
+    # The date must exist for the cluster's Kubernetes version, or Karpenter logs
+    # "failed to discover any AMIs for alias" and the pool never gets a node
+    # (v20260909 does not exist for 1.36). Check before bumping:
+    #   aws ssm get-parameter --name /aws/service/eks/optimized-ami/<k8s>/amazon-linux-2023/x86_64/standard/recommended/release_version
+    - alias: al2023@v20260923
   role: Karpenter-${cluster_name}
   kubelet:
     maxPods: 100
@@ -396,9 +406,11 @@ spec:
   tags:
     karpenter.sh/discovery: ${cluster_name}
   # Karpenter merges its own NodeConfig part into this MIME document. It closes
-  # research pitfalls 1-4: the v3 CRI plugin id (the v2 one is accepted, ignored,
-  # and the node still reports Ready), gvisor-bin/ next to runsc, and oci-seccomp,
-  # without which RuntimeDefault does nothing inside the sandbox.
+  # research pitfalls 1-3: the v3 CRI plugin id (the v2 one is accepted, ignored,
+  # and the node still reports Ready) and gvisor-bin/ next to runsc.
+  # oci-seccomp stays OFF (pitfall 4 reversed by the spike): runsc ignores
+  # errnoRet (google/gvisor#14688), so RuntimeDefault's clone3 -> ENOSYS becomes
+  # EPERM and no glibc >= 2.34 process can start a thread.
   # No shell variables on purpose: Flux postBuild would rewrite ${...} to "".
   userData: |
     MIME-Version: 1.0
@@ -414,7 +426,7 @@ spec:
     echo "3dd478770dd751d09c257ba14d739b179348a36c5f2d9e954b773f5f90bff646  /tmp/gvisor.tar.bz2" | sha256sum -c -
     tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin
     rm -f /tmp/gvisor.tar.bz2
-    printf '[runsc_config]\n  oci-seccomp = "true"\n' > /etc/containerd/runsc.toml
+    printf '[runsc_config]\n  oci-seccomp = "false"\n' > /etc/containerd/runsc.toml
     --//
     Content-Type: application/node.eks.aws
 
@@ -547,9 +559,11 @@ spec:
 # A run's audience names its data class, so the other class's port earns a 401,
 # and the run's CNP does not open it anyway.
 #
-# Rotation (Q2): kubelet rewrites a projected token at 80 % of its 600 s TTL by
-# swapping the volume's ..data symlink. `watched_directory` turns that move into
-# an SDS reload, so the injector always sends a live token.
+# Rotation (Q2, failed under gVisor): kubelet rotates a projected token by
+# swapping the volume's ..data symlink on the HOST, and gVisor raises no inotify
+# for host-side changes, so `watched_directory` never fires inside the sandbox.
+# The composition therefore gives each token the run's deadline as its TTL (R2);
+# the watch stays for runtimes where inotify does work.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -998,14 +1012,32 @@ Run (repo root, `main` checked out and pulled — deploys apply the checkout's d
 `cd opentofu && terramate script run deploy`
 Expected: exit 0; `kubectl get nodes` lists Ready nodes; `flux get kustomizations -A` all `Ready=True`.
 
+The deploy must carry Cilium `devices: "eth+ enp+ ens+ pod-id-link+"` in
+`opentofu/aws/eks/init/helm_values/cilium.yaml` (spike commit `309fc246`, carried by Task 2.4). `eth+`
+is Bottlerocket's naming; AL2023 names its ENIs `enpXsY`/`ens5`, so on the gVisor node Cilium
+matches no ENI and crashloops on `unable to change MTU of link enp40s0 to 65520: invalid argument`,
+and no pod ever starts there. On a cluster that predates it: apply the `eks/configure` stack, then
+delete the crashing agent pod.
+
 - [ ] **Step 2: Namespaces, controller, RuntimeClass, pool**
 
 ```bash
 kubectl apply -f namespaces/base/agents.yaml -f namespaces/base/agent-system.yaml
 git clone --quiet --depth 1 --branch v1.0.3 https://github.com/kubernetes-sigs/agent-sandbox /tmp/agent-sandbox
+# agent-system enforces PSS restricted and the chart ships both security contexts null,
+# so a bare install is rejected at admission. Same values as phase 2's HelmRelease.
 helm install agent-sandbox /tmp/agent-sandbox/helm -n agent-system \
   --set namespace.create=false --set namespace.name=agent-system \
-  --set image.tag=v1.0.3 --set controller.extensions=false
+  --set image.tag=v1.0.3 --set controller.extensions=false -f - <<'EOF'
+podSecurityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  capabilities: {drop: ["ALL"]}
+  seccompProfile: {type: RuntimeDefault}
+EOF
 kubectl apply -k infrastructure/base/runtimeclass-gvisor
 CLUSTER=$(kubectl get cm -n flux-system eks-aws-0-vars -o jsonpath='{.data.cluster_name}')
 ENVIRONMENT=$(kubectl get cm -n flux-system eks-aws-0-vars -o jsonpath='{.data.environment}')
@@ -1014,7 +1046,10 @@ kubectl kustomize infrastructure/base/karpenter-nodepools-agents \
 kubectl get ec2nodeclass agents-gvisor -o jsonpath='{.status.amis[*].name}{"\n"}'
 ```
 Expected: the controller pod `Running`; the EC2NodeClass lists an `al2023` AMI name containing
-`20260909` (else the alias is wrong — fix it before anything else).
+`20260923` (else the alias is wrong — fix it before anything else). An alias date never published
+for the cluster's Kubernetes version fails only in the Karpenter log (`failed to discover any AMIs
+for alias`); `v20260909` did not exist for 1.36. Check the date before pinning it:
+`aws ssm get-parameter --name /aws/service/eks/optimized-ami/<k8s>/amazon-linux-2023/x86_64/standard/recommended/release_version`.
 
 - [ ] **Step 3: Provoke a node and time it (Q1)**
 
@@ -1035,16 +1070,19 @@ count (Q1: expected small and self-healing). Then `kubectl delete pod -n agents 
 - [ ] **Step 4: Inspect the node (SC-02, Q6)**
 
 ```bash
-kubectl debug node/"$NODE" -n default -it --profile=sysadmin --image=public.ecr.aws/amazonlinux/amazonlinux:2023 -- chroot /host bash -c '
+# Non-interactive, then read the logs. `general`, not `sysadmin`: sysadmin needs kubectl >= 1.30,
+# and chroot /host only reads here. containerd 2 dumps plugin ids single-quoted.
+kubectl debug node/"$NODE" -n default --profile=general --image=public.ecr.aws/amazonlinux/amazonlinux:2023 -- chroot /host bash -c '
   /usr/local/bin/runsc --version | head -1
   ls /usr/local/bin/containerd-shim-runsc-v1 /usr/local/bin/gvisor-bin
-  containerd config dump | grep -A4 "io.containerd.cri.v1.runtime\".containerd.runtimes.runsc\]"
+  containerd config dump | grep -A4 "runtimes.runsc"
   cat /etc/containerd/runsc.toml
   rpm -q bzip2; grep -c "dnf install -y bzip2" /var/log/cloud-init-output.log'
+sleep 20; kubectl logs -n default "$(kubectl get pods -n default -o name | grep node-debugger | head -1)"
 kubectl get pods -n default -o name | grep node-debugger | xargs -r kubectl delete -n default
 ```
 Expected: `runsc version release-20260921.0`; the runsc runtime under the **v3** plugin id with
-`ConfigPath = "/etc/containerd/runsc.toml"`; `oci-seccomp = "true"`. Record whether `bzip2` was
+`ConfigPath = "/etc/containerd/runsc.toml"`; `oci-seccomp = "false"`. Record whether `bzip2` was
 preinstalled (Q6: `rpm -q` succeeds and the `dnf` line count is 0) or installed by the script.
 
 ### Task 0.3: [LIVE] Sandbox, proxy and tokens — SC-01, Q5, Q2, Q8, R7
@@ -1089,33 +1127,36 @@ kubectl get node "$(kubectl get pod -n agents $POD -o jsonpath='{.spec.nodeName}
 kubectl exec -n agents $POD -c harness -- dmesg | head -3
 kubectl exec -n agents $POD -c harness -- grep Seccomp /proc/self/status
 ```
-Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 2` (filter
-mode: `oci-seccomp` is in effect and agent-server stayed Ready under it). Record all four lines.
+Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 0`: `oci-seccomp` is off until gVisor honours
+`errnoRet` (#14688; with it on, runsc answers `clone3` with EPERM and no glibc ≥ 2.34 process can start
+a thread). Record all four lines.
 
 - [ ] **Step 4: Writable paths and entrypoint facts**
 
 ```bash
 kubectl logs -n agents $POD -c harness | grep -iE "read-only|permission denied" | head
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import openhands.agent_server, openhands.tools.preset.default; print('sdk ok')"
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python -c "import importlib.util as u; print(u.find_spec('openhands.sdk'))"
 ```
 Expected: no read-only errors (the composition mounts `/workspace`, `/home/openhands`, `/tmp`), and
-`sdk ok`. Record any path that needed a mount; Task 1.3 adds it before CC-1 merges.
+`None`: the published image is upstream's PyInstaller binary target, so its Python cannot import the
+SDK and `/agent-server/.venv` does not exist (Task 5.1 installs it). Record any path that needed a
+mount; Task 1.3 adds it before CC-1 merges.
 
 - [ ] **Step 5: Q2 — 45 minutes across four rotations**
 
 ```bash
 kubectl cp spike/agent-runtime/rotation.py agents/$POD:/tmp/rotation.py -c harness
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python /tmp/rotation.py | tee /tmp/q2.log | tail -3
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python /tmp/rotation.py | tee /tmp/q2.log | tail -3
 ```
-Expected: `RESULT requests=90 non200=0` (±1 request). 45 minutes spans ≥ 4 token rotations at a 600 s
-TTL, so zero non-200s proves SDS picked up every rotation. The proxy's admin stats are deliberately
-unreachable from the harness (P13), so they are not read here. **Decision:** any `401` after minute
-10 means Q2 failed → fallback R2 (Task 0.6).
+Expected: `RESULT requests=90 non200=0` (±1 request): the rendered run's tokens live until its
+deadline (R2), longer than the test. The spike ran this at a 600 s TTL and got 401 `Jwt is expired`
+from minute ~10: gVisor raises no inotify for kubelet's host-side rotation, so `watched_directory`
+never reloads. The proxy's admin stats are deliberately unreachable from the harness (P13).
 
 - [ ] **Step 6: Q8 — the harness has no channel into the proxy**
 
 ```bash
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import socket,os; s=socket.socket(); r=s.connect_ex(('127.0.0.1',9901)); print('9901:', 'refused' if r else 'OPEN'); print('admin socket visible:', os.path.exists('/tmp/envoy-admin.sock')); print('hot-restart socket:', 'envoy_domain_socket' in open('/proc/net/unix').read())"
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python -c "import socket,os; s=socket.socket(); r=s.connect_ex(('127.0.0.1',9901)); print('9901:', 'refused' if r else 'OPEN'); print('admin socket visible:', os.path.exists('/tmp/envoy-admin.sock')); print('hot-restart socket:', 'envoy_domain_socket' in open('/proc/net/unix').read())"
 ```
 Expected: `9901: refused`, `admin socket visible: False`, `hot-restart socket: False`. Any other
 answer means a control channel from the harness into the only token holder: stop and fix the
@@ -1140,9 +1181,9 @@ and `agent-run` already resumes an existing branch (Task 5.1).
 kubectl wait -n agents sandbox/xplane-run-spk2test --for=condition=Ready --timeout=10m
 POD=xplane-run-spk2test
 kubectl exec -n agents $POD -c harness -- git ls-remote https://github.com/Smana/cloud-native-ref HEAD
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; urllib.request.urlopen('https://example.com', timeout=5)" ; echo "exit=$?"
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import socket, secrets; socket.getaddrinfo(secrets.token_hex(6)+'.example.org', 443)" ; echo "exit=$?"
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import socket; print(socket.getaddrinfo('api.github.com', 443)[0][4])"
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python -c "import urllib.request; urllib.request.urlopen('https://example.com', timeout=5)" ; echo "exit=$?"
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python -c "import socket, secrets; socket.getaddrinfo(secrets.token_hex(6)+'.example.org', 443)" ; echo "exit=$?"
+kubectl exec -n agents $POD -c harness -- /usr/local/bin/python -c "import socket; print(socket.getaddrinfo('api.github.com', 443)[0][4])"
 ```
 Expected: a `HEAD` SHA; `exit=1` for example.com; `exit=1` for the random name; an IP for
 `api.github.com` (Q4: a bare public name resolves with `ndots:1` despite the refused search-path
@@ -1243,11 +1284,17 @@ not reused for PR 2 (`task ops:teardown`).
 
 | Failed check | Change, made in PR 1 (design) and carried by the named task |
 |---|---|
-| Q2 | R2: `expirationSeconds` = the run deadline on the gateway token only. Amend design §3 and T8; Task 1.3 derives it from `maxMinutes` |
+| Q2 | R2: `expirationSeconds` = the run deadline on **both** tokens (the octo-sts token rotates the same way). Amend design §3 and T8, and programme C3; Task 1.3 derives it from `maxMinutes` |
+| Q5 | `oci-seccomp` off: runsc turns RuntimeDefault's `clone3` ENOSYS into EPERM (gVisor #14688), so no thread starts. Amend design S4, §1, T2 and ADR-0041 |
+| harness SDK | The published agent-server image is the binary target with no importable SDK: Task 5.1 installs it into `/agent-server/.venv` |
 | Q8 | Already applied up front (P13): admin on a pathname socket in `proxy-tmp`, probes on `:9902` with the `health_check` filter, `--disable-hot-restart`. If Step 6 still finds a channel, fix the bootstrap or the proxy args before PR 2 |
 | Q3/Q4 | Stop and raise it with the owner: the egress design (S10) does not hold under gVisor |
 | Q9 | R1: an in-memory `/workspace` (`medium: Memory`) for `small` runs. Amend design §2; Task 1.3 |
 | writable path | Add an `emptyDir` in Task 1.3 before CC-1 merges |
+
+**Applied 2026-09-26** ([spike notes](../specs/2026-09-23-agent-runtime-identity-spike.md)): Q2 → R2 on
+both tokens (CC-1 `299eb6d`); Q5 → `oci-seccomp` off (`spike/agent-gvisor` `bf82940f`); harness SDK →
+Task 5.1. Q1, Q3, Q4, Q6, Q8, Q9 and R7 passed; no writable path was missing.
 
 - [ ] **Step 3: Validate and commit**
 
@@ -1669,6 +1716,11 @@ _run = lambda spec: any -> [any] {
     _render(_xr(spec, {}, {}, {}), {}, _DXR)
 }
 
+_tokenTTLs = lambda spec: any -> [int] {
+    _vols = {v.name: v for v in _pod(_run(spec)).volumes}
+    [_vols[n].projected.sources[0].serviceAccountToken.expirationSeconds for n in ["gateway-token", "sts-token"]]
+}
+
 _kind = lambda res: [any], kind: str -> [any] {
     [r for r in res if r.kind == kind]
 }
@@ -1755,7 +1807,14 @@ test_token_audiences_and_ttl = lambda {
     _sts = _vols["sts-token"].projected.sources[0].serviceAccountToken
     assert _gw.audience == "agent-router.implementer.public"
     assert _sts.audience == "octo-sts/Smana/cloud-native-ref/implementer"
-    assert _gw.expirationSeconds == 600 and _sts.expirationSeconds == 600, "C3: TTL <= 600 s"
+}
+
+# R2 (SP1 spike Q2): gVisor raises no inotify for kubelet's host-side rotation, so the
+# proxy never reloads a rotated token. Both tokens outlive the run instead.
+test_tokens_outlive_the_run = lambda {
+    assert _tokenTTLs({}) == [7200, 7200], "maxMinutes defaults to 120"
+    assert _tokenTTLs({budget = {maxMinutes = 480}}) == [28800, 28800], "the XRD's maximum"
+    assert _tokenTTLs({budget = {maxMinutes = 5}}) == [600, 600], "the apiserver's floor"
 }
 
 test_data_class_picks_port_and_audience = lambda {
@@ -2055,6 +2114,10 @@ _render = lambda _oxr: any, _ocds: any, _dxr: any -> [any] {
     _size = _SIZES[_spec.size or "small"]
     _profile = _HARNESS_PROFILES[_spec.harness or "openhands"]
     _maxMinutes = _spec.budget?.maxMinutes or 120
+    # R2 (SP1 spike Q2): under gVisor, kubelet's host-side token rotation raises no inotify,
+    # so the proxy's watched_directory never reloads. Each token outlives the run instead,
+    # which widens T8 to the deadline. 600 s is the apiserver's floor.
+    _tokenTTL = max([600, _maxMinutes * 60])
     _profiles = ["github"] + (_spec.egress?.profiles or [])
     _fqdns = [f for p in _profiles for f in _EGRESS_PROFILES[p]]
     _roomRef = _spec.roomRef
@@ -2240,10 +2303,10 @@ _render = lambda _oxr: any, _ocds: any, _dxr: any -> [any] {
                     }]
                     volumes = [
                         {name = "gateway-token", projected = {defaultMode = 288, sources = [{
-                            serviceAccountToken = {audience = "agent-router.{}.{}".format(_role, _class), expirationSeconds = 600, path = "token"}
+                            serviceAccountToken = {audience = "agent-router.{}.{}".format(_role, _class), expirationSeconds = _tokenTTL, path = "token"}
                         }]}}
                         {name = "sts-token", projected = {defaultMode = 288, sources = [{
-                            serviceAccountToken = {audience = "octo-sts/{}/{}".format(_repo, _role), expirationSeconds = 600, path = "token"}
+                            serviceAccountToken = {audience = "octo-sts/{}/{}".format(_repo, _role), expirationSeconds = _tokenTTL, path = "token"}
                         }]}}
                         {name = "proxy-config", configMap = {name = "agent-identity-proxy"}}
                         {name = "proxy-tmp", emptyDir = {medium = "Memory", sizeLimit = "16Mi"}}
@@ -2546,8 +2609,9 @@ AWS's own `ai-on-eks` blueprint runs agent-sandbox with gVisor on a Karpenter AL
 ### Option 1: agent-sandbox `Sandbox` + gVisor on a Karpenter AL2023 spot pool
 
 The XR composes a bare `Sandbox` with `runtimeClassName: gvisor`. User-data installs a pinned,
-sha256-checked gVisor tarball and registers `runsc` in containerd's v3 CRI table with
-`oci-seccomp=true`, on `systrap`.
+sha256-checked gVisor tarball and registers `runsc` in containerd's v3 CRI table, on `systrap`. `oci-seccomp` stays off: runsc ignores
+`errnoRet` ([gVisor #14688](https://github.com/google/gvisor/issues/14688)), which breaks glibc thread
+creation under `RuntimeDefault`.
 
 **Pros**:
 - The same stack as AWS's blueprint; `Sandbox` reports `Ready` and `Finished`, so it fits a one-shot run
@@ -2607,8 +2671,8 @@ virtualisation, and lets identity be composed per run.
 
 - A Sentry escape reaches the node's IAM role and co-located runs. Mitigations: dedicated tainted
   pool, IMDS hop limit 1, daily node replacement (`expireAfter: 24h`). Kata is the next tier
-- `RuntimeDefault` seccomp is only effective because of `oci-seccomp`; NoNewPrivileges is not reliable
-  under the sandbox. gVisor is the control
+- `RuntimeDefault` seccomp is not enforced inside the sandbox until gVisor honours `errnoRet`, and
+  NoNewPrivileges is not reliable under it. gVisor is the control
 - Vector needs a toleration for the pool's taint to ship sandbox logs
 
 ### Neutral
@@ -3042,7 +3106,9 @@ git commit -m "feat(agents): agent-sandbox controller from its pinned git chart"
 - Create (from branch `spike/agent-gvisor`, Task 0.1): `namespaces/base/{agents,agent-system}.yaml`
   and the two lines in `namespaces/base/kustomization.yaml`;
   `infrastructure/base/runtimeclass-gvisor/`; `infrastructure/base/karpenter-nodepools-agents/`;
-  `infrastructure/base/agent-runtime/`
+  `infrastructure/base/agent-runtime/`; `opentofu/aws/eks/init/helm_values/cilium.yaml` (Cilium
+  `devices` for AL2023's `enp*`/`ens*` names, spike finding C; an existing cluster needs the
+  `eks/configure` stack applied)
 - Create: `clusters/aws-0-agent-platform/{infrastructure-agents-nodepool,infrastructure-runtimeclass-gvisor,infrastructure-agent-runtime}.yaml`
 
 **Interfaces:**
@@ -3053,7 +3119,8 @@ git commit -m "feat(agents): agent-sandbox controller from its pinned git chart"
 
 ```bash
 git checkout spike/agent-gvisor -- namespaces/base/agents.yaml namespaces/base/agent-system.yaml \
-  infrastructure/base/runtimeclass-gvisor infrastructure/base/karpenter-nodepools-agents infrastructure/base/agent-runtime
+  infrastructure/base/runtimeclass-gvisor infrastructure/base/karpenter-nodepools-agents infrastructure/base/agent-runtime \
+  opentofu/aws/eks/init/helm_values/cilium.yaml
 git diff --cached --stat
 ```
 Expected: exactly those paths. Then append to `resources:` in `namespaces/base/kustomization.yaml`
@@ -3472,14 +3539,15 @@ Expected: `Running`; `gvisor <node>`; `gvisor`; a `Starting gVisor` line.
 
 ```bash
 NODE=$(kubectl get pod -n agents $POD -o jsonpath='{.spec.nodeName}')
-kubectl debug node/"$NODE" -n default -it --profile=sysadmin --image=public.ecr.aws/amazonlinux/amazonlinux:2023 -- chroot /host bash -c '
+kubectl debug node/"$NODE" -n default --profile=general --image=public.ecr.aws/amazonlinux/amazonlinux:2023 -- chroot /host bash -c '
   /usr/local/bin/runsc --version | head -1
-  containerd config dump | grep -A4 "io.containerd.cri.v1.runtime\".containerd.runtimes.runsc\]"
+  containerd config dump | grep -A4 "runtimes.runsc"
   cat /etc/containerd/runsc.toml'
+sleep 20; kubectl logs -n default "$(kubectl get pods -n default -o name | grep node-debugger | head -1)"
 kubectl get pods -n default -o name | grep node-debugger | xargs -r kubectl delete -n default
 ```
 Expected: `runsc version release-20260921.0`, the runsc runtime under the **v3** plugin id with
-`ConfigPath = "/etc/containerd/runsc.toml"`, and `oci-seccomp = "true"`.
+`ConfigPath = "/etc/containerd/runsc.toml"`, and `oci-seccomp = "false"`.
 
 - [ ] **Step 4: SC-03 — admission**
 
@@ -3567,7 +3635,7 @@ day):
 title: Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens
 linkTitle: 0042 · Agent identity gateway
 weight: 420
-description: Agent runs reach models and MCP tools only through a dedicated agent-router Gateway, one listener per data class, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the 600 s tokens and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
+description: Agent runs reach models and MCP tools only through a dedicated agent-router Gateway, one listener per data class, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -3584,13 +3652,14 @@ An agent run must call models and read-only MCP tools under its own identity (pr
 ever holding a provider key, and `internal` data must never reach a SaaS model (OD-13). Envoy Gateway
 1.9.1 validates JWTs against a remote JWKS and copies claims into headers, but matches claims
 **exactly** and cannot address the nested `kubernetes.io` claim. OpenHands reads its LLM key once per
-conversation, while projected tokens live at most 600 s here (C3).
+conversation, and under gVisor a rotated projected token never reaches a reader inside the pod (SP1
+spike Q2), so each token lives until its run's deadline (R2, C3).
 
 ---
 
 ## Decision Drivers
 
-- A token copied out of a sandbox must die within 600 s
+- A token copied out of a sandbox must die with its run, at the run's deadline (R2)
 - "`internal` never reaches Z.ai" must hold by construction, not by a rule evaluated after routing
 - No provider key in namespace `agents`
 - One harness-neutral localhost contract
@@ -3607,7 +3676,7 @@ conversation, while projected tokens live at most 600 s here (C3).
 - The listener rejects the other class's token before routing; Z.ai routes attach to `public` only
 
 **Cons**:
-- Offline validation: a copied token is valid until `exp` (bounded to 600 s)
+- Offline validation: a copied token is valid until `exp`, the run's deadline (R2)
 - EG cannot prefix-match `sub`: a Kyverno audience reservation and a data-plane CNP admitting only
   `agents` pods close that gap
 
@@ -3629,8 +3698,8 @@ conversation, while projected tokens live at most 600 s here (C3).
 ### Option 4: The run's token passed as the harness's API key
 
 **Cons**:
-- OpenHands reads it once per conversation; a 600 s token expires mid-run. A run-long token widens
-  replay to hours
+- The harness, which the agent drives through a shell, would hold the token, so one prompt injection
+  exfiltrates it. Tokens are run-long under R2 either way; the proxy keeps them out of the agent's reach
 
 ---
 
@@ -3638,7 +3707,7 @@ conversation, while projected tokens live at most 600 s here (C3).
 
 **Chosen option**: "Agent Router on a dedicated `agent-router` Gateway, one listener per class", with
 audiences `agent-router.<role>.<dataClass>` and an in-pod Envoy `identity-proxy` (`credential_injector`
-fed by file SDS, watched for rotation) as the only token holder.
+fed by file SDS) as the only token holder.
 
 **Rationale**: It is the only shape where the class boundary and the key boundary are both
 structural, using controllers the platform already runs.
@@ -3658,6 +3727,10 @@ structural, using controllers the platform already runs.
 - The harness can still *use* its credential through localhost; the boundary is what the credential
   can reach, not whether the agent can call it
 - Whether identity reaches MCP backends is UNVERIFIED (C5); SP2 carries the fallback
+- Tokens live until the run's deadline, not 600 s (R2): under gVisor kubelet's rotation raises no
+  inotify, so the file watch never reloads. A Lua filter re-reading the token per request would keep
+  600 s (a re-read does see the new file) and was not taken: more proxy code for a window that only
+  matters after a sandbox compromise
 
 ### Neutral
 
@@ -4093,7 +4166,7 @@ spec:
 ---
 # The `public` listener accepts exactly the four `.public` audiences (C2): an
 # internal-class or octo-sts token is a 401 here. EKS JWKS is served at
-# <issuer>/keys; validation is offline, so a copied token lives until exp (600 s).
+# <issuer>/keys; validation is offline, so a copied token lives until exp (the run's deadline, R2).
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -4774,7 +4847,7 @@ and never a human's.
 
 ### Option 1: Self-hosted octo-sts with the agents' GitHub App
 
-The run presents a 600 s token with audience `octo-sts/<owner>/<repo>/<role>`; octo-sts checks it
+The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`; octo-sts checks it
 against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns an installation
 token with that policy's permissions.
 
@@ -4829,7 +4902,7 @@ repository it grants.
 
 - All runs share one App and the ruleset is `agent/**`-wide: a run can push another task's agent
   branch (R9). SP3's gate checks the head commit's `Agent-Run` trailer
-- A copied octo-sts audience token verifies until `exp` (600 s)
+- A copied octo-sts audience token verifies until `exp`, the run's deadline (R2)
 
 ### Neutral
 
@@ -5498,7 +5571,7 @@ for ref in ["HEAD:refs/heads/agent/" + os.environ["RUN_ID"], "HEAD:refs/heads/ma
 
 ```bash
 for run in scimplaa screvwaa; do kubectl cp /tmp/sc11.py agents/xplane-run-$run:/tmp/sc11.py -c harness; done
-kubectl exec -n agents xplane-run-scimplaa -c harness -- /agent-server/.venv/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
+kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
 ```
 Expected: `-> token ghs_…`; `push HEAD:refs/heads/agent/scimplaa -> ok`; `push HEAD:refs/heads/main ->`
 a rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->` a rejection
@@ -5507,9 +5580,9 @@ a rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->`
 - [ ] **Step 5: Reviewer cannot push; no token for another repository or role**
 
 ```bash
-kubectl exec -n agents xplane-run-screvwaa -c harness -- /agent-server/.venv/bin/python /tmp/sc11.py reviewer Smana/cloud-native-ref
-kubectl exec -n agents xplane-run-scimplaa -c harness -- /agent-server/.venv/bin/python /tmp/sc11.py implementer Smana/crossplane-configuration
-kubectl exec -n agents xplane-run-screvwaa -c harness -- /agent-server/.venv/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
+kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py reviewer Smana/cloud-native-ref
+kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/crossplane-configuration
+kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
 ```
 Expected: the reviewer gets a token but every push is rejected (`403`/permission); the other
 repository's exchange fails (`HTTP Error 403`/PermissionDenied: no trust policy there, App not
@@ -5535,7 +5608,7 @@ use the upstream agent-server image, which is enough for this phase's gate.
 ### Task 5.1: `container-images/agent-harness`
 
 **Files:**
-- Create: `container-images/agent-harness/{Dockerfile,agent_run.py,git_credential_agent.py,gh,commit-msg,gitconfig,build.sh,README.md}`
+- Create: `container-images/agent-harness/{Dockerfile,requirements.in,requirements.txt,agent_run.py,git_credential_agent.py,gh,commit-msg,gitconfig,build.sh,README.md}`
 - Test: `container-images/agent-harness/tests/{test_git_credential_agent.py,test_agent_run.py}`
 
 **Interfaces:**
@@ -5794,6 +5867,20 @@ if __name__ == "__main__":
 
 - [ ] **Step 5: Image, wrapper, hook, config**
 
+The published `agent-server:1.49.5-python` is upstream's PyInstaller **binary** target (SP1 spike): no
+`/agent-server/.venv`, and its Python cannot import `openhands.*`. `agent-run` needs the SDK, so the
+image installs the same release into the path upstream's `source` target uses.
+`container-images/agent-harness/requirements.in` (moves in lockstep with the base image digest):
+
+```text
+openhands-sdk==1.49.5
+openhands-tools==1.49.5
+openhands-agent-server==1.49.5
+```
+
+Lock it with hashes for both architectures:
+`uv pip compile --universal --generate-hashes --python-version 3.13 container-images/agent-harness/requirements.in -o container-images/agent-harness/requirements.txt`
+
 `container-images/agent-harness/Dockerfile`:
 
 ```dockerfile
@@ -5817,7 +5904,7 @@ USER root
 # under gVisor (design §1), so sudo and every setuid bit go.
 RUN set -eux; \
     case "${TARGETARCH}" in amd64) sum="${GH_SHA256_AMD64}" ;; arm64) sum="${GH_SHA256_ARM64}" ;; *) exit 1 ;; esac; \
-    /agent-server/.venv/bin/python -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], '/tmp/gh.tgz')" \
+    /usr/local/bin/python -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], '/tmp/gh.tgz')" \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz"; \
     echo "${sum}  /tmp/gh.tgz" | sha256sum -c -; \
     tar -xzf /tmp/gh.tgz -C /tmp; \
@@ -5826,6 +5913,12 @@ RUN set -eux; \
     rm -f /etc/sudoers.d/*; \
     if [ -f /etc/sudoers ]; then sed -i '/NOPASSWD/d' /etc/sudoers; fi; \
     find / -xdev -perm -4000 -type f -exec chmod u-s {} +
+
+# The SDK agent-run imports; see requirements.in for why it is not in the base image.
+COPY requirements.txt /tmp/requirements.txt
+RUN /usr/local/bin/python -m venv /agent-server/.venv \
+ && /agent-server/.venv/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt \
+ && rm /tmp/requirements.txt
 
 COPY --chmod=0755 agent_run.py git_credential_agent.py /opt/agent/
 COPY --chmod=0755 gh /usr/local/bin/gh
@@ -6009,7 +6102,7 @@ if __name__ == "__main__":
 Run: `docker build --target test container-images/agent-harness`
 Expected: the build succeeds and the log shows `Ran 8 tests … OK` (5 helper + 3 driver). If an
 `openhands.*` import fails, the SDK moved a symbol: find it with
-`docker run --rm --entrypoint /agent-server/.venv/bin/python ghcr.io/openhands/agent-server:1.49.5-python -c "import openhands.sdk as s; print(dir(s))"`
+`docker build --target harness -t agent-harness:dev container-images/agent-harness && docker run --rm --entrypoint /agent-server/.venv/bin/python agent-harness:dev -c "import openhands.sdk as s; print(dir(s))"`
 and fix the import, not the test.
 
 - [ ] **Step 7: build.sh and README**
@@ -7121,7 +7214,7 @@ condition message and fix the route before going on.
 kubectl apply -f /home/smana/Sources/crossplane-configuration/examples/agentrun-basic.yaml
 kubectl wait -n agents agentrun/xplane-run-7f3cq2xz --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl exec -n agents xplane-run-7f3cq2xz -c harness -- ls /var/run/secrets/kubernetes.io ; echo "exit=$?"
-kubectl exec -n agents xplane-run-7f3cq2xz -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; urllib.request.urlopen('https://kubernetes.default.svc', timeout=5)" ; echo "exit=$?"
+kubectl exec -n agents xplane-run-7f3cq2xz -c harness -- /usr/local/bin/python -c "import urllib.request; urllib.request.urlopen('https://kubernetes.default.svc', timeout=5)" ; echo "exit=$?"
 kubectl delete agentrun -n agents xplane-run-7f3cq2xz --wait
 ```
 Expected: `No such file or directory` with `exit=2`; a name-resolution or timeout error with
@@ -7675,8 +7768,8 @@ LONG=$(task agent:run -- --role implementer --class public --minutes 60 \
 kubectl wait -n agents agentrun/$LONG --for=jsonpath='{.status.phase}'=Running --timeout=15m
 # SC-09 on the composed CNP, while it runs:
 kubectl exec -n agents $LONG -c harness -- git ls-remote https://github.com/Smana/cloud-native-ref HEAD
-kubectl exec -n agents $LONG -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; urllib.request.urlopen('https://example.com', timeout=5)" ; echo "exit=$?"
-kubectl exec -n agents $LONG -c harness -- /agent-server/.venv/bin/python -c "import socket, secrets; socket.getaddrinfo(secrets.token_hex(6)+'.example.org', 443)" ; echo "exit=$?"
+kubectl exec -n agents $LONG -c harness -- /usr/local/bin/python -c "import urllib.request; urllib.request.urlopen('https://example.com', timeout=5)" ; echo "exit=$?"
+kubectl exec -n agents $LONG -c harness -- /usr/local/bin/python -c "import socket, secrets; socket.getaddrinfo(secrets.token_hex(6)+'.example.org', 443)" ; echo "exit=$?"
 NODE=$(kubectl get pod -n agents $LONG -o jsonpath='{.spec.nodeName}')
 AGENT=$(kubectl get pods -n kube-system -l k8s-app=cilium --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n kube-system $AGENT -- hubble observe --from-pod agents/$LONG --type l7 --protocol dns --last 20
@@ -7689,9 +7782,9 @@ At minute 45 or later (or at the run's end if it finishes sooner — record its 
 curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
   "query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.response_code) count() n"
 ```
-Expected: no `401` bucket for the run across ≥ 4 token lifetimes (SC-06); the proxy's admin stats
-are off the pod network by design (P13). A run shorter than 45 minutes
-leaves SC-06 on the spike's evidence (Task 0.3); say so in the PR.
+Expected: no `401` bucket for the run (SC-06). Its tokens live until its 60-minute deadline (R2), so
+none has to rotate: the spike showed a rotated token never reaches the proxy under gVisor. A run
+shorter than 45 minutes still counts; record its duration in the PR.
 
 - [ ] **Step 4: Clean up**
 
@@ -7704,7 +7797,7 @@ leaves SC-06 on the spike's evidence (Task 0.3); say so in the PR.
 - [ ] **Step 1: SC-07 — revocation timings**
 
 ```bash
-REV=$(task agent:run -- --role implementer --class public --minutes 60 --task "Wait: list the files under docs/ slowly, one per minute. Change nothing." | tail -1)
+REV=$(task agent:run -- --role implementer --class public --minutes 10 --task "Wait: list the files under docs/ slowly, one per minute. Change nothing." | tail -1)
 kubectl wait -n agents agentrun/$REV --for=jsonpath='{.status.phase}'=Running --timeout=15m
 GHT=$(kubectl exec -n agents $REV -c harness -- /usr/local/bin/git-credential-agent token)
 GWT=$(kubectl create token $REV -n agents --audience agent-router.implementer.public --duration 10m); ISSUED=$(date +%s)
@@ -7716,7 +7809,8 @@ until [ "$(kubectl exec -n agents agent-probe -c probe -- curl -s -o /dev/null -
 unset GHT GWT
 ```
 Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke); copied gateway token
-rejected ≤ 600 s after issue (it verifies offline until `exp`, the bound C3 accepts).
+rejected ≤ 600 s after issue: a 10-minute run's tokens live 600 s, because R2 sets the TTL to the
+deadline (a default 120-minute run's copied token would verify for 7200 s).
 
 - [ ] **Step 2: SC-13 — revocation by annotation, and projection**
 

@@ -221,7 +221,8 @@ sequenceDiagram
 - Connections live for `min(token exp, 1 h)` and replay losslessly, so revoking a group takes effect within the hour.
 
 **Agent path.** The bridge dials `room-broker.agent-system.svc:8443` with a token mounted only in its own container;
-the last connection per `runId` wins. gcp-0 lacks aws-0's Cilium WireGuard, so it needs TLS on :8443 first.
+the last connection per `runId` wins. It re-reads the token file before every dial and never watches it: under gVisor,
+kubelet's host-side rotation raises no inotify, while a plain re-read sees the new token (SP1 spike Q2). gcp-0 lacks aws-0's Cilium WireGuard, so it needs TLS on :8443 first.
 **Bridge container:** liveness and readiness `GET /healthz` on **:8085** (kubelet only). It checks the process and its
 harness socket, never the broker, so a broker outage cannot mark sandboxes unready. Requests 20m/32Mi, limits 100m/64Mi.
 
