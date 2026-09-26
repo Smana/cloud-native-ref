@@ -14,4 +14,4 @@ metadata:
 spec:
   # Integration branch only: the Smana/crossplane-configuration#27 pre-release (AgentRun).
   # It has no GitHub release, so validate with XRD_CRDS_FILE; the App Wizard stays on v0.7.1.
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr27.cd33c9d
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr27.dc52209
