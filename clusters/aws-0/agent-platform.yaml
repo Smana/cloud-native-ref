@@ -15,7 +15,7 @@ metadata:
   name: agent-platform
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false  # integration branch only: the live test session (never merged)
   prune: true
   interval: 1m0s
   timeout: 5m0s
