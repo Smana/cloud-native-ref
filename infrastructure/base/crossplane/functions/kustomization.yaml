@@ -4,7 +4,7 @@
 # Functions are cluster-scoped singletons and the pins are cloud-agnostic, so
 # both clouds reference this directory rather than each carrying a copy. Two
 # copies would let the versions drift, and a composition running against
-# function-kcl v0.12.1 on one cloud and something else on the other is a bug
+# function-kcl at one version on one cloud and another on the other is a bug
 # that reproduces on one cluster only.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
