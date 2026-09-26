@@ -475,7 +475,7 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T5 | Exfiltration through other allowlisted services | Profiles are opt-in per claim | Same class as T4 |
 | T6 | DNS exfiltration | The L7 DNS rule answers allowlisted names only | Lookups under allowlisted domains, which are answered by their owners' servers |
 | T7 | Resource abuse | Requests and limits, ephemeral storage, `activeDeadlineSeconds`, pool limits, R1 + `BudgetExhausted` | One `large` run for `maxMinutes` |
-| T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; octo-sts only behind the `sts` listener, which pins this cluster's issuer where the trust policies match any EKS issuer in the region (OD-5); audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), not 600 s. The admin-port path is closed (Q8) |
+| T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; octo-sts only behind the `sts` listener, which pins this cluster's issuer where the trust policies match any EKS issuer in the region (OD-5); audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), returning 401 if missing/unsigned/wrongly-signed, or 403 if the audience is valid but wrong for the target listener, and either blocks the attacker. The admin-port path is closed (Q8) |
 | T9 | Kubernetes API abuse | Four layers (§3) | none known |
 | T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in three times: the branch ruleset, trust policies and App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
@@ -495,7 +495,7 @@ neither is here (ADR-0043). What is recorded instead: `agent-router`'s `sts` acc
 actions; no record ties an installation token to a run. Harness JSON logs go through Vector, which
 **needs a toleration** for the `agents` taint (it has none today). The agent-sandbox `ServiceMonitor`
 and Karpenter pool metrics cover the controllers. **VMRules:** a pod `Pending` > 15 min; a burst of
-401s at `agent-router` (T8); the pool above 90 % of its limit; octo-sts failures, as a `vlogs` group
+401s or 403s at `agent-router` (T8: missing/invalid token, or valid token with wrong audience); the pool above 90 % of its limit; octo-sts failures, as a `vlogs` group
 that promtool skips visibly.
 
 **Constitution.** §1 `xplane-run-` names. §2.1 the phase is computed first, and conditional
@@ -543,7 +543,7 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 | SC-02 | runsc is registered in the v3 CRI table at the pinned release | `containerd config dump`, `runsc --version` from a node debug shell |
 | SC-03 | A pod in `agents` without gVisor or with automount on is denied, and so is an `AgentRun` whose `spec.branch` is outside `agent/**` | `kubectl apply --dry-run=server` |
 | SC-04 | An implementer run on a trivial issue reaches `Succeeded` in ≤ 30 min, with a PR from `spec.branch` authored by the agents' App and carrying the `Agent-Run` trailer | `kubectl get agentrun`; `gh pr list --head agent/<runId> --json` |
-| SC-05 | `agent-router` returns 401 with no token, an octo-sts-audience token, a self-signed JWT, or a `public` token on the `internal` listener (and the reverse). A forged `x-ar-agent` is attributed to the token's `sub` | curl; access log; `ar_agent` metric |
+| SC-05 | `agent-router` returns 401 with no token, a self-signed JWT, or an unsigned token; 403 with a valid token of the wrong audience (an octo-sts token on the public listener, a `public` token on the `internal` listener). A forged `x-ar-agent` is attributed to the token's `sub` | curl; access log; `ar_agent` metric |
 | SC-06 | A 45-minute conversation gets no 401: its tokens outlive the run (R2; Q2 showed rotation never reaches the proxy) | gateway access log |
 | SC-07 | After deleting a running claim: the pod is gone ≤ 60 s later; its GitHub token returns 401 ≤ 60 s later; a copied gateway token is rejected once `exp` passes, ≤ 600 s after issue for a 10-minute run (R2) | timestamps |
 | SC-08 | `/var/run/secrets/kubernetes.io` is absent from the harness, and `curl -m5 https://kubernetes.default.svc` fails | `kubectl exec` |
@@ -555,7 +555,7 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 | SC-14 | After deletion, nothing labelled with the run's id remains | `kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=<id>` |
 | SC-15 | Cloning the repo and running `task check` under gVisor takes ≤ 5× the runc time on the same instance type, with the ratio recorded (Q9) | timed runs |
 | SC-16 | `validate-manifests.sh` and upstream `task check` pass | exit codes |
-| SC-17 | An `internal` run never reaches `api.z.ai`: 0 upstream requests to it for that `x-ar-agent`, and its `public`-listener calls are 401. Its MCP tool list on `public` is documentation only | access log; Hubble on the data plane; `tools/list` |
+| SC-17 | An `internal` run never reaches `api.z.ai`: 0 upstream requests to it for that `x-ar-agent`, and its `public`-listener calls get 403 (wrong audience). Its MCP tool list on `public` is documentation only | access log; Hubble on the data plane; `tools/list` |
 
 ## Non-goals, risks and open items
 

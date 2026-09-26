@@ -4860,7 +4860,7 @@ print(h+"."+b+"."+base64.urlsafe_b64encode(hmac.new(b"not-the-issuer-key",(h+"."
 p "curl -s -o /dev/null -w 'self-signed→public %{http_code}\n' -H 'Authorization: Bearer $FORGED' $R:8080/v1/models"
 p "curl -s -o /dev/null -w 'forged-header %{http_code}\n' -H 'x-ar-agent: agent:forged' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/public/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}]}' $R:8080/v1/chat/completions"
 ```
-Expected: `none→public 401`, `sts→public 401`, `internal→public 401`, `public→internal 401`,
+Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 403`,
 `public→public 200`, `self-signed→public 401`, `forged-header 200`.
 
 Then the attribution:
@@ -7777,12 +7777,12 @@ spec:
       interval: 5m
       rules:
         - alert: AgentRouterUnauthorizedBurst
-          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:401 | stats count() as unauthorized | filter unauthorized:>20'
+          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:(401|403) | stats count() as unauthorized | filter unauthorized:>20'
           labels:
             severity: warning
           annotations:
             summary: "agent-router rejected {{ $value }} requests in 5 minutes"
-            description: "Replayed or foreign tokens (T8), or identity-proxy rotation broken (R2)."
+            description: "401: missing, unsigned or wrongly-signed tokens (T8), or identity-proxy rotation broken (R2). 403: valid token with wrong audience (T8)."
         - alert: OctoStsExchangeFailures
           expr: 'kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
           labels:
