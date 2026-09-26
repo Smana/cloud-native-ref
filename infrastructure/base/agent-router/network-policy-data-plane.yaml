@@ -3,7 +3,8 @@
 # whatever the Gateway's, so this CNP lives there. Scoped by gateway name AND
 # namespace, as is envoy-data-plane (narrowed by SP4 PR 1), so neither Gateway
 # inherits the other's allows (R5), and neither does a same-named Gateway
-# elsewhere (CC-1). SP4 PR 2 adds the Bedrock egress here.
+# elsewhere (CC-1). SP4 PR 2 adds the Bedrock egress here, and envoy-ratelimit
+# :8081 with its budgets: a dropped rate-limit check fails OPEN (envoy-data-plane).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -32,14 +33,6 @@ spec:
             - port: "8081"
               protocol: TCP
             - port: "8082"
-              protocol: TCP
-    - fromEntities:
-        - host
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
-            - port: "8081"
               protocol: TCP
     - fromEndpoints:
         - matchLabels:
