@@ -100,10 +100,12 @@ file and the programme's *Verified during design* table overlap, they agree.
    filters inside the sandbox"). PSS `restricted` admission passes on the field alone, so a
    `RuntimeDefault` profile looks enforced when it is not. GKE Sandbox documents the same for
    seccomp and NoNewPrivileges. **Spike (2026-09-26): turning it on is worse.** runsc answers every
-   errno rule with EPERM, ignoring `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)), so RuntimeDefault's `clone3` → ENOSYS becomes
-   EPERM and glibc ≥ 2.34 cannot start a thread. The platform keeps `oci-seccomp` off.
+   errno rule with EPERM, ignoring `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)),
+   so RuntimeDefault's `clone3` → ENOSYS becomes EPERM and glibc ≥ 2.34 cannot start a thread. The
+   platform keeps `oci-seccomp` off.
+
    A reference user-data that avoids pitfalls 1–4. Karpenter merges its own NodeConfig part into
-   it. The `runsc.toml` key syntax and `bzip2` on the AMI are still open (Q5, Q6):
+   it. The spike settled Q5 and Q6: `runsc.toml` accepts the key, and `bzip2` is preinstalled:
 
    ```yaml
    --//
@@ -116,7 +118,8 @@ file and the programme's *Verified during design* table overlap, they agree.
    curl -fsSLo /tmp/gvisor.tar.bz2 "https://github.com/google/gvisor/releases/download/${REL}/gvisor-x86_64.tar.bz2"
    echo "${SHA}  /tmp/gvisor.tar.bz2" | sha256sum -c -
    tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin   # runsc, containerd-shim-runsc-v1, gvisor-bin/
-   printf '[runsc_config]\n  oci-seccomp = "true"\n' > /etc/containerd/runsc.toml
+   # Off: on, runsc breaks every glibc thread (the spike note above, gVisor #14688)
+   printf '[runsc_config]\n  oci-seccomp = "false"\n' > /etc/containerd/runsc.toml
    --//
    Content-Type: application/node.eks.aws
 
@@ -150,8 +153,11 @@ file and the programme's *Verified during design* table overlap, they agree.
 10. **octo-sts org allowlist.** With no `.github/chainguard/trusted-token-issuers.yaml` in
     `ORG_POLICY_REPO`, all issuers are permitted and only trust policies gate. Policies are read
     from the **default branch** (`GetContents` with empty options).
+
     Example trust policy. The issuer is matched by pattern because the EKS issuer ID changes on
-    every rebuild (programme OD-5). The audience binds the repository and the role:
+    every rebuild (programme OD-5). The pattern accepts any EKS cluster in the region, so octo-sts
+    sits behind `agent-router`'s `sts` listener, which pins the exact issuer (SP1 §6). The audience
+    binds the repository and the role:
 
     ```yaml
     # Smana/cloud-native-ref: .github/chainguard/agent-implementer.sts.yaml
@@ -184,8 +190,8 @@ file and the programme's *Verified during design* table overlap, they agree.
 | Q2 | Does `credential_injector` pick up a rotated token from a file-backed generic SDS secret (`watched_directory`)? | The in-pod identity proxy depends on it | Spike with 600 s tokens and a 30-minute conversation |
 | Q3 | Do Cilium `toFQDNs` and the DNS proxy behave for gVisor pods in ENI mode + KPR + `socketLB.hostNamespaceOnly`? | The egress allowlist relies on it. The AWS blueprint proved it only in **chained** mode | Spike: allowed and denied FQDN, Hubble L7 verdicts |
 | Q4 | Does the Cilium DNS proxy's refusal of non-allowlisted names break search-path resolution? | A `REFUSED` on `github.com.agents.svc.cluster.local` can stop resolution before the bare name is tried | Set `dnsConfig.options ndots: 1`, then test |
-| Q5 | Does `runsc.toml` accept `oci-seccomp = "true"`, and does `RuntimeDefault` break the harness under it? | Seccomp defence in depth inside the sandbox | Spike |
-| Q6 | Is `bzip2` (or `zstd`) on the AL2023 EKS AMI? | Needed to unpack the gVisor tarball | Spike, first boot |
+| Q5 | Does `runsc.toml` accept `oci-seccomp = "true"`, and does `RuntimeDefault` break the harness under it? | Seccomp defence in depth inside the sandbox | **Answered by the spike:** accepted, and it breaks every glibc thread (#14688), so it stays off |
+| Q6 | Is `bzip2` (or `zstd`) on the AL2023 EKS AMI? | Needed to unpack the gVisor tarball | **Answered by the spike:** `bzip2` is preinstalled (`bzip2-1.0.8-6.amzn2023`) |
 | Q7 | Can a GKE ComputeClass create GKE Sandbox pools (`nodePoolConfig.sandbox`)? | The gcp-0 follow-up. The vendored ComputeClass CRD in `scripts/ci/flux-schema/vendored-crds/` has no `sandbox` field | **UNVERIFIED**. The Google page cited in the raw notes does not show it |
 | Q8 | Does the Envoy admin `config_dump` redact generic SDS secrets? | The harness shares the pod network namespace with the proxy's admin port | Spike |
 | Q9 | What is the file-I/O overhead of `git` and the test toolchain under gVisor on `systrap`? | Anthropic's guide warns that open/close-heavy workloads suffer. Not re-measured here | Spike SC in the design |
