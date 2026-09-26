@@ -73,6 +73,9 @@ AWS=/snap/bin/aws
 # The `openbao` user and group are created by the .deb, so this has to run
 # after the install.
 install -d -m 0750 -o root -g openbao /opt/openbao/tls
+# OpenBao downloads its seal plugin here at startup, so it must be writable by the
+# service user. /opt stays writable under the unit's ProtectSystem=full.
+install -d -m 0750 -o openbao -g openbao /opt/openbao/plugins
 
 TLS_SECRET=$("$AWS" secretsmanager get-secret-value \
   --region "${region}" \
@@ -124,12 +127,6 @@ cluster_addr  = "https://$PRIVATE_IP:8201"
 api_addr      = "https://$PRIVATE_IP:8200"
 ui            = true
 
-# Required with Integrated Storage, which is OpenBao's only production-quality
-# backend. With mlock enabled OpenBao locks the whole Bolt database into
-# physical memory and the OOM killer takes the process once it outgrows RAM.
-# https://openbao.org/docs/rfcs/mlock-removal/
-disable_mlock = true
-
 listener "tcp" {
   address = "[::]:8200"
   cluster_address = "[::]:8201"
@@ -162,6 +159,18 @@ storage "raft" {
     leader_client_key_file  = "/opt/openbao/tls/tls.key"
     leader_ca_cert_file     = "/opt/openbao/tls/ca.pem"
   }
+}
+
+# Since OpenBao 2.7 the awskms seal is no longer built in: without this plugin
+# the server exits with "unknown wrapper: awskms" (2026-09-26, the first boot
+# after the 2.7.0 bump). The plugin name must equal the seal name. Pinned by
+# digest, so no separate sha256sum is needed; downloaded from ghcr.io at startup.
+plugin_directory     = "/opt/openbao/plugins"
+plugin_auto_download = true
+
+plugin "kms" "awskms" {
+  # renovate: datasource=docker depName=ghcr.io/openbao/openbao-plugin-kms-aws
+  image = "ghcr.io/openbao/openbao-plugin-kms-aws:v0.1.0@sha256:fe9fb94872048c9474156c044ea8852bb5c2e968fc9304a3725e4d434b488541"
 }
 
 seal "awskms" {

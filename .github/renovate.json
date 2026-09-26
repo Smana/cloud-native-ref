@@ -43,15 +43,19 @@
   },
   "customManagers": [
     {
-      "description": "OpenBao and node_exporter versions in the OpenBao cluster stacks (AWS and GCP). The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
+      "description": "OpenBao versions, its KMS seal plugins, and node_exporter, wherever an OpenBao node is configured: both clouds' cluster stacks and the restore drill. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written. The drill and the GCP startup script were added on 2026-09-26: #2095 bumped the clusters to 2.7.0 and left the drill on 2.6.2, because nothing here matched its `BAO_VERSION:` line. Plugin images carry tag and digest, and Renovate updates both.",
       "customType": "regex",
       "managerFilePatterns": [
         "/^opentofu/aws/openbao/cluster/variables\\.tf$/",
         "/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/",
-        "/^opentofu/gcp/openbao/cluster/variables\\.tf$/"
+        "/^opentofu/gcp/openbao/cluster/variables\\.tf$/",
+        "/^opentofu/gcp/openbao/cluster/scripts/startup-script\\.sh$/",
+        "/^\\.github/workflows/openbao-restore-drill\\.yml$/"
       ],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)",
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*BAO_VERSION:\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)",
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*image\\s*=\\s*\"[^\"@]+:(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
       ],
       "versioningTemplate": "semver"
     },
@@ -172,6 +176,15 @@
         "xpkg.upbound.io/crossplane-contrib/function-kcl"
       ],
       "allowedVersions": "<0.12.3"
+    },
+    {
+      "description": "OpenBao and its KMS seal plugins: one PR, never automerged. CI never boots an OpenBao node, so a green PR proves nothing about whether the server starts. #2095 (2.6.2 -> 2.7.0, automerged 2026-09-25) removed the built-in awskms seal, and the next deploy died with \"unknown wrapper: awskms\". The weekly restore drill is the only automated boot, and it runs after the merge. Grouped because a server version and its seal plugin must be compatible.",
+      "matchPackageNames": [
+        "openbao/openbao",
+        "/^ghcr\\.io/openbao/openbao-plugin-kms-/"
+      ],
+      "groupName": "openbao",
+      "automerge": false
     }
   ],
   "registryAliases": {
