@@ -100,8 +100,10 @@ file and the programme's *Verified during design* table overlap, they agree.
    filters inside the sandbox"). PSS `restricted` admission passes on the field alone, so a
    `RuntimeDefault` profile looks enforced when it is not. GKE Sandbox documents the same for
    seccomp and NoNewPrivileges. **Spike (2026-09-26): turning it on is worse.** runsc answers every
-   errno rule with EPERM, ignoring `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)), so RuntimeDefault's `clone3` → ENOSYS becomes
-   EPERM and glibc ≥ 2.34 cannot start a thread. The platform keeps `oci-seccomp` off.
+   errno rule with EPERM, ignoring `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)),
+   so RuntimeDefault's `clone3` → ENOSYS becomes EPERM and glibc ≥ 2.34 cannot start a thread. The
+   platform keeps `oci-seccomp` off.
+
    A reference user-data that avoids pitfalls 1–4. Karpenter merges its own NodeConfig part into
    it. The spike settled Q5 and Q6: `runsc.toml` accepts the key, and `bzip2` is preinstalled:
 
@@ -151,6 +153,7 @@ file and the programme's *Verified during design* table overlap, they agree.
 10. **octo-sts org allowlist.** With no `.github/chainguard/trusted-token-issuers.yaml` in
     `ORG_POLICY_REPO`, all issuers are permitted and only trust policies gate. Policies are read
     from the **default branch** (`GetContents` with empty options).
+
     Example trust policy. The issuer is matched by pattern because the EKS issuer ID changes on
     every rebuild (programme OD-5). The pattern accepts any EKS cluster in the region, so octo-sts
     sits behind `agent-router`'s `sts` listener, which pins the exact issuer (SP1 §6). The audience
