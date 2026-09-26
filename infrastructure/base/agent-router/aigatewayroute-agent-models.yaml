@@ -23,8 +23,10 @@ spec:
         - name: zai
           modelNameOverride: glm-5.2
           weight: 100
-      # Agent Router defaults a rule to 60 s, and the identity proxy sets no
-      # timeout of its own: a long GLM-5.2 completion would 504 here. Same value
-      # as SP4's tier-frontier on the same backend.
+      # Agent Router defaults a rule to 60 s: a long GLM-5.2 completion would 504
+      # here. Same value as SP4's tier-frontier on the same backend. The identity
+      # proxy's stream_idle_timeout (900s) sits above it; so does this route's
+      # idle timeout (EG: max(1h, request)), until a ClientTrafficPolicy sets
+      # streamIdleTimeout, which EG then applies instead.
       timeouts:
         request: 600s

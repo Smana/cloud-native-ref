@@ -66,7 +66,8 @@ data:
                     normalize_path: true
                     merge_slashes: true
                     path_with_escaped_slashes_action: REJECT_REQUEST
-                    stream_idle_timeout: 300s
+                    # Above agent-models' timeouts.request (600s): a non-streamed completion is silent until done.
+                    stream_idle_timeout: 900s
                     route_config:
                       virtual_hosts:
                         - name: agent-router
@@ -109,7 +110,8 @@ data:
                     normalize_path: true
                     merge_slashes: true
                     path_with_escaped_slashes_action: REJECT_REQUEST
-                    stream_idle_timeout: 300s
+                    # Above agent-models' timeouts.request (600s), as on the public listener.
+                    stream_idle_timeout: 900s
                     route_config:
                       virtual_hosts:
                         - name: agent-router
