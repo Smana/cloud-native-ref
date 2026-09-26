@@ -45,7 +45,9 @@ task; OD-1…OD-17 are accepted at their recommended defaults).
   `octo-sts/<owner>/<repo>/<role>`; room `room-broker` (SP2). Every projected token has
   `expirationSeconds: 600`.
 - **Ports.** `agent-router` listeners `public` :8080 and `internal` :8081. identity-proxy
-  `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` → octo-sts, admin `:9901`. Harness :8000.
+  `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` → octo-sts, health `0.0.0.0:9902` (`/ready`).
+  Admin is the pathname socket `/tmp/envoy-admin.sock` in `proxy-tmp`, never on the pod network, and
+  the proxy runs `--disable-hot-restart --concurrency 1` (P13). Harness :8000 on loopback only.
 - **Stripped headers (C5).** `x-ar-agent`, `x-ar-human`, `x-ai-gateway-client-id`, `agent-session-id`,
   removed before authentication.
 - **Secrets.** `agent-system` gets secrets only through the namespaced `SecretStore agents-secrets`, which
@@ -134,7 +136,7 @@ place. The owner should still see each one in the PR that carries it.
 | P10 | One MCP allow rule per role | One rule per role **and backend** | Agent Router 1.1.0 caps a rule's target at 16 tools |
 | P11 | `agent-platform` depends on `ai-gateway` | From phase 3 on | SP4 PR 1 lands before phase 3, not before phase 2 |
 | P12 | Router egress pins the Gateway name; the ServiceAccount stays until revocation; phases latch loosely | CC-1 (reviews, 2026-09-25): router egress also pins `owning-gateway-namespace: agent-system`; terminal phase **and** reason latch; any terminal phase withholds the ServiceAccount; Succeeded/Failed Sandboxes are `operatingMode: Suspended`, stay Ready, and carry `agents.ogenki.io/finished-phase` | App claims can name a Gateway `agent-router` anywhere; agent-sandbox v1.0.3 recreates a missing pod even after the run finished, so a finished run must be unable to start again |
-| P13 | Probes on Envoy admin `:9901`; agent-server on `0.0.0.0` (P7); profile partly mutable | Proxy probes and host ingress on a health listener `:9902` (`/ready`); admin on a **pathname** unix socket in `proxy-tmp` (never an abstract socket); agent-server on loopback with `exec` probes, `:8000` out of the CNP (reverses P7); every spec field immutable except `budget.maxTokens` | The harness shares the pod netns and could raise the admin log level to leak injected tokens; agent-sandbox never patches a live pod, so profile edits would only reach a recreated one. Phase 2's proxy ConfigMap must serve `:9902/ready` before any run uses the package |
+| P13 | Probes on Envoy admin `:9901`; agent-server on `0.0.0.0` (P7); profile partly mutable | Proxy probes and host ingress on a health listener `:9902` (`/ready`); admin on a **pathname** unix socket in `proxy-tmp` (never an abstract socket); the proxy runs `--disable-hot-restart --concurrency 1`, since hot restart opens an abstract socket and a `/dev/shm` segment the harness shares; agent-server on loopback with `exec` probes, `:8000` out of the CNP (reverses P7); every spec field immutable except `budget.maxTokens` | The harness shares the pod netns and could raise the admin log level to leak injected tokens; agent-sandbox never patches a live pod, so profile edits would only reach a recreated one. Phase 2's proxy ConfigMap must serve `:9902/ready` before any run uses the package |
 
 ## PR map
 
@@ -241,7 +243,7 @@ design change, amend the design in PR 1 too; the decision gate in Task 0.6 names
 | runsc in the v3 CRI table, pinned version; `bzip2` on the AMI; node Ready → first gVisor pod | SC-02, Q6, Q1 | 0.2 |
 | gVisor banner; `oci-seccomp` in effect and agent-server healthy under it | SC-01, Q5 | 0.3 |
 | 45 min through `identity-proxy` against a JWT-validating upstream | Q2 (SC-06 mechanism) | 0.3 |
-| `config_dump` does not leak the tokens | Q8 | 0.3 |
+| The harness has no channel into the proxy (admin port, admin socket, hot-restart socket) | Q8 | 0.3 |
 | A deleted sandbox pod is recreated | R7 | 0.3 |
 | FQDN allow, deny, L7 DNS refusal, search path | Q3, Q4, SC-09 | 0.4 |
 | Clone + `task check`, gVisor vs runc on one node | Q9, SC-15 | 0.5 |
@@ -1104,18 +1106,20 @@ Expected: no read-only errors (the composition mounts `/workspace`, `/home/openh
 ```bash
 kubectl cp spike/agent-runtime/rotation.py agents/$POD:/tmp/rotation.py -c harness
 kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python /tmp/rotation.py | tee /tmp/q2.log | tail -3
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9901/stats?filter=sds').read().decode())"
 ```
-Expected: `RESULT requests=90 non200=0` (±1 request), and `sds.gateway-token.update_success` ≥ 5
-(the initial load plus ≥ 4 rotations). **Decision:** any `401` after minute 10 means Q2 failed →
-fallback R2 (Task 0.6).
+Expected: `RESULT requests=90 non200=0` (±1 request). 45 minutes spans ≥ 4 token rotations at a 600 s
+TTL, so zero non-200s proves SDS picked up every rotation. The proxy's admin stats are deliberately
+unreachable from the harness (P13), so they are not read here. **Decision:** any `401` after minute
+10 means Q2 failed → fallback R2 (Task 0.6).
 
-- [ ] **Step 6: Q8 — does the admin port leak a token?**
+- [ ] **Step 6: Q8 — the harness has no channel into the proxy**
 
 ```bash
-kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; b=urllib.request.urlopen('http://127.0.0.1:9901/config_dump?include_eds').read().decode(); print('jwt-looking strings:', b.count('eyJ'))"
+kubectl exec -n agents $POD -c harness -- /agent-server/.venv/bin/python -c "import socket,os; s=socket.socket(); r=s.connect_ex(('127.0.0.1',9901)); print('9901:', 'refused' if r else 'OPEN'); print('admin socket visible:', os.path.exists('/tmp/envoy-admin.sock')); print('hot-restart socket:', 'envoy_domain_socket' in open('/proc/net/unix').read())"
 ```
-Expected: `jwt-looking strings: 0`. Anything above 0 → Q8 fallback (Task 0.6).
+Expected: `9901: refused`, `admin socket visible: False`, `hot-restart socket: False`. Any other
+answer means a control channel from the harness into the only token holder: stop and fix the
+bootstrap or the composition's proxy args before Task 0.4.
 
 - [ ] **Step 7: R7 — is a deleted pod recreated?**
 
@@ -1225,7 +1229,7 @@ not reused for PR 2 (`task ops:teardown`).
 | Q4 | refused search-path names | <api.github.com resolved?> | Task 0.4 Step 1 | none / … |
 | Q5 | `oci-seccomp` accepted, harness healthy | `Seccomp: <n>` | Task 0.3 Step 3 | none / … |
 | Q6 | `bzip2` on the AMI | preinstalled / installed by user-data | Task 0.2 Step 4 | none |
-| Q8 | `config_dump` redaction | <count> | Task 0.3 Step 6 | none / admin on a socket |
+| Q8 | harness → proxy channels | 9901 / admin socket / hot-restart socket | Task 0.3 Step 6 | none — P13 already closes all three; a finding means the bootstrap or proxy args regressed |
 | Q9 | gVisor ÷ runc (clone + check) | <ratio> (<gvisor>s / <runc>s), setup <g>s / <r>s | Task 0.5 | none / R1 |
 | R7 | deleted pod recreated | yes / no | Task 0.3 Step 7 | — |
 | — | writable paths the harness needed | <list or none> | Task 0.3 Step 4 | folded into Task 1.3 |
@@ -1240,7 +1244,7 @@ not reused for PR 2 (`task ops:teardown`).
 | Failed check | Change, made in PR 1 (design) and carried by the named task |
 |---|---|
 | Q2 | R2: `expirationSeconds` = the run deadline on the gateway token only. Amend design §3 and T8; Task 1.3 derives it from `maxMinutes` |
-| Q8 | Admin on a unix socket in a volume only the proxy mounts, probes on a `:9902` listener with the `health_check` filter. Amend design §3; change `identity-proxy-configmap.yaml` and Task 1.3's probe ports |
+| Q8 | Already applied up front (P13): admin on a pathname socket in `proxy-tmp`, probes on `:9902` with the `health_check` filter, `--disable-hot-restart`. If Step 6 still finds a channel, fix the bootstrap or the proxy args before PR 2 |
 | Q3/Q4 | Stop and raise it with the owner: the egress design (S10) does not hold under gVisor |
 | Q9 | R1: an in-memory `/workspace` (`medium: Memory`) for `small` runs. Amend design §2; Task 1.3 |
 | writable path | Add an `emptyDir` in Task 1.3 before CC-1 merges |
@@ -7674,11 +7678,11 @@ Expected: a SHA; `exit=1`; `exit=1`; DNS refusals for the `example.*` names (SC-
 At minute 45 or later (or at the run's end if it finishes sooner — record its duration then):
 
 ```bash
-kubectl exec -n agents $LONG -c harness -- /agent-server/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9901/stats?filter=sds.gateway-token').read().decode())"
 curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
   "query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.response_code) count() n"
 ```
-Expected: `update_success` ≥ 5 and no `401` bucket for the run (SC-06). A run shorter than 45 minutes
+Expected: no `401` bucket for the run across ≥ 4 token lifetimes (SC-06); the proxy's admin stats
+are off the pod network by design (P13). A run shorter than 45 minutes
 leaves SC-06 on the spike's evidence (Task 0.3); say so in the PR.
 
 - [ ] **Step 4: Clean up**
