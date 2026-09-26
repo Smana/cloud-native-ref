@@ -54,9 +54,9 @@ See `aws-0-llm-platform/README.md` for the child manifests and the teardown proc
 The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
 `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` → `aws-0-ai-gateway/`, OD-3), CPU
 only and **suspended by default**. Resume it first with
-`flux resume kustomization ai-gateway -n flux-system`: `llm-platform` and `agent-platform` both
-depend on it. Resuming it needs no seeding step: the Z.ai key comes from OpenBao's restored
-`runlore/credentials`, and the rate-limit password is generated in-cluster (`aws-0-ai-gateway/README.md`).
+`flux resume kustomization ai-gateway -n flux-system`: `llm-platform` and `agent-platform` depend
+on it. See `aws-0-ai-gateway/README.md` for what it reads —
+resuming needs no per-rebuild seeding step, only a one-time per-account secret.
 Its children kept their names when they moved, so
 `dependsOn` edges from `llm-platform` children still resolve. Read that README before resuming
 `llm-platform` on a cluster that ran it before the move.
@@ -85,3 +85,13 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 > `gcp-0` is also closed. **But none of it has run on a live GKE cluster** — that is a static read
 > of the pinned package's golden fixture, not a cluster result. Treat the first resume as a
 > validation run; `gcp-0-llm-platform/README.md` lists what to watch, in failure order.
+
+## The agent platform — one gate on AWS
+
+`aws-0/agent-platform.yaml`, `spec.suspend: true`, children in `aws-0-agent-platform/` (a sibling, for
+the same reason as `llm-platform`). Release with `flux resume kustomization agent-platform -n
+flux-system`, after resuming `ai-gateway`, which is suspended by default too (OD-3, amended
+2026-09-26). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
+models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
+start. Resume only once the crossplane-configuration pin serves `AgentRun`: before it,
+`agent-policies` targets an API nobody serves and still reports Ready.

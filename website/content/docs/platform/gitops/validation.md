@@ -39,10 +39,11 @@ thing that actually reaches the cluster:
    through `kustomize build` with Flux's `postBuild` substitutions applied,
    every `HelmRelease` through `helm template` with its own `spec.values`
    and `postRenderers`, standalone manifests copied verbatim.
-4. **Two gates on `.bundle/`**: `flux schema validate` (structure and
-   `x-kubernetes-validations` CEL rules), then `polaris audit` (workload
+4. **Four gates on `.bundle/`**: `flux schema validate` (structure and
+   `x-kubernetes-validations` CEL rules), `polaris audit` (workload
    best practices — privilege escalation, capabilities, resource limits,
-   image tags).
+   image tags), `assert-ai-gateway.py` (cross-object AI-gateway invariants),
+   then the Alertmanager Slack template render.
 
 ## The two properties that make this gate real
 

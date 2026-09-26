@@ -4,8 +4,6 @@ kind: Kustomization
 resources:
   - llm.yaml
   - llm-gateway.yaml
-  - agents.yaml
-  - agent-system.yaml
   - apps.yaml
   - crossplane-system.yaml
   - demo.yaml
@@ -18,3 +16,5 @@ resources:
   - security.yaml
   - tailscale.yaml
   - tooling.yaml
+  - agents.yaml
+  - agent-system.yaml

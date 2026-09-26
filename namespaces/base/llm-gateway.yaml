@@ -1,5 +1,6 @@
 # Human and system frontier routes and backends behind the ai-gateway Gateway
-# (programme C1). The platform Z.ai key lands here, and only here.
+# (programme C1). The gateway's copy of the platform Z.ai key lands here
+# (RunLore holds the same key until SP4 PR 6).
 apiVersion: v1
 kind: Namespace
 metadata:

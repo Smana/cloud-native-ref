@@ -1,0 +1,42 @@
+# Panel 2 ("Tokens per run through agent-router"): the ar_agent label is produced by SP4 PR 1's metricsRequestHeaderAttributes (x-ar-agent -> ar_agent) on the envoy-ai-gateway controller (feat/ai-gateway-frontier, infrastructure/base/envoy-ai-gateway/helmrelease.yaml) — "No data" until that PR merges, by design (no absent() alert: no run is not an outage).
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: agent-platform
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "agents"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Agent platform",
+      "uid": "agent-platform",
+      "schemaVersion": 39,
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {"list": [
+        {"name": "datasource", "type": "datasource", "query": "prometheus"},
+        {"name": "logs_datasource", "type": "datasource", "query": "victoriametrics-logs-datasource"}
+      ]},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Sandbox pods by phase",
+         "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"agents\"})", "legendFormat": "{{phase}}"}]},
+        {"id": 2, "type": "timeseries", "title": "Tokens per run through agent-router",
+         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:.*\"}[5m]))", "legendFormat": "{{ar_agent}}"}]},
+        {"id": 3, "type": "timeseries", "title": "agents-gvisor usage / limit",
+         "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+         "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (resource_type) (karpenter_nodepool_usage{nodepool=\"agents-gvisor\"}) / sum by (resource_type) (karpenter_nodepool_limit{nodepool=\"agents-gvisor\"})", "legendFormat": "{{resource_type}}"}]},
+        {"id": 4, "type": "logs", "title": "agent-router 4xx",
+         "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+         "targets": [{"refId": "A", "expr": "kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" | unpack_json | log.response_code:4*", "queryType": "instant"}]}
+      ]
+    }

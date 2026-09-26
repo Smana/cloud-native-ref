@@ -1,0 +1,21 @@
+# agent-sandbox publishes its Helm chart only in the git repository (helm/,
+# chart 0.1.0), in no registry (SP1 S2). The controller image tag in
+# infrastructure/base/agent-sandbox/helmrelease.yaml MUST equal this tag: chart
+# and controller are cut from one release, and .github/renovate.json groups the
+# two into one PR that is never automerged. gen-catalog.sh reads the CRDs from it.
+#
+# Here, not under the component: a source under an app directory inherits a
+# shard label the default source-controller cannot see (clusters/AGENTS.md).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: agent-sandbox
+  namespace: agent-system
+spec:
+  interval: 1h
+  url: https://github.com/kubernetes-sigs/agent-sandbox
+  ref:
+    tag: v1.0.3
+  ignore: |
+    /*
+    !/helm/

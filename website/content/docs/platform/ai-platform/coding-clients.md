@@ -9,7 +9,7 @@ The cluster exposes an OpenAI-compatible endpoint at
 `https://llm.priv.aws.ogenki.io/v1` (Tailscale-fronted, `tag:k8s` ACL — see
 [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}})).
 Any client that speaks the OpenAI chat-completions API, or the OpenAI
-completions API for FIM, can talk to it — once both
+completions API for FIM, can talk to it — once all three
 [opt-in gates]({{< relref "/docs/platform/ai-platform/_index.md#turning-it-on" >}})
 are released.
 
