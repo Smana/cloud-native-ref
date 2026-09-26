@@ -1,0 +1,9 @@
+[core]
+	hooksPath = /etc/agent/git-hooks
+[credential "https://github.com"]
+	helper = /usr/local/bin/git-credential-agent
+[user]
+	name = ogenki-agents[bot]
+	email = ogenki-agents[bot]@users.noreply.github.com
+[init]
+	defaultBranch = main

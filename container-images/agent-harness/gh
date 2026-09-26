@@ -1,0 +1,6 @@
+#!/bin/sh
+# gh with the run's installation token, minted through identity-proxy :4001 by
+# git-credential-agent and held only in its in-memory cache (design §5).
+GH_TOKEN="$(/usr/local/bin/git-credential-agent token)" || exit 1
+export GH_TOKEN
+exec /usr/local/lib/gh-real "$@"
