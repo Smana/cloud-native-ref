@@ -1,0 +1,22 @@
+---
+# agents-gvisor: AL2023 spot nodes with runsc (ADR-0041). Tainted and labelled
+# agents.ogenki.io/runtime=gvisor; RuntimeClass `gvisor` schedules onto it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agents-nodepool
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  timeout: 2m0s
+  path: ./infrastructure/base/karpenter-nodepools-agents
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: karpenter-nodepools
