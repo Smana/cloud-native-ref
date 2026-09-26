@@ -7,9 +7,15 @@ spec:
   interval: 12h
   url: oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator-mcp
   ref:
+    # A bump that adds a resource/prompt/template here ships unauthorized:
+    # `resources/*` and `prompts/*` bypass MCPRoute authorization entirely
+    # (review M5). Check the release notes before bumping.
     tag: "0.60.0"
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/controlplaneio-fluxcd/charts/*"
+      # Both fields are Go regexes matched unanchored by default (Flux docs'
+      # own example anchors them); `charts/*` matched zero-or-more `/`, not
+      # "any workflow" -- a substring match looser than intended (review M8).
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/controlplaneio-fluxcd/charts/.*$"

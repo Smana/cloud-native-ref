@@ -31,6 +31,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mcp
+          # A bump that adds a resource/prompt/template here ships unauthorized:
+          # `resources/*` and `prompts/*` bypass MCPRoute authorization entirely
+          # (review M5). Check the release notes before bumping.
           image: ghcr.io/victoriametrics/mcp-victoriametrics:v1.20.2@sha256:bcbf84f945d6efb03fb8b2d2ccc3294420dccdc0b445752dce96f02619416dfe
           env:
             - name: VM_INSTANCE_ENTRYPOINT
@@ -102,6 +105,10 @@ spec:
         - ports:
             - port: "8081"
               protocol: TCP
+    # Kubelet probes need this: there's no separate health port or shell for
+    # an exec probe. Residual: any hostNetwork pod on the same node (a node
+    # daemon, cilium-envoy) can also reach this unauthenticated server
+    # (review M2).
     - fromEntities:
         - host
       toPorts:
@@ -125,6 +132,7 @@ spec:
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmsingle
       toPorts:
         - ports:
             - port: "8428"

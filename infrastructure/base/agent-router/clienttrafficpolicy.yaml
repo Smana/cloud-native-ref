@@ -20,5 +20,13 @@ spec:
         - x-ar-human
         - x-ai-gateway-client-id
         - agent-session-id
+        # Agent Router's own internal per-backend routing headers
+        # (internal/internalapi.MCPBackendHeader/MCPRouteHeader, v1.1.0).
+        # Generated per-backend HTTPRoutes match on these and attach only to
+        # the loopback aigateway-mcp-backend-listener (unauthenticated), not
+        # to public/internal; stripping a client-supplied value here is
+        # defense-in-depth against that relocation ever failing (review M4).
+        - x-ai-eg-mcp-backend
+        - x-ai-eg-mcp-route
   connection:
     bufferLimit: 8Mi

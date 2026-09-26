@@ -8,16 +8,37 @@ kind: ClusterRole
 metadata:
   name: agent-mcp-flux-read
 rules:
-  - apiGroups:
-      - source.toolkit.fluxcd.io
-      - source.extensions.fluxcd.io
-      - kustomize.toolkit.fluxcd.io
-      - helm.toolkit.fluxcd.io
-      - notification.toolkit.fluxcd.io
-      - image.toolkit.fluxcd.io
-      - fluxcd.controlplane.io
-      - cloud.ogenki.io
-    resources: ["*"]
+  # Flux's own CRDs: a fixed, documented set of Kinds per group, enumerated
+  # instead of `resources: ["*"]` (review M1) so a future Flux release adding
+  # a Kind to one of these groups needs a diff here before an agent can read it.
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, ocirepositories, helmrepositories, helmcharts, buckets, externalartifacts]
+    verbs: [get, list, watch]
+  - apiGroups: [source.extensions.fluxcd.io]
+    resources: [artifactgenerators]
+    verbs: [get, list, watch]
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [get, list, watch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]
+  - apiGroups: [notification.toolkit.fluxcd.io]
+    resources: [providers, alerts, receivers]
+    verbs: [get, list, watch]
+  - apiGroups: [image.toolkit.fluxcd.io]
+    resources: [imagerepositories, imagepolicies, imageupdateautomations]
+    verbs: [get, list, watch]
+  - apiGroups: [fluxcd.controlplane.io]
+    resources: [fluxinstances, fluxreports, resourcesets, resourcesetinputproviders]
+    verbs: [get, list, watch]
+  # This platform's own claims (`get_flux_instance`/`get_kubernetes_resources`
+  # traverse from a Flux object down to what it manages). `agentruns` carries
+  # a run's task text and principal annotation -- already reachable before
+  # this change, now the only cloud.ogenki.io Kind that is, rather than every
+  # future one a Configuration bump adds (review M1).
+  - apiGroups: [cloud.ogenki.io]
+    resources: [apps, sqlinstances, inferenceservices, kvstores, epis, gcpworkloadidentities, agentruns]
     verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods, pods/log, services, endpoints, events, namespaces, configmaps, persistentvolumeclaims, serviceaccounts, nodes]

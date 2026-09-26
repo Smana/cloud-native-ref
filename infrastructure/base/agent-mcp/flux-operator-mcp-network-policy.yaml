@@ -21,6 +21,10 @@ spec:
         - ports:
             - port: "9090"
               protocol: TCP
+    # Kubelet probes need this: there's no separate health port or shell for
+    # an exec probe. Residual: any hostNetwork pod on the same node (a node
+    # daemon, cilium-envoy) can also reach the unauthenticated MCP port
+    # (review M2).
     - fromEntities:
         - host
       toPorts:

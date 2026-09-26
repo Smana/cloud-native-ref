@@ -20,6 +20,11 @@ spec:
     mode: enabled
   values:
     fullnameOverride: flux-operator-mcp
+    # Pinned by digest, like VM/VL (review M8): the chart otherwise renders
+    # `image.repository:image.tag`, floating on whatever v0.60.0 points to.
+    # Re-resolve with `skopeo inspect --raw docker://ghcr.io/controlplaneio-fluxcd/flux-operator-mcp:v0.60.0 | sha256sum`.
+    image:
+      tag: "v0.60.0@sha256:9940c2c46c1bff5af3827cb76f28a1ff347ea8141ed1af42e66ffbd79e8c4bdb"
     # --read-only removes the mutating tools, not the RBAC (research pitfall 11).
     readonly: true
     # The chart binds cluster-admin by default. agent-mcp-flux-read replaces it.
