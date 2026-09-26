@@ -96,10 +96,15 @@ globals {
   # snapshot, both of which run BEFORE the cluster that used to own the bucket.
   snapshot_bucket_name = "eu-west-3-ogenki-openbao-snapshot"
 
-  # Helm chart versions for EKS bootstrap
-  cilium_version        = "1.20.1"
-  flux_operator_version = "0.59.0"
-  flux_instance_version = "0.59.0"
+  # Helm chart versions for EKS bootstrap. The renovate: comments feed the
+  # custom manager in .github/renovate.json: the flux, helm-values and
+  # kubernetes managers ignore opentofu/, so these were only ever bumped by hand.
+  # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io
+  cilium_version = "1.20.2"
+  # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-operator
+  flux_operator_version = "0.60.0"
+  # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-instance
+  flux_instance_version = "0.60.0"
 
   # Gateway API release. Shared for the same reason as cilium_version: Cilium is
   # the GatewayClass implementation, so the CRD set cannot move independently of
