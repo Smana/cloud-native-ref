@@ -11,9 +11,9 @@ token never reaches the proxy).
 **Architecture:** A namespaced Crossplane XR, `AgentRun`, lives in `Smana/crossplane-configuration`'s
 core package. It composes a ServiceAccount, a task ConfigMap, a CiliumNetworkPolicy and a bare
 agent-sandbox `Sandbox` on a Karpenter AL2023 spot pool where runsc is installed. Inside the pod, an
-Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live until the run's deadline (R2). It injects
-them towards `agent-router` (Envoy Gateway JWT on one listener per data class, plus an `sts`
-listener that fronts a self-hosted octo-sts). Everything outside the XR ships behind the suspended
+Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live
+until the run's deadline (R2). It injects them towards `agent-router` (Envoy Gateway JWT on one
+listener per data class, plus an `sts` listener that fronts a self-hosted octo-sts). Everything outside the XR ships behind the suspended
 `agent-platform` Flux umbrella.
 
 **Tech Stack:** Crossplane v2 + function-kcl (KCL 0.11.3), agent-sandbox v1.0.3, gVisor
@@ -925,7 +925,8 @@ print(f"RESULT requests={sent} non200={bad}", flush=True)
 ```
 
 `spike/agent-runtime/bench.yaml` (Q9, SC-15). The same image as the harness, the same node, one
-runtime at a time. `__NODE__` and `__RUNTIME__` are replaced in Task 0.5; the `runtimeClassName` line is deleted for the runc run.
+runtime at a time. `__NODE__` and `__RUNTIME__` are replaced in Task 0.5; the `runtimeClassName`
+line is deleted for the runc run.
 
 ```yaml
 apiVersion: v1
@@ -1129,9 +1130,9 @@ kubectl get node "$(kubectl get pod -n agents $POD -o jsonpath='{.spec.nodeName}
 kubectl exec -n agents $POD -c harness -- dmesg | head -3
 kubectl exec -n agents $POD -c harness -- grep Seccomp /proc/self/status
 ```
-Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 0`: `oci-seccomp` is off until gVisor honours
-`errnoRet` (#14688; with it on, runsc answers `clone3` with EPERM and no glibc ≥ 2.34 process can start
-a thread). Record all four lines.
+Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 0`:
+`oci-seccomp` is off until gVisor honours `errnoRet` (#14688; with it on, runsc answers `clone3`
+with EPERM and no glibc ≥ 2.34 process can start a thread). Record all four lines.
 
 - [ ] **Step 4: Writable paths and entrypoint facts**
 
