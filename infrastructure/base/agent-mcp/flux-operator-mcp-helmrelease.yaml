@@ -1,0 +1,46 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-operator-mcp
+  namespace: agent-system
+spec:
+  releaseName: flux-operator-mcp
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: flux-operator-mcp
+    namespace: agent-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  driftDetection:
+    mode: enabled
+  values:
+    fullnameOverride: flux-operator-mcp
+    # --read-only removes the mutating tools, not the RBAC (research pitfall 11).
+    readonly: true
+    # The chart binds cluster-admin by default. agent-mcp-flux-read replaces it.
+    rbac:
+      create: false
+    # Replaced by flux-operator-mcp-network-policy.yaml.
+    networkPolicy:
+      create: false
+    serviceAccount:
+      create: true
+      automount: true
+      name: flux-operator-mcp
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    podSecurityContext:
+      runAsNonRoot: true
+      fsGroup: 1337
+      seccompProfile:
+        type: RuntimeDefault

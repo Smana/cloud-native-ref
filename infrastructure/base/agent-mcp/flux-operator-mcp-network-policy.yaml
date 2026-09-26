@@ -1,0 +1,49 @@
+---
+# Reachable only from the agent-router data plane (SP1 §6). The server has no
+# auth of its own, so the Gateway is pinned by name AND namespace: any namespace
+# can name a Gateway `agent-router` (CC-1).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: flux-operator-mcp
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: flux-operator-mcp
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
