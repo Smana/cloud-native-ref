@@ -12,9 +12,11 @@
 # could otherwise reach an exposed admin API (e.g. POST /logging?level=debug)
 # to leak injected tokens.
 #
-# Rotation (Q2): kubelet rewrites a projected token at 80 % of its 600 s TTL by
-# swapping the volume's ..data symlink. `watched_directory` turns that move into
-# an SDS reload, so the injector always sends a live token.
+# Rotation (Q2, failed under gVisor): kubelet rotates a projected token by
+# swapping the volume's ..data symlink on the HOST, and gVisor raises no inotify
+# for host-side changes, so `watched_directory` never fires inside the sandbox.
+# The composition therefore gives each token the run's deadline as its TTL (R2);
+# the watch stays for runtimes where inotify does work.
 apiVersion: v1
 kind: ConfigMap
 metadata:

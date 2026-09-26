@@ -36,9 +36,13 @@ spec:
   tags:
     karpenter.sh/discovery: ${cluster_name}
   # Karpenter merges its own NodeConfig part into this MIME document. It closes
-  # research pitfalls 1-4: the v3 CRI plugin id (the v2 one is accepted, ignored,
-  # and the node still reports Ready), gvisor-bin/ next to runsc, and oci-seccomp,
-  # without which RuntimeDefault does nothing inside the sandbox.
+  # research pitfalls 1-3: the v3 CRI plugin id (the v2 one is accepted, ignored,
+  # and the node still reports Ready) and gvisor-bin/ next to runsc.
+  # oci-seccomp stays OFF (pitfall 4 reversed by the spike): runsc returns EPERM
+  # for every SCMP_ACT_ERRNO and ignores errnoRet (google/gvisor#14688, open), so
+  # RuntimeDefault's clone3 -> ENOSYS becomes EPERM, glibc >= 2.34 never falls back
+  # to clone, and no process can start a thread. The Sentry is the boundary;
+  # re-enable when a release honours errnoRet.
   # No shell variables on purpose: Flux postBuild would rewrite ${...} to "".
   userData: |
     MIME-Version: 1.0
@@ -61,7 +65,7 @@ spec:
     # archive's recorded UIDs/GIDs instead of normalizing to root:root.
     tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin --no-same-owner
     rm -f /tmp/gvisor.tar.bz2
-    printf '[runsc_config]\n  oci-seccomp = "true"\n' > /etc/containerd/runsc.toml
+    printf '[runsc_config]\n  oci-seccomp = "false"\n' > /etc/containerd/runsc.toml
     --//
     Content-Type: application/node.eks.aws
 
