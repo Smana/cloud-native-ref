@@ -19,7 +19,8 @@ data:
     t0=$(date +%s)
     git clone --depth 1 https://github.com/Smana/cloud-native-ref repo
     t1=$(date +%s)
-    python3 -c "import urllib.request; urllib.request.urlretrieve('https://mise.jdx.dev/mise-latest-linux-x64', '/work/bin/mise')"
+    # curl, not python urllib: mise.jdx.dev answers 403 to the Python-urllib user agent.
+    curl -fsSL --retry 3 -o /work/bin/mise https://mise.jdx.dev/mise-latest-linux-x64
     chmod +x /work/bin/mise
     cd repo && mise trust -q . && mise install -q && mise exec -- flux plugin install schema
     t2=$(date +%s)
