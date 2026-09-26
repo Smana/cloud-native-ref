@@ -1317,6 +1317,15 @@ spike notes. Docs PRs wait for the owner's review.
 ---
 ## Phase 1 — `AgentRun` in `Smana/crossplane-configuration` (CC-1)
 
+> **The code in this phase is the first draft.** CC-1
+> ([#27](https://github.com/Smana/crossplane-configuration/pull/27), head `68bb570`) is authoritative,
+> and its reviews changed it: every spec field is immutable except `budget.maxTokens`; a terminal run
+> withholds its ServiceAccount and suspends its Sandbox (P12); both tokens live until the run's
+> deadline (R2); the status is patched with `target: Default`; agent-server stays on loopback with
+> `exec` probes (P13); the run reaches octo-sts only through `agent-router`'s `sts` listener, and a
+> `Usage` holds its CNP until the Sandbox is gone; `status.usage.tokens` never decreases. Read the
+> code there, never from this text; the test counts below are the first draft's too.
+
 Runs in `/home/smana/Sources/crossplane-configuration`, in a fresh worktree off `origin/main`
 (branch `feat/agentrun`). Gate: `task check` exit 0. Read that repo's `CLAUDE.md` and
 `.claude/rules/kcl.md` first: `composition.yaml` is generated, never edit it; `kcl fmt` must leave the
@@ -3573,30 +3582,41 @@ metadata: {name: run-1, namespace: agents}
 spec: {role: implementer, repository: Smana/cloud-native-ref, principal: "human:1", dataClass: public, task: {text: x}}
 ```
 
+Both pods carry a full restricted securityContext: PSS `restricted` runs before Kyverno and would
+otherwise deny them first, proving nothing about `agents-pod-shape`.
+
 ```bash
-kubectl apply --dry-run=server -n agents -f - <<'YAML'
+kubectl apply --dry-run=server -n agents -f - <<'YAML' 2>&1 | grep -c 'every pod in agents runs under RuntimeClass gvisor'
 apiVersion: v1
 kind: Pod
 metadata: {name: sc03-runc}
 spec:
   automountServiceAccountToken: false
-  containers: [{name: c, image: busybox}]
+  securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: c
+      image: busybox
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 YAML
-kubectl apply --dry-run=server -n agents -f - <<'YAML'
+kubectl apply --dry-run=server -n agents -f - <<'YAML' 2>&1 | grep -c 'a pod in agents never mounts a Kubernetes API token'
 apiVersion: v1
 kind: Pod
 metadata: {name: sc03-token}
 spec:
   runtimeClassName: gvisor
   automountServiceAccountToken: true
-  containers: [{name: c, image: busybox}]
+  securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: c
+      image: busybox
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 YAML
 kubectl apply --dry-run=server -f /tmp/agentrun-bad.yaml
 ```
-Expected: the two pods are denied by `agents-pod-shape` (messages "runs under RuntimeClass gvisor"
-and "never mounts a Kubernetes API token"); both claims are denied, the first for `spec.branch: main`
-(XRD pattern), the second for its name (XRD CEL, and `agentrun-admission` behind it). Record each
-denial message.
+Expected: `1` and `1`: each pod is denied by `agents-pod-shape` with its own message, not by
+`violates PodSecurity` (if a `0` prints, rerun without the `grep` and read which admission denied
+it). Both claims are denied, the first for `spec.branch: main` (XRD pattern), the second for its
+name (XRD CEL, and `agentrun-admission` behind it). Record each denial message.
 
 - [ ] **Step 5: Logs reach VictoriaLogs**
 
@@ -4406,6 +4426,10 @@ spec:
         - name: zai
           modelNameOverride: glm-5.2
           weight: 100
+      # Agent Router defaults a rule to 60 s. A reasoning completion from a
+      # frontier model, streamed or not, routinely runs longer.
+      timeouts:
+        request: 600s
 ```
 
 - [ ] **Step 4: Data-plane CNP**
@@ -6236,7 +6260,9 @@ def clone(env: dict) -> None:
 def main() -> int:
     exit_on_sigterm()
     env = dict(os.environ)
-    server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "0.0.0.0", "--port", "8000"])
+    # Loopback only (P13): the agent-server API is unauthenticated, and the
+    # composition probes it with exec from inside this container.
+    server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "127.0.0.1", "--port", "8000"])
     try:
         wait_ready()
         clone(env)
@@ -7429,28 +7455,29 @@ Runs in `Smana/crossplane-configuration`, fresh worktree `feat/agentrun-harness`
 
 **Files:**
 - Modify: `apis/agentrun/kcl/main.k` (`_HARNESS_PROFILES`), `apis/agentrun/kcl/main_test.k` (one
-  test replaced), `apis/agentrun/composition.yaml` (regenerated), `tests/golden/agentrun-*.yaml`
-  (re-captured), `packages/aws/crossplane.yaml` (core floor)
+  test added, one assertion moved into it), `apis/agentrun/composition.yaml` (regenerated),
+  `tests/golden/agentrun-*.yaml` (re-captured), `packages/aws/crossplane.yaml` (core floor)
 
 **Interfaces:**
 - Consumes: `ghcr.io/smana/agent-harness:v0.1.0` (Task 5.1), whose entrypoint `agent-run` starts
-  agent-server on `0.0.0.0:8000` itself.
+  agent-server on `127.0.0.1:8000` itself. The exec probes and the CNP stay as CC-1 made them (P13).
 - Produces: release `v0.8.1`.
 
-- [ ] **Step 1: Replace the test first**
+- [ ] **Step 1: The test first**
 
-In `main_test.k`, replace `test_harness_binds_for_probes` with:
+In `main_test.k`, add this test, and delete the `_h.args == ["--port", "8000"]` assertion from
+`test_harness_stays_on_loopback` (the new test owns `args`; the exec-probe assertions stay):
 
 ```kcl
 test_harness_profile_is_the_platform_image = lambda {
     _c = _pod(_run({})).containers[0]
     assert _c.image.startswith("ghcr.io/smana/agent-harness:v0.1.0@sha256:"), "the openhands profile is the repo-built harness (S7)"
-    assert _c.args == [], "agent-run starts agent-server on 0.0.0.0 itself"
+    assert _c.args == [], "agent-run starts agent-server on 127.0.0.1:8000 itself"
 }
 ```
 
 Run: `cd apis/agentrun/kcl && kcl test . -Y settings-example.yaml`
-Expected: FAIL on `test_harness_profile_is_the_platform_image` only (27/28 pass).
+Expected: FAIL on `test_harness_profile_is_the_platform_image` only.
 
 - [ ] **Step 2: Pin the harness by digest**
 
@@ -7461,11 +7488,13 @@ python3 - apis/agentrun/kcl/main.k <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-old = """        # agent-server binds 127.0.0.1 unless told otherwise, and kubelet probes
-        # the pod IP. The CNP admits only `host` on this port.
-        args = ["--host", "0.0.0.0", "--port", "8000"]"""
-new = """        # agent-run, the image's entrypoint, starts agent-server on 0.0.0.0:8000
-        # itself; the CNP admits only `host` on this port.
+old = """        # No --host: agent-server keeps its default 127.0.0.1. Its API is
+        # unauthenticated, so it stays off the pod network — the node included
+        # — and the probes run inside the container instead (_localGet).
+        args = ["--port", "8000"]"""
+new = """        # agent-run, the image's entrypoint, starts agent-server on
+        # 127.0.0.1:8000 itself. Its API is unauthenticated, so it stays off the
+        # pod network, and the probes run inside the container (_localGet).
         args = []"""
 assert old in s, "profile block moved; edit by hand"
 open(p, "w").write(s.replace(old, new))
@@ -7475,7 +7504,7 @@ grep -c 'ghcr.io/smana/agent-harness:v0.1.0@sha256:[0-9a-f]\{64\}' apis/agentrun
 Expected: `1`.
 
 Run: `cd apis/agentrun/kcl && kcl fmt . && kcl test . -Y settings-example.yaml`
-Expected: `PASS: 28/28`.
+Expected: every test passes.
 
 - [ ] **Step 3: Raise the core floor, regenerate, re-capture**
 
@@ -7489,7 +7518,7 @@ for ex in agentrun-basic agentrun-complete; do
     --extra-resources examples/environmentconfig.yaml > tests/golden/$ex.yaml
 done
 git diff --stat tests/golden
-git diff tests/golden | grep '^[-+] ' | grep -v -E 'image:|args|--host|0\.0\.0\.0|--port|"8000"' | head
+git diff tests/golden | grep '^[-+] ' | grep -v -E 'image:|args|--port|"8000"' | head
 task check
 ```
 Expected: the golden diff touches only the harness `image` and `args` lines (the last `grep` prints
