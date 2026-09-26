@@ -25,6 +25,9 @@ spec:
           - agent-router.triager.public
         remoteJWKS:
           uri: ${oidc_issuer_url}/keys
+        # The verified sub also reaches Z.ai, deliberately: a headerMutation.remove
+        # on the zai backendRef edits the same request headers the access log
+        # reads, so it would blank this Gateway's own x_ar_agent (SC-05).
         claimToHeaders:
           - claim: sub
             header: x-ar-agent
