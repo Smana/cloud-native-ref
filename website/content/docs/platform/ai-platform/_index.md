@@ -1,7 +1,7 @@
 ---
 title: AI Platform
 weight: 50
-description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until two independent gates are both released.
+description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until three independent gates are all released.
 lastVerified: 2026-08-30
 ---
 
@@ -12,7 +12,7 @@ as a single Crossplane
 per model.
 
 {{< callout type="warning" >}}
-**This platform is off by default.** Two independent gates must both be
+**This platform is off by default.** Three independent gates must all be
 released before anything LLM-related exists on the cluster — see
 [Turning it on](#turning-it-on). A plain `terramate script run deploy` and a
 plain Flux reconciliation both leave the cluster LLM-free.
@@ -57,8 +57,9 @@ than a missing feature.
 
 ## Turning it on
 
-The two gates are deliberately independent, so neither one accidentally
-brings the other along:
+The AWS gate and the two Kubernetes gates are independent of each other, so releasing one does not
+bring the others along — but `llm-platform` itself `dependsOn` `ai-gateway`, so the second
+Kubernetes command must run before the third:
 
 ```bash
 # Gate 1 — AWS side (S3 Files filesystem + IAM). Terramate stack tagged
@@ -67,8 +68,13 @@ brings the other along:
 # and exits 0).
 TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
-# Gate 2 — Kubernetes side. The umbrella Flux Kustomization ships suspended
-# (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
+# Gate 2 — Kubernetes side, gateway layer. llm-platform depends on this
+# umbrella, so it must resume first or llm-platform stalls on
+# "dependency 'flux-system/ai-gateway' is not ready".
+flux resume kustomization ai-gateway -n flux-system
+
+# Gate 3 — Kubernetes side, GPU models. The umbrella Flux Kustomization ships
+# suspended (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
 flux resume kustomization llm-platform -n flux-system
 ```
 

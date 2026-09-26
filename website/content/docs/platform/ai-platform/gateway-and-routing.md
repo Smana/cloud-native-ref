@@ -137,9 +137,9 @@ curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
 
 The gateway strips `x-ar-agent`, `x-ar-human` and `x-ai-gateway-client-id` from every request before
 authentication runs, so a client-forged value never survives to be charged. Today only
-`x-ai-gateway-client-id` is then set — from the API key that matched; `x-ar-agent` gets set once the
-`agent-router` ships, and `x-ar-human` once `ai-gateway` gains its `oidc` listener. A client cannot
-choose whose budget it spends.
+`x-ai-gateway-client-id` is then set — from the API key that matched. `x-ar-agent` exists only on
+the separate `agent-router` Gateway; `x-ar-human` arrives with `ai-gateway`'s `oidc` listener. A
+client cannot choose whose budget it spends.
 
 Daily token budgets per API-key client (5M), per human (10M) and on all frontier spend (20M) are
 counted in **shadow mode**: nothing is rejected yet

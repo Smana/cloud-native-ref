@@ -38,6 +38,9 @@ tab-complete falling back to chat).
 ## Enable
 
 ```bash
+# llm-platform dependsOn ai-gateway; resume it first or llm-platform stalls
+# on "dependency 'flux-system/ai-gateway' is not ready".
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization llm-platform -n flux-system
 ```
 

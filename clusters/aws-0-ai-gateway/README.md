@@ -3,14 +3,15 @@
 Aggregated by `../aws-0/ai-gateway.yaml`, which is **suspended by default** (programme OD-3, amended
 2026-09-26). CPU only. It is what lets agents run on frontier models with no GPU node.
 
-Resume it before `llm-platform` or `agent-platform`, which both depend on it:
+Resume it before `llm-platform` (and SP1's `agent-platform`, once it lands), which depend on it:
 
 ```bash
 flux resume kustomization ai-gateway -n flux-system
 ```
 
-Nothing to seed first. The Z.ai key comes from `platform/runlore/credentials`, which OpenBao restores
-from its snapshot lineage on every rebuild, and the rate-limit password is generated in-cluster.
+Nothing to seed per rebuild; `platform-llm-api-keys` is a one-time, per-account entry (below). The
+Z.ai key comes from `platform/runlore/credentials`, which OpenBao restores from its snapshot
+lineage on every rebuild, and the rate-limit password is generated in-cluster.
 
 | Child Kustomization | Path | Holds |
 |---|---|---|
@@ -33,8 +34,11 @@ needs it fails:
 Check what's missing:
 
 ```bash
-./scripts/provision/secret-store.sh check --cloud aws                    # platform-llm-api-keys (AWS SM)
-./scripts/provision/secret-store.sh check --cloud aws --store openbao    # includes runlore/credentials, the Z.ai key's source
+# Queries AWS SM only, so every OpenBao- and in-cluster-generated key below
+# (runlore/credentials, ai-gateway-ratelimit-valkey) reports MISSING here too
+# -- that is not a real gap, just a store this command does not check.
+./scripts/provision/secret-store.sh check --cloud aws
+bao kv metadata get -mount=platform runlore/credentials    # the Z.ai key's source
 ```
 
 ### One-time AWS Secrets Manager bootstrap
@@ -81,6 +85,10 @@ kubectl get kustomization -n flux-system envoy-gateway envoy-ai-gateway vllm-sem
 ```
 
 ## Teardown
+
+Tear down `llm-platform` first (`../aws-0-llm-platform/README.md` → Full teardown) — it depends on
+this umbrella, and deleting the Gateway every InferenceService route binds to out from under it
+stalls its next reconcile.
 
 Deleting the umbrella orphans its children (`deletionPolicy: Orphan`). Suspend `ai-gateway` first —
 it still reconciles them back otherwise — then delete the children in reverse dependency order:

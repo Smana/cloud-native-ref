@@ -54,9 +54,9 @@ See `aws-0-llm-platform/README.md` for the child manifests and the teardown proc
 The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
 `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` → `aws-0-ai-gateway/`, OD-3), CPU
 only and **suspended by default**. Resume it first with
-`flux resume kustomization ai-gateway -n flux-system`: `llm-platform` and `agent-platform` both
-depend on it. Resuming it needs no seeding step: the Z.ai key comes from OpenBao's restored
-`runlore/credentials`, and the rate-limit password is generated in-cluster (`aws-0-ai-gateway/README.md`).
+`flux resume kustomization ai-gateway -n flux-system`: `llm-platform` depends on it (and SP1's
+`agent-platform` will too, once it lands). See `aws-0-ai-gateway/README.md` for what it reads —
+resuming needs no per-rebuild seeding step, only a one-time per-account secret.
 Its children kept their names when they moved, so
 `dependsOn` edges from `llm-platform` children still resolve. Read that README before resuming
 `llm-platform` on a cluster that ran it before the move.
