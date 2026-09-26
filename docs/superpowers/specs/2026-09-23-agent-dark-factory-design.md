@@ -47,7 +47,7 @@ The design rests on three properties:
 flowchart LR
   subgraph GH["github.com · Smana/cloud-native-ref"]
     ISS[Issues<br/>label factory/ready]
-    PR[PRs from agent/&lt;taskId&gt;<br/>CI · 8 required checks]
+    PR[PRs from agent/taskId<br/>CI · 8 required checks]
     RS[Ruleset agent-merge-gate<br/>requires policy-bot: main]
   end
   RL[RunLore<br/>templated notifier]
