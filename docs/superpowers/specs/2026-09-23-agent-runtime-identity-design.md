@@ -33,14 +33,7 @@ the sandbox dies at the **run's deadline**, `max(600, maxMinutes × 60)` s (C3, 
 
 ## Amendments from the CC-1 reviews (2026-09-25)
 
-These supersede the sections they name; the reasoning is in the plan's departure rows P12–P13.
-
-| Section | Now |
-|---|---|
-| §2 lifecycle | Terminal phase and reason latch. Any terminal phase withholds the ServiceAccount. Succeeded/Failed Sandboxes are `operatingMode: Suspended` and stay Ready. Every spec field is immutable except `budget.maxTokens` |
-| §2 CNP | Router egress pins `owning-gateway-namespace: agent-system` as well as the Gateway name. Host ingress only on the proxy health port |
-| §5 harness | agent-server stays on loopback with `exec` probes; `:8000` is not in the CNP |
-| §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network. Runs `--disable-hot-restart --concurrency 1`: hot restart would open an abstract socket and a `/dev/shm` segment the harness shares |
+Folded into §2, §5 and §6 above; the reasoning is in the plan's departure rows P12–P13.
 
 **Amendments from the phase-0 spike (2026-09-26, owner).** Evidence in the
 [spike notes](2026-09-23-agent-runtime-identity-spike.md).
@@ -195,7 +188,7 @@ The XRD is `cloud.ogenki.io/v1alpha1`, namespaced, in `crossplane-configuration`
 | `spec.egress.profiles` | `[]` | Any of `pypi`, `npm`, `golang`, `crates`. `github` is always on |
 | `status.runId` · `conversationId` · `startedAt` · `finishedAt` · `reason` | — | `conversationId` = `metadata.uid` |
 
-`role`, `repository`, `branch`, `task`, `principal` and `dataClass` are immutable (CEL): a run's
+Every spec field is immutable (CEL) except `budget.maxTokens`: a run's
 profile never widens (SP2 S9). `spec.model` is one of the four C5 names.
 
 **Composed resources.** Each one is named `xplane-run-<runId>[-suffix]` and labelled with
@@ -204,10 +197,10 @@ carries it. `spec.principal` becomes an annotation, because a label value cannot
 
 | Resource | Rendered unless | Ready when |
 |---|---|---|
-| `ServiceAccount` (`automount: false`, **no binding anywhere**) | `Revoked` or `BudgetExhausted` | exists |
+| `ServiceAccount` (`automount: false`, **no binding anywhere**) | any terminal phase | exists |
 | `ConfigMap -task` (task, platform rules, run metadata) | — | exists |
 | `CiliumNetworkPolicy` | — | static |
-| `Sandbox` (Crossplane gets an aggregate ClusterRole for it; `infrastructure/AGENTS.md` trap 3) | `Revoked` or `BudgetExhausted` | `Ready` or `Finished` |
+| `Sandbox` (Crossplane gets an aggregate ClusterRole for it; `infrastructure/AGENTS.md` trap 3) | `Revoked` or `BudgetExhausted` | `Ready` or `Finished`; at `Succeeded`/`Failed` it moves to `operatingMode: Suspended` and stays `Ready` |
 | `Usage` (`protection.crossplane.io/v1beta1`): the Sandbox uses the CNP, `replayDeletion: true` | `Revoked` or `BudgetExhausted` | exists |
 
 **Pod.** `runtimeClassName: gvisor`; `restartPolicy: Never`, so the Sandbox reports `Finished`;
@@ -223,8 +216,10 @@ sandbox** (C4).
 
 **CNP.** DNS goes to kube-dns only, through an L7 rule that answers only allowed names. TCP is
 allowed to the `agent-router` data plane (its class's listener, 8080 `public` or 8081 `internal`,
-and 8082 `sts` for octo-sts), the profile FQDNs (443), and the broker (8443) only with `roomRef`.
-Ingress is from `host` only, for probes. A namespace-wide default-deny CNP in `agents` denies any
+and 8082 `sts` for octo-sts; the egress rule pins `owning-gateway-namespace: agent-system` as well as
+the Gateway name), the profile FQDNs (443), and the broker (8443) only with `roomRef`.
+Ingress is from `host` only, on the identity-proxy's health port: the harness is checked with `exec`
+probes instead (§5), never over the network. A namespace-wide default-deny CNP in `agents` denies any
 pod its run's CNP does not open.
 
 | Profile | FQDNs (443) |
@@ -278,7 +273,10 @@ run. It uses generic `credential_injector` with `header_value_prefix: "Bearer "`
 
 The spike settled both open points. Rotation never reaches the injector: kubelet swaps the token on
 the host, and gVisor raises no inotify for that, so the tokens outlive the run instead (R2). And the
-admin API is off the pod network, so the harness has no channel to `config_dump` (Q8).
+admin API is a pathname unix socket in `proxy-tmp`, off the pod network, so the harness has no channel
+to `config_dump` (Q8). It runs `--disable-hot-restart --concurrency 1`: hot restart would open an
+abstract socket and a `/dev/shm` segment the harness shares. As a native sidecar its `startupProbe` on
+`/ready` gates the pod: the harness container starts only once the proxy is serving (CC-1 `36fdede`).
 
 **`agent-router` authentication.** SP1 owns the JWT providers (D11), the listeners, the agents'
 Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behind each listener
@@ -418,7 +416,7 @@ Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences fo
 | Workload | Probes | Requests → limits |
 |---|---|---|
 | `harness` | `exec` probes against `127.0.0.1:8000`: startup + readiness `/ready`, liveness `/health` | the `spec.size` preset |
-| `identity-proxy` | readiness + liveness `GET /ready` on Envoy admin :9901 | 50m / 64Mi → 200m / 128Mi |
+| `identity-proxy` | startup + readiness + liveness `GET /ready` on a health listener :9902 (§3) | 50m / 64Mi → 200m / 128Mi |
 | `room-bridge` | readiness + liveness `GET /healthz` on :8085 (checks the bridge and its harness socket, never the broker — SP2 §3) | 20m / 32Mi → 100m / 64Mi |
 | `flux-operator-mcp` | `tcpSocket` on `http` (chart default) | 10m / 64Mi → 500m / 256Mi |
 | `mcp-victoriametrics`, `mcp-victorialogs` | `tcpSocket` on `MCP_LISTEN_ADDR` :8081 | 10m / 32Mi → 200m / 128Mi |
