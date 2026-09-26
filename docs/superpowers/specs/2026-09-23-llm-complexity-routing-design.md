@@ -409,8 +409,10 @@ The umbrellas and their dependencies are C1. SP4's placement within them:
 - **Naming.** C1's human/system `llm-gateway` is the existing `ai-gateway` Gateway object, kept
   because the composition's `parentRef` names it, plus a new namespace `llm-gateway` for its routes
   and backends. `namespaces/base/` gains it, and the Gateway's `allowedRoutes` selector adds it.
-- **Keys.** PR 1 copies the platform Z.ai key from `runlore/credentials` to `platform/llm/zai`; PR 6
-  removes it from `runlore/credentials` (SC-10). The `platform/` mount is already granted.
+- **Keys.** PR 1 reads the platform Z.ai key from `runlore/credentials` directly, so a bootstrap
+  copies nothing (amended 2026-09-26; it used to copy it to `platform/llm/zai`). PR 6 moves it to
+  `platform/llm/zai` and removes it from `runlore/credentials` (SC-10). The `platform/` mount is
+  already granted. The Valkey password is generated in-cluster by ESO, so nothing is seeded.
 
 ## Threat model
 
