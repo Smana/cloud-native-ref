@@ -2,10 +2,12 @@
 # Applies the agents' branch ruleset (SP1 design §6, OD-7) to one repository.
 #
 # Every actor NOT on the bypass list may only create, update or delete
-# refs/heads/agent/**. The bypass list is the owner (the repository admin role),
-# Renovate and, once SP3 ships, the factory's App, all `always`. The agents' App
-# is therefore the only confined actor, and since it cannot update main, it
-# cannot merge. SP3's merge-gate ruleset is a separate ruleset.
+# refs/heads/agent/**. The bypass list is every human role that can push (admin,
+# maintain, write: the owner, collaborators, and App Wizard pushes made with a
+# user's token), Renovate and, once SP3 ships, the factory's App, all `always`.
+# A GitHub App is bypassed only when named, never through a role, so the agents'
+# App is the only confined actor, and since it cannot update main, it cannot
+# merge. SP3's merge-gate ruleset is a separate ruleset.
 #
 # Idempotent: updates the ruleset named `agent-branches` when it exists.
 # usage: agent-branch-ruleset.sh <owner/repo>
@@ -16,8 +18,9 @@ REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-branches.json"
 
-# RepositoryRole 5 is GitHub's built-in admin role: the owner of a user repo.
-bypass='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
+# GitHub's built-in RepositoryRole ids: 5 admin (the owner of a user repo),
+# 2 maintain, 4 write.
+bypass="$(jq -c -n '[5, 2, 4] | map({"actor_id":., "actor_type":"RepositoryRole", "bypass_mode":"always"})')"
 for slug in renovate ${FACTORY_APP_SLUG:-}; do
   id="$(gh api "/apps/$slug" --jq .id)"
   bypass="$(jq -c --argjson id "$id" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"

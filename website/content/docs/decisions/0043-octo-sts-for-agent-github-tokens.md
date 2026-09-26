@@ -70,8 +70,10 @@ token with that policy's permissions.
 ## Decision Outcome
 
 **Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`, with the owner, Renovate
-and the factory's App on the bypass list (OD-7).
+`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`. The bypass list is
+every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
+GitHub App is bypassed only when named, never through a role, so the agents' App is the one confined
+actor, and collaborators and App Wizard pushes made with a user's token are not.
 
 **Rationale**: Short-lived, per-repository, per-role tokens whose authorisation is reviewed in the
 repository it grants.

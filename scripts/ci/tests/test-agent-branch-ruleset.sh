@@ -3,7 +3,9 @@
 #
 # scripts/ops/github/agent-branch-ruleset.sh against a PATH-stubbed gh: it
 # creates the ruleset when absent, updates it in place when present, and sends
-# the bypass list the design names (OD-7). No test contacts GitHub.
+# the bypass list (OD-7): every human role that can push, Renovate, and the
+# factory's App when named, so only the agents' App is confined. No test
+# contacts GitHub.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/../../ops/github/agent-branch-ruleset.sh"
@@ -30,7 +32,7 @@ run() { : >"$STUB_LOG"; rm -f "$STUB_BODY"; bash "$SUBJECT" Smana/demo >/dev/nul
 
 run
 grep -q '^api --method POST repos/Smana/demo/rulesets ' "$STUB_LOG" || fail "creates the ruleset when absent"
-jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the owner and Renovate, always"
+jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":4,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the admin, maintain and write roles and Renovate, always"
 jq -e '.conditions.ref_name == {"include":["~ALL"],"exclude":["refs/heads/agent/**"]}' "$STUB_BODY" >/dev/null || fail "confines everyone else to agent/**"
 jq -e '[.rules[].type] == ["creation","update","deletion"]' "$STUB_BODY" >/dev/null || fail "restricts creation, update and deletion"
 
@@ -41,7 +43,7 @@ if grep -q -- '--method POST' "$STUB_LOG"; then fail "never creates a second rul
 
 export STUB_EXISTING="" FACTORY_APP_SLUG=ogenki-factory
 run
-jq -e '[.bypass_actors[].actor_id] == [5, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
+jq -e '[.bypass_actors[].actor_id] == [5, 2, 4, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
 
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"
