@@ -1,7 +1,8 @@
 # Agent Factory — Programme Design
 
 **Date:** 2026-09-23
-**Status:** draft r4 — contracts reconciled across the four sub-project drafts and independently reviewed; owner review pending
+**Status:** draft r5 — contracts reconciled across the four sub-project drafts and independently
+reviewed (r4), then amended by the owner (r5); owner review pending
 **Branch:** `docs/agent-factory-design`
 **Sub-project designs:** [SP1 runtime & identity](2026-09-23-agent-runtime-identity-design.md) ·
 [SP2 collaboration rooms](2026-09-23-agent-collaboration-rooms-design.md) ·
@@ -244,8 +245,7 @@ gateway's per-run ceiling, and `status.pullRequest` stays empty.
   SP3** denies every other creator, cluster-admins included (RBAC alone cannot stop an admin).
   Break-glass is suspending that policy through Flux. The room broker (fork, adding an agent to a
   room) and the human CLI request runs through the factory's API, so the principal's daily budget
-  has one enforcement point whoever asked. Before SP3, the owner creates runs directly and they
-  have only the gateway's per-run ceiling.
+  has one enforcement point whoever asked. Before SP3, the owner creates runs directly.
 - Every object a run creates carries `agents.ogenki.io/role` and, when the run belongs to a task,
   `agents.ogenki.io/task`.
 - When `spec.roomRef` is set, the sandbox also runs SP2's **room bridge** container, and its CNP
@@ -256,9 +256,9 @@ gateway's per-run ceiling, and `status.pullRequest` stays empty.
   sandbox and its policies, but the gateway and octo-sts validate tokens offline, so a token already
   copied out stays valid until it expires. Token TTL is the run's deadline,
   `max(600, maxMinutes × 60)` s: under gVisor a rotated token never reaches the in-pod proxy (SP1
-  spike Q2, fallback R2). SP1's success criteria measure the window. The room broker also validates offline, but it watches the
-  `AgentRun`: once the run is terminal or `revoked`, it drops the room connection straight away
-  (C2 r5).
+  spike Q2, fallback R2). SP1's success criteria measure the window. The room broker also
+  validates offline, but it watches the `AgentRun`: once the run is terminal or `revoked`, it drops
+  the room connection straight away (C2 r5).
 
 ### C4 — Event envelope (owned by SP2, emitted by SP1 runs)
 
@@ -361,8 +361,8 @@ SP4 owns the model mapping and budget enforcement.
 - A repository ruleset restricts that App to `agent/**` branches; a run pushes only its
   `spec.branch` (C3). **It never merges.** Rulesets apply to every actor not on their bypass list,
   so this **branch ruleset** bypasses the owner, the `write` and `maintain` roles, Renovate and the
-  factory's App **always** — only the agents' App is confined. The **merge-gate ruleset** is separate, and there the owner bypasses
-  for pull requests only.
+  factory's App **always** — only the agents' App is confined. The **merge-gate ruleset** is
+  separate, and there the owner bypasses for pull requests only.
 - **The factory has its own GitHub App** (SP3): it arms auto-merge for low-risk classes and may
   create `revert-*` branches.
 - **Merge gate (D4):** policy-bot's status is required through a repository ruleset. It passes on
