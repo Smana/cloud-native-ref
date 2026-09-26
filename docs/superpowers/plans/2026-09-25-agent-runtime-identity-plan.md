@@ -12,8 +12,9 @@ token never reaches the proxy).
 core package. It composes a ServiceAccount, a task ConfigMap, a CiliumNetworkPolicy and a bare
 agent-sandbox `Sandbox` on a Karpenter AL2023 spot pool where runsc is installed. Inside the pod, an
 Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live until the run's deadline (R2). It injects
-them towards `agent-router` (Envoy Gateway JWT on one listener per data class) and a self-hosted
-octo-sts. Everything outside the XR ships behind the suspended `agent-platform` Flux umbrella.
+them towards `agent-router` (Envoy Gateway JWT on one listener per data class, plus an `sts`
+listener that fronts a self-hosted octo-sts). Everything outside the XR ships behind the suspended
+`agent-platform` Flux umbrella.
 
 **Tech Stack:** Crossplane v2 + function-kcl (KCL 0.11.3), agent-sandbox v1.0.3, gVisor
 `release-20260921.0` on EKS AL2023 (containerd 2.2, config v3), Karpenter 1.14.1, Cilium (ENI, KPR,
@@ -45,8 +46,9 @@ task; OD-1…OD-17 are accepted at their recommended defaults).
 - **Audiences (C2).** Gateway `agent-router.<role>.<dataClass>`; octo-sts
   `octo-sts/<owner>/<repo>/<role>`; room `room-broker` (SP2). The gateway and octo-sts tokens have
   `expirationSeconds: max(600, maxMinutes × 60)`, the run's deadline (R2, spike Q2).
-- **Ports.** `agent-router` listeners `public` :8080 and `internal` :8081. identity-proxy
-  `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` → octo-sts, health `0.0.0.0:9902` (`/ready`).
+- **Ports.** `agent-router` listeners `public` :8080, `internal` :8081 and `sts` :8082 (the only way
+  to octo-sts :8080). identity-proxy `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` →
+  `sts`, health `0.0.0.0:9902` (`/ready`).
   Admin is the pathname socket `/tmp/envoy-admin.sock` in `proxy-tmp`, never on the pod network, and
   the proxy runs `--disable-hot-restart --concurrency 1` (P13). Harness :8000 on loopback only.
 - **Stripped headers (C5).** `x-ar-agent`, `x-ar-human`, `x-ai-gateway-client-id`, `agent-session-id`,
@@ -106,7 +108,7 @@ owner can take; the executor stops and asks for it.
 
 | Name | Where | Consumer |
 |---|---|---|
-| Gateway `agent-router` (`agent-system`), listeners `public` :8080 / `internal` :8081, `allowedRoutes: Same` | `infrastructure/base/agent-router/gateway.yaml` | SP4 attaches `agent-models-internal` and B1–B2 |
+| Gateway `agent-router` (`agent-system`), listeners `public` :8080 / `internal` :8081 / `sts` :8082, `allowedRoutes: Same` | `infrastructure/base/agent-router/gateway.yaml` | SP4 attaches `agent-models-internal` and B1–B2 |
 | `AIGatewayRoute agent-models` seeded with `agent-default` → `glm-5.2` | `infrastructure/base/agent-router/aigatewayroute-agent-models.yaml` | SP4 owns the file from PR 2 |
 | `AIServiceBackend zai` + `BackendSecurityPolicy zai-api-key` | `infrastructure/base/agent-router/backend-zai.yaml` | SP4 tiers |
 | Data-plane CNP `agent-router-data-plane` (`envoy-gateway-system`) | `infrastructure/base/agent-router/network-policy-data-plane.yaml` | SP4 PR 2 adds the Bedrock (`bedrock-runtime.eu-west-3.amazonaws.com:443`) and rate-limit egress; SP2's broker :8090 allow is already there |
@@ -186,7 +188,7 @@ three manifest directories over with `git checkout spike/agent-gvisor -- <paths>
 | `opentofu/aws/openbao/management/{policies.tf,policies/agents-secrets.hcl}`, `opentofu/aws/eks/configure/openbao.tf` | 3 | OpenBao policy and JWT role for `agents-secrets` |
 | `security/base/agent-secrets/` | 3 | SA, SecretStore `agents-secrets`, `openbao-ca` in `agent-system` |
 | `infrastructure/base/agent-router/` | 3 | Gateway, EnvoyProxy, SecurityPolicies, CTP, Z.ai backend, `agent-models`, data-plane CNP |
-| `security/base/octo-sts/` | 4 | octo-sts Deployment, Service, ExternalSecret, CNP |
+| `security/base/octo-sts/` | 4 | octo-sts Deployment, Service, ExternalSecret, CNP, and its `HTTPRoute` on `agent-router`'s `sts` listener |
 | `.github/chainguard/agent-{implementer,reviewer,tester,triager}.sts.yaml` | 4 | Trust policies (gate path) |
 | `.github/rulesets/agent-branches.json`, `scripts/ops/github/agent-branch-ruleset.sh`, `scripts/ci/tests/test-agent-branch-ruleset.sh` | 4 | Branch ruleset source, its idempotent applier, its test |
 | `container-images/agent-harness/` | 5 | Harness image: `agent-run`, `git-credential-agent`, `gh` wrapper, trailer hook, tests |
@@ -1975,9 +1977,9 @@ Expected: FAIL — `name '_render' is not defined` (there is no `main.k` yet).
 
 **Interfaces:**
 - Consumes: Task 1.2 tests; the identity-proxy ConfigMap name `agent-identity-proxy` and its ports
-  (Task 0.1 Step 5); the Service FQDNs `agent-router.envoy-gateway-system.svc.cluster.local` (Task 3.4)
-  and `octo-sts.agent-system.svc.cluster.local` (Task 4.3); pod label
-  `app.kubernetes.io/name: octo-sts` (Task 4.3); Gateway label
+  (Task 0.1 Step 5); the Service FQDN `agent-router.envoy-gateway-system.svc.cluster.local` and its
+  ports 8080/8081 plus 8082 `sts` (Task 3.4). The run's CNP opens 8082 for octo-sts and has no rule
+  or DNS name for octo-sts itself (CC-1 `b8c68c1`); Gateway label
   `gateway.envoyproxy.io/owning-gateway-name: agent-router` (R5, confirmed in Task 3.8).
 - Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`; the
   harness env contract of design §5 (`RUN_ID ROLE REPOSITORY BASE_REF BRANCH MODEL DATA_CLASS
@@ -3637,7 +3639,7 @@ day):
 title: Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens
 linkTitle: 0042 · Agent identity gateway
 weight: 420
-description: Agent runs reach models and MCP tools only through a dedicated agent-router Gateway, one listener per data class, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
+description: Agent runs reach models, MCP tools and octo-sts only through a dedicated agent-router Gateway, one listener per data class plus one pinned to this cluster's issuer in front of octo-sts, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -3722,7 +3724,11 @@ structural, using controllers the platform already runs.
 
 - Agents and humans use separate Gateways and separate provider keys (C1)
 - Every harness gets the same contract: `127.0.0.1:4000` (public), `:4002` (internal), `:4001`
-  (octo-sts)
+  (octo-sts, through the `sts` listener)
+- octo-sts sits behind a third listener, `sts` (:8082), whose `SecurityPolicy` pins this cluster's
+  exact issuer: the trust policies match the issuer by pattern (OD-5), which alone would accept a
+  token minted by any EKS cluster in the region. octo-sts relies on Envoy Gateway forwarding the
+  validated token upstream, which 1.9.1 always does
 
 ### Negative
 
@@ -3999,18 +4005,19 @@ Ask the owner to create a **dedicated** Z.ai API key for agents (not RunLore's, 
 ### Task 3.4: The `agent-router` Gateway
 
 **Files:**
-- Create: `infrastructure/base/agent-router/{kustomization.yaml,gateway.yaml,envoyproxy.yaml,securitypolicy-public.yaml,securitypolicy-internal.yaml,clienttrafficpolicy.yaml,backend-zai.yaml,externalsecret-zai.yaml,aigatewayroute-agent-models.yaml,network-policy-data-plane.yaml}`
+- Create: `infrastructure/base/agent-router/{kustomization.yaml,gateway.yaml,envoyproxy.yaml,securitypolicy-public.yaml,securitypolicy-internal.yaml,securitypolicy-sts.yaml,clienttrafficpolicy.yaml,backend-zai.yaml,externalsecret-zai.yaml,aigatewayroute-agent-models.yaml,network-policy-data-plane.yaml}`
 - Create: `clusters/aws-0-agent-platform/infrastructure-agent-router.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0/agent-platform.yaml`
-  (`dependsOn: ai-gateway`), `clusters/aws-0-agent-platform/README.md` (two rows)
+  (`dependsOn: ai-gateway`), `clusters/aws-0-agent-platform/README.md` (two rows),
+  `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (`:4001` → the `sts` listener)
 - Not set here: `EnvoyProxy.spec.provider.kubernetes.envoyServiceAccount` (SP4 PR 2 adds
   `xplane-agent-router-bedrock` and owns its EPI)
 
 **Interfaces:**
 - Consumes: GatewayClass `envoy-ai-gateway`, Kustomization `envoy-ai-gateway` (SP4 PR 1);
   `SecretStore agents-secrets` (Task 3.3); `${oidc_issuer_url}`, `${oidc_issuer_host}`.
-- Produces: Service `agent-router.envoy-gateway-system.svc.cluster.local` ports 8080/8081 (the
-  identity-proxy clusters of Task 0.1); data-plane pods labelled
+- Produces: Service `agent-router.envoy-gateway-system.svc.cluster.local` ports 8080/8081/8082 (the
+  identity-proxy clusters); listener `sts`, which Task 4.3's `HTTPRoute` attaches to; data-plane pods labelled
   `gateway.envoyproxy.io/owning-gateway-name: agent-router` (the run CNP of Task 1.3); access-log
   fields `x_ar_agent`, `listener_port`, `upstream_cluster`, `response_code` (Tasks 3.8, 6.4).
 
@@ -4030,6 +4037,7 @@ resources:
   - clienttrafficpolicy.yaml
   - securitypolicy-public.yaml
   - securitypolicy-internal.yaml
+  - securitypolicy-sts.yaml
   - externalsecret-zai.yaml
   - backend-zai.yaml
   - aigatewayroute-agent-models.yaml
@@ -4043,7 +4051,8 @@ resources:
 ---
 # One listener per data class (S6): "internal never reaches Z.ai" is structural.
 # Each listener accepts only its class's audiences, and Z.ai routes attach to
-# `public` only. Only routes from agent-system attach.
+# `public` only. `sts` is the only way to octo-sts. Only routes from
+# agent-system attach.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -4061,6 +4070,12 @@ spec:
     - name: internal
       protocol: HTTP
       port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: sts
+      protocol: HTTP
+      port: 8082
       allowedRoutes:
         namespaces:
           from: Same
@@ -4229,6 +4244,43 @@ spec:
             header: x-ar-agent
 ```
 
+`infrastructure/base/agent-router/securitypolicy-sts.yaml`:
+
+```yaml
+---
+# The `sts` listener fronts octo-sts, and its point is the issuer. The trust
+# policies match the EKS issuer by pattern (OD-5), which alone would accept a
+# token minted by any EKS cluster in the region; this accepts THIS cluster's
+# issuer only. Envoy Gateway forwards the validated token, so octo-sts checks it
+# again against the trust policy. A second repository adds its four audiences
+# here (EG's maximum is 8).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-sts
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  jwt:
+    providers:
+      - name: eks-agents-sts
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - octo-sts/Smana/cloud-native-ref/implementer
+          - octo-sts/Smana/cloud-native-ref/reviewer
+          - octo-sts/Smana/cloud-native-ref/tester
+          - octo-sts/Smana/cloud-native-ref/triager
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent
+```
+
 - [ ] **Step 3: The agents' Z.ai backend and the seed route**
 
 `infrastructure/base/agent-router/externalsecret-zai.yaml`:
@@ -4385,6 +4437,8 @@ spec:
               protocol: TCP
             - port: "8081"
               protocol: TCP
+            - port: "8082"
+              protocol: TCP
     - fromEntities:
         - host
       toPorts:
@@ -4466,6 +4520,27 @@ spec:
         - ports:
             - port: "8090"
               protocol: TCP
+    # octo-sts (phase 4), behind the `sts` listener only.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: octo-sts
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+```
+
+In `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (Task 2.4), send `:4001` to the
+`sts` listener. The run's CNP already opens 8082 and no longer resolves or reaches octo-sts (CC-1):
+
+```diff
+@@ … @@ header comment
+-#   127.0.0.1:4001  /sts/exchange          -> octo-sts :8080
++#   127.0.0.1:4001  /sts/exchange          -> agent-router `sts`      :8082 -> octo-sts
+@@ … @@ cluster octo_sts (its name stays)
+-                        socket_address: {address: octo-sts.agent-system.svc.cluster.local, port_value: 8080}
++                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8082}
 ```
 
 - [ ] **Step 5: Child Kustomization, umbrella dependency**
@@ -4516,13 +4591,13 @@ Add to the README table:
 
 ```markdown
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
-| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
+| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener (octo-sts behind `sts`), the agents' Z.ai backend |
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infrastructure/base/agent-router clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
+git add infrastructure/base/agent-router infrastructure/base/agent-runtime/identity-proxy-configmap.yaml clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
 git commit -m "feat(agents): agent-router Gateway with one JWT listener per data class"
 ```
 
@@ -4589,6 +4664,7 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    # octo-sts only through the `sts` listener (8082), as for a run.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
@@ -4599,13 +4675,7 @@ spec:
               protocol: TCP
             - port: "8081"
               protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: agent-system
-            app.kubernetes.io/name: octo-sts
-      toPorts:
-        - ports:
-            - port: "8080"
+            - port: "8082"
               protocol: TCP
 ---
 apiVersion: agents.x-k8s.io/v1beta1
@@ -4816,7 +4886,7 @@ PR 4 merges (Task 4.7), on a cluster running `main`.
 title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's issuer-pinned sts listener, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -4849,9 +4919,10 @@ and never a human's.
 
 ### Option 1: Self-hosted octo-sts with the agents' GitHub App
 
-The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`; octo-sts checks it
-against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns an installation
-token with that policy's permissions.
+The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`,
+to `agent-router`'s `sts` listener, which validates it against this cluster's exact issuer. octo-sts
+then checks it against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns
+an installation token with that policy's permissions.
 
 **Pros**:
 - Trust policies are files in the repository, on a gate path
@@ -4859,8 +4930,11 @@ token with that policy's permissions.
 - Records issuer, subject and the token's SHA-256 on every exchange
 
 **Cons**:
-- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). That is safe only
-  because octo-sts is not publicly reachable: a ClusterIP Service whose CNP admits only `agents` pods
+- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5), and the pattern
+  accepts a token minted by any EKS cluster in the region. Keeping `agents` pods as the only callers
+  would not help, since they are the untrusted ones. So octo-sts is reachable only through
+  `agent-router`'s `sts` listener, whose `SecurityPolicy` pins this cluster's exact issuer (owner
+  decision 2026-09-26), and its CNP admits only that data plane
 - One more service in `agent-system`
 
 ### Option 2: Personal access tokens
@@ -4914,8 +4988,10 @@ repository it grants.
 
 ## Implementation Notes
 
-`security/base/octo-sts/`, `.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json`
-applied by `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`.
+`security/base/octo-sts/` (with its `HTTPRoute` on the `sts` listener),
+`infrastructure/base/agent-router/securitypolicy-sts.yaml`, `.github/chainguard/agent-*.sts.yaml`,
+`.github/rulesets/agent-branches.json` applied by `task ops:github:agent-branch-ruleset`. The App key
+is at `platform/agents/github-app`.
 
 ---
 
@@ -4967,14 +5043,16 @@ Expected: a current version exists. The executor never prints the `private_key` 
 ### Task 4.3: octo-sts
 
 **Files:**
-- Create: `security/base/octo-sts/{kustomization.yaml,serviceaccount.yaml,externalsecret.yaml,deployment.yaml,service.yaml,network-policy.yaml}`
+- Create: `security/base/octo-sts/{kustomization.yaml,serviceaccount.yaml,externalsecret.yaml,deployment.yaml,service.yaml,httproute.yaml,network-policy.yaml}`
 - Create: `clusters/aws-0-agent-platform/security-octo-sts.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0-agent-platform/README.md`
 
 **Interfaces:**
-- Consumes: `SecretStore agents-secrets` (Task 3.3); `platform/agents/github-app` (Task 4.2).
+- Consumes: `SecretStore agents-secrets` (Task 3.3); `platform/agents/github-app` (Task 4.2);
+  `agent-router`'s `sts` listener (Task 3.4).
 - Produces: `octo-sts.agent-system.svc.cluster.local:8080`, pod label `app.kubernetes.io/name:
-  octo-sts` (the run CNP of Task 1.3, the identity-proxy cluster of Task 0.1).
+  octo-sts` (the `agent-router-data-plane` CNP egress of Task 3.4), and the `HTTPRoute` that makes
+  identity-proxy `:4001` reach it.
 
 - [ ] **Step 1: Manifests**
 
@@ -4992,6 +5070,7 @@ resources:
   - externalsecret.yaml
   - deployment.yaml
   - service.yaml
+  - httproute.yaml
   - network-policy.yaml
 ```
 
@@ -5151,13 +5230,44 @@ spec:
       protocol: TCP
 ```
 
+`security/base/octo-sts/httproute.yaml`:
+
+```yaml
+---
+# The only way to octo-sts: agent-router's `sts` listener validates the run's
+# token against this cluster's exact issuer before this route passes it on
+# (ADR-0043). Same namespace as the Gateway, as `allowedRoutes: Same` requires.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /sts/exchange
+      backendRefs:
+        - name: octo-sts
+          port: 8080
+      timeouts:
+        request: 30s
+```
+
 `security/base/octo-sts/network-policy.yaml`:
 
 ```yaml
 ---
-# Ingress from sandbox pods only: that, not the trust policy's issuer pattern,
-# is what keeps other EKS clusters' tokens out (ADR-0043). Egress to GitHub's
-# API and the EKS issuer (discovery + JWKS).
+# Ingress from the agent-router data plane only: its `sts` listener pins this
+# cluster's issuer, which the trust policies' pattern cannot (OD-5, ADR-0043).
+# Sandbox pods never reach octo-sts directly. Host for kubelet's probes. Egress
+# to GitHub's API and the EKS issuer (discovery + JWKS).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -5170,10 +5280,9 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: agents
-          matchExpressions:
-            - key: agents.ogenki.io/run-id
-              operator: Exists
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8080"
@@ -5231,6 +5340,8 @@ spec:
         name: eks-aws-0-vars
   dependsOn:
     - name: agent-secrets
+    # The HTTPRoute's parent: the only way in.
+    - name: agent-router
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -5265,8 +5376,9 @@ git commit -m "feat(security): self-hosted octo-sts for the agents' GitHub App"
 ```yaml
 # Agents' App, implementer runs (ADR-0043). A gate path (C6): octo-sts reads it
 # from the default branch only. The issuer is a pattern because the EKS issuer
-# ID changes on every rebuild (OD-5); octo-sts is reachable from sandbox pods
-# only, which is what keeps other clusters' tokens out.
+# ID changes on every rebuild (OD-5), and it matches any EKS cluster in the
+# region: agent-router's `sts` listener, the only way to octo-sts, pins this
+# cluster's exact issuer, and that is what keeps other clusters' tokens out.
 issuer_pattern: 'https://oidc\.eks\.eu-west-3\.amazonaws\.com/id/[0-9A-F]{32}'
 subject_pattern: 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'
 audience: octo-sts/Smana/cloud-native-ref/implementer
@@ -5585,10 +5697,12 @@ a rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->`
 kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py reviewer Smana/cloud-native-ref
 kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/crossplane-configuration
 kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
+kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python -c "import urllib.request; urllib.request.urlopen('http://octo-sts.agent-system.svc.cluster.local:8080/', timeout=5)"; echo "exit=$?"
 ```
 Expected: the reviewer gets a token but every push is rejected (`403`/permission); the other
 repository's exchange fails (`HTTP Error 403`/PermissionDenied: no trust policy there, App not
-installed); the reviewer asking for `agent-implementer` fails (audience mismatch).
+installed); the reviewer asking for `agent-implementer` fails (audience mismatch); the direct call
+exits 1, because a run reaches octo-sts only through the `sts` listener.
 
 - [ ] **Step 6: Clean up and record**
 

@@ -105,7 +105,7 @@ flowchart LR
   HUM -->|chat · MoM| LGW
   LGW --> VLLM
   LGW --> FRONT
-  SBX -->|SA token| STS -->|1h single-repo token| SBX
+  AGW -->|sts listener · exact issuer| STS -->|1h single-repo token| SBX
   SBX -->|push agent/**, open PR| GH
   GH -->|PR events| PB -->|required status| GH
 ```
@@ -312,7 +312,7 @@ its frozen shape (v1):
 SP4 owns the model mapping and budget enforcement.
 
 - **The `agent-router` Gateway (Agent Router data plane) is the only path** from a sandbox to
-  models and MCP tools. It validates the run's
+  models, MCP tools and octo-sts. It validates the run's
   token (Envoy Gateway `SecurityPolicy`) and injects provider credentials. Provider keys never
   enter the `agents` namespace.
 - **Identity headers:** `x-ar-agent` (the agent token's `sub`), `x-ar-human` (the human token's
@@ -354,7 +354,8 @@ SP4 owns the model mapping and budget enforcement.
 
 - **Agents' GitHub App**, used by agents only, fronted by **self-hosted octo-sts**: the run's
   ServiceAccount token is exchanged for a ≤1h token scoped to `spec.repository`, with permissions
-  by role (C3). It never gets `workflows`, `statuses`, `checks: write` or `administration`.
+  by role (C3). octo-sts is reached only through `agent-router`, which pins this cluster's issuer
+  (OD-5). It never gets `workflows`, `statuses`, `checks: write` or `administration`.
 - A repository ruleset restricts that App to `agent/**` branches; a run pushes only its
   `spec.branch` (C3). **It never merges.** Rulesets apply to every actor not on their bypass list,
   so this **branch ruleset** bypasses the owner, Renovate and the factory's App **always** — only
@@ -397,7 +398,7 @@ owner does not override it.
 | OD-2 | Agent Router as the agent identity gateway (D11) | Confirm | SP1 |
 | OD-3 | `ai-gateway` umbrella, CPU only (SP1 estimates ~200m/512Mi for the controllers alone; SP4 ~1.6 vCPU/5.5 GiB with the semantic router) | **Amended 2026-09-26: suspended by default**, resumed before `llm-platform` or `agent-platform` (C1). The split from the GPU umbrella stays. **Consequence for SP4 PR 6:** RunLore can drop its own Z.ai key only on clusters that resume `ai-gateway`. *(Was: on by default.)* | SP1, SP4 |
 | OD-4 | Where the new code lives | **One** repo, `Smana/agent-platform`, for broker, factory and classifier *(SP2 proposed `agent-rooms`, SP3 `agent-factory`)*, pinned from this repo as App Wizard is | SP2, SP3 |
-| OD-5 | octo-sts trust policies match the EKS issuer by pattern (the issuer ID changes on every rebuild) | Pattern | SP1 |
+| OD-5 | octo-sts trust policies match the EKS issuer by pattern (the issuer ID changes on every rebuild) | Pattern, safe only behind `agent-router`'s `sts` listener, which pins this cluster's exact issuer: the pattern alone accepts a token from any EKS cluster in the region *(owner, 2026-09-26)* | SP1 |
 | OD-6 | GitHub App scope at first | `cloud-native-ref` only | SP1 |
 | OD-7 | Who may bypass the rulesets | **Branch ruleset:** owner, Renovate and the factory's App, always (only the agents' App is confined to `agent/**`). **Merge-gate ruleset:** owner for pull requests only, and Renovate. CI itself stays non-bypassable | SP1, SP3 |
 | OD-8 | Low-risk classes that auto-merge at v1 | `docs-links` and `revert` only; `docs`, `tests`, `dashboards` promoted later on evidence (docs PRs otherwise wait for owner review) | SP3 |

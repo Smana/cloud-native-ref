@@ -151,7 +151,9 @@ file and the programme's *Verified during design* table overlap, they agree.
     `ORG_POLICY_REPO`, all issuers are permitted and only trust policies gate. Policies are read
     from the **default branch** (`GetContents` with empty options).
     Example trust policy. The issuer is matched by pattern because the EKS issuer ID changes on
-    every rebuild (programme OD-5). The audience binds the repository and the role:
+    every rebuild (programme OD-5). The pattern accepts any EKS cluster in the region, so octo-sts
+    sits behind `agent-router`'s `sts` listener, which pins the exact issuer (SP1 §6). The audience
+    binds the repository and the role:
 
     ```yaml
     # Smana/cloud-native-ref: .github/chainguard/agent-implementer.sts.yaml

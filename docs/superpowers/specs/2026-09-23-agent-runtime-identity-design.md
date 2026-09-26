@@ -57,6 +57,11 @@ These supersede the sections they name; the reasoning is in the plan's departure
   needs no upgrade-capable egress.
 - `ai-gateway` is suspended by default and must be resumed before `agent-platform` (C1, OD-3).
 
+**Amendments from the design review (2026-09-26):**
+- §3, §6, T8 (owner decision): octo-sts is reached only through a third `agent-router` listener,
+  `sts` (:8082), which pins this cluster's exact issuer. The trust policies' issuer pattern (OD-5)
+  alone would accept a token minted by any EKS cluster in the region.
+
 ## Architecture
 
 ```mermaid
@@ -70,7 +75,7 @@ flowchart LR
     end
   end
   subgraph SYS["namespace agent-system"]
-    GW[agent-router Gateway<br/>listeners public · internal<br/>JWT · MCPRoute · key injection]
+    GW[agent-router Gateway<br/>listeners public · internal · sts<br/>JWT · MCPRoute · key injection]
     STS[octo-sts]
     MCP[flux / VM / VL MCP · read-only]
     SS[SecretStore → platform/agents/*]
@@ -85,7 +90,8 @@ flowchart LR
   XR -->|SA · ConfigMap · CNP · Sandbox| POD
   H -->|127.0.0.1:4000·4002 / :4001| P
   P -->|aud agent-router.role.class| GW
-  P -->|aud octo-sts/repo/role| STS
+  P -->|aud octo-sts/repo/role| GW
+  GW -->|sts listener · exact issuer| STS
   B -->|aud room-broker, pushes events| BR
   B <-->|localhost harness API| H
   GW -->|x-ar-agent| MCP
@@ -122,7 +128,8 @@ sequenceDiagram
     G->>Z: glm-5.2 + injected key
     Z-->>P: completion (tokens metered under ar_agent)
   end
-  P->>O: exchange scope=repo identity=agent-implementer
+  P->>G: sts listener · exchange scope=repo identity=agent-implementer
+  G->>O: only after the JWT check against this cluster issuer
   O-->>P: installation token (≤ 1 h)
   P->>GH: push spec.branch · open PR · then DELETE /installation/token
   F->>K: annotations usage-tokens (every 30 s) · pull-request · revoked=budget-*
@@ -206,7 +213,7 @@ sandbox** (C4).
 | `room-bridge` (SP2 image, only with `roomRef`; SP2 adds it to the composition) | a projected token with audience `room-broker`, plus the harness session key on a shared in-memory volume | Dials `room-broker.agent-system:8443`. The broker validates it by TokenReview (SP2) |
 
 **CNP.** DNS goes to kube-dns only, through an L7 rule that answers only allowed names. TCP is
-allowed to the `agent-router` data plane (its class's listener only: 8080 `public`, 8081 `internal`), octo-sts (8080), the profile FQDNs (443), and the
+allowed to the `agent-router` data plane (its class's listener, 8080 `public` or 8081 `internal`, and 8082 `sts` for octo-sts), the profile FQDNs (443), and the
 broker (8443) only with `roomRef`. Ingress is from `host` only, for probes. A namespace-wide
 default-deny CNP in `agents` denies any pod its run's CNP does not open.
 
@@ -246,7 +253,7 @@ removing an annotation never resurrects a run. Nothing the harness reports reach
 | Token | Audience (C2) | TTL | Held by | Validated |
 |---|---|---|---|---|
 | Gateway | `agent-router.<role>.<dataClass>` | the run's deadline, `max(600, maxMinutes × 60)` s (R2) | `identity-proxy` | offline, EKS JWKS `${oidc_issuer_url}/keys`, by the listener's exact list |
-| octo-sts | `octo-sts/<owner>/<repo>/<role>` | the run's deadline (R2) | `identity-proxy` | offline, by the trust policy (issuer, subject, exact audience) |
+| octo-sts | `octo-sts/<owner>/<repo>/<role>` | the run's deadline (R2) | `identity-proxy` | offline, twice: the `sts` listener (this cluster's exact issuer, the four audiences), then the trust policy (issuer pattern, subject, exact audience) |
 | Room | `room-broker` | 600 s; the bridge re-reads the file before each dial, never watches it | `room-bridge` | offline, allowlisted issuer's JWKS, plus a live watch of the run's `AgentRun` (SP2, C2 r5) |
 | GitHub installation | — | ≤ 1 h | harness, in memory | GitHub |
 
@@ -254,7 +261,8 @@ removing an annotation never resurrects a run. Nothing the harness reports reach
 run. `127.0.0.1:4000` and `:4002` carry `/v1/*` and `/mcp` to the `public` and `internal` listeners with the
 gateway token. The composition points `LLM_BASE_URL` and `MCP_URL` at the run's class, and the other
 port is useless to it: its audience does not match.
-`127.0.0.1:4001` carries `/sts/exchange` to octo-sts with the octo-sts token. It uses generic
+`127.0.0.1:4001` carries `/sts/exchange` with the octo-sts token to the `sts` listener, which routes
+it to octo-sts. It uses generic
 `credential_injector` with `header_value_prefix: "Bearer "`, fed by SDS files. The spike settled both
 open points. Rotation never reaches the injector: kubelet swaps the token on the host, and gVisor
 raises no inotify for that, so the tokens outlive the run instead (R2). And the admin API is off the
@@ -268,6 +276,9 @@ Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behi
   ${oidc_issuer_url}`, `remoteJWKS`, and `claimToHeaders: sub → x-ar-agent`.
   - `public` accepts exactly `agent-router.{implementer,reviewer,tester,triager}.public`.
   - `internal` accepts the same four roles with `.internal` (4 of EG's 8-audience maximum).
+  - `sts` accepts exactly the four `octo-sts/Smana/cloud-native-ref/<role>` audiences, and an
+    `HTTPRoute` sends `/sts/exchange` on to octo-sts. EG forwards the validated token, so octo-sts
+    checks it again against the trust policy.
 - **Z.ai routes attach only to `public`.** `internal` carries Bedrock EU and self-hosted backends
   (SP4, OD-13), so an `internal` run cannot reach Z.ai whatever logical name it sends.
 - **`ClientTrafficPolicy`.** `earlyRequestHeaders.remove: [x-ar-agent, x-ar-human,
@@ -352,7 +363,7 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 
 | Object (`agent-system`) | Content |
 |---|---|
-| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080 and `internal` :8081, Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
+| `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
 | `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `platform/agents/zai`, the agents' own key (SP4 S12) |
 | `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
@@ -397,8 +408,11 @@ Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences fo
 
 **octo-sts**: `ghcr.io/octo-sts/app:0.10.0`, pinned by digest. The App key comes from the
 SecretStore through `APP_SECRET_CERTIFICATE_FILE`. No webhook component, since it needs a public
-endpoint. The CNP admits ingress from `agents` only and allows egress to `api.github.com` and the
-EKS issuer.
+endpoint. **It is reached only through the `sts` listener** (owner decision 2026-09-26): the trust
+policies match the issuer by pattern (OD-5), which alone would accept a token minted by any EKS
+cluster in the region, and the `sts` listener's `SecurityPolicy` pins this cluster's exact issuer.
+Its CNP admits ingress only from the `agent-router` data plane (Gateway name and namespace pinned)
+and allows egress to `api.github.com` and the EKS issuer.
 
 **The agents' App** (C6) belongs to the user account `Smana`. It gets metadata read, contents and
 PRs read/write, and issues, checks and actions read. It **never** gets `workflows`, `statuses`,
@@ -407,7 +421,8 @@ PRs read/write, and issues, checks and actions read. It **never** gets `workflow
 
 **Trust policies.** One per role, stored in each target repo as
 `.github/chainguard/agent-<role>.sts.yaml` (example in the research file, after pitfall 10). octo-sts reads
-them from the default branch, and they sit on a gate path.
+them from the default branch, and they sit on a gate path. Their issuer pattern is safe only behind
+the `sts` listener.
 
 | Role | contents | pull_requests | issues, checks, actions |
 |---|---|---|---|
@@ -436,7 +451,7 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T5 | Exfiltration through other allowlisted services | Profiles are opt-in per claim | Same class as T4 |
 | T6 | DNS exfiltration | The L7 DNS rule answers allowlisted names only | Lookups under allowlisted domains, which are answered by their owners' servers |
 | T7 | Resource abuse | Requests and limits, ephemeral storage, `activeDeadlineSeconds`, pool limits, R1 + `BudgetExhausted` | One `large` run for `maxMinutes` |
-| T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), not 600 s. The admin-port path is closed (Q8) |
+| T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; octo-sts only behind the `sts` listener, which pins this cluster's issuer where the trust policies match any EKS issuer in the region (OD-5); audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), not 600 s. The admin-port path is closed (Q8) |
 | T9 | Kubernetes API abuse | Four layers (§3) | none known |
 | T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in twice: trust policies + App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
