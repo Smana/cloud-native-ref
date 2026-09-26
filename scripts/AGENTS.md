@@ -11,7 +11,7 @@ then applies four gates to the result.
 |---|---|---|
 | 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog and the CNCF ecosystem catalog |
 | 2 | `polaris audit` | workload best practices — privilege escalation, capabilities, image tags |
-| 3 | `flux-schema/assert-ai-gateway.py` | cross-object AI-gateway invariants: budget rules shared, token-costed and in shadow mode; identity headers stripped on every envoy-ai-gateway Gateway; every `agent-router` route pins a `sectionName` and every SecurityPolicy on one sets `mergeType` |
+| 3 | `flux-schema/assert-ai-gateway.py` | cross-object AI-gateway invariants: budget rules shared, token-costed and in shadow mode; identity headers stripped on every envoy-ai-gateway Gateway; every `agent-router` route pins a `sectionName` and every SecurityPolicy on one sets `mergeType`; no MCPRoute hands `Authorization` to an MCP server via `forwardHeaders`, `securityPolicy.oauth.claimToHeaders` or `securityPolicy.apiKeyAuth.forwardClientIDHeader` (A6) |
 | 4 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
 
 Two properties are load-bearing:

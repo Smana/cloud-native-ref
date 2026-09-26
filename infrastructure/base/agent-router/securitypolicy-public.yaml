@@ -3,6 +3,11 @@
 # internal-class or octo-sts token is a 403 here (Envoy answers an audience
 # mismatch 403, a missing or unverifiable token 401). EKS JWKS is served at
 # <issuer>/keys; validation is offline, so a copied token lives until exp (the run's deadline, R2).
+#
+# agent-mcp's MCPRoutes carry their own `securityPolicy.oauth.{issuer,audiences}`
+# (infrastructure/base/agent-mcp/mcproutes.yaml) which REPLACES this policy on
+# `/mcp`, not merges with it (Envoy Gateway does not merge route- and
+# listener-scoped SecurityPolicies). Keep the two in sync by hand (review M7).
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:

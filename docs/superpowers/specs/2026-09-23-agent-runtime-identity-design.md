@@ -382,7 +382,10 @@ Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences fo
 
   Their backend is the room broker's MCP port, `room-broker.agent-system:8090`, so the
   `agent-router` data-plane CNP allows egress there.
-- Whether identity reaches the MCP backends is **UNVERIFIED** (C5), and SP2 carries the fallback.
+- Identity reaches the MCP backends: **confirmed from source** (C5, phase-5 review pre-flight), as
+  `x-ar-agent`, via the MCPRoute's `securityPolicy.oauth.claimToHeaders` (`sub` claim), which the
+  proxy copies to every backend independently of `forwardHeaders` (`internal/controller/gateway.go`).
+  SP2 no longer needs the fallback for this path.
 
 **Workloads SP1 adds.** All run with a restricted securityContext.
 
@@ -440,7 +443,7 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T9 | Kubernetes API abuse | Four layers (§3) | none known |
 | T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in twice: trust policies + App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
-| T12 | MCP data exposure | Read-only, no `secrets`, per-role tools | Logs and ConfigMaps may hold secrets |
+| T12 | MCP data exposure | Read-only, no `secrets`, per-role tools | Logs and ConfigMaps may hold secrets. Cluster-wide `get pods` also exposes pod specs (env `value`, args) and, under `FallbackToLogsOnError`, `status...terminated.message` (log tail) — reachable by every `internal` run, not only reviewer/tester/triager (review M3) |
 | T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | A modified script sees only a read-only `GITHUB_TOKEN` |
 | T14 | **Pre-existing:** the `openbao-platform` ClusterSecretStore has no namespace `conditions`, so any namespace can read any `platform/` path | SP1 never uses it (S9). `agents-no-secret-import` blocks ESO objects in `agents` | Any *other* namespace with ExternalSecret rights can read `platform/agents/*`. Fixing the cluster store is out of scope (O1) |
 | T15 | `internal` data reaching a SaaS model | `dataClass` is required at creation. The audience binds the class. Z.ai routes only on `public`. Cluster-read MCP tools only on `internal` | A human creating a run can misclassify internal content as `public`. Once SP3 ships it sets the class from the task source |

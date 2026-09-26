@@ -12,3 +12,4 @@ resources:
   - security-agent-secrets.yaml
   - infrastructure-agent-router.yaml
   - security-octo-sts.yaml
+  - infrastructure-agent-mcp.yaml
