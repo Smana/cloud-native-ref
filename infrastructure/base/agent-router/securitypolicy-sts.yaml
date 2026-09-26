@@ -5,6 +5,11 @@
 # octo-sts audiences, before a token reaches octo-sts. Envoy Gateway 1.9.1
 # always forwards the validated JWT (its translator sets jwt_authn
 # `forward: true`; the API has no knob), so octo-sts still gets the bearer token.
+# These four audiences ARE the per-repository opt-in: an AgentRun on any other
+# repository fails closed at its first exchange, with a 403 (Envoy answers an
+# audience mismatch 403, a missing or unverifiable token 401). Opting one in
+# means adding its four audiences here; EG caps a provider at 8 audiences and a
+# policy at 4 providers.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:

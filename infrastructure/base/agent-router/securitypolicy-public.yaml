@@ -1,6 +1,7 @@
 ---
 # The `public` listener accepts exactly the four `.public` audiences (C2): an
-# internal-class or octo-sts token is a 401 here. EKS JWKS is served at
+# internal-class or octo-sts token is a 403 here (Envoy answers an audience
+# mismatch 403, a missing or unverifiable token 401). EKS JWKS is served at
 # <issuer>/keys; validation is offline, so a copied token lives until exp (the run's deadline, R2).
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy

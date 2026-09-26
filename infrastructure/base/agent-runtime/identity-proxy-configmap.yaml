@@ -6,7 +6,7 @@
 #   127.0.0.1:4002  /v1, /anthropic, /mcp  -> agent-router `internal` :8081
 #   127.0.0.1:4001  /sts/exchange          -> agent-router `sts`      :8082 -> octo-sts
 #                   (the listener pins this cluster's issuer; octo-sts matches a pattern)
-# A run's audience names its data class, so the other class's port earns a 401,
+# A run's audience names its data class, so the other class's port earns a 403,
 # and the run's CNP does not open it anyway.
 # Admin is a unix socket (not a TCP port) and 0.0.0.0:9902 is a dedicated health
 # listener (review CC-1): the harness shares this pod's network namespace and
