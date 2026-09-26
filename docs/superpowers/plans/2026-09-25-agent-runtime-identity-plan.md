@@ -1982,7 +1982,10 @@ Expected: FAIL — `name '_render' is not defined` (there is no `main.k` yet).
   or DNS name for octo-sts itself (CC-1 `b8c68c1`); Gateway labels
   `gateway.envoyproxy.io/owning-gateway-name: agent-router` and
   `gateway.envoyproxy.io/owning-gateway-namespace: agent-system` (R5, confirmed in Task 3.8).
-- Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`; the
+- Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`, and
+  `<xr>-usage`: a `Usage` (object `xplane-run-<runId>-cnp`, `replayDeletion: true`) that holds the CNP
+  until the Sandbox is gone, rendered while the run is live, because Crossplane deletes composed
+  resources in parallel and the `preStop` revoke needs the CNP's GitHub egress (CC-1 `b8c68c1`); the
   harness env contract of design §5 (`RUN_ID ROLE REPOSITORY BASE_REF BRANCH MODEL DATA_CLASS
   CONVERSATION_ID LLM_BASE_URL MCP_URL STS_URL TASK_FILE RULES_FILE HOME`), consumed by Task 5.1.
 
@@ -3604,7 +3607,7 @@ Expected: at least one line from `xplane-run-7f3cq2xz`.
 
 ```bash
 kubectl delete agentrun -n agents xplane-run-7f3cq2xz --wait
-kubectl get sa,cm,cnp,sandbox,pod -n agents -l agents.ogenki.io/run-id=7f3cq2xz
+kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -n agents -l agents.ogenki.io/run-id=7f3cq2xz
 ```
 Expected: `No resources found`. Paste the outputs of Steps 1–5 into the PR as the SC-01–03 evidence.
 
@@ -5955,6 +5958,7 @@ Expected: `Ran 5 tests … OK`.
 Needs the openhands SDK, so it runs inside the image: docker build --target test.
 """
 import os
+import signal
 import sys
 import unittest
 
@@ -5995,6 +5999,14 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(agent_run.outcome("stuck"), 1)
         self.assertIsNone(agent_run.outcome("running"))
         self.assertIsNone(agent_run.outcome("waiting_for_confirmation"))
+
+
+class SigtermTest(unittest.TestCase):
+    def test_sigterm_unwinds_so_finally_revokes(self):
+        self.addCleanup(signal.signal, signal.SIGTERM, signal.SIG_DFL)
+        agent_run.exit_on_sigterm()
+        with self.assertRaises(SystemExit):
+            signal.raise_signal(signal.SIGTERM)
 
 
 if __name__ == "__main__":
@@ -6126,6 +6138,7 @@ section 4): every rule it passes to the agent is enforced outside the sandbox.
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -6195,6 +6208,12 @@ def outcome(status: str) -> int | None:
     return None
 
 
+def exit_on_sigterm() -> None:
+    """Pod deletion sends SIGTERM, whose default action kills the process without
+    running `finally`; exiting through SystemExit runs it, so the token is revoked."""
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+
+
 def _verified(ref: str) -> bool:
     return subprocess.run(["git", "-C", REPO_DIR, "rev-parse", "--verify", "--quiet", ref], capture_output=True).returncode == 0
 
@@ -6212,6 +6231,7 @@ def clone(env: dict) -> None:
 
 
 def main() -> int:
+    exit_on_sigterm()
     env = dict(os.environ)
     server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "0.0.0.0", "--port", "8000"])
     try:
@@ -6236,7 +6256,7 @@ if __name__ == "__main__":
 ```
 
 Run: `docker build --target test container-images/agent-harness`
-Expected: the build succeeds and the log shows `Ran 8 tests … OK` (5 helper + 3 driver). If an
+Expected: the build succeeds and the log shows `Ran 9 tests … OK` (5 helper + 4 driver). If an
 `openhands.*` import fails, the SDK moved a symbol: find it with
 `docker build --target harness -t agent-harness:dev container-images/agent-harness && docker run --rm --entrypoint /agent-server/.venv/bin/python agent-harness:dev -c "import openhands.sdk as s; print(dir(s))"`
 and fix the import, not the test.
@@ -6268,7 +6288,7 @@ The AgentRun sandbox's harness (SP1 design §5): `ghcr.io/openhands/agent-server
 
 | File | Role |
 |---|---|
-| `agent_run.py` → `agent-run` | Entrypoint: start agent-server, clone and resume `$BRANCH`, POST the conversation, wait, revoke, exit 0/1 |
+| `agent_run.py` → `agent-run` | Entrypoint: start agent-server, clone and resume `$BRANCH`, POST the conversation, wait, revoke (on SIGTERM too), exit 0/1 |
 | `git_credential_agent.py` → `git-credential-agent` | git credential helper; exchanges through identity-proxy `:4001`, caches in memory, `revoke` on exit and in `preStop` |
 | `gh` | gh with that token in `GH_TOKEN` |
 | `commit-msg` | adds `Agent-Run: $RUN_ID` |
@@ -7947,7 +7967,8 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHT
 until [ "$(kubectl exec -n agents agent-probe -c probe -- curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GWT" http://agent-router.envoy-gateway-system.svc.cluster.local:8080/v1/models)" = 401 ]; do sleep 15; done; echo "copied gateway token dead $(( $(date +%s) - ISSUED )) s after issue"
 unset GHT GWT
 ```
-Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke); copied gateway token
+Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke, which still reaches
+`api.github.com` because the run's `Usage` holds its CNP until the pod is gone); copied gateway token
 rejected ≤ 600 s after issue: a 10-minute run's tokens live 600 s, because R2 sets the TTL to the
 deadline (a default 120-minute run's copied token would verify for 7200 s).
 
@@ -7971,7 +7992,7 @@ Expected: empty `status.usage` after `-5`; `1234`; `BudgetExhausted` with the po
 ```bash
 kubectl delete agentrun -n agents $B --wait
 kubectl delete -f scripts/ops/k8s/agent-probe.yaml
-for r in $REV $B; do kubectl get sa,cm,cnp,sandbox,pod -A -l agents.ogenki.io/run-id=${r#xplane-run-}; done
+for r in $REV $B; do kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=${r#xplane-run-}; done
 ```
 Expected: `No resources found` for both.
 

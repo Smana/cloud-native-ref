@@ -61,6 +61,8 @@ These supersede the sections they name; the reasoning is in the plan's departure
 - §3, §6, T8 (owner decision): octo-sts is reached only through a third `agent-router` listener,
   `sts` (:8082), which pins this cluster's exact issuer. The trust policies' issuer pattern (OD-5)
   alone would accept a token minted by any EKS cluster in the region.
+- §2, §3: Crossplane deletes composed resources in parallel, so a `Usage` holds the run's CNP until
+  its Sandbox is gone, and `agent-run` revokes on SIGTERM as well as in `preStop` (CC-1 `b8c68c1`).
 
 ## Architecture
 
@@ -200,6 +202,7 @@ carries it. `spec.principal` becomes an annotation, because a label value cannot
 | `ConfigMap -task` (task, platform rules, run metadata) | — | exists |
 | `CiliumNetworkPolicy` | — | static |
 | `Sandbox` (Crossplane gets an aggregate ClusterRole for it; `infrastructure/AGENTS.md` trap 3) | `Revoked` or `BudgetExhausted` | `Ready` or `Finished` |
+| `Usage` (`protection.crossplane.io/v1beta1`): the Sandbox uses the CNP, `replayDeletion: true` | `Revoked` or `BudgetExhausted` | exists |
 
 **Pod.** `runtimeClassName: gvisor`; `restartPolicy: Never`, so the Sandbox reports `Finished`;
 `activeDeadlineSeconds`; `dnsConfig ndots: 1`; `do-not-disrupt`; UID 10001, restricted. The Kueue
@@ -300,9 +303,11 @@ sequenceDiagram
   participant GH as GitHub
   participant V as offline validators (agent-router, octo-sts)
   C->>X: delete AgentRun
-  X->>Pod: delete Sandbox → SIGTERM
-  Pod->>GH: preStop: DELETE /installation/token
-  X->>X: delete SA, CNP, ConfigMap
+  X->>Pod: delete Sandbox → preStop, then SIGTERM
+  X->>X: delete SA and ConfigMap at once
+  Note over X: the Usage holds the CNP, so egress to GitHub stays open
+  Pod->>GH: preStop, then agent-run on SIGTERM: DELETE /installation/token
+  X->>X: Sandbox gone → Usage released → CNP deleted
   Note over V: a copied token verifies until exp, the run deadline (R2)
 ```
 
@@ -310,7 +315,7 @@ sequenceDiagram
 |---|---|
 | Sandbox process, and tokens held in the pod | ~30 s (termination) |
 | Room connection | ≤ 6 min (SP2's figure, SC-9: SP2 owns room connections) |
-| GitHub installation token | ~30 s best effort (preStop), **1 h** worst case. Scoped to one repo and its role |
+| GitHub installation token | ~30 s best effort: `preStop`, then `agent-run`'s SIGTERM handler, while the `Usage` keeps the CNP until the pod is gone. **1 h** worst case. Scoped to one repo and its role |
 | A gateway or octo-sts token copied out | **the run's deadline** (`exp`, R2): 2 h by default, 8 h at most |
 
 ## 4. Nothing inside the sandbox is a control
@@ -523,7 +528,7 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 | SC-11 | An implementer token pushes `spec.branch`, not `main`. A reviewer token cannot push. Minting for another repo returns `PermissionDenied` | git and octo-sts output |
 | SC-12 | An implementer calling `get_kubernetes_logs` is denied, and the Flux MCP SA fails `auth can-i get secrets` | MCP error; `kubectl auth can-i` |
 | SC-13 | Setting `agents.ogenki.io/revoked=budget-run` (by the run meter, or by hand before SP3) turns the run `BudgetExhausted` with its pod gone within 60 s. A malformed `usage-tokens` or `pull-request` value is not projected | `kubectl annotate`; `kubectl get agentrun,pod` |
-| SC-14 | After deletion, nothing labelled with the run's id remains | `kubectl get sa,cm,cnp,sandbox,pod -A -l agents.ogenki.io/run-id=<id>` |
+| SC-14 | After deletion, nothing labelled with the run's id remains | `kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=<id>` |
 | SC-15 | Cloning the repo and running `task check` under gVisor takes ≤ 5× the runc time on the same instance type, with the ratio recorded (Q9) | timed runs |
 | SC-16 | `validate-manifests.sh` and upstream `task check` pass | exit codes |
 | SC-17 | An `internal` run never reaches `api.z.ai`: 0 upstream requests to it for that `x-ar-agent`, and its `public`-listener calls are 401. Its MCP tool list on `public` is documentation only | access log; Hubble on the data plane; `tools/list` |
