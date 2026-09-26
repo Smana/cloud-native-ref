@@ -344,8 +344,8 @@ prompt. SP1 relies on none of them. Each such rule has an enforcer outside the s
 `/api/*` (research: standard stack). It is upstream's PyInstaller **binary** target: its Python cannot
 import `openhands.*`, so the harness image installs the same SDK release into `/agent-server/.venv`. `container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
 trailer hook, and `git-credential-agent`, which exchanges through `:4001` and caches in memory.
-agent-server binds 127.0.0.1 unless given `--host 0.0.0.0`, and kubelet probes the pod IP, so the
-profile (upstream image) or `agent-run` (harness image) passes it. `agent-run` does five things:
+agent-server stays on 127.0.0.1 (P13): its API is unauthenticated, so the probes run inside the
+container (`exec`) and `:8000` is not in the CNP. `agent-run` does five things:
 
 1. Start agent-server.
 2. POST the conversation: `conversation_id`, LLM `openai/$MODEL` at `$LLM_BASE_URL` with a placeholder key,
@@ -410,7 +410,7 @@ Two `MCPRoute`s, one per listener, reuse that listener's issuer and audiences fo
 
 | Workload | Probes | Requests → limits |
 |---|---|---|
-| `harness` | startup + readiness `GET /ready`, liveness `GET /health`, on :8000 | the `spec.size` preset |
+| `harness` | `exec` probes against `127.0.0.1:8000`: startup + readiness `/ready`, liveness `/health` | the `spec.size` preset |
 | `identity-proxy` | readiness + liveness `GET /ready` on Envoy admin :9901 | 50m / 64Mi → 200m / 128Mi |
 | `room-bridge` | readiness + liveness `GET /healthz` on :8085 (checks the bridge and its harness socket, never the broker — SP2 §3) | 20m / 32Mi → 100m / 64Mi |
 | `flux-operator-mcp` | `tcpSocket` on `http` (chart default) | 10m / 64Mi → 500m / 256Mi |
