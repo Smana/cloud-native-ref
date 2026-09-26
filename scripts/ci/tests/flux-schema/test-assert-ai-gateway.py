@@ -2,10 +2,9 @@
 """Tests for assert-ai-gateway.py, the gate for AI-gateway invariants that span objects.
 
 Every invariant here fails silently on a cluster. An unshared budget rule is a
-valid BackendTrafficPolicy. A Gateway without the header strip still routes. A
-Z.ai route on the wrong listener still answers. So each check is pinned both
-ways: the compliant shape passes, and each way of breaking it fails with a
-message naming the object.
+valid BackendTrafficPolicy. A Gateway without the header strip still routes.
+So each check is pinned both ways: the compliant shape passes, and each way
+of breaking it fails with a message naming the object.
 
 Run: python3 scripts/ci/tests/flux-schema/test-assert-ai-gateway.py
 """
@@ -53,11 +52,11 @@ def rule(**overrides):
     return r
 
 
-def btp(rules, name="ai-gateway-token-budgets"):
+def btp(rules, name="ai-gateway-token-budgets", target=None):
     return {"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy",
             "metadata": {"name": name, "namespace": "envoy-ai-gateway-system"},
-            "spec": {"targetRefs": [{"group": "gateway.networking.k8s.io", "kind": "Gateway",
-                                     "name": "ai-gateway"}],
+            "spec": {"targetRefs": [target or {"group": "gateway.networking.k8s.io", "kind": "Gateway",
+                                                "name": "ai-gateway"}],
                      "rateLimit": {"global": {"rules": rules}}}}
 
 
@@ -84,34 +83,63 @@ def quiet(fn, *args):
 
 
 print("A1/A2 — budget rules")
-check("compliant rule passes", gate.check_rate_limit_rules([btp([rule()])]) == [])
-errs = gate.check_rate_limit_rules([btp([rule(shared=False)])])
+check("compliant rule passes", gate.check_rate_limit_rules([gateway(), btp([rule()])]) == [])
+errs = gate.check_rate_limit_rules([gateway(), btp([rule(shared=False)])])
 check("shared: false fails, naming the policy",
       len(errs) == 1 and "shared" in errs[0] and "ai-gateway-token-budgets" in errs[0], str(errs))
 no_shared = rule()
 del no_shared["shared"]
 check("absent shared fails (Envoy Gateway defaults it to false)",
-      len(gate.check_rate_limit_rules([btp([no_shared])])) == 1)
-errs = gate.check_rate_limit_rules([btp([rule(cost={"request": {"from": "Number", "number": 1},
+      len(gate.check_rate_limit_rules([gateway(), btp([no_shared])])) == 1)
+errs = gate.check_rate_limit_rules([gateway(), btp([rule(cost={"request": {"from": "Number", "number": 1},
                                                      "response": rule()["cost"]["response"]})])])
 check("request cost 1 fails", len(errs) == 1 and "request cost" in errs[0], str(errs))
 wrong_key = rule()
 wrong_key["cost"]["response"]["metadata"]["key"] = "llm_input_token"
-errs = gate.check_rate_limit_rules([btp([wrong_key])])
+errs = gate.check_rate_limit_rules([gateway(), btp([wrong_key])])
 check("response cost from another key fails", len(errs) == 1 and "response cost" in errs[0], str(errs))
 no_cost = rule()
 del no_cost["cost"]
 check("a rule with no cost fails (it would count calls, not tokens)",
-      len(gate.check_rate_limit_rules([btp([no_cost])])) == 2)
-errs = gate.check_rate_limit_rules([btp([rule(shadowMode=False)])])
+      len(gate.check_rate_limit_rules([gateway(), btp([no_cost])])) == 2)
+errs = gate.check_rate_limit_rules([gateway(), btp([rule(shadowMode=False)])])
 check("shadowMode: false fails", len(errs) == 1 and "shadowMode" in errs[0], str(errs))
 no_shadow = rule()
 del no_shadow["shadowMode"]
 check("absent shadowMode fails (OD-10 requires one week in shadow)",
-      len(gate.check_rate_limit_rules([btp([no_shadow])])) == 1)
+      len(gate.check_rate_limit_rules([gateway(), btp([no_shadow])])) == 1)
 local_only = btp([])
 local_only["spec"]["rateLimit"] = {"local": {"rules": [{"limit": {"requests": 5, "unit": "Second"}}]}}
-check("a local-only rate limit is out of scope", gate.check_rate_limit_rules([local_only]) == [])
+check("a local-only rate limit is out of scope",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), local_only]) == [])
+
+print("A1/A2 scope — only BackendTrafficPolicies targeting an envoy-ai-gateway Gateway count")
+check("zero BackendTrafficPolicy targeting the Gateway fails, not passes vacuously",
+      len(gate.check_rate_limit_rules([gateway()])) == 1)
+errs = gate.check_rate_limit_rules([gateway(cls="cilium"), btp([rule(shared=False)])])
+check("a rate limit on a non-ai-gateway Gateway is out of scope, and does not satisfy the guard either",
+      len(errs) == 1 and "shared" not in errs[0], str(errs))
+other_gw = gateway(name="other-gw", cls="cilium")
+other_btp = btp([rule(shared=False)], name="other-gw-policy",
+                 target={"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "other-gw"})
+check("that out-of-scope policy stays out of scope alongside a compliant ai-gateway one",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), other_gw, other_btp]) == [])
+
+print("A4 — a route-level BackendTrafficPolicy must declare mergeType")
+route_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "llm-gateway"}
+no_merge = btp([], name="route-btp", target=route_target)
+errs = gate.check_rate_limit_rules([gateway(), btp([rule()]), no_merge])
+check("an HTTPRoute-targeting policy without mergeType fails",
+      len(errs) == 1 and "mergeType" in errs[0], str(errs))
+with_merge = dict(no_merge)
+with_merge["spec"] = dict(no_merge["spec"])
+with_merge["spec"]["mergeType"] = "Merge"
+check("the same policy with mergeType set passes",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), with_merge]) == [])
+aigw_route_target = {"group": "aigateway.envoyproxy.io", "kind": "AIGatewayRoute", "name": "llm-gateway"}
+no_merge_aigw = btp([], name="aigw-route-btp", target=aigw_route_target)
+check("an AIGatewayRoute-targeting policy without mergeType fails too",
+      len(gate.check_rate_limit_rules([gateway(), btp([rule()]), no_merge_aigw])) == 1)
 
 print("A3 — identity headers stripped before authentication")
 check("full strip passes", gate.check_identity_strips([gateway(), ctp(STRIPS)]) == [])
@@ -120,8 +148,11 @@ check("one header missing fails, naming it", len(errs) == 1 and "agent-session-i
 check("no ClientTrafficPolicy fails", len(gate.check_identity_strips([gateway()])) == 1)
 check("a policy in another namespace does not count",
       len(gate.check_identity_strips([gateway(), ctp(STRIPS, ns="other")])) == 1)
-check("a listener-scoped policy does not cover the whole Gateway",
-      len(gate.check_identity_strips([gateway(), ctp(STRIPS, section="http")])) == 1)
+check("a listener-scoped policy that itself fully strips satisfies the Gateway",
+      gate.check_identity_strips([gateway(), ctp(STRIPS, section="http")]) == [])
+errs = gate.check_identity_strips([gateway(), ctp(STRIPS), ctp(None, section="http")])
+check("a listener-scoped override with no header strip fails even though the Gateway baseline is compliant",
+      len(errs) == 1, str(errs))
 check("header names are case-insensitive",
       gate.check_identity_strips([gateway(), ctp([h.upper() for h in STRIPS])]) == [])
 check("other GatewayClasses are out of scope, alongside a compliant envoy-ai-gateway one",
