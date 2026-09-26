@@ -73,3 +73,10 @@ spec:
           drop: ["ALL"]
         seccompProfile:
           type: RuntimeDefault
+  # Fixes phase-5 review I1: without this, the chart falls back to the
+  # published "default-insecure-seed" for every MCP session ID.
+  valuesFrom:
+    - kind: Secret
+      name: ai-gateway-mcp-session-seed
+      valuesKey: seed
+      targetPath: controller.mcp.sessionEncryption.seed
