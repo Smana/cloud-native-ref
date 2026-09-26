@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: octo-sts
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: octo-sts
+    spec:
+      serviceAccountName: octo-sts
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # The key file is group-readable by this group (defaultMode 0440 below).
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: octo-sts
+          image: ghcr.io/octo-sts/app:0.10.0@sha256:921cd6711ac2ed99f9b12efb2c55372baa0ec4c4facead1eac55dd871e50ffa6
+          env:
+            - name: PORT
+              value: "8080"
+            # The default audience. Every agent trust policy names its own exact
+            # audience instead (octo-sts/<owner>/<repo>/<role>).
+            - name: STS_DOMAIN
+              value: octo-sts.agent-system.svc.cluster.local
+            - name: GITHUB_APP_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: octo-sts-github-app
+                  key: app_id
+            - name: APP_SECRET_CERTIFICATE_FILE
+              value: /var/run/secrets/octo-sts/private-key.pem
+            - name: METRICS
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # 0.10.0 serves only a static stub on GET / and its health service is
+          # gRPC, so an HTTP probe would prove no more than TCP (design §6).
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: app-key
+              mountPath: /var/run/secrets/octo-sts
+              readOnly: true
+      volumes:
+        - name: app-key
+          secret:
+            secretName: octo-sts-github-app  # pragma: allowlist secret
+            defaultMode: 0440
+            items:
+              - key: private_key
+                path: private-key.pem

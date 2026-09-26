@@ -1,0 +1,13 @@
+# Budget counters. Standalone and ephemeral: a restart resets the day's
+# buckets, which costs nothing in shadow mode, and one window of headroom
+# once enforced (PR 7 revisits persistence).
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: KVStore
+metadata:
+  name: xplane-ai-gateway-ratelimit
+  namespace: envoy-gateway-system
+spec:
+  size: nano
+  auth:
+    existingSecret: ai-gateway-ratelimit-valkey # pragma: allowlist secret — checkov:skip=CKV_SECRET_6 secret name, not a value
+    passwordKey: REDIS_PASSWORD # pragma: allowlist secret

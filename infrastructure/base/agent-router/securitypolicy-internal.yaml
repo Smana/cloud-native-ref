@@ -1,0 +1,28 @@
+---
+# The `internal` listener: the same four roles, class `.internal` (4 of EG's
+# 8-audience maximum). Its routes (Bedrock EU, self-hosted) are SP4's.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-internal
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: internal
+  jwt:
+    providers:
+      - name: eks-agents-internal
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - agent-router.implementer.internal
+          - agent-router.reviewer.internal
+          - agent-router.tester.internal
+          - agent-router.triager.internal
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent

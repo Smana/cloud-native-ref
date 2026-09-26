@@ -59,6 +59,12 @@ locals {
       namespace       = "security"
       policies        = ["snapshot"]
     }
+    agents-secrets = {
+      service_account = "agents-secrets"
+      namespace       = "agent-system"
+      # SP1 S9: the agent-system SecretStore, platform/agents/* and nothing else.
+      policies = ["default", "agents-secrets"]
+    }
   }
 }
 
