@@ -91,7 +91,8 @@ list input price.
 ### Positive
 
 - Separate keys per Gateway (the platform key under `platform/llm/zai`, the agents' key under
-  `platform/agents/zai`) split both spend and blast radius.
+  `platform/agents/zai`) split both spend and blast radius. Until PR 6, the platform key is read
+  from `platform/runlore/credentials`, where it already lives, so no bootstrap has to copy it.
 - Bedrock credentials rotate themselves and cannot be exfiltrated as a string.
 
 ### Negative

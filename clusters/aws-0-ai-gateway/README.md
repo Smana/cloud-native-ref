@@ -9,8 +9,8 @@ Resume it before `llm-platform` or `agent-platform`, which both depend on it:
 flux resume kustomization ai-gateway -n flux-system
 ```
 
-Seed the OpenBao secrets below **first**. Otherwise `llm-gateway` stays NotReady and the Gateway serves
-errors.
+Nothing to seed first. The Z.ai key comes from `platform/runlore/credentials`, which OpenBao restores
+from its snapshot lineage on every rebuild, and the rate-limit password is generated in-cluster.
 
 | Child Kustomization | Path | Holds |
 |---|---|---|
@@ -27,14 +27,14 @@ needs it fails:
 | Secret | Store | Read by | Without it |
 |---|---|---|---|
 | `platform-llm-api-keys` | AWS Secrets Manager, outside OpenTofu | `envoy-ai-gateway-system/ai-gateway-api-keys` ExternalSecret, consumed by the `apiKeyAuth` SecurityPolicy | The Gateway serves errors — no request authenticates |
-| `platform/llm/zai`, property `api_key` | OpenBao `platform/` kv-v2 mount | `llm-gateway/zai-api-key` ExternalSecret | `tier-frontier` requests to Z.ai fail |
-| `platform/ai-gateway/ratelimit-valkey`, property `REDIS_PASSWORD` | OpenBao `platform/` kv-v2 mount | `envoy-gateway-system/ai-gateway-ratelimit-valkey` ExternalSecret | The rate-limit pod stays `CreateContainerConfigError`; Valkey never starts |
+| `platform/runlore/credentials`, property `GLM_API_KEY` | OpenBao `platform/` kv-v2 mount, restored on every rebuild | `llm-gateway/zai-api-key` ExternalSecret | `tier-frontier` requests to Z.ai fail. SP4 PR 6 moves the key to `platform/llm/zai` when RunLore goes behind this gateway |
+| `ai-gateway-ratelimit-valkey`, key `REDIS_PASSWORD` | Generated in-cluster by an ESO `Password` generator (`CreatedOnce`) | The KVStore and the rate-limit Deployment's `REDIS_AUTH` | Nothing to provide: it exists as soon as ESO reconciles |
 
 Check what's missing:
 
 ```bash
 ./scripts/provision/secret-store.sh check --cloud aws                    # platform-llm-api-keys (AWS SM)
-./scripts/provision/secret-store.sh check --cloud aws --store openbao    # the two OpenBao-backed secrets
+./scripts/provision/secret-store.sh check --cloud aws --store openbao    # includes runlore/credentials, the Z.ai key's source
 ```
 
 ### One-time AWS Secrets Manager bootstrap
