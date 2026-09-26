@@ -16,6 +16,6 @@ kind: Provider
 metadata:
   name: provider-gcp-cloudplatform
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-cloudplatform:v2.6.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-cloudplatform:v3.0.0
   runtimeConfigRef:
     name: gcp-config
