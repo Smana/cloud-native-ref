@@ -375,6 +375,9 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 | `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new policy in `opentofu/aws/openbao/management` grants read on `platform/data/agents/*` only; its JWT role sits with the per-cluster mount in `opentofu/aws/eks/configure/openbao.tf`. A namespaced store reads its CA from its own namespace, so the public OpenBao chain (certificates only) is copied into `agent-system` from the cloud store |
 
 **MCP servers.** All three are read-only and reachable only from the `agent-router` data plane.
+None receives the run's token, which EG 1.9.1 always forwards upstream: an `MCPRoute` sends each
+backend only the headers its `forwardHeaders` names, never `Authorization`, and a plain `HTTPRoute`
+to an MCP server removes it with a `RequestHeaderModifier`.
 
 | Server | Access |
 |---|---|

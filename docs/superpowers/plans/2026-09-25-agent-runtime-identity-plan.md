@@ -6818,6 +6818,13 @@ backend. These two routes were validated against the pinned `ai-gateway-crds-hel
 # listener's issuer and audiences for `oauth`, deny by default, and allow each
 # role its tools on `aud`. toolSelector hides every other tool, including all
 # mutating ones. SP2 adds the room-broker backend (:8090) and its room_* rules.
+#
+# Envoy Gateway forwards the run's validated token upstream (1.9.1 always does),
+# and no MCP server may receive it. Agent Router 1.1.0 has no header-removal
+# field on an MCPRoute: its MCP proxy calls each backend with a fresh request
+# carrying only the headers `forwardHeaders` names. So no backendRef here ever
+# lists Authorization in `forwardHeaders`, and any plain HTTPRoute to an MCP
+# server removes it with a RequestHeaderModifier.
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
@@ -7264,6 +7271,9 @@ resources:
   - mcp-victorialogs.yaml
   - mcproutes.yaml
 ```
+
+Run: `kustomize build infrastructure/base/agent-mcp | grep -c forwardHeaders`
+Expected: `0`. No route here forwards a client header, so the run's token never reaches an MCP server.
 
 `clusters/aws-0-agent-platform/infrastructure-agent-mcp.yaml`:
 
