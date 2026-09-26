@@ -10,7 +10,8 @@
 # gated by $TM_LLM_PLATFORM_ENABLED). Together they form the complete
 # opt-in surface for the self-hosted LLM platform.
 #
-# Enable on this cluster:
+# Enable on this cluster, after the ai-gateway umbrella it depends on:
+#   flux resume kustomization ai-gateway -n flux-system
 #   flux resume kustomization llm-platform -n flux-system
 #
 # Disable again (children stay until you also remove them — `prune: true`

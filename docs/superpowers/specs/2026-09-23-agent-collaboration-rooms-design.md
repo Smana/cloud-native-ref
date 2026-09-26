@@ -12,7 +12,8 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 - **What we own:** the log and the authorization. We **mirror AHP's semantics** (sequenced log, replay, queued vs
   steering, first decision wins) without speaking AHP on the wire.
 - **The broker** (stateless, `agent-system`) serves humans through the Tailscale Gateway behind oauth2-proxy, takes
-  events **pushed** by each sandbox's room bridge (TokenReview), and stores the log in CNPG with Valkey fan-out.
+  events **pushed** by each sandbox's room bridge (offline JWT check, then a live `AgentRun` watch), and stores the
+  log in CNPG with Valkey fan-out.
 - **Agents** collaborate **as sequential runs in one room**. A run records its handoff or verdict with room tools
   behind the `agent-router` Gateway. The next run is requested from SP3's factory, the only creator of runs (C3). In
   factory rooms the factory decides; in human rooms the driver does.
@@ -24,10 +25,10 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 
 | # | Question | Decision | Rejected | Why |
 |---|---|---|---|---|
-| S1 | Session protocol | An AHP-shaped log **we own**; JSON over WebSocket; every durable frame is a C4 envelope | AHP v0.9 on the wire; OpenHands conversations as the room API; ACP; A2A | AHP leaves auth and agent-to-agent out of scope and is pre-1.0. OpenHands has no identity. ACP is 1:1. A2A has no humans ([comparison](2026-09-23-agent-collaboration-rooms-research.md#protocol-and-client-options-compared)) |
+| S1 | Session protocol | An AHP-shaped log **we own**; JSON over WebSocket for browser clients, plain HTTPS for room bridges (batched `POST` up, SSE down, C4 r5); every durable frame is a C4 envelope | AHP v0.9 on the wire; OpenHands conversations as the room API; ACP; A2A | AHP leaves auth and agent-to-agent out of scope and is pre-1.0. OpenHands has no identity. ACP is 1:1. A2A has no humans ([comparison](2026-09-23-agent-collaboration-rooms-research.md#protocol-and-client-options-compared)) |
 | S2 | Room object | Namespaced CRD `Room` (`agents.ogenki.io/v1alpha1`) in `agent-system` (C1), reconciled by the broker | Rows only in the database; a Crossplane XR | `spec.roomRef` names it; SP3 creates rooms as it creates runs; `kubectl`/Headlamp visibility. Nothing is composed per room |
 | S3 | How events reach the broker | **Push** from the room bridge (C3, C4) | Broker dials each sandbox | Keeps `agents` ingress-free and the harness key inside the pod |
-| S4 | Agent authentication | Bridge token (audience fixed by SP1, C2), checked by **TokenReview** at connect and every 5 min | Offline JWKS | Only the API server knows the `AgentRun` is gone. Stricter than C3's offline 600 s window |
+| S4 | Agent authentication | Bridge token (audience fixed by SP1, C2), verified **offline** against an allowlisted issuer's JWKS. The run's `AgentRun` is then **watched**: the broker drops the connection once it is terminal, `revoked` or gone *(r5)* | TokenReview at connect and every 5 min *(the r4 decision)* | Issuer-agnostic (C2 r5): a runtime whose identities are not ServiceAccounts needs an allowlist entry, not a new auth path. A finished run is cut on the watch event rather than at the next 5-min check. One property is lost: a token from a replaced pod of a still-live run stays valid until expiry (≤ 600 s), the same window the gateway and octo-sts already accept (C3) |
 | S5 | Human authentication | oauth2-proxy in front; the broker re-validates the forwarded ZITADEL ID token | SPA with a PKCE public client | An HttpOnly cookie keeps tokens away from a page that renders LLM output. It reuses a repo pattern |
 | S6 | Agent↔agent | **Sequential runs in one room.** A run calls `room_handoff` / `room_verdict`; the orchestrator starts the next run with `spec.baseRef` and a brief built from the log | Live delivery between concurrent runs; free agent chatter; A2A between sandboxes | Matches SP3 (one task, one room, sequential roles) and SP1 (a run is a bounded unit). No second orchestrator, and no agent prompts another |
 | S7 | agentgateway (D11) | **Not needed** | agentgateway as an A2A/agent proxy | Nothing speaks A2A. Revisit only if an agent outside the cluster must join a room |
@@ -35,7 +36,7 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 | S9 | Approvals vs security | Approvals are **oversight UX**. A run's profile is immutable; widening means forking | Approvals that widen a live run | A harness confirmation is "advice to the model, not a boundary" (SP1). Boundaries are octo-sts, the ruleset, the `agent-router` Gateway and CNP |
 | S10 | Who approves | Humans with the approver flag; `system:policy` for deterministic rules. **Never an agent** | A reviewer agent approving an implementer's action | One injected transcript would otherwise approve another |
 | S11 | Deployment | `App` claim for the broker, with its own route off; HTTPRoute and oauth2-proxy beside it | Raw manifests | Dogfoods the golden path. The App XRD takes custom CNP rules and extra ports |
-| S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for TokenReview and watches |
+| S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for the `AgentRun` and `Room` watches |
 
 ## Target architecture
 
@@ -47,7 +48,7 @@ flowchart LR
     OP[oauth2-proxy]
     subgraph BR["room-broker · App claim · 2 replicas"]
       HL[human :8080]
-      BL[bridge + system API :8443<br/>TokenReview]
+      BL[bridge + system API :8443<br/>JWT + AgentRun watch]
       ML[room MCP :8090]
     end
     PG[(CNPG xplane-rooms<br/>log of record)]
@@ -63,7 +64,7 @@ flowchart LR
   end
   AGR[agent-router Gateway · C5]
   HUM --> GW --> OP --> HL
-  B -->|wss, run token| BL
+  B -->|HTTPS POST + SSE, run token| BL
   H -->|MCP room_*| AGR --> ML
   FAC -->|create Room| ROOM
   FAC -->|create AgentRun: sole creator| AR
@@ -130,10 +131,10 @@ Anyone else is rejected at oauth2-proxy.
 | Rooms, runs and SP3 | Rule |
 |---|---|
 | Join | An `AgentRun` with `spec.roomRef` joins with its `spec.role` (`participant`, `state_changed{run_phase}`) |
-| Admission | A bridge joins only its own run's `roomRef`: TokenReview → `xplane-run-<runId>` → `AgentRun` |
+| Admission | A bridge joins only its own run's `roomRef`: JWT from an allowlisted issuer → `sub` → `xplane-run-<runId>` → `AgentRun`, which must not be terminal or `revoked` |
 | Next run | **Only the factory creates `AgentRun`s** (C3). The factory starts the next run itself in factory rooms. In human rooms, on the driver's "hand to role" or "add agent", the broker calls SP3's `POST /v1/runs` `{role, repository, baseRef, task, dataClass, roomRef}` and forwards that human's **access token** (from oauth2-proxy, never an asserted `sub`), so `principal` is the human and their daily budget applies. `baseRef` is the last recorded commit; `task` is a brief; the room's runs share one `spec.branch` (C3): SP3 sets `agent/<taskId>`, human rooms use `agent/<roomId>`. Before SP3 ships, the owner creates runs directly |
 | The brief | The previous `handoff` summary and `review_verdict`, plus the queued messages, fenced as untrusted data |
-| SP3 API (C4) | Create a room = create a `Room` CR. On :8443, `system:*` principals only (TokenReview): `GET /v1/rooms/{id}/events?afterSeq=&limit=` reads; `POST /v1/rooms/{id}/messages` appends a reserved kind (`task_state`) |
+| SP3 API (C4) | Create a room = create a `Room` CR. On :8443, `system:*` principals only (JWT, allowlisted `sub`): `GET /v1/rooms/{id}/events?afterSeq=&limit=` reads; `POST /v1/rooms/{id}/messages` appends a reserved kind (`task_state`) |
 | Factory rooms | `system:factory` holds the driver token; the factory never advances a room while a human holds it (C4). SP3 decides verdict precedence |
 
 ## 2. Protocol and semantics
@@ -142,7 +143,7 @@ Anyone else is rejected at oauth2-proxy.
 |---|---|---|---|
 | Harness | OpenHands agent-server API at SP1's pinned version | — | A four-operation adapter (§3), so another harness can be added |
 | Log | — | `serverSeq` → `seq`, snapshot plus `fromSeq`, notifications never replayed | C4; gapless `seq` per room; actor stamping; redaction |
-| Client wire | One JSON message per WebSocket text frame | Queued/steering, one active turn, first confirmation wins, cancel → interrupt | Driver token with fencing epoch; role-gated approvals; four-eyes |
+| Client wire | Browsers: one JSON message per WebSocket text frame. Bridges: one JSON message per `POST` array element up, per SSE `data:` event down | Queued/steering, one active turn, first confirmation wins, cancel → interrupt | Driver token with fencing epoch; role-gated approvals; four-eyes |
 | Agent↔agent | — | `MessageChatAttachment`: the brief carries a bounded, frozen log excerpt | `room_*` tools; sequential hand-off |
 
 An **AHP facade** can be added at AHP 1.0 without touching the log. Wire frames: [Appendix B](#b-wire-frames).
@@ -206,7 +207,7 @@ sequenceDiagram
 | Listener | Admitted from (CNP) | Authentication |
 |---|---|---|
 | human :8080 | oauth2-proxy pods | Re-validates the ID token (`Authorization`: `iss = ${identity_provider_url}`, `aud`, `exp`, `groups`) and the access token (`X-Forwarded-Access-Token`, same `sub`); `Origin` check against cross-site WebSocket hijacking |
-| bridge + system API :8443 | `agents` sandbox pods; the factory | TokenReview → `xplane-run-<runId>` or `system:factory` |
+| bridge + system API :8443 | `agents` sandbox pods; the factory | Offline JWT (allowlisted issuer, audience `room-broker`) → `xplane-run-<runId>` with its live `AgentRun`, or `system:factory` |
 | room MCP :8090 | `agent-router` Gateway proxies | Injected credential plus `x-ar-agent` |
 
 **Human path:** `platform-tailscale-general` → HTTPRoute `rooms.${private_domain_name}` → oauth2-proxy → :8080.
@@ -249,8 +250,8 @@ sequenceDiagram
   BR->>PG: driver{system:factory → human:alice, epoch 8}
   A->>BR: message{steering, driverEpoch 8}
   BR->>PG: message seq 1846 (actor human:alice, origin client)
-  BR->>B: deliver{ref 1846, steering}
-  B-->>BR: ack (consumed at next step)
+  BR->>B: deliver{ref 1846, steering} on the bridge's SSE stream
+  B-->>BR: ack POST (consumed at next step)
   A->>BR: driver_give{system:factory}
   BR->>PG: driver{epoch 9}, the factory may start the next run
 ```
@@ -362,7 +363,7 @@ sequenceDiagram
 | T1 | Injection by a human participant | Only members prompt; attribution is immutable; runs cannot exceed their profile (S9, D3); side-effect classes need an approver | Wasted budget, bad code. Bounded by C5 and the merge gate |
 | T2 | Injection agent → agent (brief, verdict, branch code) | No direct agent→agent path; peer text fenced as data; reviewers have read-only forge scope (C3); a verdict has no power beyond SP3's gate | An injected reviewer can approve bad code *inside the room*; CI and the merge gate remain |
 | T3 | Injection into humans | Approval cards render the raw action, not the agent's prose, plus the `causedBy` author | Social engineering of an approver |
-| T4 | Impersonation | The broker stamps `actor` (C4); TokenReview for runs and the factory; re-validated ID tokens; a run joins only its `roomRef` | — |
+| T4 | Impersonation | The broker stamps `actor` (C4); offline JWT checks for runs and the factory, plus a live `AgentRun` watch for runs; re-validated ID tokens; a run joins only its `roomRef` | A token from a replaced pod of a still-live run is accepted until expiry (≤ 600 s, S4) |
 | T5 | Replay, duplicates | Unique idempotency keys; single-use `approvalId`; `driverEpoch` fencing; short-lived tokens | — |
 | T6 | Self-confirmation at the harness | Approvals are oversight by design; consequential actions are enforced outside the sandbox; agent events are untrusted claims (C4) | A self-confirmed in-profile action is logged as reported. Gateway and forge logs are ground truth |
 | T7 | Authorization bypass at the broker | One enforcement point; every action re-checked against database state; `not_permitted` counted and alerted | Broker bugs; tests of the §1 matrix |
@@ -437,7 +438,7 @@ local agent acting in a room for them.
 | Item | Mitigation |
 |---|---|
 | Agent Router projecting identity to MCP backends (C5, unverified) | The bridge-relay fallback (§3) |
-| Envoy timeouts on idle WebSockets through Cilium + Tailscale | `timeouts.request: 0s` plus a 30 s ping; phase 2 holds a socket idle for 30 min |
+| Envoy timeouts on idle long-lived streams (browser WebSockets through Cilium + Tailscale, bridge SSE through the in-cluster route) | `timeouts.request: 0s` plus a 30 s ping (a WebSocket ping, an SSE comment line); phase 2 holds each kind idle for 30 min |
 | OpenHands confirming several pending actions at once (unverified) | One `human` action holds its siblings. Acceptable; check in phase 4 |
 | OpenHands API churn; bridge crash re-delivery; one CNPG instance; no WireGuard on gcp-0 | Pinned harness plus contract test; duplicates visible in the log; rooms stall but lose nothing; TLS on :8443 before gcp-0 |
 

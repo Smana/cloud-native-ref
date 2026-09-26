@@ -47,7 +47,7 @@ Every domain Kustomization then points `sourceRef` at its own slice —
 Three kinds of Kustomization are the exception, necessarily: `flux-artifact-generators`
 (which applies the `ArtifactGenerator` above, so it has to read the
 `GitRepository` directly — the `ExternalArtifact`s don't exist until it
-runs) and the always-on `ai-gateway` umbrella and the opt-in
+runs) and the opt-in `ai-gateway` and
 `llm-platform` umbrellas, whose paths (`clusters/aws-0-ai-gateway/`,
 `clusters/aws-0-llm-platform/`, `clusters/gcp-0-llm-platform/`) fall outside
 every `copy.from` glob above.

@@ -289,7 +289,9 @@ Each listener has its own `SecurityPolicy` via `sectionName`. Claude Code users 
 
 **RunLore.** It moves behind `ai-gateway`: `base_url` becomes the `http` listener, and it holds a
 gateway API key (`system:runlore`) instead of the Z.ai key. Per OD-13 it requests
-`claude-sonnet-5` once Bedrock lands, and `tier-frontier` until then. This depends on OD-3.
+`claude-sonnet-5` once Bedrock lands, and `tier-frontier` until then. This depends on OD-3. Since
+OD-3's 2026-09-26 amendment suspends `ai-gateway` by default, RunLore keeps its own Z.ai key
+wherever the umbrella is not resumed. PR 6 must switch on whether the gateway is present.
 
 **Data egress.**
 
@@ -495,6 +497,6 @@ The umbrella and Gateway splits are layout and the SR bump is a version change, 
 ## Owner decisions
 
 SP4 raises no decision of its own beyond the programme's consolidated table:
-[OD-3](2026-09-23-agent-factory-design.md#owner-decisions-consolidated) (`ai-gateway` always on),
+[OD-3](2026-09-23-agent-factory-design.md#owner-decisions-consolidated) (`ai-gateway` umbrella, suspended by default since 2026-09-26),
 OD-10 (budget defaults: B1–B5 above), OD-11 (Jev shadow only), OD-12 (Bedrock), OD-13 (data per
 provider), and OD-14 (10% control group).
