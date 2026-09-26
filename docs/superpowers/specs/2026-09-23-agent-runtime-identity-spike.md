@@ -104,5 +104,5 @@ once a release honours `errnoRet`.
 | The composition's status item became a composed, nested `AgentRun` (function-kcl `target: Resources`), so a run never got `phase`, `runId` or `branch` and never turned Ready; the goldens had recorded it | `target: Default`, and `render_check.py` now rejects a nested object of the claim's kind (CC-1 `93aafb1`). Live: Ready in 13 s with `phase: Running` |
 
 Noise, not a defect: the proxy's `LOGICAL_DNS` cluster re-resolves octo-sts every 5 s, and with no
-octo-sts deployed in the spike each search-path variant shows as a DNS drop. It stops once phase 4
-deploys octo-sts.
+octo-sts deployed in the spike each search-path variant shows as a DNS drop. It stops once Task 3.4
+points `:4001` at `agent-router`'s `sts` listener, a name the run's DNS rule allows.

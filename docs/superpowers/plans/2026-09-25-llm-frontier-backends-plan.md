@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the gateway controllers into a CPU-only, always-on `ai-gateway` umbrella and put
-frontier models (Z.ai GLM, Anthropic on Bedrock EU) behind both gateways, with per-identity token
-budgets counting in shadow mode.
+**Goal:** Move the gateway controllers into a CPU-only `ai-gateway` umbrella (suspended by default,
+OD-3) and put frontier models (Z.ai GLM, Anthropic on Bedrock EU) behind both gateways, with
+per-identity token budgets counting in shadow mode.
 
 **Architecture:**
 - **PR 1** creates the Flux umbrella `ai-gateway` and moves `envoy-gateway`, `envoy-ai-gateway` and
@@ -39,10 +39,12 @@ plan covers the spec's implementation-outline **PRs 1 and 2 only**.
 - **Umbrella.** Flux `Kustomization` `ai-gateway` in `flux-system`, file `clusters/aws-0/ai-gateway.yaml`,
   `path: ./clusters/aws-0-ai-gateway`, **`suspend: true` by default** (OD-3, amended 2026-09-26; it
   was "never suspended"). Every live step resumes it first:
-  `flux resume kustomization ai-gateway -n flux-system`. Code and text below that still say
-  "always-on" or "never suspended" predate the amendment. The files on the branch are authoritative.
+  `flux resume kustomization ai-gateway -n flux-system`.
   - The moved children keep their names: `envoy-gateway`, `envoy-ai-gateway`, `vllm-semantic-router`.
   - New children: `llm-gateway` (PR 1) and `ai-gateway-security-epi` (PR 2).
+- **The 2026-09-26 amendments win over the code below.** Code and text that still say "always-on"
+  or "never suspended" (OD-3), read the platform Z.ai key from `llm/zai` (O1), or read the Valkey
+  password from OpenBao (O2) predate them. The files on the branch are authoritative.
 - **The Gateway keeps its identity.** GatewayClass `envoy-ai-gateway`, and the human/system Gateway
   `ai-gateway` in `envoy-ai-gateway-system`, both stay: the InferenceService composition's `parentRef`
   names them. Its frontier routes and backends live in the new namespace `llm-gateway`.
@@ -2036,7 +2038,7 @@ are counted in **shadow mode**: nothing is rejected yet
   - the Task 0 precondition result;
   - Steps 6–12's outputs;
   - the rollback below;
-  - the note that O1 **copies** the key: `runlore/credentials` keeps it until PR 6 (SC-10).
+  - the note that `runlore/credentials` keeps the Z.ai key until PR 6 (SC-10).
 
   The PR waits for owner review, because it holds docs.
 
@@ -2071,7 +2073,7 @@ SP1's merged code before Task 9.
 | I2 | `EnvoyProxy` `agent-router-proxy` in `agent-system`, file `infrastructure/base/agent-router/envoyproxy.yaml`. SP1 does **not** set `envoyServiceAccount` | 12 |
 | I3 | `AIGatewayRoute` `agent-models` in `agent-system`, file `infrastructure/base/agent-router/aigatewayroute-agent-models.yaml`, `parentRefs` `{name: agent-router, sectionName: public}`. SP4 owns its content from this PR | 12 |
 | I4 | The agents' Z.ai `AIServiceBackend` `zai` in `agent-system` (file `backend-zai.yaml`). Its `BackendSecurityPolicy` is `zai-api-key`, fed by Secret `agents-zai-api-key` from SecretStore `agents-secrets` (`agents/zai`). SP4 references only the `AIServiceBackend`. SP4's own `zai-api-key` Secret lives in `llm-gateway` and is a different object | 12 |
-| I5 | Listeners `public` :8080 and `internal` :8081. Data-plane Service `agent-router` in `envoy-gateway-system`. Proxy pods labelled `gateway.envoyproxy.io/owning-gateway-name: agent-router` | 12, 15 |
+| I5 | Listeners `public` :8080 and `internal` :8081, plus SP1's `sts` :8082, which fronts octo-sts and carries no model route. Data-plane Service `agent-router` in `envoy-gateway-system`. Proxy pods labelled `gateway.envoyproxy.io/owning-gateway-name: agent-router` and `gateway.envoyproxy.io/owning-gateway-namespace: agent-system` | 12, 15 |
 | I6 | SP1's whole-Gateway `ClientTrafficPolicy` on `agent-router` removes all four identity headers. Gate A3 fails SP1's own CI otherwise | 9 |
 | I7 | SP4 owns the **only** Gateway-level `BackendTrafficPolicy` on `agent-router` (`agent-router-token-budgets`). SP1 adds none, route-level included: a route-level policy would replace it for that route | 13 |
 | I8 | SP1's probe sandbox `agent-probe` in `agents` (`scripts/ops/k8s/agent-probe.yaml`), ServiceAccount `agent-probe`, with tokens at `/var/run/secrets/probe/{public,internal}/token` | 15 |
@@ -3123,9 +3125,11 @@ spec:
 ```yaml
 # Token budgets on the agents' Gateway (design section 6, OD-10, ADR-0050).
 # The ONLY Gateway-level BackendTrafficPolicy on agent-router: Envoy Gateway
-# marks a second one Conflicted. No sectionName, so B2 is one bucket across
-# both listeners. Shared, token-costed, and in SHADOW for the first week
-# (enforcement is SP4 PR 7).
+# marks a second one Conflicted. No sectionName, so B1 and B2 are one bucket
+# across all three listeners, including sts: once PR 7 enforces them, a
+# zeroed cap blocks octo-sts token exchange too, not just model calls.
+# Shared, token-costed, and in SHADOW for the first week (enforcement is
+# SP4 PR 7).
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -3160,7 +3164,7 @@ spec:
                 key: llm_total_token
           shared: true
           shadowMode: true
-        # B2 — the agent fleet, every run on either listener. Sized at least the
+        # B2 — the agent fleet, every run on any of the three listeners. Sized at least the
         # sum of SP3's admission caps (25M factory + 5M per launching human;
         # 40M for three), so neither kind starves the other (OD-10).
         - limit:
@@ -3195,7 +3199,9 @@ spec:
       rules:
         # Tokens per run under the canonical id agent:<runId> (programme C2).
         # SP3's run meter writes it into the AgentRun's usage annotation, and
-        # revokes the run at spec.budget.maxTokens (design section 6).
+        # revokes the run at spec.budget.maxTokens (design section 6). A bare sum
+        # of counters: it drops when an agent-router data-plane pod restarts. The
+        # AgentRun composition never lowers status.usage.tokens (SP1 section 2).
         - record: agent_router:run_tokens:total
           expr: |
             label_replace(
@@ -3702,13 +3708,13 @@ and D10 is programme-level. The table records why each changed.
 | # | Item | Resolution here |
 |---|---|---|
 | D1 | The spec writes `extProc.metricsRequestHeaderAttributes`. In chart 1.1.0 the key sits under `controller:` | Task 3 uses `controller.metricsRequestHeaderAttributes` |
-| D2 | "The platform Z.ai key moves from `runlore/credentials`". RunLore reads it there until PR 6 | O1 **copies** it; PR 6 removes it (SC-10) |
+| D2 | "The platform Z.ai key moves from `runlore/credentials`". RunLore reads it there until PR 6 | PR 1 reads it there too (O1 superseded); PR 6 moves it to `platform/llm/zai` and removes it (SC-10) |
 | D3 | `llmRequestCosts` is per `AIGatewayRoute`. Composition-rendered claim routes and `llm-fleet` declare none | B3/B4 count frontier routes only in this slice. Local-model tokens need a composition change: a PR 3 candidate |
 | D4 | Envoy Gateway allows one Gateway-level `BackendTrafficPolicy` per Gateway | B3–B5 and B1–B2 are rules of one policy each. I7 tells SP1 to add none |
 | D5 | The spec names the `agent:<runId>` and `human:<sub>` recording rules, but no outline PR owns them | Task 13 (`agent_router:run_tokens:total`) and Task 14 (`ai_gateway:human_tokens:total`) |
 | D6 | The spec gives the `oidc` listener no audience and no way for a human to obtain a token | Audience = `zitadel_project_id`, now an aws-0 var. The human device-code client is **open**, and documented as such |
 | D7 | §8 lists a controller PDB and 2 Envoy replicas for `ai-gateway`, but no outline PR owns them | Left out. Candidate: PR 6, before RunLore depends on the gateway |
-| D8 | Until PR 4, SR's `ext_proc` (`failure_mode_allow: false`, 60 s) stalls **every** `http`-listener request, `tier-frontier` included, when SR is down | Accepted for this slice. SR now runs always (OD-3) |
+| D8 | Until PR 4, SR's `ext_proc` (`failure_mode_allow: false`, 60 s) stalls **every** `http`-listener request, `tier-frontier` included, when SR is down | Accepted for this slice. SR runs whenever `ai-gateway` is resumed (OD-3) |
 | D9 | The SP1 spec narrows `envoy-data-plane` in its phase 3. PR 1 needs it first, because it adds Z.ai egress | Done in PR 1 (Task 4). I9 tells SP1 |
 | D10 | The design doc links the programme doc, which links every sub-project design | Task 0 carries all nine `2026-09-23-*` files if the docs PR has not merged |
 | D11 | The design's price-rule form, `label_replace(vector(1.40), …)`, repeated per model, fails `validate-vmrules.sh`: it runs `promtool check rules --lint-fatal`, and the duplicate-rule lint sees one record name with no static labels. Verified 2026-09-25 | Each price is `expr: vector(<price>)` with static `labels:` (model, token type), which passes the lint |
