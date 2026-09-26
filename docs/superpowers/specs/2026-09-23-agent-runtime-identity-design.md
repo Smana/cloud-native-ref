@@ -64,6 +64,8 @@ These supersede the sections they name; the reasoning is in the plan's departure
 - §2, §3: Crossplane deletes composed resources in parallel, so a `Usage` holds the run's CNP until
   its Sandbox is gone, and `agent-run` revokes on SIGTERM as well as in `preStop` (CC-1 `b8c68c1`).
 - §2: `status.usage.tokens` never decreases (CC-1 `68bb570`).
+- §6: the branch ruleset's bypass list gains the `write` and `maintain` roles, so it confines the
+  agents' App and no human collaborator.
 
 ## Architecture
 
@@ -443,9 +445,11 @@ identity.
 
 **Ruleset**, one per repo via an idempotent `gh api` script. It targets `~ALL` except
 `refs/heads/agent/**` and restricts `creation`, `update` and `deletion`. A ruleset binds every actor
-not on its bypass list, so the bypass is the owner, Renovate and the factory's App, all `always`
-(OD-7). The factory's App must still arm merges and create `revert-*` branches. Only the agents' App
-is confined, and it cannot update `main`, so **it cannot merge**. SP3's merge-gate ruleset is a
+not on its bypass list, so the bypass is the repository roles `admin` (the owner), `maintain` and
+`write`, Renovate and the factory's App, all `always` (OD-7). The factory's App must still arm
+merges and create `revert-*` branches. No human collaborator is confined, and an App holds no role,
+so only the agents' App is confined (SC-11 proves it); it cannot update `main`, so **it cannot
+merge**. SP3's merge-gate ruleset is a
 separate ruleset, and it is the one where the owner bypasses for pull requests only. **CI** (checked 2026-09-24): `default_workflow_permissions: read`; no `pull_request` workflow reads
 secrets; `id-token: write` only on push and schedule workflows.
 

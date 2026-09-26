@@ -358,8 +358,8 @@ SP4 owns the model mapping and budget enforcement.
   (OD-5). It never gets `workflows`, `statuses`, `checks: write` or `administration`.
 - A repository ruleset restricts that App to `agent/**` branches; a run pushes only its
   `spec.branch` (C3). **It never merges.** Rulesets apply to every actor not on their bypass list,
-  so this **branch ruleset** bypasses the owner, Renovate and the factory's App **always** — only
-  the agents' App is confined. The **merge-gate ruleset** is separate, and there the owner bypasses
+  so this **branch ruleset** bypasses the owner, the `write` and `maintain` roles, Renovate and the
+  factory's App **always** — only the agents' App is confined. The **merge-gate ruleset** is separate, and there the owner bypasses
   for pull requests only.
 - **The factory has its own GitHub App** (SP3): it arms auto-merge for low-risk classes and may
   create `revert-*` branches.
@@ -400,7 +400,7 @@ owner does not override it.
 | OD-4 | Where the new code lives | **One** repo, `Smana/agent-platform`, for broker, factory and classifier *(SP2 proposed `agent-rooms`, SP3 `agent-factory`)*, pinned from this repo as App Wizard is | SP2, SP3 |
 | OD-5 | octo-sts trust policies match the EKS issuer by pattern (the issuer ID changes on every rebuild) | Pattern, safe only behind `agent-router`'s `sts` listener, which pins this cluster's exact issuer: the pattern alone accepts a token from any EKS cluster in the region *(owner, 2026-09-26)* | SP1 |
 | OD-6 | GitHub App scope at first | `cloud-native-ref` only | SP1 |
-| OD-7 | Who may bypass the rulesets | **Branch ruleset:** owner, Renovate and the factory's App, always (only the agents' App is confined to `agent/**`). **Merge-gate ruleset:** owner for pull requests only, and Renovate. CI itself stays non-bypassable | SP1, SP3 |
+| OD-7 | Who may bypass the rulesets | **Branch ruleset:** owner, the `write` and `maintain` roles, Renovate and the factory's App, always (only the agents' App is confined to `agent/**`). **Merge-gate ruleset:** owner for pull requests only, and Renovate. CI itself stays non-bypassable | SP1, SP3 |
 | OD-8 | Low-risk classes that auto-merge at v1 | `docs-links` and `revert` only; `docs`, `tests`, `dashboards` promoted later on evidence (docs PRs otherwise wait for owner review) | SP3 |
 | OD-9 | RunLore findings start work unattended | When actionable with confidence ≥ 0.75, max 5 a day | SP3 |
 | OD-10 | Budget defaults: per run 2M (ceiling 5M); factory 25M tokens/day; each human 5M/day for the runs they launch; agent fleet cap ≥ the sum of those (SP3 sets the admission caps, SP4 the gateway buckets) | Accept; run in shadow for a week before enforcing | SP3, SP4 |

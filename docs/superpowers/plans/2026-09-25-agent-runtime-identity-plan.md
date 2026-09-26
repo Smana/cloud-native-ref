@@ -4980,8 +4980,9 @@ an installation token with that policy's permissions.
 ## Decision Outcome
 
 **Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`, with the owner, Renovate
-and the factory's App on the bypass list (OD-7).
+`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`, with the repository
+roles `admin` (the owner), `maintain` and `write`, Renovate and the factory's App on the bypass list
+(OD-7): only the agents' App is confined, never a human collaborator.
 
 **Rationale**: Short-lived, per-repository, per-role tokens whose authorisation is reviewed in the
 repository it grants.
@@ -5519,7 +5520,7 @@ run() { : >"$STUB_LOG"; rm -f "$STUB_BODY"; bash "$SUBJECT" Smana/demo >/dev/nul
 
 run
 grep -q '^api --method POST repos/Smana/demo/rulesets ' "$STUB_LOG" || fail "creates the ruleset when absent"
-jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the owner and Renovate, always"
+jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":4,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the admin, write and maintain roles and Renovate, always"
 jq -e '.conditions.ref_name == {"include":["~ALL"],"exclude":["refs/heads/agent/**"]}' "$STUB_BODY" >/dev/null || fail "confines everyone else to agent/**"
 jq -e '[.rules[].type] == ["creation","update","deletion"]' "$STUB_BODY" >/dev/null || fail "restricts creation, update and deletion"
 
@@ -5530,7 +5531,7 @@ if grep -q -- '--method POST' "$STUB_LOG"; then fail "never creates a second rul
 
 export STUB_EXISTING="" FACTORY_APP_SLUG=ogenki-factory
 run
-jq -e '[.bypass_actors[].actor_id] == [5, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
+jq -e '[.bypass_actors[].actor_id] == [5, 4, 2, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
 
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"
@@ -5570,10 +5571,11 @@ Expected: FAIL — `subject exited non-zero` (the script does not exist yet).
 # Applies the agents' branch ruleset (SP1 design §6, OD-7) to one repository.
 #
 # Every actor NOT on the bypass list may only create, update or delete
-# refs/heads/agent/**. The bypass list is the owner (the repository admin role),
-# Renovate and, once SP3 ships, the factory's App, all `always`. The agents' App
-# is therefore the only confined actor, and since it cannot update main, it
-# cannot merge. SP3's merge-gate ruleset is a separate ruleset.
+# refs/heads/agent/**. The bypass list is the repository roles admin (the
+# owner), write and maintain, so no human collaborator is confined, Renovate
+# and, once SP3 ships, the factory's App, all `always`. An App holds no role,
+# so the agents' App is the only confined actor, and since it cannot update
+# main, it cannot merge. SP3's merge-gate ruleset is a separate ruleset.
 #
 # Idempotent: updates the ruleset named `agent-branches` when it exists.
 # usage: agent-branch-ruleset.sh <owner/repo>
@@ -5584,8 +5586,9 @@ REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-branches.json"
 
-# RepositoryRole 5 is GitHub's built-in admin role: the owner of a user repo.
-bypass='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
+# GitHub's base repository roles: 5 admin (the owner of a user repo), 4 write,
+# 2 maintain.
+bypass='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":4,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
 for slug in renovate ${FACTORY_APP_SLUG:-}; do
   id="$(gh api "/apps/$slug" --jq .id)"
   bypass="$(jq -c --argjson id "$id" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
