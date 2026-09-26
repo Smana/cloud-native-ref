@@ -37,7 +37,10 @@ plan covers the spec's implementation-outline **PRs 1 and 2 only**.
 ## Global Constraints
 
 - **Umbrella.** Flux `Kustomization` `ai-gateway` in `flux-system`, file `clusters/aws-0/ai-gateway.yaml`,
-  `path: ./clusters/aws-0-ai-gateway`, **never suspended** (OD-3).
+  `path: ./clusters/aws-0-ai-gateway`, **`suspend: true` by default** (OD-3, amended 2026-09-26; it
+  was "never suspended"). Every live step resumes it first:
+  `flux resume kustomization ai-gateway -n flux-system`. Code and text below that still say
+  "always-on" or "never suspended" predate the amendment. The files on the branch are authoritative.
   - The moved children keep their names: `envoy-gateway`, `envoy-ai-gateway`, `vllm-semantic-router`.
   - New children: `llm-gateway` (PR 1) and `ai-gateway-security-epi` (PR 2).
 - **The Gateway keeps its identity.** GatewayClass `envoy-ai-gateway`, and the human/system Gateway
@@ -1917,17 +1920,24 @@ are counted in **shadow mode**: nothing is rejected yet
   commands. Expected: `llm-platform` suspended.
 - [ ] **Step 6 [LIVE] L1: Deploy the branch.**
 
+  Deploy this branch, or the `integration/agent-factory` branch that carries it:
+
   ```bash
   cd opentofu && TF_VAR_flux_git_ref='refs/heads/feat/ai-gateway-frontier' terramate script run deploy
   ```
 
-  Then:
+  Then confirm that a default deploy leaves the umbrella suspended, resume it, and check that the
+  resume survives the next `flux-system` reconcile:
 
   ```bash
+  flux get kustomizations -n flux-system ai-gateway          # SUSPENDED True
+  flux resume kustomization ai-gateway -n flux-system
+  flux reconcile kustomization flux-system -n flux-system --with-source
   flux get kustomizations -n flux-system | grep -E '^(ai-gateway|envoy-gateway|envoy-ai-gateway|vllm-semantic-router|llm-gateway|llm-platform)\b'
   ```
 
-  Expected: every row `True` except `llm-platform`, which stays suspended.
+  Expected: `ai-gateway` still `False` in the SUSPENDED column after the parent reconcile. Every row
+  is `True` except `llm-platform`, which stays suspended.
 - [ ] **Step 7 [LIVE]: Ownership and zero GPUs.**
 
   ```bash
@@ -3551,6 +3561,7 @@ to exactly one model:
 
   ```bash
   cd opentofu && TF_VAR_flux_git_ref='refs/heads/feat/agent-frontier-tiers' terramate script run deploy
+  flux resume kustomization ai-gateway -n flux-system
   flux resume kustomization agent-platform -n flux-system
   flux get kustomizations -n flux-system | grep -E '^(ai-gateway-security-epi|envoy-ai-gateway|llm-gateway|agent-router|agent-model-routing)\b'
   ```

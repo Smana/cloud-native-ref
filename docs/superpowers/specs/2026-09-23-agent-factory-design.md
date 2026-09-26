@@ -135,6 +135,16 @@ API-key client header); r4 applied an independent cross-spec review (ruleset byp
 one-creator rule, one secret store for `agent-system`, fleet cap sizing). Where two requests
 conflicted, the resolution is noted inline.
 
+**Revision r5 (2026-09-26, owner):** three changes.
+- `ai-gateway` is suspended by default (OD-3 amended, C1).
+- Agent identity is issuer-agnostic (C2).
+- The room bridge speaks plain HTTPS rather than WebSocket (C4).
+
+The last two keep one alternative runtime open. It was evaluated and rejected for now: Agent
+Substrate under google/ax (ADR-0041). Its workloads are not pods, their identities are not
+ServiceAccounts, and its sandbox egress allows HTTP(S) only. Under r5, such a runtime would need
+only an issuer allowlist entry and a new composition behind `AgentRun`, with no contract change.
+
 ### C1 — Namespaces and gating
 
 | Namespace | Holds | Rule |
@@ -147,7 +157,7 @@ Three Flux umbrellas, each `clusters/<cluster>/<name>.yaml` → `clusters/<clust
 
 | Umbrella | Holds | Default | Depends on |
 |---|---|---|---|
-| `ai-gateway` *(new, SP4)* | Envoy Gateway and Agent Router controllers, the semantic router, and the **human/system** Gateway — the existing Gateway object `ai-gateway` that InferenceService claims attach to, with its routes and backends in namespace `llm-gateway` — CPU only | **On** *(owner decision OD-3)* | — |
+| `ai-gateway` *(new, SP4)* | Envoy Gateway and Agent Router controllers, the semantic router, and the **human/system** Gateway — the existing Gateway object `ai-gateway` that InferenceService claims attach to, with its routes and backends in namespace `llm-gateway` — CPU only | Suspended *(OD-3, amended in r5)* | — |
 | `llm-platform` *(existing)* | GPU models, their NodePool and weights | Suspended | `ai-gateway` |
 | `agent-platform` *(new)* | Everything else in this programme, including the **agents'** dedicated Gateway (`agent-router` in `agent-system`) with its own routes, backends and provider keys | Suspended | `ai-gateway` — **not** `llm-platform`: agents run on frontier models with zero GPUs |
 
@@ -156,6 +166,10 @@ agent-side key are separable from human and system traffic.
 
 The gateway controllers move out of `llm-platform` into `ai-gateway` (raised independently by SP1
 and SP4). Without that move, "agents need no GPUs" cannot be implemented.
+
+**Resume `ai-gateway` first.** Both other umbrellas depend on it, so it must be Ready before
+either can reconcile. A default deploy then stays LLM-free, as on `main`, and needs neither the
+Z.ai key nor the rate-limit password.
 
 ### C2 — Identity
 
@@ -176,7 +190,14 @@ and SP4). Without that move, "agents need no GPUs" cannot be implemented.
   in the audience because Envoy Gateway matches JWT claims exactly and cannot address the nested
   `kubernetes.io` claim.
 - **Gateways project the token's `sub`, not the canonical ID.** Consumers derive `agent:<runId>`
-  from `sub` (`system:serviceaccount:agents:xplane-run-<runId>`).
+  from `sub` (`system:serviceaccount:agents:xplane-run-<runId>`). The mapping is per issuer.
+- **Every consumer validates issuer-agnostically** *(r5)*: an audience-bound JWT, checked offline
+  against the JWKS of an allowlisted issuer. No consumer calls an API that only Kubernetes can
+  answer, such as TokenReview. Liveness comes from the `AgentRun` itself (`status.phase`, the
+  `revoked` annotation), never from whether a ServiceAccount still exists.
+  - Today the only issuer is the cluster's OIDC issuer.
+  - A runtime that mints its own workload JWTs (SPIFFE JWT-SVIDs, Agent Substrate actor JWTs)
+    becomes one more allowlist entry and one more `sub` mapping, not a contract change.
 - Agents never receive a human's token. Attribution of "who asked" is `spec.principal` (C3) and the
   event log (C4), never a delegated credential.
 
@@ -232,7 +253,9 @@ gateway's per-run ceiling, and `status.pullRequest` stays empty.
 - **Revocation is bounded by token lifetime.** Deleting the claim deletes the ServiceAccount, the
   sandbox and its policies, but the gateway and octo-sts validate tokens offline, so a token already
   copied out stays valid until it expires. Token TTL is therefore ≤ 600 s, and SP1's success
-  criteria measure the window.
+  criteria measure the window. The room broker also validates offline, but it watches the
+  `AgentRun`: once the run is terminal or `revoked`, it drops the room connection straight away
+  (C2 r5).
 
 ### C4 — Event envelope (owned by SP2, emitted by SP1 runs)
 
@@ -259,6 +282,12 @@ its frozen shape (v1):
 - **Runs push; the broker never dials into a sandbox.** The room bridge (C3) streams the harness's
   events to the broker, authenticated by the run's token. *(Resolves SP1's pull proposal against
   SP2's push: nothing opens an ingress path into `agents`.)*
+- **The bridge speaks plain HTTPS, not WebSocket** *(r5)*.
+  - Events go up as batched `POST`s, idempotent by the harness's sequence number.
+  - Steering comes down on one Server-Sent Events stream that the bridge opens.
+  - Both run on connections the sandbox initiates, so the push rule holds.
+  - Nothing needs an upgrade-capable proxy or a WebSocket egress rule.
+  - Browser clients keep WebSocket (SP2).
 - The broker assigns `seq` (gapless from 1) and stamps `ts` and `actor` from the authenticated
   token; client-supplied values are ignored. Agent-originated events are untrusted content
   attributed to that agent.
@@ -365,7 +394,7 @@ owner does not override it.
 |---|---|---|---|
 | OD-1 | Agent loop inside the sandbox (D10) | Confirm | SP1 |
 | OD-2 | Agent Router as the agent identity gateway (D11) | Confirm | SP1 |
-| OD-3 | `ai-gateway` umbrella always on, CPU only (SP1 estimates ~200m/512Mi for the controllers alone; SP4 ~1.6 vCPU/5.5 GiB with the semantic router) | On — it is also what lets RunLore drop its own Z.ai key | SP1, SP4 |
+| OD-3 | `ai-gateway` umbrella, CPU only (SP1 estimates ~200m/512Mi for the controllers alone; SP4 ~1.6 vCPU/5.5 GiB with the semantic router) | **Amended 2026-09-26: suspended by default**, resumed before `llm-platform` or `agent-platform` (C1). The split from the GPU umbrella stays. **Consequence for SP4 PR 6:** RunLore can drop its own Z.ai key only on clusters that resume `ai-gateway`. *(Was: on by default.)* | SP1, SP4 |
 | OD-4 | Where the new code lives | **One** repo, `Smana/agent-platform`, for broker, factory and classifier *(SP2 proposed `agent-rooms`, SP3 `agent-factory`)*, pinned from this repo as App Wizard is | SP2, SP3 |
 | OD-5 | octo-sts trust policies match the EKS issuer by pattern (the issuer ID changes on every rebuild) | Pattern | SP1 |
 | OD-6 | GitHub App scope at first | `cloud-native-ref` only | SP1 |
@@ -388,7 +417,7 @@ sub-project so parallel drafts cannot collide (0039 and 0040 are already taken o
 
 | ADR | Topic | Chosen | Over | Sub-project |
 |---|---|---|---|---|
-| 0041 | Agent sandbox runtime | agent-sandbox + gVisor, AL2023 sandbox nodes on EKS | Kata/Firecracker, OpenHands Enterprise, Coder, E2B | SP1 |
+| 0041 | Agent sandbox runtime | agent-sandbox + gVisor, AL2023 sandbox nodes on EKS | Kata/Firecracker, OpenHands Enterprise, Coder, E2B, Agent Substrate + google/ax *(evaluated 2026-09-26, re-check triggers in the SP1 research)* | SP1 |
 | 0042 | Agent identity gateway | Agent Router | agentgateway | SP1 |
 | 0043 | GitHub credentials for agents | octo-sts | PATs, ESO GitHub generator, git proxy | SP1 |
 | 0044 | Session protocol | AHP-shaped room log we own | OpenHands shared conversations, ACP-only | SP2 |
