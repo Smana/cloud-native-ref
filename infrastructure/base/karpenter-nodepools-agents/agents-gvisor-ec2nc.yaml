@@ -6,7 +6,11 @@ metadata:
   name: agents-gvisor
 spec:
   amiSelectorTerms:
-    - alias: al2023@v20260909
+    # The date must exist for the cluster's Kubernetes version, or Karpenter logs
+    # "failed to discover any AMIs for alias" and the pool never gets a node
+    # (v20260909 does not exist for 1.36). Check before bumping:
+    #   aws ssm get-parameter --name /aws/service/eks/optimized-ami/<k8s>/amazon-linux-2023/x86_64/standard/recommended/release_version
+    - alias: al2023@v20260923
   role: Karpenter-${cluster_name}
   kubelet:
     maxPods: 100
