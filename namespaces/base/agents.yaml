@@ -1,0 +1,10 @@
+# AgentRun claims and their sandbox pods, nothing else (C1). Every pod here runs
+# under RuntimeClass gvisor, enforced by Kyverno (security/base/agent-policies).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agents
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

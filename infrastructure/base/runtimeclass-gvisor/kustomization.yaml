@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# aws-0 only. GKE Sandbox ships its own `gvisor` RuntimeClass (design, gcp-0 follow-up).
+resources:
+  - runtimeclass.yaml
