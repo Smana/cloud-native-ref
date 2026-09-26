@@ -453,8 +453,9 @@ identity.
 
 **Ruleset**, one per repo via an idempotent `gh api` script. It targets `~ALL` except
 `refs/heads/agent/**` and restricts `creation`, `update` and `deletion`. A ruleset binds every actor
-not on its bypass list, so the bypass is the repository roles `admin` (the owner), `maintain` and
-`write`, Renovate and the factory's App, all `always` (OD-7). The factory's App must still arm
+not on its bypass list, so the bypass is the owner, the repository roles `write` and `maintain`,
+Renovate and the factory's App, all `always` (OD-7; Dependabot is off on this repo, so it needs no
+bypass). The factory's App must still arm
 merges and create `revert-*` branches. No human collaborator is confined, and an App holds no role,
 so only the agents' App is confined (SC-11 proves it); it cannot update `main`, so **it cannot
 merge**. SP3's merge-gate ruleset is a separate ruleset, and it is the one where the owner bypasses
@@ -590,8 +591,9 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | 5 — harness and MCP | `container-images/agent-harness`; MCP servers and MCPRoutes | SC-08, 12 |
 | 6 — end to end | Composition `v0.8.1` with the harness digest; dashboards, VMRules, `task agent:run`, `/verify-spec` | SC-04, 07, 13, 14, 16 |
 
-**Owner actions:** create and install the agents' App (OD-6); create a dedicated Z.ai key at
-`platform/agents/zai`; run the ruleset script.
+**Owner actions, in order:** (1) apply the branch ruleset (run the ruleset script); (2) merge;
+(3) create and install the agents' App, write its key, and create a dedicated Z.ai key at
+`platform/agents/zai` (OD-6); (4) resume `ai-gateway` (OD-3).
 
 **ADRs** (reserved numbers): **0041** agent-sandbox + gVisor on AL2023, plus the OpenHands harness
 profile. **0042** Agent Router, audience-encoded role and class, and the in-pod identity proxy.
