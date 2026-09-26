@@ -163,10 +163,68 @@ check("zero envoy-ai-gateway Gateways in the bundle fails, not passes vacuously"
 check("a bundle with only a different-class Gateway also fails",
       len(gate.check_identity_strips([gateway(cls="cilium")])) == 1)
 
+print("A5 — agent-router routes pin a listener, and route-level SecurityPolicies merge")
+
+
+def route(kind="AIGatewayRoute", name="agent-models", section="public", gw="agent-router", ns="agent-system",
+          parent_ns=None):
+    parent = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": gw}
+    if section:
+        parent["sectionName"] = section
+    if parent_ns:
+        parent["namespace"] = parent_ns
+    return {"kind": kind, "metadata": {"name": name, "namespace": ns}, "spec": {"parentRefs": [parent]}}
+
+
+def secpol(target_kind="HTTPRoute", target_name="agent-models", merge=None, ns="agent-system", selector=False):
+    spec = {}
+    if selector:
+        spec["targetSelectors"] = [{"group": "gateway.networking.k8s.io", "kind": target_kind,
+                                    "matchLabels": {"app": "x"}}]
+    else:
+        spec["targetRefs"] = [{"group": "gateway.networking.k8s.io", "kind": target_kind, "name": target_name}]
+    if merge:
+        spec["mergeType"] = merge
+    return {"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "SecurityPolicy",
+            "metadata": {"name": "route-auth", "namespace": ns}, "spec": spec}
+
+
+LISTENER_POLICY = secpol(target_kind="Gateway", target_name="agent-router")
+check("a pinned route with a listener-scoped SecurityPolicy passes",
+      gate.check_agent_router_routes([route(), LISTENER_POLICY]) == [])
+for kind in ("AIGatewayRoute", "HTTPRoute", "GRPCRoute", "MCPRoute"):
+    errs = gate.check_agent_router_routes([route(kind=kind, section=None)])
+    check(f"{kind} on agent-router without sectionName fails (it attaches to every listener)",
+          len(errs) == 1 and "sectionName" in errs[0] and kind in errs[0], str(errs))
+check("an explicit parentRef namespace still counts",
+      len(gate.check_agent_router_routes([route(section=None, ns="other", parent_ns="agent-system")])) == 1)
+check("ai-gateway routes may omit sectionName (out of scope)",
+      gate.check_agent_router_routes([route(), route(name="llm-gateway", section=None, gw="ai-gateway",
+                                                     ns="envoy-ai-gateway-system")]) == [])
+check("a same-named Gateway in another namespace is out of scope",
+      gate.check_agent_router_routes([route(), route(name="x", section=None, ns="other")]) == [])
+errs = gate.check_agent_router_routes([route(), secpol()])
+check("a SecurityPolicy on an agent-router route without mergeType fails (it replaces the listener's JWT)",
+      len(errs) == 1 and "mergeType" in errs[0] and "route-auth" in errs[0], str(errs))
+check("the same policy with mergeType passes",
+      gate.check_agent_router_routes([route(), secpol(merge="JSONMerge")]) == [])
+check("a policy on a route this bundle cannot resolve (an MCPRoute's generated HTTPRoute) is in scope",
+      len(gate.check_agent_router_routes([route(), secpol(target_name="ai-eg-mcp-main-flux")])) == 1)
+check("a policy selecting routes by label is in scope",
+      len(gate.check_agent_router_routes([route(), secpol(selector=True)])) == 1)
+check("a policy on a route of another Gateway is out of scope",
+      gate.check_agent_router_routes([route(), route(kind="HTTPRoute", name="other", gw="ai-gateway"),
+                                      secpol(target_name="other")]) == [])
+check("a policy in another namespace is out of scope (targetRefs are namespace-local)",
+      gate.check_agent_router_routes([route(), secpol(ns="other")]) == [])
+errs = gate.check_agent_router_routes([LISTENER_POLICY])
+check("zero routes on agent-router fails, not passes vacuously",
+      len(errs) == 1 and "no route attaches" in errs[0], str(errs))
+
 print("main()")
 with tempfile.TemporaryDirectory() as d:
     p = pathlib.Path(d)
-    (p / "overlay-a.yaml").write_text(yaml.safe_dump_all([gateway(), ctp(STRIPS), btp([rule()])]))
+    (p / "overlay-a.yaml").write_text(yaml.safe_dump_all([gateway(), ctp(STRIPS), btp([rule()]), route()]))
     check("exit 0 on a compliant bundle", quiet(gate.main, [d]) == 0)
     (p / "overlay-b.yaml").write_text(yaml.safe_dump_all([btp([rule(shared=False)], name="bad")]))
     check("exit 1 on a violation", quiet(gate.main, [d]) == 1)

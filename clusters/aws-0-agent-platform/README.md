@@ -10,9 +10,14 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `runtimeclass-gvisor` | `infrastructure/base/runtimeclass-gvisor` | RuntimeClass `gvisor` → `runsc` |
 | `agent-runtime` | `infrastructure/base/agent-runtime` | identity-proxy ConfigMap, `agents` default deny |
 | `agent-policies` | `security/base/agent-policies` | Kyverno admission and GC for runs |
+| `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
+| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 
 ## Resume
+
+Only once the crossplane-configuration pin serves `AgentRun`. Before it, `agent-policies` installs
+Kyverno policies against an API that does not exist, and Flux still reports it Ready.
 
 The owner prerequisites come first, in this order (ADR-0043): the branch ruleset
 (`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its

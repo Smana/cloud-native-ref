@@ -36,7 +36,7 @@ and never a human's.
 ### Option 1: Self-hosted octo-sts with the agents' GitHub App
 
 The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`,
-to agent-router's `sts` listener (ADR-0042).
+to agent-router's `sts` listener ([ADR-0042]({{< relref "/docs/decisions/0042-agent-router-identity-gateway.md" >}})).
 The listener verifies it against this cluster's exact issuer and JWKS and routes `/sts/exchange` to
 octo-sts. octo-sts checks it against `.github/chainguard/agent-<role>.sts.yaml` on the default branch
 and returns an installation token with that policy's permissions.

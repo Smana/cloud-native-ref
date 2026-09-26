@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the local JSON-Schema catalog consumed by `flux schema validate`.
 #
-# Four sources (SPEC-007 FR-002):
+# Sources (SPEC-007 FR-002):
 #   1. The repo's own Crossplane XRDs  -> cloud.ogenki.io/*
 #   2. Envoy AI Gateway CRDs           -> aigateway.envoyproxy.io/*
 #      (absent from the hosted ecosystem catalog)
@@ -208,7 +208,7 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/agent-sandbox-crds.yaml" -d "${build_dir}"
-# GKE ComputeClass. Vendored rather than rendered: unlike the three above, GKE
+# GKE ComputeClass. Vendored rather than rendered: unlike every source above, GKE
 # installs this CRD itself and publishes no chart to render it from. See the
 # header of the file for how it was captured and when to refresh it.
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
