@@ -3,10 +3,6 @@ kind: Deployment
 metadata:
   name: octo-sts
   namespace: agent-system
-  annotations:
-    # A false positive on one name: APP_SECRET_CERTIFICATE_FILE is octo-sts's
-    # fixed variable and holds a file path; the key itself is a Secret volume.
-    polaris.fairwinds.com/sensitiveContainerEnvVar-exempt: "true"
 spec:
   replicas: 1
   selector:
