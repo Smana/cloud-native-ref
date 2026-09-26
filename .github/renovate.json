@@ -36,6 +36,11 @@
       "opentofu"
     ]
   },
+  "crossplane": {
+    "managerFilePatterns": [
+      "/^infrastructure/base/crossplane/.+\\.ya?ml$/"
+    ]
+  },
   "customManagers": [
     {
       "description": "OpenBao and node_exporter versions in the OpenBao cluster stacks (AWS and GCP). The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
@@ -47,6 +52,17 @@
       ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "versioningTemplate": "semver"
+    },
+    {
+      "description": "Bootstrap chart versions in opentofu/config.tm.hcl (Cilium, flux-operator, flux-instance). The flux, helm-values and kubernetes managers all ignore `opentofu`, and the terraform manager does not read Terramate globals, so these were bumped by hand: on 2026-09-26 Cilium sat on 1.20.1 ten days after 1.20.2 and flux-operator on 0.59.0 fifteen days after 0.60.0, while Renovate automerged everything it could see. Each pin carries a `# renovate:` comment on the line above; `registryUrl` is optional because the OCI charts resolve through the docker datasource by their full name.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^opentofu/config\\.tm\\.hcl$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)(?:\\s+registryUrl=(?<registryUrl>[^\\s]+))?[ \\t]*\\r?\\n[ \\t]*[a-z_]+\\s*=\\s*\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
       ],
       "versioningTemplate": "semver"
     },
@@ -128,6 +144,34 @@
       ],
       "automerge": false,
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "One PR per Upjet provider family. The members (provider-aws-iam, -ec2, -eks, -kms, -s3) share one provider-family-aws and are released in lockstep; one PR per member would run the cluster on mixed member versions between merges. The 2026-09-26 bump from v2.6.0 to v2.8.1 moved all five at once for that reason.",
+      "matchPackageNames": [
+        "/^xpkg\\.crossplane\\.io/crossplane-contrib/provider-(family-)?aws/"
+      ],
+      "groupName": "crossplane provider-aws family"
+    },
+    {
+      "description": "Same as the provider-aws family rule, for the GCP members.",
+      "matchPackageNames": [
+        "/^xpkg\\.crossplane\\.io/crossplane-contrib/provider-(family-)?gcp/"
+      ],
+      "groupName": "crossplane provider-gcp family"
+    },
+    {
+      "description": "Never bump our own Configuration packages. The App Wizard clones the same crossplane-configuration tag through a `--branch=` argument in apps/platform/app-wizard/app.yaml that no manager can see, and infrastructure/AGENTS.md requires the two to move together. A Renovate PR would move only the package, and the wizard would render against the old compositions.",
+      "matchPackageNames": [
+        "/^ghcr\\.io/smana/crossplane-configuration-/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Hold function-kcl below v0.12.3. That release only bumps dependencies, including the KCL runtime, yet rendering the InferenceService composition with it drops the leading space of a `\"\"\" --revision \"\"\"` fragment, so the preload Job runs `hf download Qwen/Qwen3-8B--revision main` and no base model ever downloads. The golden renders in Smana/crossplane-configuration caught it (16/20 match; v0.12.2 renders 20/20), which is also why that repo's functions.yaml must move in lockstep with this one. Lift this bound in the same PR that bumps both, once main.k builds that command without depending on whitespace inside a triple-quoted string, and the goldens match on the new version.",
+      "matchPackageNames": [
+        "xpkg.upbound.io/crossplane-contrib/function-kcl"
+      ],
+      "allowedVersions": "<0.12.3"
     }
   ],
   "registryAliases": {
