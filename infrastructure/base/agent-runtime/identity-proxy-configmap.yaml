@@ -36,6 +36,9 @@ data:
           secret:
             filename: /var/run/secrets/agents/sts/token
   envoy.yaml: |
+    # Required by file-based SDS (GenericSecretSdsApi): without it Envoy exits
+    # at startup. No xDS server reads it, so one static identity serves every run.
+    node: {id: agent-identity-proxy, cluster: agent-identity-proxy}
     admin:
       address:
         # Pathname unix socket in the proxy-tmp emptyDir (the harness container
