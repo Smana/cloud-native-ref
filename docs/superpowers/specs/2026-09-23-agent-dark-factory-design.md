@@ -189,7 +189,8 @@ gateway metrics, and revokes via `agents.ogenki.io/revoked`: `budget-run` at `ma
 `budget-principal` past the daily cap, gateway budget 429s mapped to the matching `budget-*`. The
 factory writes `agents.ogenki.io/pull-request`; a stop writes `revoked: manual`. The composition
 projects them into `status.usage.tokens`, `status.pullRequest` and `phase` (`BudgetExhausted` for
-`budget-*`, `Revoked` for `manual`). **Before SP3 ships**, the owner creates runs directly.
+`budget-*`, `Revoked` for `manual`). The gateway counter the meter reads resets when a data-plane
+pod restarts, so its reading can drop; `status.usage.tokens` never does (SP1 §2). **Before SP3 ships**, the owner creates runs directly.
 
 **Run-request API** (C3/C5: once SP3 ships, only the factory creates `AgentRun`s). `POST /v1/runs`
 takes `{role, repository, baseRef, task, dataClass, roomRef}`, optionally `model` (default

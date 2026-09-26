@@ -3195,7 +3195,9 @@ spec:
       rules:
         # Tokens per run under the canonical id agent:<runId> (programme C2).
         # SP3's run meter writes it into the AgentRun's usage annotation, and
-        # revokes the run at spec.budget.maxTokens (design section 6).
+        # revokes the run at spec.budget.maxTokens (design section 6). A bare sum
+        # of counters: it drops when an agent-router data-plane pod restarts. The
+        # AgentRun composition never lowers status.usage.tokens (SP1 section 2).
         - record: agent_router:run_tokens:total
           expr: |
             label_replace(

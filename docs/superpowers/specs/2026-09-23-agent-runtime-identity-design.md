@@ -63,6 +63,7 @@ These supersede the sections they name; the reasoning is in the plan's departure
   alone would accept a token minted by any EKS cluster in the region.
 - §2, §3: Crossplane deletes composed resources in parallel, so a `Usage` holds the run's CNP until
   its Sandbox is gone, and `agent-run` revokes on SIGTERM as well as in `preStop` (CC-1 `b8c68c1`).
+- §2: `status.usage.tokens` never decreases (CC-1 `68bb570`).
 
 ## Architecture
 
@@ -230,7 +231,7 @@ annotations, and the composition validates and projects them:
 
 | Annotation (writer) | Projected to | Validation |
 |---|---|---|
-| `agents.ogenki.io/usage-tokens` (SP3's run meter, every run) | `status.usage.tokens` | a non-negative integer |
+| `agents.ogenki.io/usage-tokens` (SP3's run meter, every run) | `status.usage.tokens` | a non-negative integer, never below the value already projected: the gateway counter the meter reads resets when a data-plane pod restarts, and a reset must not refund the run's budget |
 | `agents.ogenki.io/pull-request` (the factory) | `status.pullRequest` | matches `^https://github.com/<spec.repository>/pull/[0-9]+$` |
 | `agents.ogenki.io/revoked` (run meter, factory or owner) | phase | one of `budget-run`, `budget-principal`, `budget-fleet`, `manual`. The run meter turns budget 429s into `budget-*` reasons |
 
