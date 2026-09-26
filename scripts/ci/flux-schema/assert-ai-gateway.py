@@ -29,12 +29,17 @@ wrong:
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
       A1/A2.
-  A5  No MCPRoute on a Gateway of class envoy-ai-gateway lists
-      `Authorization` in a backend's `forwardHeaders`. Envoy Gateway always
-      forwards the validated JWT to the MCP proxy, and the MCPRoute API has
-      no field to strip it; the proxy re-originates each backend call, so
-      that list is the one way a run's token reaches an MCP server. At least
-      one such MCPRoute must exist, for the same no-vacuous-pass reason.
+  A6  No MCPRoute on a Gateway of class envoy-ai-gateway lists `Authorization`
+      (case-insensitive) in a backend's `forwardHeaders`, in
+      `spec.securityPolicy.oauth.claimToHeaders[].header`, or as
+      `spec.securityPolicy.apiKeyAuth.forwardClientIDHeader`. Envoy Gateway
+      always forwards the validated JWT to the MCP proxy, and the MCPRoute
+      API has no field to strip it; the proxy re-originates each backend
+      call, so these are the three fields that feed forwarded headers -- any
+      one of them can hand a run's token to an MCP server. At least one such
+      MCPRoute must exist, for the same no-vacuous-pass reason.
+      (A5 is reserved for a route sectionName/mergeType rule landing from a
+      parallel branch, to avoid renumbering when the two merge.)
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -189,6 +194,15 @@ def check_mcp_token_passthrough(objs):
             if any((h.get("name") or "").lower() == "authorization" for h in backend.get("forwardHeaders") or []):
                 errors.append(f"{ref(obj)}: backend {backend.get('name')} forwards Authorization, "
                               "handing the run's token to an MCP server")
+        security = spec.get("securityPolicy") or {}
+        claim_to_headers = (security.get("oauth") or {}).get("claimToHeaders") or []
+        if any((c.get("header") or "").lower() == "authorization" for c in claim_to_headers):
+            errors.append(f"{ref(obj)}: securityPolicy.oauth.claimToHeaders maps a claim onto Authorization, "
+                          "handing the run's token to an MCP server")
+        client_id_header = (security.get("apiKeyAuth") or {}).get("forwardClientIDHeader") or ""
+        if client_id_header.lower() == "authorization":
+            errors.append(f"{ref(obj)}: securityPolicy.apiKeyAuth.forwardClientIDHeader is Authorization, "
+                          "handing the run's token to an MCP server")
     if not covered:
         errors.append(f"no MCPRoute attached to a Gateway of class {AI_GATEWAY_CLASS} found in the bundle "
                       "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")

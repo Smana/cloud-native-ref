@@ -7,12 +7,20 @@
 # Envoy Gateway 1.9.1 forwards the validated JWT to the MCP proxy, and the
 # MCPRoute API has no field to strip it. None is needed: the proxy re-originates
 # every backend call with fresh headers, copying only `claimToHeaders`
-# (x-ar-agent) and `forwardHeaders`, so no server sees a run's token. Never list
-# Authorization in `forwardHeaders`; gate A5
+# (x-ar-agent) and `forwardHeaders`, so no server sees a run's token. Never
+# name Authorization in `forwardHeaders`, `securityPolicy.oauth.claimToHeaders`
+# or `securityPolicy.apiKeyAuth.forwardClientIDHeader`; gate A6
 # (scripts/ci/flux-schema/assert-ai-gateway.py) fails the build if one does.
 #
 # Agent Router 1.1.0 authorizes tools/call and tools/list only: resources and
 # prompts pass through. These three servers expose static docs there, nothing else.
+#
+# Each MCPRoute's `securityPolicy.oauth.{issuer,audiences}` REPLACES its
+# listener's Gateway-level SecurityPolicy on `/mcp` rather than merging with
+# it, and must be kept equal by hand to
+# infrastructure/base/agent-router/securitypolicy-{public,internal}.yaml
+# (review M7): a bump to one without the other is silent everywhere but a
+# live `tools/list` call.
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute

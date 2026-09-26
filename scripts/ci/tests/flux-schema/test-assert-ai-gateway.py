@@ -77,16 +77,25 @@ def ctp(remove, gw="ai-gateway", ns="envoy-ai-gateway-system", section=None):
             "metadata": {"name": "client", "namespace": ns}, "spec": spec}
 
 
-def mcproute(forward=None, gw="ai-gateway", ns="envoy-ai-gateway-system", parent_ns=None):
+def mcproute(forward=None, gw="ai-gateway", ns="envoy-ai-gateway-system", parent_ns=None,
+             claim_headers=None, client_id_header=None):
     parent = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": gw}
     if parent_ns:
         parent["namespace"] = parent_ns
     backend = {"name": "flux-operator-mcp", "port": 9090}
     if forward is not None:
         backend["forwardHeaders"] = [{"name": h} for h in forward]
-    return {"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "MCPRoute",
-            "metadata": {"name": "mcp", "namespace": ns},
-            "spec": {"parentRefs": [parent], "backendRefs": [backend]}}
+    route = {"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "MCPRoute",
+             "metadata": {"name": "mcp", "namespace": ns},
+             "spec": {"parentRefs": [parent], "backendRefs": [backend]}}
+    security = {}
+    if claim_headers is not None:
+        security["oauth"] = {"claimToHeaders": [{"claim": "sub", "header": h} for h in claim_headers]}
+    if client_id_header is not None:
+        security["apiKeyAuth"] = {"forwardClientIDHeader": client_id_header}
+    if security:
+        route["spec"]["securityPolicy"] = security
+    return route
 
 
 def quiet(fn, *args):
@@ -175,7 +184,7 @@ check("zero envoy-ai-gateway Gateways in the bundle fails, not passes vacuously"
 check("a bundle with only a different-class Gateway also fails",
       len(gate.check_identity_strips([gateway(cls="cilium")])) == 1)
 
-print("A5 — no MCPRoute hands the run's token to an MCP server")
+print("A6 — no MCPRoute hands the run's token to an MCP server")
 check("an MCPRoute forwarding nothing passes", gate.check_mcp_token_passthrough([gateway(), mcproute()]) == [])
 check("forwarding another header passes",
       gate.check_mcp_token_passthrough([gateway(), mcproute(["x-ar-agent"])]) == [])
@@ -184,6 +193,20 @@ check("forwarding Authorization fails, naming the route and backend",
       len(errs) == 1 and "MCPRoute" in errs[0] and "flux-operator-mcp" in errs[0], str(errs))
 check("the header name is case-insensitive",
       len(gate.check_mcp_token_passthrough([gateway(), mcproute(["authorization"])])) == 1)
+check("an oauth.claimToHeaders entry naming another header passes",
+      gate.check_mcp_token_passthrough([gateway(), mcproute(claim_headers=["x-ar-agent"])]) == [])
+errs = gate.check_mcp_token_passthrough([gateway(), mcproute(claim_headers=["Authorization"])])
+check("an oauth.claimToHeaders entry naming Authorization fails, naming the route",
+      len(errs) == 1 and "MCPRoute" in errs[0], str(errs))
+check("claimToHeaders naming authorization is case-insensitive",
+      len(gate.check_mcp_token_passthrough([gateway(), mcproute(claim_headers=["authorization"])])) == 1)
+check("apiKeyAuth.forwardClientIDHeader naming another header passes",
+      gate.check_mcp_token_passthrough([gateway(), mcproute(client_id_header="x-client-id")]) == [])
+errs = gate.check_mcp_token_passthrough([gateway(), mcproute(client_id_header="Authorization")])
+check("apiKeyAuth.forwardClientIDHeader naming Authorization fails, naming the route",
+      len(errs) == 1 and "MCPRoute" in errs[0], str(errs))
+check("forwardClientIDHeader naming authorization is case-insensitive",
+      len(gate.check_mcp_token_passthrough([gateway(), mcproute(client_id_header="authorization")])) == 1)
 check("an explicit parentRef namespace resolves the same Gateway",
       len(gate.check_mcp_token_passthrough(
           [gateway(), mcproute(["Authorization"], ns="other", parent_ns="envoy-ai-gateway-system")])) == 1)
