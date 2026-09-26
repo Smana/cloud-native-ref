@@ -1,11 +1,18 @@
 ---
-# AI gateway layer — always on (programme OD-3), CPU only.
+# AI gateway layer — opt-in Flux umbrella (programme OD-3, amended 2026-09-26), CPU only.
 #
 # The Envoy Gateway and Agent Router controllers, the Semantic Router, and the
 # human/system Gateway `ai-gateway`, with its frontier backends in namespace
 # llm-gateway. Both the GPU fleet (llm-platform) and the agents
 # (agent-platform) route through it. Agents run on frontier models with zero
 # GPUs, which is impossible while these controllers live in the GPU umbrella.
+#
+# Default: spec.suspend = true, so a default deploy stays LLM-free and needs
+# neither the Z.ai key nor the rate-limit password. Both other umbrellas
+# depend on this one: resume it first.
+#
+# Enable on this cluster:
+#   flux resume kustomization ai-gateway -n flux-system
 #
 # deletionPolicy Orphan: removing this object (a revert, a rename) must not
 # cascade into uninstalling Envoy Gateway and every Gateway on the cluster.
@@ -16,6 +23,7 @@ metadata:
   name: ai-gateway
   namespace: flux-system
 spec:
+  suspend: true
   prune: true
   deletionPolicy: Orphan
   interval: 5m0s

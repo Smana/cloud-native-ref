@@ -126,7 +126,8 @@ turning it on would take.
 ## Frontier models and token budgets
 
 `tier-frontier` is served by GLM-5.2 through Z.ai with the **platform** key, which only the gateway
-holds. It needs no GPU, so it answers with `llm-platform` suspended.
+holds. It needs no GPU, so it answers with `llm-platform` suspended, once the `ai-gateway`
+umbrella is resumed (it is suspended by default).
 
 ```bash
 curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
