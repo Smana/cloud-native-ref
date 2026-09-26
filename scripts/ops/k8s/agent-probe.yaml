@@ -3,7 +3,14 @@
 # gateway audience of each class, and the octo-sts one. Apply, test, delete in
 # the same session:
 #   kubectl apply -f scripts/ops/k8s/agent-probe.yaml
-#   kubectl delete -f scripts/ops/k8s/agent-probe.yaml
+#   kubectl -n agents patch sandbox agent-probe --type=merge \
+#     -p "{\"spec\":{\"shutdownTime\":\"$(date -u -d '+1 hour' +%FT%TZ)\"}}"
+#   kubectl delete -f scripts/ops/k8s/agent-probe.yaml --ignore-not-found
+# The pod ends at activeDeadlineSeconds and agent-sandbox v1.0.3 keeps the
+# terminated pod rather than recreating it, but it creates a new one if that pod
+# is ever removed, and the Sandbox, SA and CNP stay until deleted. The patch is
+# the backstop for a forgotten delete: at shutdownTime the controller removes
+# the pod, and shutdownPolicy Delete then removes the Sandbox.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -56,6 +63,7 @@ metadata:
   namespace: agents
 spec:
   service: false
+  shutdownPolicy: Delete
   podTemplate:
     metadata:
       labels:
