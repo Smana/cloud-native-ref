@@ -29,6 +29,12 @@ wrong:
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
       A1/A2.
+  A5  No MCPRoute on a Gateway of class envoy-ai-gateway lists
+      `Authorization` in a backend's `forwardHeaders`. Envoy Gateway always
+      forwards the validated JWT to the MCP proxy, and the MCPRoute API has
+      no field to strip it; the proxy re-originates each backend call, so
+      that list is the one way a run's token reaches an MCP server. At least
+      one such MCPRoute must exist, for the same no-vacuous-pass reason.
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -64,7 +70,7 @@ def load_objects(bundle_dir):
 
 
 def ai_gateways(objs):
-    """Gateways of class envoy-ai-gateway -- both checks below scope to just these."""
+    """Gateways of class envoy-ai-gateway -- the checks below scope to just these."""
     return [obj for obj in objs if obj.get("kind") == "Gateway"
             and spec_of(obj).get("gatewayClassName") == AI_GATEWAY_CLASS]
 
@@ -165,7 +171,31 @@ def check_identity_strips(objs):
     return errors
 
 
-CHECKS = [check_rate_limit_rules, check_identity_strips]
+def check_mcp_token_passthrough(objs):
+    gateway_keys = {((g.get("metadata") or {}).get("namespace", ""), (g.get("metadata") or {}).get("name"))
+                    for g in ai_gateways(objs)}
+    errors = []
+    covered = False
+    for obj in objs:
+        if obj.get("kind") != "MCPRoute":
+            continue
+        ns = (obj.get("metadata") or {}).get("namespace", "")
+        spec = spec_of(obj)
+        if not any(p.get("kind", "Gateway") == "Gateway" and (p.get("namespace") or ns, p.get("name")) in gateway_keys
+                   for p in spec.get("parentRefs") or []):
+            continue
+        covered = True
+        for backend in spec.get("backendRefs") or []:
+            if any((h.get("name") or "").lower() == "authorization" for h in backend.get("forwardHeaders") or []):
+                errors.append(f"{ref(obj)}: backend {backend.get('name')} forwards Authorization, "
+                              "handing the run's token to an MCP server")
+    if not covered:
+        errors.append(f"no MCPRoute attached to a Gateway of class {AI_GATEWAY_CLASS} found in the bundle "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+    return errors
+
+
+CHECKS = [check_rate_limit_rules, check_identity_strips, check_mcp_token_passthrough]
 
 
 def main(argv):

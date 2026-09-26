@@ -77,6 +77,18 @@ def ctp(remove, gw="ai-gateway", ns="envoy-ai-gateway-system", section=None):
             "metadata": {"name": "client", "namespace": ns}, "spec": spec}
 
 
+def mcproute(forward=None, gw="ai-gateway", ns="envoy-ai-gateway-system", parent_ns=None):
+    parent = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": gw}
+    if parent_ns:
+        parent["namespace"] = parent_ns
+    backend = {"name": "flux-operator-mcp", "port": 9090}
+    if forward is not None:
+        backend["forwardHeaders"] = [{"name": h} for h in forward]
+    return {"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "MCPRoute",
+            "metadata": {"name": "mcp", "namespace": ns},
+            "spec": {"parentRefs": [parent], "backendRefs": [backend]}}
+
+
 def quiet(fn, *args):
     with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
         return fn(*args)
@@ -163,10 +175,33 @@ check("zero envoy-ai-gateway Gateways in the bundle fails, not passes vacuously"
 check("a bundle with only a different-class Gateway also fails",
       len(gate.check_identity_strips([gateway(cls="cilium")])) == 1)
 
+print("A5 — no MCPRoute hands the run's token to an MCP server")
+check("an MCPRoute forwarding nothing passes", gate.check_mcp_token_passthrough([gateway(), mcproute()]) == [])
+check("forwarding another header passes",
+      gate.check_mcp_token_passthrough([gateway(), mcproute(["x-ar-agent"])]) == [])
+errs = gate.check_mcp_token_passthrough([gateway(), mcproute(["Authorization"])])
+check("forwarding Authorization fails, naming the route and backend",
+      len(errs) == 1 and "MCPRoute" in errs[0] and "flux-operator-mcp" in errs[0], str(errs))
+check("the header name is case-insensitive",
+      len(gate.check_mcp_token_passthrough([gateway(), mcproute(["authorization"])])) == 1)
+check("an explicit parentRef namespace resolves the same Gateway",
+      len(gate.check_mcp_token_passthrough(
+          [gateway(), mcproute(["Authorization"], ns="other", parent_ns="envoy-ai-gateway-system")])) == 1)
+errs = gate.check_mcp_token_passthrough([gateway(), mcproute(["Authorization"], ns="other")])
+check("an MCPRoute whose parentRef resolves to another namespace is out of scope, and does not satisfy the guard",
+      len(errs) == 1 and "no MCPRoute" in errs[0], str(errs))
+errs = gate.check_mcp_token_passthrough([gateway(), gateway(name="cilium-gw", cls="cilium"),
+                                         mcproute(["Authorization"], gw="cilium-gw")])
+check("an MCPRoute on another GatewayClass is out of scope, and does not satisfy the guard",
+      len(errs) == 1 and "no MCPRoute" in errs[0], str(errs))
+errs = gate.check_mcp_token_passthrough([gateway()])
+check("zero MCPRoutes on an envoy-ai-gateway Gateway fails, not passes vacuously",
+      len(errs) == 1 and "no MCPRoute" in errs[0], str(errs))
+
 print("main()")
 with tempfile.TemporaryDirectory() as d:
     p = pathlib.Path(d)
-    (p / "overlay-a.yaml").write_text(yaml.safe_dump_all([gateway(), ctp(STRIPS), btp([rule()])]))
+    (p / "overlay-a.yaml").write_text(yaml.safe_dump_all([gateway(), ctp(STRIPS), btp([rule()]), mcproute()]))
     check("exit 0 on a compliant bundle", quiet(gate.main, [d]) == 0)
     (p / "overlay-b.yaml").write_text(yaml.safe_dump_all([btp([rule(shared=False)], name="bad")]))
     check("exit 1 on a violation", quiet(gate.main, [d]) == 1)

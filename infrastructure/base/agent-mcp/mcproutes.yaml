@@ -1,0 +1,496 @@
+# Two MCPRoutes, one per agent-router listener (SP1 §6). Both reuse that
+# listener's issuer and audiences for `oauth`, deny by default, and allow each
+# role its tools on `aud`, one rule per role and backend (a rule's target holds
+# at most 16 tools). toolSelector hides every other tool, including all
+# mutating ones. SP2 adds the room-broker backend (:8090) and its room_* rules.
+#
+# Envoy Gateway 1.9.1 forwards the validated JWT to the MCP proxy, and the
+# MCPRoute API has no field to strip it. None is needed: the proxy re-originates
+# every backend call with fresh headers, copying only `claimToHeaders`
+# (x-ar-agent) and `forwardHeaders`, so no server sees a run's token. Never list
+# Authorization in `forwardHeaders`; gate A5
+# (scripts/ci/flux-schema/assert-ai-gateway.py) fails the build if one does.
+#
+# Agent Router 1.1.0 authorizes tools/call and tools/list only: resources and
+# prompts pass through. These three servers expose static docs there, nothing else.
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: agent-mcp-public
+  namespace: agent-system
+spec:
+  parentRefs:
+    - {group: gateway.networking.k8s.io, kind: Gateway, name: agent-router, sectionName: public}
+  path: /mcp
+  backendRefs:
+    - name: flux-operator-mcp
+      port: 9090
+      path: /mcp
+      toolSelector:
+        include:
+          - search_flux_docs
+    - name: mcp-victoriametrics
+      port: 8081
+      path: /mcp
+      toolSelector:
+        include:
+          - documentation
+    - name: mcp-victorialogs
+      port: 8081
+      path: /mcp
+      toolSelector:
+        include:
+          - documentation
+  securityPolicy:
+    oauth:
+      issuer: ${oidc_issuer_url}
+      audiences:
+        - agent-router.implementer.public
+        - agent-router.reviewer.public
+        - agent-router.tester.public
+        - agent-router.triager.public
+      jwks:
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+      claimToHeaders:
+        - {claim: sub, header: x-ar-agent}
+      protectedResourceMetadata:
+        resource: http://agent-router.envoy-gateway-system.svc.cluster.local:8080/mcp
+    authorization:
+      defaultAction: Deny
+      rules:
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.public]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.public]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.public]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.public]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.public]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.public]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.public]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.public]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.public]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.public]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.public]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.public]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: agent-mcp-internal
+  namespace: agent-system
+spec:
+  parentRefs:
+    - {group: gateway.networking.k8s.io, kind: Gateway, name: agent-router, sectionName: internal}
+  path: /mcp
+  backendRefs:
+    - name: flux-operator-mcp
+      port: 9090
+      path: /mcp
+      toolSelector:
+        include:
+          - search_flux_docs
+          - get_flux_instance
+          - get_kubernetes_api_versions
+          - get_kubernetes_resources
+          - get_kubernetes_metrics
+          - get_kubernetes_logs
+    - name: mcp-victoriametrics
+      port: 8081
+      path: /mcp
+      toolSelector:
+        include:
+          - documentation
+          - query
+          - query_range
+          - metrics
+          - metrics_metadata
+          - labels
+          - label_values
+          - series
+          - alerts
+          - rules
+          - explain_query
+          - prettify_query
+          - metric_statistics
+          - tsdb_status
+          - active_queries
+          - top_queries
+    - name: mcp-victorialogs
+      port: 8081
+      path: /mcp
+      toolSelector:
+        include:
+          - documentation
+          - query
+          - hits
+          - facets
+          - field_names
+          - field_values
+          - stats_query
+          - stats_query_range
+          - streams
+          - stream_ids
+          - stream_field_names
+          - stream_field_values
+          - flags
+  securityPolicy:
+    oauth:
+      issuer: ${oidc_issuer_url}
+      audiences:
+        - agent-router.implementer.internal
+        - agent-router.reviewer.internal
+        - agent-router.tester.internal
+        - agent-router.triager.internal
+      jwks:
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+      claimToHeaders:
+        - {claim: sub, header: x-ar-agent}
+      protectedResourceMetadata:
+        resource: http://agent-router.envoy-gateway-system.svc.cluster.local:8081/mcp
+    authorization:
+      defaultAction: Deny
+      rules:
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.internal]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+              - {backend: flux-operator-mcp, tool: get_flux_instance}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_api_versions}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_resources}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_metrics}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.internal]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+              - {backend: mcp-victoriametrics, tool: query}
+              - {backend: mcp-victoriametrics, tool: query_range}
+              - {backend: mcp-victoriametrics, tool: metrics}
+              - {backend: mcp-victoriametrics, tool: metrics_metadata}
+              - {backend: mcp-victoriametrics, tool: labels}
+              - {backend: mcp-victoriametrics, tool: label_values}
+              - {backend: mcp-victoriametrics, tool: series}
+              - {backend: mcp-victoriametrics, tool: alerts}
+              - {backend: mcp-victoriametrics, tool: rules}
+              - {backend: mcp-victoriametrics, tool: explain_query}
+              - {backend: mcp-victoriametrics, tool: prettify_query}
+              - {backend: mcp-victoriametrics, tool: metric_statistics}
+              - {backend: mcp-victoriametrics, tool: tsdb_status}
+              - {backend: mcp-victoriametrics, tool: active_queries}
+              - {backend: mcp-victoriametrics, tool: top_queries}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.implementer.internal]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.internal]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+              - {backend: flux-operator-mcp, tool: get_flux_instance}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_api_versions}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_resources}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_metrics}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_logs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.internal]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+              - {backend: mcp-victoriametrics, tool: query}
+              - {backend: mcp-victoriametrics, tool: query_range}
+              - {backend: mcp-victoriametrics, tool: metrics}
+              - {backend: mcp-victoriametrics, tool: metrics_metadata}
+              - {backend: mcp-victoriametrics, tool: labels}
+              - {backend: mcp-victoriametrics, tool: label_values}
+              - {backend: mcp-victoriametrics, tool: series}
+              - {backend: mcp-victoriametrics, tool: alerts}
+              - {backend: mcp-victoriametrics, tool: rules}
+              - {backend: mcp-victoriametrics, tool: explain_query}
+              - {backend: mcp-victoriametrics, tool: prettify_query}
+              - {backend: mcp-victoriametrics, tool: metric_statistics}
+              - {backend: mcp-victoriametrics, tool: tsdb_status}
+              - {backend: mcp-victoriametrics, tool: active_queries}
+              - {backend: mcp-victoriametrics, tool: top_queries}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.reviewer.internal]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+              - {backend: mcp-victorialogs, tool: query}
+              - {backend: mcp-victorialogs, tool: hits}
+              - {backend: mcp-victorialogs, tool: facets}
+              - {backend: mcp-victorialogs, tool: field_names}
+              - {backend: mcp-victorialogs, tool: field_values}
+              - {backend: mcp-victorialogs, tool: stats_query}
+              - {backend: mcp-victorialogs, tool: stats_query_range}
+              - {backend: mcp-victorialogs, tool: streams}
+              - {backend: mcp-victorialogs, tool: stream_ids}
+              - {backend: mcp-victorialogs, tool: stream_field_names}
+              - {backend: mcp-victorialogs, tool: stream_field_values}
+              - {backend: mcp-victorialogs, tool: flags}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.internal]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+              - {backend: flux-operator-mcp, tool: get_flux_instance}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_api_versions}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_resources}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_metrics}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_logs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.internal]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+              - {backend: mcp-victoriametrics, tool: query}
+              - {backend: mcp-victoriametrics, tool: query_range}
+              - {backend: mcp-victoriametrics, tool: metrics}
+              - {backend: mcp-victoriametrics, tool: metrics_metadata}
+              - {backend: mcp-victoriametrics, tool: labels}
+              - {backend: mcp-victoriametrics, tool: label_values}
+              - {backend: mcp-victoriametrics, tool: series}
+              - {backend: mcp-victoriametrics, tool: alerts}
+              - {backend: mcp-victoriametrics, tool: rules}
+              - {backend: mcp-victoriametrics, tool: explain_query}
+              - {backend: mcp-victoriametrics, tool: prettify_query}
+              - {backend: mcp-victoriametrics, tool: metric_statistics}
+              - {backend: mcp-victoriametrics, tool: tsdb_status}
+              - {backend: mcp-victoriametrics, tool: active_queries}
+              - {backend: mcp-victoriametrics, tool: top_queries}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.tester.internal]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+              - {backend: mcp-victorialogs, tool: query}
+              - {backend: mcp-victorialogs, tool: hits}
+              - {backend: mcp-victorialogs, tool: facets}
+              - {backend: mcp-victorialogs, tool: field_names}
+              - {backend: mcp-victorialogs, tool: field_values}
+              - {backend: mcp-victorialogs, tool: stats_query}
+              - {backend: mcp-victorialogs, tool: stats_query_range}
+              - {backend: mcp-victorialogs, tool: streams}
+              - {backend: mcp-victorialogs, tool: stream_ids}
+              - {backend: mcp-victorialogs, tool: stream_field_names}
+              - {backend: mcp-victorialogs, tool: stream_field_values}
+              - {backend: mcp-victorialogs, tool: flags}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.internal]
+          target:
+            tools:
+              - {backend: flux-operator-mcp, tool: search_flux_docs}
+              - {backend: flux-operator-mcp, tool: get_flux_instance}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_api_versions}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_resources}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_metrics}
+              - {backend: flux-operator-mcp, tool: get_kubernetes_logs}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.internal]
+          target:
+            tools:
+              - {backend: mcp-victoriametrics, tool: documentation}
+              - {backend: mcp-victoriametrics, tool: query}
+              - {backend: mcp-victoriametrics, tool: query_range}
+              - {backend: mcp-victoriametrics, tool: metrics}
+              - {backend: mcp-victoriametrics, tool: metrics_metadata}
+              - {backend: mcp-victoriametrics, tool: labels}
+              - {backend: mcp-victoriametrics, tool: label_values}
+              - {backend: mcp-victoriametrics, tool: series}
+              - {backend: mcp-victoriametrics, tool: alerts}
+              - {backend: mcp-victoriametrics, tool: rules}
+              - {backend: mcp-victoriametrics, tool: explain_query}
+              - {backend: mcp-victoriametrics, tool: prettify_query}
+              - {backend: mcp-victoriametrics, tool: metric_statistics}
+              - {backend: mcp-victoriametrics, tool: tsdb_status}
+              - {backend: mcp-victoriametrics, tool: active_queries}
+              - {backend: mcp-victoriametrics, tool: top_queries}
+        - action: Allow
+          source:
+            jwt:
+              claims:
+                - name: aud
+                  valueType: StringArray
+                  values: [agent-router.triager.internal]
+          target:
+            tools:
+              - {backend: mcp-victorialogs, tool: documentation}
+              - {backend: mcp-victorialogs, tool: query}
+              - {backend: mcp-victorialogs, tool: hits}
+              - {backend: mcp-victorialogs, tool: facets}
+              - {backend: mcp-victorialogs, tool: field_names}
+              - {backend: mcp-victorialogs, tool: field_values}
+              - {backend: mcp-victorialogs, tool: stats_query}
+              - {backend: mcp-victorialogs, tool: stats_query_range}
+              - {backend: mcp-victorialogs, tool: streams}
+              - {backend: mcp-victorialogs, tool: stream_ids}
+              - {backend: mcp-victorialogs, tool: stream_field_names}
+              - {backend: mcp-victorialogs, tool: stream_field_values}
+              - {backend: mcp-victorialogs, tool: flags}

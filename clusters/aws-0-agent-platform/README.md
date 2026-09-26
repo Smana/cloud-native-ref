@@ -12,6 +12,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-policies` | `security/base/agent-policies` | Kyverno admission and GC for runs |
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
+| `agent-mcp` | `infrastructure/base/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
 
 ## Resume
 
