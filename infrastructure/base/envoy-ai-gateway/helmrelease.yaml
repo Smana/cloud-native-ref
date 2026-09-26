@@ -15,6 +15,12 @@ spec:
   install:
     remediation:
       retries: 3
+  # The MCP session-seed Secret is watched: ESO's second write to it right after
+  # creation triggers a reconcile that cancels an in-flight upgrade ("context
+  # canceled"). With no upgrade retries that failure stalls the release for good.
+  upgrade:
+    remediation:
+      retries: 3
   # CRDs from the sibling HelmRelease must reconcile first.
   dependsOn:
     - name: envoy-ai-gateway-crds
