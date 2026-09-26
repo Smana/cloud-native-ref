@@ -84,8 +84,9 @@ The umbrella aggregates **5** child Flux Kustomizations under
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
 
 The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
-Router and the `ai-gateway` Gateway) is a separate, always-on umbrella, `ai-gateway`, under
-`clusters/aws-0-ai-gateway/`. It is CPU only and has no gate.
+Router and the `ai-gateway` Gateway) is a separate umbrella, `ai-gateway`, under
+`clusters/aws-0-ai-gateway/`. It is CPU only and suspended by default: resume it before
+`llm-platform`, which depends on it.
 
 That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested

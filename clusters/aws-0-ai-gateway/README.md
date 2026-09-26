@@ -1,7 +1,16 @@
-# AI gateway — always-on Flux umbrella
+# AI gateway — opt-in Flux umbrella
 
-Aggregated by `../aws-0/ai-gateway.yaml`, which is **never suspended** (programme OD-3). CPU only. It
-is what lets agents run on frontier models with no GPU node.
+Aggregated by `../aws-0/ai-gateway.yaml`, which is **suspended by default** (programme OD-3, amended
+2026-09-26). CPU only. It is what lets agents run on frontier models with no GPU node.
+
+Resume it before `llm-platform` or `agent-platform`, which both depend on it:
+
+```bash
+flux resume kustomization ai-gateway -n flux-system
+```
+
+Seed the OpenBao secrets below **first**. Otherwise `llm-gateway` stays NotReady and the Gateway serves
+errors.
 
 | Child Kustomization | Path | Holds |
 |---|---|---|
@@ -12,8 +21,8 @@ is what lets agents run on frontier models with no GPU node.
 
 ## Secrets this layer reads
 
-None of these are in Git, and this layer is always-on, so a missing one is silent until the pod
-that needs it fails:
+None of these are in Git, so once the layer is resumed a missing one is silent until the pod that
+needs it fails:
 
 | Secret | Store | Read by | Without it |
 |---|---|---|---|
