@@ -19,6 +19,28 @@ spec:
         minAvailable: 1
       envoyDeployment:
         replicas: 2
+        # Spread the 2 replicas so a single node or zone loss can't take both:
+        # the PDB above only helps once they're already apart.
+        pod:
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: envoy-gateway
+                  app.kubernetes.io/component: proxy
+                  gateway.envoyproxy.io/owning-gateway-name: agent-router
+                  gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: envoy-gateway
+                  app.kubernetes.io/component: proxy
+                  gateway.envoyproxy.io/owning-gateway-name: agent-router
+                  gateway.envoyproxy.io/owning-gateway-namespace: agent-system
         container:
           resources:
             requests:
