@@ -39,7 +39,7 @@ These supersede the sections they name; the reasoning is in the plan's departure
 | §2 lifecycle | Terminal phase and reason latch. Any terminal phase withholds the ServiceAccount. Succeeded/Failed Sandboxes are `operatingMode: Suspended` and stay Ready. Every spec field is immutable except `budget.maxTokens` |
 | §2 CNP | Router egress pins `owning-gateway-namespace: agent-system` as well as the Gateway name. Host ingress only on the proxy health port |
 | §5 harness | agent-server stays on loopback with `exec` probes; `:8000` is not in the CNP |
-| §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network |
+| §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network. Runs `--disable-hot-restart --concurrency 1`: hot restart would open an abstract socket and a `/dev/shm` segment the harness shares |
 
 ## Architecture
 
