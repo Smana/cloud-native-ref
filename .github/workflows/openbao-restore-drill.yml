@@ -44,7 +44,7 @@ permissions:
 
 env:
   # renovate: datasource=github-releases depName=openbao/openbao
-  BAO_VERSION: 2.6.2
+  BAO_VERSION: 2.7.0
   AWS_REGION: eu-west-3
   SNAPSHOT_BUCKET: eu-west-3-ogenki-openbao-snapshot
   MIRROR_BUCKET: ogenki-435905-ogenki-openbao-snapshot
@@ -155,10 +155,9 @@ jobs:
       - name: Start a throwaway OpenBao sealed by the lineage key
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/raft"
+          mkdir -p "$RUNNER_TEMP/raft" "$RUNNER_TEMP/plugins"
           cat > "$RUNNER_TEMP/bao.hcl" <<EOF
           ui            = false
-          disable_mlock = true
           api_addr      = "http://127.0.0.1:8200"
           cluster_addr  = "https://127.0.0.1:8201"
           listener "tcp" {
@@ -168,6 +167,14 @@ jobs:
           storage "raft" {
             path    = "$RUNNER_TEMP/raft"
             node_id = "drill"
+          }
+          # Since 2.7 the awskms seal is a plugin, as on the real nodes
+          # (opentofu/aws/openbao/cluster/scripts/startup_script.sh).
+          plugin_directory     = "$RUNNER_TEMP/plugins"
+          plugin_auto_download = true
+          plugin "kms" "awskms" {
+            # renovate: datasource=docker depName=ghcr.io/openbao/openbao-plugin-kms-aws
+            image = "ghcr.io/openbao/openbao-plugin-kms-aws:v0.1.0@sha256:fe9fb94872048c9474156c044ea8852bb5c2e968fc9304a3725e4d434b488541"
           }
           seal "awskms" {
             region     = "$AWS_REGION"
@@ -508,7 +515,7 @@ jobs:
           AWS_EC2_METADATA_DISABLED: "true"
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/raft"
+          mkdir -p "$RUNNER_TEMP/raft" "$RUNNER_TEMP/plugins"
           # The key is named by alias in AWS_REGION -- the primary, not the
           # replica region the GCP standby points at. Same key ID either way and
           # the drill role's grant carries a region wildcard; the replica's own
@@ -516,7 +523,6 @@ jobs:
           # is the whole value of this job.
           cat > "$RUNNER_TEMP/bao.hcl" <<EOF
           ui            = false
-          disable_mlock = true
           api_addr      = "http://127.0.0.1:8200"
           cluster_addr  = "https://127.0.0.1:8201"
           listener "tcp" {
@@ -526,6 +532,14 @@ jobs:
           storage "raft" {
             path    = "$RUNNER_TEMP/raft"
             node_id = "web-identity"
+          }
+          # Since 2.7 the awskms seal is a plugin, as on the real nodes
+          # (opentofu/aws/openbao/cluster/scripts/startup_script.sh).
+          plugin_directory     = "$RUNNER_TEMP/plugins"
+          plugin_auto_download = true
+          plugin "kms" "awskms" {
+            # renovate: datasource=docker depName=ghcr.io/openbao/openbao-plugin-kms-aws
+            image = "ghcr.io/openbao/openbao-plugin-kms-aws:v0.1.0@sha256:fe9fb94872048c9474156c044ea8852bb5c2e968fc9304a3725e4d434b488541"
           }
           seal "awskms" {
             region     = "$AWS_REGION"

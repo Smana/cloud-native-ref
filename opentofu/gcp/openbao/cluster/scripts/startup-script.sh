@@ -81,6 +81,9 @@ rm -f "$OPENBAO_BINARY" "$OPENBAO_BINARY.gpgsig" openbao-gpg-pub.asc
 # The `openbao` user and group are created by the .deb, so this has to run
 # after the install.
 install -d -m 0750 -o root -g openbao /opt/openbao/tls
+# OpenBao downloads its seal plugin here at startup, so it must be writable by the
+# service user. /opt stays writable under the unit's ProtectSystem=full.
+install -d -m 0750 -o openbao -g openbao /opt/openbao/plugins
 
 TLS_SECRET=$(gcloud secrets versions access latest \
   --secret "${server_cert_secret_name}" --project "${project_id}")
@@ -156,15 +159,6 @@ telemetry {
   disable_hostname          = true
 }
 
-# REQUIRED with Integrated Storage, and it was missing here while the backend
-# was "file". With mlock enabled OpenBao locks the whole Bolt database into
-# physical memory and the OOM killer takes the process once it outgrows RAM
-# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under "file"; on this
-# 2 GB e2-small now running raft it is the documented OOM path, and the
-# retry-forever drop-in below would turn it into a slow crashloop rather than a
-# clean failure. The AWS sibling and the CI drill both set it.
-disable_mlock = true
-
 # Raft, single node. "file" could neither take nor receive a snapshot, so a
 # node's contents died with it; a one-node raft cluster is bootstrapped by
 # operator init and costs nothing extra. No retry_join at all, unlike AWS:
@@ -176,7 +170,20 @@ storage "raft" {
   node_id = "$(hostname)"
 }
 
+# Since OpenBao 2.7 the cloud KMS seals are no longer built in: each needs its
+# kms plugin, whose name must equal the seal name. Pinned by digest; downloaded
+# from ghcr.io at startup. The plugin inherits the server's environment, so the
+# web-identity variables below reach the awskms plugin unchanged (verified
+# 2026-09-26 against 2.7.0).
+plugin_directory     = "/opt/openbao/plugins"
+plugin_auto_download = true
+
 %{ if seal_provider == "awskms" }
+plugin "kms" "awskms" {
+  # renovate: datasource=docker depName=ghcr.io/openbao/openbao-plugin-kms-aws
+  image = "ghcr.io/openbao/openbao-plugin-kms-aws:v0.1.0@sha256:fe9fb94872048c9474156c044ea8852bb5c2e968fc9304a3725e4d434b488541"
+}
+
 # STANDBY seal: the AWS lineage's multi-region key, in its replica region,
 # reached with the federated role. Credentials come from the SDK's web-identity
 # provider -- AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE in the systemd
@@ -186,6 +193,11 @@ seal "awskms" {
   kms_key_id = "${aws_seal_kms_key_id}"
 }
 %{ else }
+plugin "kms" "gcpckms" {
+  # renovate: datasource=docker depName=ghcr.io/openbao/openbao-plugin-kms-gcp
+  image = "ghcr.io/openbao/openbao-plugin-kms-gcp:v0.1.0@sha256:ed0b6e44716dfb77286dc53e8ee2322e41c8e9b14d9652a20f71dd8384f31842"
+}
+
 seal "gcpckms" {
   project    = "${project_id}"
   region     = "${region}"
