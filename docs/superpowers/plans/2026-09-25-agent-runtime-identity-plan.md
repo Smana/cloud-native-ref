@@ -2404,7 +2404,9 @@ spec:
       apiVersion: krm.kcl.dev/v1alpha1
       kind: KCLRun
       spec:
-        target: Resources
+        # Default, not Resources: only Default patches the XR from an item of the
+        # XR's own kind; Resources composes it as a nested AgentRun instead.
+        target: Default
         source: ""
   - step: ready
     functionRef:
