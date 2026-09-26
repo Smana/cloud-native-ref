@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - externalsecret-zai.yaml
+  - zai.yaml
+  - aigatewayroute.yaml
+  - btp-token-budgets.yaml
+  - vmrule-llm-gateway.yaml

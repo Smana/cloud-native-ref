@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Children of the always-on ai-gateway umbrella (../aws-0/ai-gateway.yaml).
+# The first three moved here from aws-0-llm-platform/ with their names
+# unchanged, so every dependsOn edge that names them still resolves.
+resources:
+  - infrastructure-envoy-gateway.yaml
+  - infrastructure-envoy-ai-gateway.yaml
+  - infrastructure-vllm-semantic-router.yaml
+  - infrastructure-llm-gateway.yaml

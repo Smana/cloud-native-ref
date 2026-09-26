@@ -72,19 +72,20 @@ TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run d
 flux resume kustomization llm-platform -n flux-system
 ```
 
-The umbrella aggregates **8** child Flux Kustomizations under
+The umbrella aggregates **5** child Flux Kustomizations under
 `clusters/aws-0-llm-platform/`:
 
 | Child | Renders | Path |
 |---|---|---|
-| `vllm-semantic-router` | Prompt-classification router (`MoM` virtual model) | `infrastructure/base/vllm-semantic-router` |
 | `runtimeclass-nvidia` | `RuntimeClass nvidia` | `infrastructure/base/runtimeclass-nvidia` |
 | `llm-platform-gpu-nodepools` | Karpenter `gpu-l4` NodePool + EC2NodeClass | `infrastructure/base/karpenter-nodepools-gpu` |
-| `envoy-gateway` | Envoy Gateway controller | `infrastructure/base/envoy-gateway` |
-| `envoy-ai-gateway` | Envoy AI Gateway + the Semantic Router `EnvoyPatchPolicy` | `infrastructure/base/envoy-ai-gateway` |
 | `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/llm` |
 | `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
+
+The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
+Router and the `ai-gateway` Gateway) is a separate, always-on umbrella, `ai-gateway`, under
+`clusters/aws-0-ai-gateway/`. It is CPU only and has no gate.
 
 That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested

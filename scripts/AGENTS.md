@@ -5,13 +5,14 @@ Layout: [`README.md`](README.md). CI calls the entry point below as `task ci:val
 `./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
-then applies three gates to the result.
+then applies four gates to the result.
 
 | Gate | Tool | Catches |
 |---|---|---|
 | 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog and the CNCF ecosystem catalog |
 | 2 | `polaris audit` | workload best practices — privilege escalation, capabilities, image tags |
-| 3 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
+| 3 | `flux-schema/assert-ai-gateway.py` | cross-object AI-gateway invariants: budget rules shared and token-costed, identity headers stripped on every envoy-ai-gateway Gateway |
+| 4 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
 
 Two properties are load-bearing:
 

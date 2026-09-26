@@ -1,6 +1,6 @@
 # LLM Platform — opt-in Flux umbrella
 
-The 8 child Flux Kustomizations in this directory are aggregated by the
+The 5 child Flux Kustomizations in this directory are aggregated by the
 umbrella at `../aws-0/llm-platform.yaml`. This directory is a
 **sibling** of `clusters/aws-0/` — not a sub-path — so that
 `flux-system` (which recursively syncs `clusters/aws-0/`) does
@@ -11,14 +11,14 @@ the LLM-platform resources — are created on a fresh cluster.
 
 | Child Kustomization | Path | Resources |
 |---|---|---|
-| `vllm-semantic-router` | `infrastructure/base/vllm-semantic-router` | Iris router HelmRelease (`MoM` virtual model + cascade decisions[]) |
 | `runtimeclass-nvidia` | `infrastructure/base/runtimeclass-nvidia` | RuntimeClass `nvidia` (Bottlerocket NVIDIA AMI advertises GPU natively — no DaemonSet) |
 | `llm-platform-gpu-nodepools` | `infrastructure/base/karpenter-nodepools-gpu` | Karpenter `gpu-l4` NodePool + EC2NodeClass |
-| `envoy-gateway` | `infrastructure/base/envoy-gateway` | Envoy Gateway controller (provides the GatewayClass `envoy-ai-gateway` consumes) |
-| `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Envoy AI Gateway `1.0.0`: AIGatewayRoute → AIServiceBackend → per-model `Backend` (FQDN of the vLLM Service), direct — no proxy hop. Also carries the `EnvoyPatchPolicy` that inserts the Semantic Router ext_proc filter |
 | `llm-platform-apps` | `apps/llm` | InferenceService claims + OpenWebUI + AIGatewayRoute |
 | `llm-platform-security-epi` | `security/base/epis-llm` | `xplane-llm-models-preload` writable EPI |
 | `llm-platform-promptfoo` | `tooling/base/promptfoo` | Nightly Promptfoo eval CronJob — gated under the LLM umbrella so it doesn't fire when SR is suspended |
+
+The gateway layer these children attach to is the always-on `ai-gateway` umbrella; see
+`../aws-0-ai-gateway/README.md`.
 
 ## Client tier
 
@@ -51,35 +51,10 @@ The OpenTofu side (`opentofu/aws/llm-platform/`) is gated separately with
 `$TM_LLM_PLATFORM_ENABLED=true`. Both gates must be released for an
 end-to-end deploy. See `opentofu/aws/llm-platform/README.md`.
 
-### One-time AWS Secrets Manager bootstrap
+### AWS Secrets Manager bootstrap
 
-The AI Gateway's API keys live in AWS SM at `platform-llm-api-keys`,
-**deliberately outside of OpenTofu** so they survive cluster teardown +
-recreation (rotating keys would invalidate every coding-client config —
-that pain is worse than the bootstrap step). Three ExternalSecrets
-fan out from this single SM entry:
-
-- `envoy-ai-gateway-system/ai-gateway-api-keys` (gateway-side compare)
-- `apps/openwebui-llm-api-key` (OpenWebUI's `OPENAI_API_KEY`)
-- `promptfoo/promptfoo-llm-api-key` (nightly eval CronJob)
-
-If `aws secretsmanager describe-secret --secret-id platform-llm-api-keys`
-returns `ResourceNotFoundException`, seed it once (idempotent — re-running
-fails harmlessly with `ResourceExistsException`):
-
-```bash
-OPENWEBUI_KEY="sk-$(openssl rand -hex 24)"
-PROMPTFOO_KEY="sk-$(openssl rand -hex 24)"
-aws secretsmanager create-secret \
-  --region eu-west-3 \
-  --name platform-llm-api-keys \
-  --description "AI Gateway client API keys (raw, no Bearer prefix). JSON: {openwebui_apikey, promptfoo_apikey}" \
-  --secret-string "{\"openwebui_apikey\":\"${OPENWEBUI_KEY}\",\"promptfoo_apikey\":\"${PROMPTFOO_KEY}\"}"
-```
-
-To onboard a new client identity, add a property to the JSON
-(e.g. `developer_apikey`) and append a matching key to the gateway-side
-ESO template at `infrastructure/base/envoy-ai-gateway/api-keys-externalsecret.yaml`.
+Moved to [`../aws-0-ai-gateway/README.md`](../aws-0-ai-gateway/README.md#secrets-this-layer-reads) —
+`platform-llm-api-keys` backs the always-on gateway's own auth, not just this umbrella's apps.
 
 ## Disable (preserve cluster state)
 
@@ -96,8 +71,7 @@ explicitly removed.
 ```bash
 flux suspend kustomization llm-platform -n flux-system
 flux delete kustomization \
-  llm-platform-apps llm-platform-gpu-nodepools envoy-ai-gateway envoy-gateway \
-  llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia vllm-semantic-router \
+  llm-platform-apps llm-platform-gpu-nodepools llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia \
   -n flux-system --silent
 
 # Then drop the AWS-side resources:
@@ -116,8 +90,7 @@ opt-in, so the env var must be set:
 #    destroy runs).
 flux suspend kustomization llm-platform -n flux-system
 flux delete kustomization \
-  llm-platform-apps llm-platform-gpu-nodepools envoy-ai-gateway envoy-gateway \
-  llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia vllm-semantic-router \
+  llm-platform-apps llm-platform-gpu-nodepools llm-platform-security-epi llm-platform-promptfoo runtimeclass-nvidia \
   -n flux-system --silent
 
 # 2. Walk all stacks in reverse — single y/n prompt at the start.
