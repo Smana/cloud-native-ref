@@ -149,8 +149,8 @@ translation) in Task 15.
 
 | Tag | Step | Task |
 |---|---|---|
-| [OWNER] O1 | Copy the platform Z.ai key into `platform/llm/zai`. It is **copied, not moved**: RunLore keeps reading `runlore/credentials` until PR 6 | 8 |
-| [OWNER] O2 | Seed the Valkey password at `platform/ai-gateway/ratelimit-valkey` | 8 |
+| ~~[OWNER] O1~~ | **Superseded 2026-09-26.** The `llm-gateway` ExternalSecret reads `platform/runlore/credentials#GLM_API_KEY` directly, and PR 6 moves the key to `platform/llm/zai` | — |
+| ~~[OWNER] O2~~ | **Superseded 2026-09-26.** An ESO `Password` generator (`CreatedOnce`) creates the Valkey password in-cluster | — |
 | [OWNER] O3 | Confirm that `llm-platform` is suspended on every running aws-0 before merging PR 1 | 0, 8 |
 | [OWNER] O4 | Enable Bedrock model access in eu-west-3 for the three EU profiles. This is the Marketplace subscription on first invocation, done from an admin identity | 15 |
 | [OWNER] O5 | Create a throwaway ZITADEL machine user that issues JWT access tokens, for the `oidc` listener test, and delete it afterwards | 15 |
@@ -1907,15 +1907,15 @@ are counted in **shadow mode**: nothing is rejected yet
   git commit -m "docs(ai-platform): tier-frontier and token budgets on the ai-gateway Gateway"
   ```
 
-- [ ] **Step 4 [OWNER] O1, O2: Seed OpenBao.** Values go through stdin, never argv. Use the operator
-  login from `security/AGENTS.md`:
+- [ ] **Step 4: Nothing to seed** (O1 and O2 superseded 2026-09-26). A bootstrap must be one
+  `terramate script run deploy`. Instead, check that both Secrets exist once `ai-gateway` is resumed:
 
   ```bash
-  bao kv get -mount=platform -field=GLM_API_KEY runlore/credentials | bao kv put -mount=platform llm/zai api_key=-
-  openssl rand -hex 32 | bao kv put -mount=platform ai-gateway/ratelimit-valkey REDIS_PASSWORD=-
+  kubectl get externalsecret -n llm-gateway zai-api-key -o jsonpath='{.status.conditions[0].reason}{"\n"}'
+  kubectl get externalsecret -n envoy-gateway-system ai-gateway-ratelimit-valkey -o jsonpath='{.status.conditions[0].reason}{"\n"}'
   ```
 
-  Check with `bao kv get -mount=platform -field=api_key llm/zai | wc -c`: the output must be non-zero.
+  Expected: `SecretSynced` for both.
 - [ ] **Step 5 [OWNER] O3: Re-check the precondition** on every running aws-0, with Task 0 Step 5's
   commands. Expected: `llm-platform` suspended.
 - [ ] **Step 6 [LIVE] L1: Deploy the branch.**
