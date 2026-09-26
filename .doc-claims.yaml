@@ -527,6 +527,26 @@ claims:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'uid: {value}'
 
+  - id: envoy-gateway-crds-version
+    why: >-
+      `flux/sources/ocirepo-envoy-gateway.yaml` pins the controller chart the
+      HelmRelease runs, but the HelmRelease sets `crds: Skip` on both install
+      and upgrade — the CRDs come from the static bundle vendored at
+      `crds/base/crds-envoy-gateway.yaml` instead, applied once by the `crds`
+      Kustomization. The two can drift silently: the API server prunes fields
+      a stale CRD does not know about rather than rejecting them, so a newer
+      policy field (e.g. `SecurityPolicy.spec.mergeType`, added between 1.7
+      and 1.9) has no effect and no error. Found live on 2026-09-27 with the
+      controller three minors ahead of the vendored schema. Like
+      `gateway-api-version`, this is source-to-source: a page is just a path
+      and a pattern.
+    source:
+      file: flux/sources/ocirepo-envoy-gateway.yaml
+      pattern: '\n\s*tag:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+    pages:
+      - path: crds/base/kustomization.yaml
+        must_contain: 'download/v{value}/envoy-gateway-crds\.yaml'
+
   - id: victorialogs-datasource-uid
     why: >-
       The other half of the same rename. The traces datasource cross-references
