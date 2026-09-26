@@ -20,8 +20,8 @@ the sandbox dies within **600 s** (C3).
 | S1 | The XR composes a bare **`Sandbox`** (`agents.x-k8s.io/v1beta1`, controller extensions off) | `SandboxTemplate` + `SandboxClaim`; warm pools | The pod spec is per run because identity is per run. A template would be a second owner of it. Warm pools wait for claim-time identity, which is still *Planned* ([roadmap](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/roadmap.md)) |
 | S2 | The controller chart is installed from the agent-sandbox **git repo**, through a `GitRepository` pinned to `v1.0.3` in `flux-sources`, with `image.tag` moved in lockstep | Release YAML; a vendored copy | The chart is not published to any registry, and it exposes the securityContext and resources PSS `restricted` needs. RunLore uses the same pattern |
 | S3 | A Karpenter **AL2023** NodePool `agents-gvisor`, **spot only**. A pinned, sha256-checked gVisor tarball is installed by user-data. runsc is registered in the containerd **v3** CRI table | Bottlerocket ([no runsc](https://github.com/bottlerocket-os/bottlerocket/issues/811)); a baked AMI; Kata on nested virtualisation | This is the one deliberate exception to the Bottlerocket rule. Spot follows the test-cluster rule. An interrupted run resumes on its branch (R7) |
-| S4 | runsc runs on `systrap` (its default) with `oci-seccomp=true` | `ptrace` (the AWS blueprint's choice); `kvm` | `ptrace` is the slow legacy platform, and `kvm` needs nested virtualisation. Without `oci-seccomp`, `RuntimeDefault` does nothing inside the sandbox |
-| S5 | Tokens reach the harness through an **in-pod `identity-proxy`**: an Envoy native sidecar with `credential_injector`, the only container that mounts the 600 s projected tokens | A run-long token passed as the harness's API key | OpenHands reads its LLM key once per conversation ([llm.py](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/llm/llm.py)), so rotation has to happen outside it. The harness never holds a token, and every harness gets the same localhost contract |
+| S4 | runsc runs on `systrap` (its default), with `oci-seccomp` **off** | `ptrace` (the AWS blueprint's choice); `kvm`; `oci-seccomp=true` | `ptrace` is the slow legacy platform, and `kvm` needs nested virtualisation. runsc ignores `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)), so under `oci-seccomp` RuntimeDefault's `clone3` answer becomes EPERM and no glibc ≥ 2.34 process can start a thread (spike Q5). The Sentry is the boundary |
+| S5 | Tokens reach the harness through an **in-pod `identity-proxy`**: an Envoy native sidecar with `credential_injector`, the only container that mounts the projected tokens | A run-long token passed as the harness's API key | OpenHands reads its LLM key once per conversation ([llm.py](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/llm/llm.py)), and the harness never holds a token: every harness gets the same localhost contract. Under gVisor no rotation reaches an in-pod reader, so the tokens live until the run's deadline (R2) |
 | S6 | A dedicated **`agent-router` Gateway** in `agent-system` (`agent-platform` umbrella, on the `ai-gateway` umbrella's controllers, C1). It has **one listener per data class**, `public` (:8080) and `internal` (:8081). Each listener's `SecurityPolicy` accepts exactly its class's four audiences | A listener on the human `ai-gateway`; one listener with per-route `SecurityPolicy`s | No semantic router, so pinning is structural (C5). The same logical name maps to different backends per class. Two routes on one listener would both match `x-ai-eg-model`, and a route-level policy runs only after the route is chosen. A listener per class makes "`internal` never reaches Z.ai" structural |
 | S7 | The harness is **OpenHands agent-server** (MIT) in a repo-built image, selected by a platform **profile**. The claim never carries an image | Headless Claude Code (not OSS); kagent v1 (alpha); OpenHands `AgentSandboxWorkspace` (built on warm pools) | OSS, non-root, OpenAI-compatible, and it satisfies SP2's four-operation bridge interface. An image field would make every claim a supply-chain input |
 | S8 | **Self-hosted octo-sts**, with the App key as a PEM | PATs; ESO GitHub generator; OpenBao GitHub plugin; a git proxy (programme non-goal) | Trust policies live in the repository's default branch. Installations are resolved by account login, so the user-owned `Smana` account works ([ghinstall.go](https://github.com/octo-sts/app/blob/main/pkg/ghinstall/ghinstall.go)) |
@@ -40,6 +40,15 @@ These supersede the sections they name; the reasoning is in the plan's departure
 | §2 CNP | Router egress pins `owning-gateway-namespace: agent-system` as well as the Gateway name. Host ingress only on the proxy health port |
 | §5 harness | agent-server stays on loopback with `exec` probes; `:8000` is not in the CNP |
 | §6 identity-proxy | Probes on a health listener `:9902` (`/ready`). Admin on a pathname unix socket in `proxy-tmp`, never on the pod network. Runs `--disable-hot-restart --concurrency 1`: hot restart would open an abstract socket and a `/dev/shm` segment the harness shares |
+
+**Amendments from the phase-0 spike (2026-09-26, owner).** Evidence in the
+[spike notes](2026-09-23-agent-runtime-identity-spike.md).
+- S4, §1, T2: `oci-seccomp` is off until gVisor honours `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)).
+- §3, T8, SC-06, SC-07, C3: both run tokens live until the run's deadline, `max(600, maxMinutes × 60)` s
+  (R2). gVisor raises no inotify for kubelet's host-side rotation, so the proxy's file watch never fires.
+- §5: the published agent-server image is the PyInstaller binary; the harness image installs the SDK.
+- §6 identity-proxy: its bootstrap declares an Envoy `node` (file SDS refuses to start without one).
+- R7 is verified: a deleted sandbox pod is recreated at once under the same name.
 
 **Amendments from programme r5 (2026-09-26, owner):**
 - §3: every consumer validates offline and issuer-agnostically, including the room broker, which
@@ -148,9 +157,10 @@ rolls out gVisor bumps, and is capped at 16 CPU / 64 Gi.
 | `agentrun-gc` | `DeletingPolicy`, daily | Deletes runs in a terminal phase. Deleting only runs older than 24 h would need a CEL time function, **UNVERIFIED** |
 
 **Restricted PSS under runsc.** runsc enforces UIDs, `drop: [ALL]` and the read-only root.
-`RuntimeDefault` seccomp holds **only with `oci-seccomp`**, off by default
-([flags.go](https://github.com/google/gvisor/blob/master/runsc/config/flags.go)). NoNewPrivileges
-is not reliable (GKE documents that its sandbox ignores it). The gVisor boundary is the control.
+`RuntimeDefault` seccomp is **not enforced inside the sandbox**: it needs `oci-seccomp`, and with it
+runsc answers every errno rule with EPERM ([#14688](https://github.com/google/gvisor/issues/14688)), which stops glibc starting threads (spike Q5). The
+pod still declares it for PSS. NoNewPrivileges is not reliable (GKE documents that its sandbox ignores
+it). The gVisor boundary is the control.
 
 ## 2. The `AgentRun` API
 
@@ -235,9 +245,9 @@ removing an annotation never resurrects a run. Nothing the harness reports reach
 
 | Token | Audience (C2) | TTL | Held by | Validated |
 |---|---|---|---|---|
-| Gateway | `agent-router.<role>.<dataClass>` | 600 s, kubelet-rotated at 80 % | `identity-proxy` | offline, EKS JWKS `${oidc_issuer_url}/keys`, by the listener's exact list |
-| octo-sts | `octo-sts/<owner>/<repo>/<role>` | 600 s | `identity-proxy` | offline, by the trust policy (issuer, subject, exact audience) |
-| Room | `room-broker` | 600 s | `room-bridge` | offline, allowlisted issuer's JWKS, plus a live watch of the run's `AgentRun` (SP2, C2 r5) |
+| Gateway | `agent-router.<role>.<dataClass>` | the run's deadline, `max(600, maxMinutes × 60)` s (R2) | `identity-proxy` | offline, EKS JWKS `${oidc_issuer_url}/keys`, by the listener's exact list |
+| octo-sts | `octo-sts/<owner>/<repo>/<role>` | the run's deadline (R2) | `identity-proxy` | offline, by the trust policy (issuer, subject, exact audience) |
+| Room | `room-broker` | 600 s; the bridge re-reads the file before each dial, never watches it | `room-bridge` | offline, allowlisted issuer's JWKS, plus a live watch of the run's `AgentRun` (SP2, C2 r5) |
 | GitHub installation | — | ≤ 1 h | harness, in memory | GitHub |
 
 **Identity proxy.** A static Envoy bootstrap, ConfigMap `agent-identity-proxy`, shared by every
@@ -245,9 +255,10 @@ run. `127.0.0.1:4000` and `:4002` carry `/v1/*` and `/mcp` to the `public` and `
 gateway token. The composition points `LLM_BASE_URL` and `MCP_URL` at the run's class, and the other
 port is useless to it: its audience does not match.
 `127.0.0.1:4001` carries `/sts/exchange` to octo-sts with the octo-sts token. It uses generic
-`credential_injector` with `header_value_prefix: "Bearer "`, fed by SDS files watched on the
-projected volume. Two things are still to prove: rotation reaching the injector (Q2, SC-06), and
-`config_dump` redacting the tokens on the admin port (Q8).
+`credential_injector` with `header_value_prefix: "Bearer "`, fed by SDS files. The spike settled both
+open points. Rotation never reaches the injector: kubelet swaps the token on the host, and gVisor
+raises no inotify for that, so the tokens outlive the run instead (R2). And the admin API is off the
+pod network, so the harness has no channel to `config_dump` (Q8).
 
 **`agent-router` authentication.** SP1 owns the JWT providers (D11), the listeners, the agents'
 Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behind each listener
@@ -281,7 +292,7 @@ sequenceDiagram
   X->>Pod: delete Sandbox → SIGTERM
   Pod->>GH: preStop: DELETE /installation/token
   X->>X: delete SA, CNP, ConfigMap
-  Note over V: a copied token verifies until exp — rejected ≤ 600 s after issue
+  Note over V: a copied token verifies until exp, the run deadline (R2)
 ```
 
 | Credential | Dead within |
@@ -289,7 +300,7 @@ sequenceDiagram
 | Sandbox process, and tokens held in the pod | ~30 s (termination) |
 | Room connection | ≤ 6 min (SP2's figure, SC-9: SP2 owns room connections) |
 | GitHub installation token | ~30 s best effort (preStop), **1 h** worst case. Scoped to one repo and its role |
-| A gateway or octo-sts token copied out | **600 s** (`exp`) |
+| A gateway or octo-sts token copied out | **the run's deadline** (`exp`, R2): 2 h by default, 8 h at most |
 
 ## 4. Nothing inside the sandbox is a control
 
@@ -311,7 +322,8 @@ prompt. SP1 relies on none of them. Each such rule has an enforcer outside the s
 ## 5. Harness
 
 `ghcr.io/openhands/agent-server:1.49.5-python` runs as UID 10001 and serves `/health`, `/ready` and
-`/api/*` (research: standard stack). `container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
+`/api/*` (research: standard stack). It is upstream's PyInstaller **binary** target: its Python cannot
+import `openhands.*`, so the harness image installs the same SDK release into `/agent-server/.venv`. `container-images/agent-harness/` wraps it, pinned by digest and Trivy-scanned. It adds `gh`, a
 trailer hook, and `git-credential-agent`, which exchanges through `:4001` and caches in memory.
 agent-server binds 127.0.0.1 unless given `--host 0.0.0.0`, and kubelet probes the pod IP, so the
 profile (upstream image) or `agent-run` (harness image) passes it. `agent-run` does five things:
@@ -418,13 +430,13 @@ secrets; `id-token: write` only on push and schedule workflows.
 | # | Threat | Controls | Residual risk |
 |---|---|---|---|
 | T1 | Prompt injection (task, issues, repo, web, MCP output) | No human credentials (D3); §4; audit outside the sandbox (gateway, octo-sts, GitHub, room log) | Hostile code on the run's own PR branch. The SP3 gate or a human decides |
-| T2 | Sandbox escape | gVisor (`systrap`, `oci-seccomp`); dedicated tainted pool; PSS `restricted`; IMDS hop limit 1 + CNP; daily node recycling | A Sentry zero-day reaches the node's IAM role, co-located sandboxes and node-scoped kubelet credentials. Kata is the next tier |
+| T2 | Sandbox escape | gVisor (`systrap`; `oci-seccomp` off until #14688); dedicated tainted pool; PSS `restricted`; IMDS hop limit 1 + CNP; daily node recycling | A Sentry zero-day reaches the node's IAM role, co-located sandboxes and node-scoped kubelet credentials. Kata is the next tier |
 | T3 | Credential theft | No provider key in `agents`. SA tokens only in sidecars. The GitHub token is in memory and revoked on exit | A stolen implementer token can push to `agent/**` of one repo for ≤ 1 h |
 | T4 | Exfiltration to github.com with attacker credentials | none: an FQDN rule cannot see whose credentials are used | **Accepted** (programme non-goal). The repos are public |
 | T5 | Exfiltration through other allowlisted services | Profiles are opt-in per claim | Same class as T4 |
 | T6 | DNS exfiltration | The L7 DNS rule answers allowlisted names only | Lookups under allowlisted domains, which are answered by their owners' servers |
 | T7 | Resource abuse | Requests and limits, ephemeral storage, `activeDeadlineSeconds`, pool limits, R1 + `BudgetExhausted` | One `large` run for `maxMinutes` |
-| T8 | Token replay | Audience binds role and repo; 600 s TTL; ingress only from `agents`; audience reservation; the room token is checked online | Another compromised run replays a token leaked through the admin port (Q8) within 600 s |
+| T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), not 600 s. The admin-port path is closed (Q8) |
 | T9 | Kubernetes API abuse | Four layers (§3) | none known |
 | T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in twice: trust policies + App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
@@ -488,8 +500,8 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 | SC-03 | A pod in `agents` without gVisor or with automount on is denied, and so is an `AgentRun` whose `spec.branch` is outside `agent/**` | `kubectl apply --dry-run=server` |
 | SC-04 | An implementer run on a trivial issue reaches `Succeeded` in ≤ 30 min, with a PR from `spec.branch` authored by the agents' App and carrying the `Agent-Run` trailer | `kubectl get agentrun`; `gh pr list --head agent/<runId> --json` |
 | SC-05 | `agent-router` returns 401 with no token, an octo-sts-audience token, a self-signed JWT, or a `public` token on the `internal` listener (and the reverse). A forged `x-ar-agent` is attributed to the token's `sub` | curl; access log; `ar_agent` metric |
-| SC-06 | A 45-minute conversation survives ≥ 4 token rotations with no 401 (Q2) | harness log |
-| SC-07 | After deleting a running claim: the pod is gone ≤ 60 s later; its GitHub token returns 401 ≤ 60 s later; a copied gateway token is rejected ≤ 600 s after issue | timestamps |
+| SC-06 | A 45-minute conversation gets no 401: its tokens outlive the run (R2; Q2 showed rotation never reaches the proxy) | gateway access log |
+| SC-07 | After deleting a running claim: the pod is gone ≤ 60 s later; its GitHub token returns 401 ≤ 60 s later; a copied gateway token is rejected once `exp` passes, ≤ 600 s after issue for a 10-minute run (R2) | timestamps |
 | SC-08 | `/var/run/secrets/kubernetes.io` is absent from the harness, and `curl -m5 https://kubernetes.default.svc` fails | `kubectl exec` |
 | SC-09 | `curl https://example.com` fails, `git ls-remote` on the target repo works, and `dig <random>.example.org` is denied at L7 | `kubectl exec`; `hubble observe --type l7` |
 | SC-10 | No Secret in `agents` holds a provider key. An `ExternalSecret` there is denied. The `agents-secrets` store cannot read outside `platform/agents/*` | `kubectl get`; dry-run; `bao token capabilities` |
@@ -508,13 +520,13 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 
 | # | Risk | Next step |
 |---|---|---|
-| R1 | gVisor file-I/O overhead (Q9) | SC-15. Fallback: an in-memory `/workspace`, or Kata |
-| R2 | Token rotation in the proxy fails (Q2) | SC-06. Fallback: `expirationSeconds` = the run deadline, which widens T8 |
-| R3 | FQDN and DNS proxy behaviour for gVisor in ENI mode without kube-proxy (Q3, Q4) | Phase 0 spike |
+| R1 | gVisor file-I/O overhead (Q9) | **Spike: 1.74×** (clone + `task check`), under the 5× bound. No fallback |
+| R2 | Token rotation in the proxy fails (Q2) | **Happened** (spike). Applied: both tokens' `expirationSeconds` = the run deadline, which widens T8 |
+| R3 | FQDN and DNS proxy behaviour for gVisor in ENI mode without kube-proxy (Q3, Q4) | **Spike: passed.** Denied names never resolve, so nothing reaches L4 |
 | R4 | agent-sandbox is `v1beta1` and ships weekly | Pin the tag; its schema is in the CI catalog |
 | R5 | EG pod label `gateway.envoyproxy.io/owning-gateway-name` is assumed | Confirm on first render. Both data-plane CNPs depend on it |
 | R6 | Whether the `DeletingPolicy` time function exists (UNVERIFIED) | Delete terminal runs daily until proven |
-| R7 | A *deleted* pod (spot interruption, expiry) is probably recreated by the Sandbox controller (UNVERIFIED) | `agent-run` resumes an existing `spec.branch`; retries spend from the same `maxTokens` |
+| R7 | A *deleted* pod (spot interruption, expiry) is recreated by the Sandbox controller (**verified** by the spike, same name, same second) | `agent-run` resumes an existing `spec.branch`; retries spend from the same `maxTokens` |
 | R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
 | R8 | A run can request any logical name on its listener, and binding it to `spec.model` at the gateway is unverified (C5) | Within a class the blast radius is cost, capped by R1 and `maxTokens`. SP4 carries the route-level check |
 
