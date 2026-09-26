@@ -1,7 +1,12 @@
 ---
-# Ingress from sandbox pods only: that, not the trust policy's issuer pattern,
-# is what keeps other EKS clusters' tokens out (ADR-0043). Egress to GitHub's
-# API and the EKS issuer (discovery + JWKS).
+# Ingress from agent-router's data plane only (owner decision 2026-09-26). Its
+# `sts` listener verifies every token against THIS cluster's issuer and JWKS,
+# which is what keeps out a token minted in any other eu-west-3 EKS cluster: the
+# trust policies' issuer pattern alone would accept one (ADR-0043). A sandbox
+# reaching octo-sts directly would skip that check, so `agents` gets no rule
+# here. Both owning-gateway labels are pinned: a same-named Gateway in another
+# namespace must not match. Egress to GitHub's API and the EKS issuer, since
+# octo-sts still verifies the token itself (discovery + JWKS).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -14,14 +19,14 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: agents
-          matchExpressions:
-            - key: agents.ogenki.io/run-id
-              operator: Exists
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8080"
               protocol: TCP
+    # kubelet's TCP probes.
     - fromEntities:
         - host
       toPorts:

@@ -2,7 +2,7 @@
 title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-26
 ---
 
@@ -35,9 +35,11 @@ and never a human's.
 
 ### Option 1: Self-hosted octo-sts with the agents' GitHub App
 
-The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`; octo-sts checks it
-against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns an installation
-token with that policy's permissions.
+The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`,
+to agent-router's `sts` listener (ADR-0042).
+The listener verifies it against this cluster's exact issuer and JWKS and routes `/sts/exchange` to
+octo-sts. octo-sts checks it against `.github/chainguard/agent-<role>.sts.yaml` on the default branch
+and returns an installation token with that policy's permissions.
 
 **Pros**:
 - Trust policies are files in the repository, on a gate path
@@ -45,9 +47,13 @@ token with that policy's permissions.
 - Records issuer, subject and the token's SHA-256 on every exchange
 
 **Cons**:
-- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). That is safe only
-  because octo-sts is not publicly reachable: a ClusterIP Service whose CNP admits only `agents` pods
-- One more service in `agent-system`
+- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). The pattern alone
+  accepts a token minted in any eu-west-3 EKS cluster, an attacker's included, with a ServiceAccount
+  named like a run's. A prompt-injected sandbox that could reach octo-sts could present one. So
+  octo-sts admits ingress only from agent-router's data plane, whose `sts` listener pins this cluster's
+  issuer (Flux-substituted) and JWKS. The pattern is safe only behind that check (owner decision,
+  2026-09-26)
+- One more service in `agent-system`, and GitHub tokens depend on agent-router being up
 
 ### Option 2: Personal access tokens
 
@@ -102,8 +108,9 @@ repository it grants.
 
 ## Implementation Notes
 
-`security/base/octo-sts/`, `.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json`
-applied by `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`.
+`security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
+`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` applied by
+`task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`.
 
 ---
 
