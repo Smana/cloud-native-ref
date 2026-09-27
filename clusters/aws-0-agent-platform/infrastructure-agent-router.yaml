@@ -8,6 +8,9 @@ metadata:
 spec:
   prune: true
   interval: 5m0s
+  # The proxy Deployment can still be rolling out when Envoy Gateway reports
+  # Programmed=False; retry soon rather than holding agent-mcp back a whole interval.
+  retryInterval: 30s
   timeout: 5m0s
   path: ./infrastructure/base/agent-router
   sourceRef:

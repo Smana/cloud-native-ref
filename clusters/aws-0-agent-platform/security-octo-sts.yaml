@@ -8,6 +8,9 @@ metadata:
 spec:
   prune: true
   interval: 5m0s
+  # The Deployment can still be rolling out on first apply; retry soon rather
+  # than holding dependents back a whole interval (mirrors agent-secrets).
+  retryInterval: 30s
   timeout: 3m0s
   path: ./security/base/octo-sts
   sourceRef:
