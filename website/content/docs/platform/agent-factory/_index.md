@@ -44,55 +44,9 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  subgraph triggers["Triggers"]
-    GH["GitHub: issue label factory/ready,<br/>PR review 'Request changes'"]
-    RL["RunLore finding"]
-    CLI["Human: task agent:run / roomctl"]
-  end
+![The Agent Factory on one page. Three triggers: a GitHub issue label or PR review, a RunLore finding, and a human with task agent:run or roomctl. The planned SP3 factory's Task controller snapshots, triages, queues and meters runs, opens a room on the planned SP2 room-broker (an append-only log on CNPG Postgres), and hands low-risk PRs to the policy-bot merge gate. The built SP1 runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy and a gVisor Sandbox pod holding the OpenHands harness and an Envoy identity-proxy. Every call leaves through the proxy with a per-run JWT to the SP4 agent-router, an Envoy AI Gateway that routes to the models, the MCP servers and octo-sts, which mints the GitHub App ogenki-agents token that can push only to branches under agent/. The harness streams events to the room, the room posts the verdict comment back to GitHub, and the pod and the router send logs, metrics and spans to VictoriaLogs, VictoriaMetrics and VictoriaTraces, with a planned Grafana page per run](/images/diagrams/agent-factory.svg)
 
-  subgraph sp3["SP3 · agent-factory (planned)"]
-    F["Task controller: snapshot, triage,<br/>queue (Kueue), run meter, kill switch"]
-    PB["policy-bot + merger App<br/>(merge gate, shadow until the wave)"]
-  end
-
-  subgraph sp2["SP2 · rooms (planned)"]
-    BR["room-broker: append-only room log (CNPG),<br/>web UI (SSO), MCP room tools"]
-  end
-
-  subgraph sp1["SP1 · runtime and identity (built, live)"]
-    AR["AgentRun claim (Crossplane)"]
-    subgraph pod["Sandbox pod (agent-sandbox, gVisor), default-deny CNP"]
-      H["harness: OpenHands agent-server + agent-run"]
-      IP["identity-proxy (Envoy)<br/>per-run token"]
-    end
-  end
-
-  subgraph sp4["SP4 · agent-router (slice 1 built)"]
-    RT["Envoy AI Gateway: JWT per run,<br/>token budgets, routing"]
-  end
-
-  LLM["Models: Z.ai GLM-5.3, frontier tiers"]
-  MCP["MCP: VictoriaMetrics, VictoriaLogs"]
-  STS["octo-sts → GitHub App ogenki-agents<br/>(push only to agent/**)"]
-  OBS["Observability: logs, metrics, traces<br/>per run (planned)"]
-
-  GH & RL --> F
-  CLI --> AR
-  F --> AR
-  F --> BR
-  AR --> pod
-  H --> IP --> RT
-  RT --> LLM
-  RT --> MCP
-  RT --> STS
-  H -. "events" .-> BR
-  BR -. "verdict comment" .-> GH
-  F --> PB
-  pod -. "step log, spans" .-> OBS
-  RT -. "access log, gen_ai metrics" .-> OBS
-```
+*Source: [`docs/architecture/agent-factory.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory.drawio).*
 
 | Piece | What it does | Status |
 |---|---|---|
