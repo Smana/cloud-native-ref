@@ -3,6 +3,7 @@
 Needs the openhands SDK, so it runs inside the image: docker build --target test.
 """
 import http.server
+import io
 import json
 import os
 import signal
@@ -124,6 +125,79 @@ class PollTest(unittest.TestCase):
         with mock.patch("agent_run.http", side_effect=always_fails), mock.patch("agent_run.time.sleep"):
             self.assertEqual(agent_run.poll("cid"), 1)
         self.assertEqual(calls["n"], 6)
+
+
+class PollTickTest(unittest.TestCase):
+    def test_on_tick_runs_after_each_successful_poll(self):
+        from openhands.sdk.conversation.state import ConversationExecutionStatus as Status
+
+        statuses = iter([Status.RUNNING.value, Status.RUNNING.value, Status.FINISHED.value])
+        ticks = []
+        with mock.patch("agent_run.http", side_effect=lambda *a, **k: {"execution_status": next(statuses)}), \
+                mock.patch("agent_run.time.sleep"):
+            self.assertEqual(agent_run.poll("cid", on_tick=lambda: ticks.append(1)), 0)
+        self.assertEqual(len(ticks), 3)
+
+
+class StepLogTest(unittest.TestCase):
+    EVENTS = [
+        {"id": "1", "kind": "SystemPromptEvent", "source": "agent"},
+        {"id": "2", "kind": "ActionEvent", "tool_name": "terminal", "summary": "View repo state", "action": {"command": "git status"}},
+        {"id": "3", "kind": "ObservationEvent", "observation": {"content": "SECRET-LOOKING OUTPUT"}},
+        {"id": "4", "kind": "MessageEvent", "source": "agent", "llm_message": {"content": [{"type": "text", "text": "Done: fixed the note."}]}},
+        {"id": "5", "kind": "ConversationErrorEvent", "code": "AttributeError", "detail": "boom"},
+    ]
+
+    def tick(self, log, side_effect):
+        with mock.patch("agent_run.http", side_effect=side_effect), mock.patch("sys.stdout", new=io.StringIO()) as out:
+            log()
+        return out.getvalue()
+
+    def test_prints_actions_messages_and_errors_never_outputs(self):
+        log = agent_run.StepLog("cid")
+        out = self.tick(log, [{"items": self.EVENTS, "next_page_id": None}])
+        self.assertIn("agent-run step 1: terminal | View repo state | git status", out)
+        self.assertIn("agent-run message: Done: fixed the note.", out)
+        self.assertIn("agent-run error: AttributeError boom", out)
+        self.assertNotIn("SECRET-LOOKING OUTPUT", out, "observations (command outputs) are never printed")
+        self.assertNotIn("SystemPrompt", out)
+
+    def test_each_event_is_printed_once(self):
+        log = agent_run.StepLog("cid")
+        page = {"items": self.EVENTS, "next_page_id": None}
+        self.tick(log, [page])
+        self.assertEqual(self.tick(log, [page]), "")
+
+    def test_follows_pages_and_resumes_from_the_last_one(self):
+        log = agent_run.StepLog("cid")
+        paths = []
+
+        def get(method, path, body=None, timeout=30):
+            paths.append(path)
+            if "page_id=p2" in path:
+                return {"items": [self.EVENTS[3]], "next_page_id": None}
+            return {"items": [self.EVENTS[1]], "next_page_id": "p2"}
+
+        out = self.tick(log, get)
+        self.assertIn("step 1", out)
+        self.assertIn("Done: fixed the note.", out)
+        self.assertEqual(log.page, "p2")
+        self.tick(log, get)
+        self.assertTrue(paths[-1].endswith("&page_id=p2"), "the next tick starts from the last page")
+
+    def test_a_failure_never_raises(self):
+        log = agent_run.StepLog("cid")
+        with mock.patch("sys.stderr", new=io.StringIO()) as err:
+            self.tick(log, urllib.error.URLError("down"))
+        self.assertIn("step log unavailable", err.getvalue())
+
+    def test_summary_prints_the_final_message_in_full(self):
+        log = agent_run.StepLog("cid")
+        self.tick(log, [{"items": self.EVENTS, "next_page_id": None}])
+        with mock.patch("sys.stdout", new=io.StringIO()) as out:
+            log.summary()
+        self.assertIn("agent-run summary: 1 steps", out.getvalue())
+        self.assertIn("agent-run final message:\nDone: fixed the note.", out.getvalue())
 
 
 class GitHub(http.server.BaseHTTPRequestHandler):
