@@ -19,7 +19,12 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 Only once the crossplane-configuration pin serves `AgentRun`. Before it, `agent-policies` installs
 Kyverno policies against an API that does not exist, and Flux still reports it Ready.
 
-The owner prerequisites come first, in this order (ADR-0043): the branch ruleset
+On an **existing** cluster, first apply `opentofu/aws/openbao/management` then
+`opentofu/aws/eks/configure` — they create the `agents-secrets` policy and JWT role, without which
+`SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `eks/configure` needs
+`TF_VAR_flux_git_ref=refs/heads/<branch>`.
+
+The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
 (`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its
 key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
 `CreateContainerConfigError` and its child fails the health check.
