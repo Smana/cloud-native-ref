@@ -1,0 +1,56 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: zai
+  namespace: llm-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.z.ai
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: zai
+  namespace: llm-gateway
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: zai
+  validation:
+    wellKnownCACertificates: System
+    hostname: api.z.ai
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: zai
+  namespace: llm-gateway
+spec:
+  schema:
+    name: OpenAI
+    # Z.ai serves its OpenAI-compatible API under /api/paas/v4, not /v1
+    # (the base_url RunLore uses today).
+    prefix: /api/paas/v4
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: zai
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: zai
+  namespace: llm-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: zai
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: zai-api-key
