@@ -7,8 +7,14 @@ owner actions gate most runbooks.
 
 ## Status (2026-09-27)
 
-Round 6 covers runbook 07 only. SC-04 passes end to end: an agent took issue #2112 to PR #2114 on the
-repo-built harness, and the owner merged it. Rounds 1–5 are recorded below.
+Round 6 covered runbooks 07 and 02:
+- **SC-04 passes end to end:** an agent took issue #2112 to PR #2114 on the repo-built harness, and
+  the owner merged it.
+- **SC-06 passes:** a 58-minute run saw no `401`.
+- **B.2 (runbook 02) found a real SC-07 defect:** a deleted run's CNP went before its pod. It is
+  fixed and verified live (see Platform findings), and the owner's re-run is pending.
+
+Rounds 1–5 are recorded below.
 
 Round 4, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Runbook 05's octo-sts
 422 (round 3) is fixed — the App was missing `pull_requests: read & write` and the installation
@@ -26,9 +32,9 @@ branch pushed during testing deleted. 01–04, 06, 08 carried over unchanged; 07
 | [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Fully PASS — run to completion by the coordinator directly, not re-verified in this session |
 | [05](05-github-octo-sts.md) | 12 | 0 | 0 | Fully PASS — the round-3 octo-sts 422 is fixed (see Platform findings); implementer push/reject, reviewer reject, and both wrong-role/audience directions all verified live with real runs |
 | [06](06-mcp.md) | 6 | 0 | 0 | Fully clean — `agent-mcp` and both MCPRoutes are `Ready`/`Accepted` now that `agent-router` is up |
-| [07](07-end-to-end.md) | 6 | 0 | 1 | Round 6: **SC-04 PASS**. The agent took issue #2112 to PR #2114 in 68 s over 10 steps, and the owner merged it. The round-5 SDK crash and the 30-min timeout are fixed in the harness. SC-06 is unblocked but not yet run |
+| [07](07-end-to-end.md) | 7 | 0 | 0 | Round 6: **SC-04 PASS** (issue #2112 became PR #2114 in 68 s, and the owner merged it). **SC-06 PASS**: 58 min, 44 × `200`, 0 × `401` |
 | [08](08-observability.md) | 5 | 0 | 0 | Dashboard data verified via the same VM/VL proxy calls; UI render itself is SSO-gated, not exercised headlessly |
-| **Total** | **59** | **1** | **2** | The one FAIL is 02's `/v1/models`, fixed in #2108. The two open items are 02's GitHub-token timing and 07's SC-06 |
+| **Total** | **60** | **1** | **1** | The one FAIL is 02's `/v1/models`, fixed in #2108. The one open item is 02's GitHub-token timing (B.2): its first owner run found the CNP-ordering defect (Platform findings), fixed in round 6, and the re-run is pending |
 
 ## What each runbook proves
 
@@ -159,6 +165,34 @@ you go — there is no separate consolidated form. Paste failing steps' `kubectl
 verbatim; a summary line ("worked") is not evidence per this repo's evidence rule.
 
 ### Platform findings
+
+**FIXED in round 6: a deleted run's CNP went before its pod, so the GitHub-token revoke could not
+reach GitHub (SC-07).** Two defects:
+- **The `Usage` was keyed on the Sandbox.** The Usage that should hold the run's CNP until the pod is
+  gone named the Sandbox as its `by` resource. A Sandbox has no finalizer and leaves the API the
+  moment it is deleted. Crossplane releases a composed Usage as soon as a GET of `by` returns
+  NotFound (`internal/controller/protection/usage/reconciler.go:327`, v2.4.2), and replayed the CNP
+  deletion in the same second.
+- **The harness profile never set `preStop`.**
+
+The consequences: once the CNP was gone, the namespace `default-deny` cut the pod's egress while
+`agent-run` was still revoking, so the token stayed live until GitHub expired it, up to 1 h.
+
+| Run | Endpoint removed | CNP deleted |
+|---|---|---|
+| Before: `qeh6rf2k` (B.2) | 09:52:32 | 09:52:11.6, **21 s before the pod** |
+| After: `hb545ti2` | 10:38:37.1 | 10:38:40.3, **3 s after the pod** |
+
+The fix:
+- CC-2 `4857e3f` adds the `preStop` revoke.
+- CC-2 `c304bbf` keys the Usage on the **Pod**, which stays in the API until kubelet has finished
+  `preStop` and the SIGTERM cleanup.
+- #2110 `17ec1f97` grants Crossplane `get pods` in `agents` only. Checked with `kubectl auth can-i`:
+  `get` yes; `list`, and `get` in any other namespace, no. Without it the Usage could never release,
+  and run deletion would hang.
+
+Rolled out as `v0.7.2-pr29.3ad168a`. The CC-1 round's `usage_order_live.sh` had passed only because
+the upstream image died within its 2 s poll.
 
 **FIXED for round 4 (owner) — octo-sts's installation-token mint returned 422 for every trust
 policy, both roles tested (round 3).** Cause confirmed by the owner: the `ogenki-agents` App was
