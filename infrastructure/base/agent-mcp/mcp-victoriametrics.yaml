@@ -62,13 +62,15 @@ spec:
               port: mcp
             periodSeconds: 20
           resources:
-            # OOMKilled at startup under 128Mi (aws-0, 2026-09-27): it loads its embedded docs index first.
+            # The `documentation` tool (the public listener's) keeps a bleve index of the
+            # whole embedded VictoriaMetrics docs site in memory: ~700MiB resident, measured
+            # on v1.20.2 (2026-09-27). 128Mi and 512Mi were both OOMKilled at startup.
             requests:
               cpu: 10m
-              memory: 128Mi
+              memory: 768Mi
             limits:
               cpu: 1000m
-              memory: 512Mi
+              memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
