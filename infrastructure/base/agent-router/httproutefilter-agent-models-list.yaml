@@ -1,0 +1,15 @@
+---
+# Backs httproute-agent-models-list.yaml: a fixed 404 for /v1/models, since no
+# backend actually serves model listing on agent-router.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: agent-models-list
+  namespace: agent-system
+spec:
+  directResponse:
+    statusCode: 404
+    contentType: application/json
+    body:
+      type: Inline
+      inline: '{"error":"model listing is not served on agent-router"}'

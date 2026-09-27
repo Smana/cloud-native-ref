@@ -13,5 +13,7 @@ resources:
   - externalsecret-zai.yaml
   - backend-zai.yaml
   - aigatewayroute-agent-models.yaml
+  - httproute-agent-models-list.yaml
+  - httproutefilter-agent-models-list.yaml
   # Lives in envoy-gateway-system, where Envoy Gateway runs the data plane.
   - network-policy-data-plane.yaml
