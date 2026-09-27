@@ -7,6 +7,9 @@ owner actions gate most runbooks.
 
 ## Status (2026-09-27)
 
+Round 6 covers runbook 07 only. SC-04 passes end to end: an agent took issue #2112 to PR #2114 on the
+repo-built harness, and the owner merged it. Rounds 1–5 are recorded below.
+
 Round 4, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Runbook 05's octo-sts
 422 (round 3) is fixed — the App was missing `pull_requests: read & write` and the installation
 hadn't accepted the change; both corrected, re-verified live with two real runs (implementer push
@@ -23,9 +26,9 @@ branch pushed during testing deleted. 01–04, 06, 08 carried over unchanged; 07
 | [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Fully PASS — run to completion by the coordinator directly, not re-verified in this session |
 | [05](05-github-octo-sts.md) | 12 | 0 | 0 | Fully PASS — the round-3 octo-sts 422 is fixed (see Platform findings); implementer push/reject, reviewer reject, and both wrong-role/audience directions all verified live with real runs |
 | [06](06-mcp.md) | 6 | 0 | 0 | Fully clean — `agent-mcp` and both MCPRoutes are `Ready`/`Accepted` now that `agent-router` is up |
-| [07](07-end-to-end.md) | 5 | 0 | 2 | The upstream `agent-server` image never submits a task at all (see Platform findings) — stronger than the anticipated push-only gap; SC-13/SC-14 (status projection, cleanup) are independent and PASS live |
+| [07](07-end-to-end.md) | 6 | 0 | 1 | Round 6: **SC-04 PASS**. The agent took issue #2112 to PR #2114 in 68 s over 10 steps, and the owner merged it. The round-5 SDK crash and the 30-min timeout are fixed in the harness. SC-06 is unblocked but not yet run |
 | [08](08-observability.md) | 5 | 0 | 0 | Dashboard data verified via the same VM/VL proxy calls; UI render itself is SSO-gated, not exercised headlessly |
-| **Total** | **58** | **1** | **3** | |
+| **Total** | **59** | **1** | **2** | The one FAIL is 02's `/v1/models`, fixed in #2108. The two open items are 02's GitHub-token timing and 07's SC-06 |
 
 ## What each runbook proves
 
@@ -192,6 +195,30 @@ installation to re-accept the updated permission set before tokens honoring it c
 every push-capable path in runbooks 05 and 07 until the round-4 fix above.
 
 </details>
+
+**New, round 5 (2026-09-27, live on `c1691cee`, real harness `v0.1.0-pr2110.d8134ede`) — the
+OpenHands SDK crashes on the first model response, every time, before any git operation.** Everything
+up to and including the model call works: the run clones the repo, checks out `agent/<id>`, starts a
+conversation, and `agent-router` proxies one `POST /api/paas/v4/chat/completions` → `200` in 4539ms
+(`glm-5.3`; the gateway meters `8144` tokens for it, `sum(gen_ai_client_token_usage_sum{ar_agent=...})`).
+Then, inside the harness's own SDK, before the agent ever acts on that response:
+
+```
+AttributeError: 'PromptTokensDetailsWrapper' object has no attribute 'cache_creation_tokens'
+  File ".../openhands/sdk/llm/utils/telemetry.py", line 68, in normalize_usage
+    cache_write = int(prompt_details.cache_creation_tokens or 0)
+openhands.sdk.conversation.exceptions.ConversationRunError: Conversation run failed for id=...
+```
+
+A `UserWarning` just before it is the likely root: `Cost calculation failed: This model isn't mapped
+yet. model=agent-default, custom_llm_provider=openai` — LiteLLM doesn't recognize `agent-default`,
+falls back to a generic OpenAI-shaped response wrapper, and that wrapper's `prompt_tokens_details`
+lacks the Anthropic-style `cache_creation_tokens` field `normalize_usage` unconditionally reads.
+**Reproduced twice**, back to back (`xplane-run-3s7i55r7`, `xplane-run-mun2l7g2`), both crashing
+`phase=Failed`/`PodFailed` 30-45s after `Running`, before any octo-sts exchange or git push — no
+branch ever reaches GitHub, no PR is possible. This blocks every real end-to-end run (SC-04, SC-06)
+until either the SDK is patched/pinned past this bug or the gateway advertises a model name LiteLLM
+maps to a provider whose usage shape it expects. Not fixed here (no code changed).
 
 **New, round 3 (2026-09-27, live on `580042e6`) — the upstream `agent-server` image never submits a
 task; an `AgentRun` idles at `Running` doing nothing.** With CC-2/#2110 (the repo-built harness image)
