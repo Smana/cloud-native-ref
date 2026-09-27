@@ -7,11 +7,13 @@ owner actions gate most runbooks.
 
 ## Status (2026-09-27)
 
-Round 3, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Owner actions 1–4 are
-now done; action 5 (issue URL) is done, using `#2112`. #2113 (trust policies) merged to `main`.
-Runbook 04 was run to fully PASS by the coordinator directly (not re-run in this session). Runbooks
-05 and 07 were run live this round; 01, 02, 03, 06, 08 are carried over unchanged from earlier
-rounds. Two platform bugs surfaced this round, both in README Platform findings below.
+Round 4, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Runbook 05's octo-sts
+422 (round 3) is fixed — the App was missing `pull_requests: read & write` and the installation
+hadn't accepted the change; both corrected, re-verified live with two real runs (implementer push
+to its own branch and rejection on `main`; reviewer push rejected; the audience-mismatch case in
+both directions). Runbook 05 is now fully PASS, all tokens revoked, all runs and the one `agent/**`
+branch pushed during testing deleted. 01–04, 06, 08 carried over unchanged; 07 unchanged this round
+(still gated on the harness-image task-bootstrap gap, #2110).
 
 | Runbook | PASS | FAIL | BLOCKED | Notes |
 |---|---|---|---|---|
@@ -19,11 +21,11 @@ rounds. Two platform bugs surfaced this round, both in README Platform findings 
 | [02](02-identity-tokens.md) | 5 | 1 | 1 | The 1 FAIL (`/v1/models` auth bypass) is FIXED in #2108 and verified live; GitHub-token timing waits for the harness image |
 | [03](03-egress.md) | 6 | 0 | 0 | Fully clean |
 | [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Fully PASS — run to completion by the coordinator directly, not re-verified in this session |
-| [05](05-github-octo-sts.md) | 5 | 2 | 3 | octo-sts's installation-token mint 422s for every role (see Platform findings); the rest was verified with the `agent-probe`'s `sts` token in place of the missing harness git tooling |
+| [05](05-github-octo-sts.md) | 12 | 0 | 0 | Fully PASS — the round-3 octo-sts 422 is fixed (see Platform findings); implementer push/reject, reviewer reject, and both wrong-role/audience directions all verified live with real runs |
 | [06](06-mcp.md) | 6 | 0 | 0 | Fully clean — `agent-mcp` and both MCPRoutes are `Ready`/`Accepted` now that `agent-router` is up |
 | [07](07-end-to-end.md) | 5 | 0 | 2 | The upstream `agent-server` image never submits a task at all (see Platform findings) — stronger than the anticipated push-only gap; SC-13/SC-14 (status projection, cleanup) are independent and PASS live |
 | [08](08-observability.md) | 5 | 0 | 0 | Dashboard data verified via the same VM/VL proxy calls; UI render itself is SSO-gated, not exercised headlessly |
-| **Total** | **51** | **3** | **6** | |
+| **Total** | **58** | **1** | **3** | |
 
 ## What each runbook proves
 
@@ -155,8 +157,17 @@ verbatim; a summary line ("worked") is not evidence per this repo's evidence rul
 
 ### Platform findings
 
-**New, round 3 (2026-09-27, live on `580042e6`) — octo-sts's installation-token mint returns 422 for
-every trust policy, both roles tested.** `agent-router`'s `sts` listener correctly verifies the caller
+**FIXED for round 4 (owner) — octo-sts's installation-token mint returned 422 for every trust
+policy, both roles tested (round 3).** Cause confirmed by the owner: the `ogenki-agents` App was
+missing `pull_requests: read & write`, and the installation had not accepted that permission change.
+Both fixed; round 4 re-verified live on real implementer and reviewer runs — exchange, `GET
+/repos/...`, push-allowed-to-own-branch, push-refused-to-`main`, push-refused-for-reviewer, and the
+audience-mismatch case in both directions all now behave exactly as designed. See runbook 05's
+Results table.
+
+<details><summary>Original round-3 write-up</summary>
+
+`agent-router`'s `sts` listener correctly verifies the caller
 and forwards to octo-sts (confirmed: cross-repo and non-run-subject requests are denied with the
 *right* octo-sts-level errors, not a network failure), but the actual GitHub call octo-sts makes to
 mint the scoped installation token always fails:
@@ -177,8 +188,10 @@ permissions UI (`docs/superpowers/plans/2026-09-25-agent-runtime-identity-plan.m
 intended table). GitHub 422s an installation-token request that asks for a permission the app-level
 grant doesn't include. **Owner check:** compare `Smana` → Settings → GitHub Apps → `ogenki-agents` →
 Permissions against that table; if it was edited after the initial install, GitHub also requires the
-installation to re-accept the updated permission set before tokens honoring it can mint. This blocks
-every push-capable path in runbooks 05 and 07 — not fixed here (no code or config changed).
+installation to re-accept the updated permission set before tokens honoring it can mint. This blocked
+every push-capable path in runbooks 05 and 07 until the round-4 fix above.
+
+</details>
 
 **New, round 3 (2026-09-27, live on `580042e6`) — the upstream `agent-server` image never submits a
 task; an `AgentRun` idles at `Running` doing nothing.** With CC-2/#2110 (the repo-built harness image)

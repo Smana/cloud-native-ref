@@ -85,11 +85,10 @@ Expected: `-> token ghs_…`; `push HEAD:refs/heads/<branch> -> ok`; `push HEAD:
 rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->` a rejection
 (`GH013: Repository rule violations`).
 
-> Corrected 2026-09-27, round 3: **the exchange itself never succeeds, for any role** — see Platform
-> findings. `curl 127.0.0.1:4001/sts/exchange?scope=Smana/cloud-native-ref&identity=agent-implementer`
-> from inside a real implementer run's harness returns `{"code":7,"message":"token exchange failure
-> (StatusUnprocessableEntity)"}`, HTTP 403, reproducibly. Nothing past this point in Step 4 (push to
-> `agent/**`, rejection on `main`) could be exercised — there is no token to push with.
+> Corrected 2026-09-27, round 3: **the exchange itself never succeeded, for any role** — the App was
+> missing `pull_requests: read & write` and the installation had not accepted a prior permission
+> change. **Fixed for round 4**: both corrected, and the exchange now succeeds end to end — see the
+> Results table below for the live implementer/reviewer/wrong-role runs.
 
 **What this proves:** SC-11 (the push half) — an implementer's token is scoped to `contents: write`,
 but the branch ruleset (`agent/**` only, every other actor confined) is what actually stops it from
@@ -115,17 +114,9 @@ listener (`http://octo-sts.agent-system.svc.cluster.local:8080` is not in the al
 
 > Corrected 2026-09-27, round 3, verified live with the `agent-probe`'s `sts` token
 > (audience `octo-sts/Smana/cloud-native-ref/implementer`, subject `agent-probe` — not a real run):
-> - **reviewer push rejected:** not exercisable — reviewer's exchange 422s too (Platform findings),
->   so no token is ever issued to test a push with.
 > - **cross-repo exchange:** `scope=Smana/crossplane-configuration&identity=agent-implementer` →
 >   `{"code":5,"message":"unable to find trust policy for \"agent-implementer\""}`, **HTTP 404** — not
 >   `403`/`PermissionDenied` as written; correct the expectation to this exact message and code.
-> - **wrong-role/audience exchange:** `scope=Smana/cloud-native-ref&identity=agent-reviewer` with an
->   implementer-audience token → the *same* subject-pattern rejection as below, not a distinct
->   audience-mismatch error — octo-sts checks the caller's subject before it checks whether the
->   requested identity matches the token's audience, so this specific negative case is masked by the
->   probe's non-run subject and was not independently proven; it needs two real runs of different
->   roles cross-requesting each other's identity, which the 422 bug also blocks.
 > - **probe's own subject rejected (new, not in the original text):**
 >   `{"code":7,"message":"trust policy: subject \"system:serviceaccount:agents:agent-probe\" did not
 >   match pattern \"system:serviceaccount:agents:xplane-run-[a-z2-7]{8}\"}"`, HTTP 403 — proves no
@@ -135,6 +126,17 @@ listener (`http://octo-sts.agent-system.svc.cluster.local:8080` is not in the al
 >   http://octo-sts.agent-system.svc.cluster.local:8080/` times out (`exit=28`), confirming the CNP
 >   silently drops the packet rather than erroring — same shape as the original `exit=1`, different
 >   command.
+>
+> Round 4, with the App fixed and two real runs (their own SA subject matches octo-sts's pattern):
+> - **reviewer push rejected:** PASS — reviewer's token pushes with `returncode 128`,
+>   `remote: Permission to Smana/cloud-native-ref.git denied to ogenki-agents[bot]` (HTTP 403). The
+>   App-token permission (`contents: read`) refuses the push before the ruleset is ever consulted.
+> - **wrong-role/audience exchange:** now provable both directions with two real runs' own tokens.
+>   Implementer run requesting `identity=agent-reviewer`:
+>   `{"code":7,"message":"trust policy: audience \"octo-sts/.../reviewer\" did not match any of
+>   [\"octo-sts/.../implementer\"]"}`, HTTP 403. Reviewer run requesting `identity=agent-implementer`:
+>   the symmetric message. Exactly the audience-mismatch case the original text describes, not the
+>   subject-mismatch the probe was masked by in round 3.
 
 **What this proves:** SC-11 (the rest) and the `sts`-listener-only path — octo-sts's trust policies
 match the EKS issuer by *pattern* (`OD-5`), which alone would accept a token minted by any EKS
@@ -159,6 +161,12 @@ Expected: the branch deleted; octo-sts log lines naming the run subjects
 > line); a request that clears the subject/issuer check logs `exchange request: "agent-implementer"`
 > and `found trust policy in cache for {Smana cloud-native-ref agent-implementer}` — no
 > `system:serviceaccount:agents:xplane-run-<id>` string appears anywhere for a passing check.
+>
+> Round 4: with a working exchange, the implementer's push to its own branch (`agent/c4cnkg6r`)
+> succeeded, so it existed to delete — `gh api --method DELETE
+> repos/Smana/cloud-native-ref/git/refs/heads/agent/c4cnkg6r` (`204`). Every token minted this round
+> was also explicitly revoked (`DELETE /installation/token` → `204`), belt-and-braces alongside the
+> run's own teardown.
 
 ## Results
 
@@ -166,14 +174,20 @@ Expected: the branch deleted; octo-sts log lines naming the run subjects
 |---|---|---|---|
 | 1 — ruleset active | `active` | `active` | PASS |
 | 2 — octo-sts up | `Ready=True` | `octo-sts` `SUSPENDED=False READY=True`, pod `1/1 Running` | PASS |
-| 4 — implementer exchange succeeds | `-> token ghs_…` | `{"code":7,"message":"token exchange failure (StatusUnprocessableEntity)"}`, HTTP 403, from a real implementer run (`xplane-run-bx7qwi6i`) — reproducible on retry | **FAIL** (platform bug, see Platform findings) |
-| 4 — implementer push to own branch / `main` / unrelated | `ok` / rejected / rejected | Not attempted — no token from the step above | BLOCKED (platform bug, same as above) |
-| 5 — reviewer exchange | Token issued | Same `StatusUnprocessableEntity` 422/403, from a real reviewer run (`xplane-run-iqeuqxbv`) | **FAIL** (platform bug, same) |
-| 5 — reviewer push rejected | Push rejected | Not attempted — no token issued | BLOCKED (platform bug, same) |
+| 4 — implementer exchange succeeds | `-> token ghs_…` | Round 4 (App fixed — `pull_requests: write` granted + installation accepted): real run `xplane-run-c4cnkg6r`, `/sts/exchange?scope=Smana/cloud-native-ref&identity=agent-implementer` → token minted (`ghs_...`, len 390); `GET /repos/Smana/cloud-native-ref` → `200` | PASS |
+| 4 — implementer push to own branch | `ok` | `push HEAD:refs/heads/agent/c4cnkg6r -> ok` | PASS |
+| 4 — implementer push to `main` | Rejected (`GH013`) | `remote: error: GH013: Repository rule violations found for refs/heads/main` / `Cannot update this protected ref` / `Changes must be made through a pull request` — push declined | PASS |
+| 5 — reviewer exchange | Token issued | `xplane-run-p5h6crk6`, `identity=agent-reviewer` → token minted (len 390); `GET /repos/...` → `200` | PASS |
+| 5 — reviewer push rejected | Push rejected | `push agent/p5h6crk6` → `returncode 128`, `remote: Permission to Smana/cloud-native-ref.git denied to ogenki-agents[bot]`, HTTP 403 — rejected at the App-token permission level (`contents: read`), never reaches the ruleset | PASS |
 | 5 — cross-repo exchange | `403`/`PermissionDenied` | `agent-probe`'s token, `scope=Smana/crossplane-configuration`: `{"code":5,"message":"unable to find trust policy for \"agent-implementer\""}`, HTTP 404 | PASS (denied, as intended — wrong status code/message in the original text, corrected above) |
-| 5 — wrong-role exchange | Audience mismatch failure | Masked by the probe's own subject-pattern rejection (see correction above) — not independently proven | BLOCKED (needs two real runs; also hits the 422 bug) |
+| 5 — wrong-role exchange | Audience mismatch failure | Round 4, both directions, with two real runs' own tokens: implementer run requesting `agent-reviewer` → `{"code":7,"message":"trust policy: audience \"octo-sts/.../reviewer\" did not match any of [\"octo-sts/.../implementer\"]"}`, HTTP 403; reviewer run requesting `agent-implementer` → the symmetric audience-mismatch 403 | PASS |
 | 5 — non-run subject rejected (new) | — | `agent-probe`'s token → `{"code":7,"message":"trust policy: subject ... did not match pattern ..."}`, HTTP 403, for every identity/scope tried | PASS |
 | 5 — direct octo-sts call | `exit=1` | `curl --max-time 5` to the Service directly → timeout, `exit=28` (CNP silently drops it) | PASS (corrected: no `python3` in the probe image, used `curl` instead) |
+| 6 — revoke | — | Both runs' tokens: `DELETE /installation/token` → `204`, immediately after use | PASS |
+
+Round 4 note: the App fix landed between rounds (`pull_requests: read & write` granted, installation
+accepted the change) — see the README's Platform findings for round 3's diagnosis. All FAIL/BLOCKED
+rows from round 3 are now PASS; nothing in this runbook remains blocked or failing.
 
 **Static verification (code on `main` after #2113), all still match the runbook's claims:**
 `.github/rulesets/agent-branches.json` — `target: branch`, `ref_name.include: ["~ALL"]` /
