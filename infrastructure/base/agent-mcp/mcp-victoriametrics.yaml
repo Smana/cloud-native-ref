@@ -56,12 +56,13 @@ spec:
               port: mcp
             periodSeconds: 20
           resources:
+            # OOMKilled at startup under 128Mi (aws-0, 2026-09-27): it loads its embedded docs index first.
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 128Mi
             limits:
               cpu: 200m
-              memory: 128Mi
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
