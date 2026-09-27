@@ -53,6 +53,11 @@ def build_request(env: dict, task: str, rules: str) -> dict:
         num_retries=0,
         input_cost_per_token=float(env.get("LLM_INPUT_USD_PER_MTOK", DEFAULT_INPUT_USD_PER_MTOK)) / 1e6,
         output_cost_per_token=float(env.get("LLM_OUTPUT_USD_PER_MTOK", DEFAULT_OUTPUT_USD_PER_MTOK)) / 1e6,
+        # Sent in the body because litellm drops reasoning_effort for a model it does not
+        # know (`agent-default`), even with capability_overrides. Unsent, GLM-5.3 falls back
+        # to maximum thinking: measured 150 s and 1,238 reasoning tokens for a reply that
+        # takes 10.8 s at "high", so every step took minutes and some hit the 300 s timeout.
+        litellm_extra_body={"reasoning_effort": env.get("LLM_REASONING_EFFORT", "high")},
     )
     # The SDK redacts secrets on dump and drops the redacted value on load, so
     # without this the key never reaches agent-server and litellm refuses to
