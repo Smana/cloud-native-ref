@@ -319,13 +319,12 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | `Task` CRD | chart `crds/` | Headlamp, `kubectl` |
 | `.policy.yml`, `agent-merge-gate` and `agent-merge` rulesets (applied in Task 10.7) | this repo | every PR to `main` |
 | The merger App `ogenki-agent-merger`, key at `agents/merger-app` | GitHub, OpenBao | the factory only (R16) |
-| Label `agents.ogenki.io/principal` on every `AgentRun` (the principal, `:` written `.`) | `runs.Build` | `kubectl get agentrun -l`, CC-F1's printer columns (SD13) |
+| Label `agents.ogenki.io/principal` on every `AgentRun` (the principal, `:` written `.`) | `runs.Build` | `kubectl get agentrun -l`, the observability plan's printer columns |
 
 ## PR map
 
-`FA-*` is `Smana/agent-platform`, `FR-*` is this repo, `CC-F1` is `Smana/crossplane-configuration`.
-Every field and annotation SP3 relies on exists in SP1's XRD; CC-F1 only adds printer columns
-(SD13). **Nothing below merges before phase 10**, and FR-11 not before the wave has landed;
+`FA-*` is `Smana/agent-platform` and `FR-*` is this repo. Every field and annotation SP3 relies on
+exists in SP1's XRD; the printer columns (SD13) moved to the observability plan's CC-O1. **Nothing below merges before phase 10**, and FR-11 not before the wave has landed;
 "stacks on" is the branch a PR is cut from, "needs" is what must exist (built, pushed, running on
 the branch cluster), never what must be merged.
 
@@ -346,7 +345,6 @@ the branch cluster), never what must be merged.
 | FR-7 | this · `feat/factory-automerge` | 7 | FR-5, with FR-6 merged in (merge commit) | FA-6 pre-release; the week of statuses; [OWNER] the merger App and its key | Config (`shadow` classes, merge with its breaker and secret scan, schedules), `.policy.yml`'s CI requirement (G6), the merger key's ExternalSecret, the `agent-merge` ruleset source and the split `agent-branches` source (applied in 10.7), pins | SC-2, SC-3 and SC-14 in shadow: "would auto-merge", `error`, `foreign_trailer`; nothing armed |
 | FA-7 | agent-platform · `feat/factory-safety` | 8 | FA-6 | — | Stuck detection, control issue, interventions, tier fit, `task.final` | via FR-8 |
 | FR-8 | this · `feat/factory-observability` | 8 | FR-7 | FA-7 pre-release | VMRules, dashboard, the App key-compromise runbook (SD14), the injection canaries (G2), pins, verification | SC-5 (every run, human-requested included), SC-7, SC-8, SC-10, the four canaries PASS, `/verify-spec` |
-| CC-F1 | crossplane-configuration · `feat/agentrun-printer-columns` | 8 | the CC stack tip, `chore/room-bridge-v0.5.0` (SP2 CC-S5) | — | `AgentRun` printer columns PRINCIPAL, PR, TOKENS, REASON (SD13) | `kubectl get agentrun -n agents` shows them, on its pre-release (Task 8.7) |
 | FA-8 | agent-platform · `feat/factory-runlore` | 9 | FA-7 | — | RunLore intake, `investigate` = the triager alone, ending on a proposal (R38) | via FR-9 |
 | FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with SP4 PR 2's branch merged in | FA-8 pre-release; Bedrock behind the `internal` listener on the cluster | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
 | FR-10 | this · `docs/agent-factory-journey` | 10 | FR-9 | the walkthrough's transcript | The walkthrough script and journey renderer; the user-facing pages and diagram built from its transcript | The owner's UX verdict |
@@ -411,7 +409,6 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | `.github/rulesets/{agent-merge.json,agent-branches.json}`, `scripts/ops/github/{agent-merge-ruleset.sh,agent-branch-ruleset.sh}`, `scripts/ci/tests/test-agent-merge-ruleset.sh` | 7 (applied in 10.7) | The ruleset split: `main` and `revert-*` for the merger App only (R16) |
 | `tooling/base/agent-factory/externalsecret-merger.yaml` | 7 | The merger App's key, for the factory alone |
 | `docs/runbooks/agent-factory/09-app-key-compromise.md` | 8 | What to do when any of the four Apps' keys leaks (SD14) |
-| crossplane-configuration `apis/agentrun/definition.yaml` (CC-F1) | 8 | `AgentRun` printer columns (SD13) |
 | `scripts/ci/check-policy-gate-coverage.sh`, `scripts/ci/check-workflow-secrets.sh`, their tests, `scripts/tasks.yaml`, `.github/workflows/ci.yaml` | 6 | SC-12 and the T8 lint |
 | `.github/renovate.json` | 1, 4, 6 | No automerge for the factory chart, Kueue, policy-bot |
 | `infrastructure/base/room-broker/config.yaml` | 1 | The factory's `systemPrincipals` entry, on (SP2 ships it commented) |
@@ -461,7 +458,7 @@ after it, FR-11.
 | [OWNER] | 9.3 | Only if the session's OpenBao token cannot write both mounts: Task 9.3 Step 1's two writes of one value, once (R18, R45) |
 | [OWNER] | 9.4 | Read the triager's proposal in the room; if it holds no cluster detail, open a public issue with the text you approve and label it `factory/ready` (R38) |
 | [OWNER] | 10.2 | Drive the walkthrough's human steps and give the written UX sign-off, in one session with SP2's Task 7.1 |
-| [OWNER] | 10.4, 10.5 | The wave, after SP2's 7.2 and 7.5 (CC-F1 merged inside SP2's 7.4, after CC-S5 and before its tag): merge FA-1…FA-8 and tag `v0.7.0`; merge FR-1 … FR-10. Then delete `Smana/.github/policy.yml` and uninstall `ogenki-merge-gate` from `Smana/.github` (10.5 Step 5) |
+| [OWNER] | 10.4, 10.5 | The wave, after SP2's 7.2 and 7.5: merge FA-1…FA-8 and tag `v0.7.0`; merge FR-1 … FR-10. Then delete `Smana/.github/policy.yml` and uninstall `ogenki-merge-gate` from `Smana/.github` (10.5 Step 5) |
 | [OWNER] | 10.7 | After the wave: apply the rulesets, `agent-merge` first, then the split `agent-branches`, then `agent-merge-gate`; merge FR-11 (the classes go live); label the live-proof issues; apply `factory/revert` once; scale policy-bot to 0 for SC-4's bypass leg |
 
 
@@ -14597,8 +14594,8 @@ global stop like the stop object. The factory counts how dark it really is (stee
 approve, request changes, stop, retry), scores every classifier's tier against the task's outcome
 (SC-10), and ends each task with one `task.final` log line that links the audit chain (SC-7). The
 dashboard and the rest of the VMRules ship inside the umbrella. The kill-switch drill proves all
-five layers (SC-5), human-started runs included (R35). The App key-compromise runbook (SD14) and
-CC-F1's `AgentRun` printer columns (SD13) ride along.
+five layers (SC-5), human-started runs included (R35). The App key-compromise runbook (SD14) rides
+along.
 
 Gate: SC-5, SC-7, SC-8 on aws-0; SC-1's p50 and SC-10 over 20 tasks; `/verify-spec`.
 
@@ -15602,43 +15599,7 @@ The procedure, for any row:
 - [ ] **Step 2: Gates; commit.** `./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
   exit 0; commit `docs(runbooks): the App key-compromise procedure (SD14)` on FR-8.
 
-### Task 8.7: CC-F1 — `AgentRun` printer columns (SD13)
-
-Accepted by the owner, 2026-09-27, as a small follow-up to SP1's CC-2 (the `AgentRun` XRD). SP3
-already writes the `agents.ogenki.io/principal` label (Task 1.5); this only shows it.
-
-**Worktree.** `Smana/crossplane-configuration`, branch `feat/agentrun-printer-columns` from
-`origin/chore/room-bridge-v0.5.0` (SP2 CC-S5, the CC stack tip; PR base that branch, merge-only).
-
-**Files:**
-- Modify: `apis/agentrun/definition.yaml`
-
-- [ ] **Step 1: Add the columns** after `Branch` in `additionalPrinterColumns`:
-
-```yaml
-        - name: Principal
-          type: string
-          jsonPath: .metadata.labels.agents\.ogenki\.io/principal
-        - name: PR
-          type: string
-          jsonPath: .status.pullRequest
-        - name: Tokens
-          type: integer
-          jsonPath: .status.usage.tokens
-        - name: Reason
-          type: string
-          jsonPath: .status.reason
-```
-
-- [ ] **Step 2: Gate; PR.** `task check` exit 0 (regenerate `build/xrd-crds.yaml` if the task
-  asks); open the draft PR "feat(agentrun): principal, PR, tokens and reason columns (SD13)" and
-  record its package pre-release.
-- [ ] **Step 3: [LIVE]** Pin that pre-release on `integration/agent-factory` only (the next deploy):
-  `kubectl get agentrun -n agents` shows `PRINCIPAL` (`system.factory` or `human.<sub>`), `PR`,
-  `TOKENS` and `REASON` for a factory run.
-- **Merge order.** CC-F1 merges inside SP2's Task 7.4 Step 2, right after CC-S5 and before the
-  release tag, so the wave's release carries it (Task 10.4 Step 0). SP2's step lists CC-1…CC-S5
-  only, so this is a cross-plan dependency to raise before SP2's phase 7.
+### Task 8.7: moved to the observability plan (CC-O1 ships the `AgentRun` printer columns, ruling O8)
 
 ---
 
@@ -16802,11 +16763,6 @@ gh pr create --draft --base feat/factory-runlore --title "docs(agent-factory): t
 Runs after SP2's Task 7.2 (AP-0…AP-6 merged, `v0.6.0` tagged). "Automatically delete head
 branches" stays off (SP2 Task 7.1 Step 2) until Task 10.6 ends; SP2's Task 7.6 Step 2 waits for it.
 
-- [ ] **Step 0: CC-F1 rides SP2's crossplane-configuration release.** In SP2's Task 7.4 Step 2, right
-  after CC-S5 merges and before Step 3's tag: retarget CC-F1 (Task 8.7) to `main`, merge `origin/main`
-  into it, wait for `task check` green; [OWNER] merges. The release then carries the printer columns
-  (SD13).
-
 - [ ] **Step 1: Merge in order** FA-1, FA-2, …, FA-8, squash. Before each: retarget its base to `main`
   (`gh api -X PATCH repos/Smana/agent-platform/pulls/<n> -f base=main`), merge `origin/main` into its
   branch (never rebase), push, wait for CI green. [OWNER] merges.
@@ -16885,8 +16841,7 @@ Expected: `Ready True` twice; `True 0.7.0` (the release signature verified).
   `verify-spec` skill: it updates `docs/superpowers/specs/2026-09-23-agent-dark-factory-verification.md`
   with the release-pin evidence. Commit it on FR-10, then merge FR-10 as in Task 10.5 Step 4.
 - [ ] **Step 3: Delete SP3's branches**, once nothing tracks them: agent-platform `feat/factory-*`;
-  this repo `feat/factory-*`, `feat/merge-gate`, `docs/agent-factory-journey`; crossplane-configuration
-  `feat/agentrun-printer-columns`. Then SP2's Task 7.6
+  this repo `feat/factory-*`, `feat/merge-gate`, `docs/agent-factory-journey`. Then SP2's Task 7.6
   Step 2 runs ([OWNER] turns "Automatically delete head branches" back on). Retiring
   `integration/agent-factory` is the programme's step, once SP4's wave has landed too.
 
@@ -16995,7 +16950,7 @@ This plan does not edit the spec; "Built" says whether the plan already works th
 | SD10 | **The merge gate runs in shadow until the wave**: before it nothing auto-merges, seeded or not; the factory narrates "would auto-merge". SC-2's and SC-14's live halves, the revert and SC-11's count start after the wave (owner, 2026-09-27) | R32 | §5.1, §9 lines 472, 481; implementation outline | Yes (Task 10.7) |
 | SD11 | **`PolicyBotUnavailable`** keeps its no-ready-pod half; the webhook-5xx half has no metric on the Cilium Gateway route, so webhook failures are read from the App's delivery log | T9 | §7 | No-pod half only |
 | SD12 | **A second approver**: the policy names the owner three times (`users: [Smana]`). A user-owned repo has no teams, so name one YAML anchor `maintainers` listing users, used by the human rule, the approval requirement and the labeller check | Developer M7 | §5 lines 275, 305 | **Declined** (owner, 2026-09-27: a single-owner repository) |
-| SD13 | **`AgentRun` printer columns** PRINCIPAL, PR, TOKENS, REASON and a principal label | Developer L1, vision L1, operator "who did what" | SP1 §2 (crossplane-configuration) | Yes: accepted (owner, 2026-09-27) as CC-F1, a small follow-up to SP1's CC-2 (Task 8.7); the label from Task 1.5 |
+| SD13 | **`AgentRun` printer columns** PRINCIPAL, PR, TOKENS, REASON and a principal label | Developer L1, vision L1, operator "who did what" | SP1 §2 (crossplane-configuration) | Yes: accepted (owner, 2026-09-27); moved to the observability plan (CC-O1); the label from Task 1.5 |
 | SD14 | **App key compromise, all four Apps** (agents, factory, merger, merge gate): §6.1 gains "suspend the App installation, rotate its key in OpenBao" as a layer with its own procedure | Operator "compromised token" (High) | §6.1, §8 | Yes: accepted (owner, 2026-09-27) as runbook 09 (Task 8.6); the drill suspends the agents' App only (8.4) |
 | SD15 | **GitHub reviews only**: §3's "A **human's** `review_verdict` in the room supersedes the agent reviewer's" becomes "Humans steer through GitHub reviews: *Request changes* starts a revision (Δ5), *Approve* is the merge gate's. The factory reads only its own reviewer's verdict." No SP2 amendment | R36 (owner, 2026-09-27) | §3 line 166 | Yes |
 | SD16 | **`investigate` is the triager alone**: `roles: [triager]`; it ends `Done` (`proposal_ready`) on a proposed public issue text, which a maintainer publishes as a new issue and labels `factory/ready`. An internal-origin task never feeds a public implementer | R38 (owner default, 2026-09-27) | §2 line 144, §3 line 157 | Yes |
@@ -17046,7 +17001,7 @@ One line per finding of the independent review (`sp3-plan-review.md`). The owner
 | I4: GitHub reviews only | R36 | `rooms.LastVerdict` reads the run's own verdict; `HumanVerdictsAfter`, the room revision in `awaitingHuman` and the room interventions removed (Tasks 3.1, 3.2); SD15 |
 | I10, data class (default) | R37 | `403 admin_only` (Task 5.2, tests) |
 | M12 (default) | R38 | `investigate: {roles: [triager]}` (phase 1 config), `proposal_ready` and `narrate.ProposalReady` (Task 9.2), Task 9.4 Step 3, SD16 |
-| Spec deltas | — | SD12 declined; SD13 accepted as CC-F1 (Task 8.7, a CC-2 follow-up); SD14 accepted as runbook 09 over four Apps (Task 8.6); SD15–SD19 new |
+| Spec deltas | — | SD12 declined; SD13 moved to the observability plan (CC-O1); SD14 accepted as runbook 09 over four Apps (Task 8.6); SD15–SD19 new |
 
 ## External review findings applied (2026-09-27)
 
