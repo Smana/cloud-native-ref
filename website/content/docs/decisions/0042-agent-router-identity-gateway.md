@@ -96,7 +96,8 @@ structural, using controllers the platform already runs.
 
 - The harness can still *use* its credential through localhost; the boundary is what the credential
   can reach, not whether the agent can call it
-- Whether identity reaches MCP backends is UNVERIFIED (C5); SP2 carries the fallback
+- Identity reaching MCP backends is confirmed from source: `x-ar-agent`, via the MCPRoute's
+  `securityPolicy.oauth.claimToHeaders` (C5); SP2 no longer needs the fallback for this path
 - Tokens live until the run's deadline, not 600 s (R2): under gVisor kubelet's rotation raises no
   inotify, so the file watch never reloads. A Lua filter re-reading the token per request would keep
   600 s (a re-read does see the new file) and was not taken: more proxy code for a window that only
