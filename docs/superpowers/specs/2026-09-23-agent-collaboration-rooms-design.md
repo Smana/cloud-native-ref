@@ -191,8 +191,8 @@ early (Issues and Pull requests write, Contents and Metadata read, key at `platf
 quotes the summary only for a `public` room, links the room, and ends with the marker
 `<!-- agent-room:<roomId>:<seq> -->`. A comment by the App that already carries the marker is never posted again. The
 outcome is appended as `state_changed{verdict_posted, url}` or `state_changed{verdict_not_posted, reason}`. The verdict
-is advice: it neither approves nor blocks the pull request. SP3's factory reads the outcome from the log and does not
-post the verdict itself.
+is advice: it neither approves nor blocks the pull request. SP3's factory reads the verdict from the log, never the posting
+outcome, and does not post the verdict itself.
 
 ```mermaid
 sequenceDiagram
@@ -448,7 +448,7 @@ the validation catalog (`skipMissingSchemas: false`).
 | SC-12 | Latency | p95 `rooms_fanout_lag_seconds` < 0.5 s over a one-hour demo |
 | SC-13 | Gates | `validate-manifests.sh` exits 0 with `Invalid: 0`; `validate-vmrules.sh` and `validate-links.sh` exit 0 |
 | SC-14 | Verdict on the PR | An agent's `review_verdict` on a pull request yields exactly one comment by `ogenki-agent-factory[bot]` carrying its marker, still one after a leader change |
-| SC-15 | PR provenance | An agent's pull request body ends with `Agent-Room`, `Agent-Run`, `Agent-Role`, `Agent-Task` (when the task has a URL) and `Agent-Model` |
+| SC-15 | PR provenance | An agent's pull request body ends with `Agent-Room` (when the run has a room), `Agent-Run`, `Agent-Role`, `Agent-Task` (when the task is a URL) and `Agent-Model` |
 
 **Non-goals:** AHP wire compatibility now; agents from outside the cluster (A2A); rooms spanning clusters; concurrent
 runs in one room; widening a live run; harness memory on fork; CRDT co-editing, a shared PTY or voice; a human's

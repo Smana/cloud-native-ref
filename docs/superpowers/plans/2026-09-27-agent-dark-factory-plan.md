@@ -43,8 +43,10 @@ live-proven: issue #2112 → PR #2114, merged).
 
 ## Global Constraints
 
-- **Delivery model (owner rule, 2026-09-27).** No SP1–SP4 PR merges, #2092 included, until the whole
-  programme is built and the owner agrees on the UX after a live end-to-end walkthrough (phase 10).
+- **Delivery model (owner rule, 2026-09-27).** No SP1–SP4 PR merges until the whole programme is
+  built and the owner agrees on the UX after a live end-to-end walkthrough (phase 10). #2092 (the
+  designs, the plans and the work-in-progress docs section) is the one exception, merged by the
+  owner's decision of 2026-09-27.
   - **Stacking.** SP3's branches stack on the open SP1/SP2 branches, merge-only, never rebased. In
     this repo FR-1 is cut from the top of the SP2 stack (`feat/rooms-fork`, S6, which itself stacks on
     SP1 PR 6 `feat/agent-e2e`); each FR-n is cut from FR-(n-1). In `Smana/agent-platform` FA-1 is cut
@@ -400,7 +402,7 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | `observability/base/runlore/{helmrelease.yaml,externalsecret-factory-intake.yaml,ciliumnetworkpolicy-egress-factory.yaml}` | 9 | RunLore's templated notifier |
 | `docs/superpowers/specs/2026-09-23-agent-dark-factory-verification.md` | 8, 9, 10 | `/verify-spec` output, re-run after the wave |
 | `scripts/ops/github/factory-walkthrough.sh`, `scripts/docs/factory-journey.py`, `scripts/ci/tests/test-factory-{walkthrough.sh,journey.py}`, `scripts/ops/tasks.yaml` | 10 | The scripted developer journey, its transcript, and the timeline and diagram rendered from it |
-| `website/content/docs/platform/agent-factory/{_index.md,what-happens-to-a-task.md}`, `website/content/docs/platform/_index.md` | 10 | The user-facing pages and the diagram, built from the walkthrough's transcript |
+| `website/content/docs/platform/agent-factory/{_index.md,user-guide.md}` (WIP since #2092), `website/content/docs/platform/_index.md` | 10 | The user-facing pages and the diagram, rewritten from the walkthrough's transcript |
 
 ## Success criteria → proving task
 
@@ -15873,8 +15875,10 @@ issue's comments read, in order: started (run, branch, budget, room link), PR op
 ### Task 10.3: FR-10 — the docs and the diagram, from that run
 
 **Files:**
-- Create: `website/content/docs/platform/agent-factory/_index.md`,
-  `website/content/docs/platform/agent-factory/what-happens-to-a-task.md`
+- Modify: `website/content/docs/platform/agent-factory/_index.md` (the callout, the statuses) and
+  `website/content/docs/platform/agent-factory/user-guide.md` (Part 1 rewritten from the
+  walkthrough's transcript, Part 2 retired). Both exist since #2092 merged; the steps below that
+  write `what-happens-to-a-task.md` write Part 1 of `user-guide.md` instead.
 - Modify: `website/content/docs/platform/_index.md` (a card)
 
 - [ ] **Step 1: Render the journey**
@@ -16116,7 +16120,7 @@ This plan does not edit the spec; "Built" says whether the plan already works th
 | SD6 | **Kueue: two ClusterQueues** `agents-factory` and `agents-interactive` in cohort `agents`, one per LocalQueue | R10 (LocalQueues carry no quota) | §4 line 178 | Yes |
 | SD7 | **RunLore issues**: `factory/proposed` only, never `factory/ready`; the public issue carries no finding text | R18, R33 | §1 line 124 | Yes |
 | SD8 | **Human "Request changes" loops** are bounded by the task token cap, not `maxReviewRounds` | R27, with Δ5 | §3 | Yes |
-| SD9 | **User-facing pages** `website/content/docs/platform/agent-factory/{_index,what-happens-to-a-task}.md`, built from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
+| SD9 | **User-facing pages** `website/content/docs/platform/agent-factory/{_index,user-guide}.md` (WIP since #2092), rewritten from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
 | SD10 | **The merge gate runs in shadow until the wave**: before it nothing auto-merges, seeded or not; the factory narrates "would auto-merge". SC-2's and SC-14's live halves, the revert and SC-11's count start after the wave (owner, 2026-09-27) | R32 | §5.1, §9 lines 472, 481; implementation outline | Yes (Task 10.7) |
 | SD11 | **`PolicyBotUnavailable`** keeps its no-ready-pod half; the webhook-5xx half has no metric on the Cilium Gateway route, so webhook failures are read from the App's delivery log | T9 | §7 | No-pod half only |
 | SD12 | **A second approver**: the policy names the owner three times (`users: [Smana]`). A user-owned repo has no teams, so name one YAML anchor `maintainers` listing users, used by the human rule, the approval requirement and the labeller check | Developer M7 | §5 lines 275, 305 | **Declined** (owner, 2026-09-27: a single-owner repository) |

@@ -17489,8 +17489,8 @@ flowchart LR
 ### Task 7.1: [OWNER] UX sign-off
 
 - [ ] **Step 1:** The owner reviews the whole programme's UX on aws-0: the rooms UI, `roomctl`, the
-  verdict comment and PR footer, approvals, fork. Record their written sign-off (a comment on the
-  programme PR, #2092 or its successor) here. **Nothing below starts before it.**
+  verdict comment and PR footer, approvals, fork. Record their written sign-off here, as a comment
+  on a tracking issue (#2092, the design PR, merged on 2026-09-27 by the owner's decision). **Nothing below starts before it.**
 - [ ] **Step 2:** [OWNER] turns off "Automatically delete head branches" on `Smana/agent-platform`,
   `Smana/crossplane-configuration` and this repo for the wave. A deleted branch 404s every Git
   source still tracking it, `atlasSchema.ref` first. Task 7.6 deletes the branches, once nothing
@@ -17632,7 +17632,7 @@ SP2 creates early (Issues and Pull requests write, Contents and Metadata read, k
 room, and ends with the marker `<!-- agent-room:<roomId>:<seq> -->`. A comment by the App that
 already carries the marker is never posted again. The outcome is appended as
 `state_changed{verdict_posted, url}` or `state_changed{verdict_not_posted, reason}`. The verdict is
-advice: it neither approves nor blocks the pull request. SP3's factory reads the outcome from the log
+advice: it neither approves nor blocks the pull request. SP3's factory reads the verdict from the log, never the posting outcome,
 and does not post the verdict itself.
 ```
 
