@@ -25,6 +25,18 @@ spec:
           labels:
             gen_ai_request_model: "glm-5.2"
             gen_ai_token_type: output
+        # glm-5.3 replaced glm-5.2 on 2026-09-27 at the same list price. The
+        # glm-5.2 rows stay so usage recorded before the switch keeps a price.
+        - record: llm_gateway:price_usd_per_mtoken
+          expr: vector(1.40)
+          labels:
+            gen_ai_request_model: "glm-5.3"
+            gen_ai_token_type: input
+        - record: llm_gateway:price_usd_per_mtoken
+          expr: vector(4.40)
+          labels:
+            gen_ai_request_model: "glm-5.3"
+            gen_ai_token_type: output
     - name: llm-gateway-budgets
       rules:
         - alert: FrontierSpendGuardTripped
