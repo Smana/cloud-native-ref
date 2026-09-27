@@ -6,8 +6,8 @@ lastVerified: 2026-09-27
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** Part 1 describes the **target experience** once SP2 (rooms) and SP3 (the
-factory) are built. It exists so the experience can be agreed *before* it is built, and it will
+**Work in progress.** Part 1 describes the **target experience** once rooms and the
+factory are built. It exists so the experience can be agreed *before* it is built, and it will
 change. Part 2 is **what works today** on the `aws-0` test cluster. Nothing here is on `main` yet.
 {{< /callout >}}
 
@@ -100,7 +100,7 @@ it neither approves nor blocks. The decision stays yours.
 
 The **merge gate** merges nothing but two low-risk classes, and only once CI and the policy agree:
 `docs-links` (fixing broken links) and `revert` (undoing an agent change that broke `main`). Until
-the programme's UX is signed off, it runs in **shadow mode**: it says in the issue what it *would*
+the design is signed off, it runs in **shadow mode**: it says in the issue what it *would*
 merge, and merges nothing.
 
 ### 5. Stop it
@@ -123,7 +123,7 @@ Every model call is metered per run at the gateway, so the dashboard shows what 
 
 ---
 
-## Part 2: what works today (SP1, `aws-0`)
+## Part 2: what works today (`aws-0`)
 
 Today there is no factory and no room: **you** start a run from a terminal with cluster access, and
 it does the rest. This is how issue #2112 became PR #2114 in 68 seconds of agent work.
@@ -140,6 +140,7 @@ task agent:run -- --role implementer --class public \
 |---|---|
 | `--role` | `implementer` (pushes to `agent/<id>`, opens a PR), `reviewer`, `tester`, `triager` |
 | `--class` | `public` for this public repository. `internal` has no model route yet |
+| `--repo` | The repository to work on, `owner/name` (default: this repository) |
 | `--task-url` or `--task` | The issue or PR to work on, or the task as text |
 | `--minutes` | Deadline, 1–480 (default 120) |
 | `--size` | `small`, `medium` or `large`: CPU, memory and scratch space |

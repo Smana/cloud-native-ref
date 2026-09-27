@@ -6,9 +6,10 @@ lastVerified: 2026-09-27
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** This section describes the target design. SP1 and SP4 slice 1 are built and
-proven live on `aws-0`, but none of it is merged to `main` yet. SP2, SP3 and the observability slice
-are planned. The owner merges the whole programme only after a UX sign-off.
+**Work in progress.** This section describes the target design. The runtime and identity layer,
+and the first part of the agent router, are built and proven live on `aws-0`, but none of it is
+merged to `main` yet. Rooms, the factory and the per-run observability are planned. Nothing merges
+until the design is signed off.
 {{< /callout >}}
 
 ## What it is
@@ -44,17 +45,28 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 
 ## Architecture
 
-![The Agent Factory on one page. Three triggers: a GitHub issue label or PR review, a RunLore finding, and a human with task agent:run or roomctl. The planned SP3 factory's Task controller snapshots, triages, queues and meters runs, opens a room on the planned SP2 room-broker (an append-only log on CNPG Postgres), and hands low-risk PRs to the policy-bot merge gate. The built SP1 runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy and a gVisor Sandbox pod holding the OpenHands harness and an Envoy identity-proxy. Every call leaves through the proxy with a per-run JWT to the SP4 agent-router, an Envoy AI Gateway that routes to the models, the MCP servers and octo-sts, which mints the GitHub App ogenki-agents token that can push only to branches under agent/. The harness streams events to the room, the room posts the verdict comment back to GitHub, and the pod and the router send logs, metrics and spans to VictoriaLogs, VictoriaMetrics and VictoriaTraces, with a planned Grafana page per run](/images/diagrams/agent-factory.svg)
+![The Agent Factory on one page. Two triggers: an issue label or a PR review in any number of opted-in GitHub repositories, and a human with task agent:run or roomctl. The planned factory's Task controller snapshots, triages, queues and meters runs, opens a room on the planned room-broker (an append-only log on CNPG Postgres), and hands low-risk PRs to the merge gate, policy-bot with a merger GitHub App. The built runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy and a gVisor Sandbox pod holding the OpenHands harness and an Envoy identity-proxy. Every call leaves through the proxy with a per-run JWT to the agent router, an Envoy AI Gateway that routes to the models (Z.ai GLM-5.3, Anthropic Claude), the MCP servers and octo-sts, which mints a token for the agents' GitHub App that can push only to branches under agent/ in each opted-in repository. The harness streams events to the room, the room posts the verdict comment back to GitHub, and the pod and the router send logs, metrics and spans to VictoriaLogs, VictoriaMetrics and VictoriaTraces, with a planned Grafana page per run](/images/diagrams/agent-factory.svg)
 
 *Source: [`docs/architecture/agent-factory.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory.drawio).*
 
 | Piece | What it does | Status |
 |---|---|---|
-| **SP1** runtime and identity | An `AgentRun` claim composes a ServiceAccount, a task ConfigMap, a default-deny CiliumNetworkPolicy and an agent-sandbox `Sandbox` under gVisor. The pod runs the harness (OpenHands) behind an identity proxy. GitHub tokens come from octo-sts, scoped per role and run. | Built; live-proven (issue #2112 → PR #2114, merged) |
-| **SP4** agent-router | One gateway for every agent call: verifies the run's token, meters tokens per run, routes to the model tier, proxies MCP and the token exchange. | Slice 1 built |
-| **SP2** rooms | A room per task: an append-only log of everything the agents and humans say and do, a live web view, messages to the next run, approvals, forks. | Planned |
-| **SP3** factory | Intake from labels and reviews, triage, the team sequence, budgets, the kill switch, and the merge gate. | Planned |
+| **Runtime and identity** | An `AgentRun` claim composes a ServiceAccount, a task ConfigMap, a default-deny CiliumNetworkPolicy and an agent-sandbox `Sandbox` under gVisor. The pod runs the harness (OpenHands) behind an identity proxy. GitHub tokens come from octo-sts, scoped per role and run. | Built; live-proven (issue #2112 → PR #2114, merged) |
+| **Agent router** | One gateway for every agent call: verifies the run's token, meters tokens per run, routes to the model tier (for example Z.ai GLM-5.3 or Anthropic Claude), proxies MCP and the token exchange. | First part built |
+| **Rooms** | A room per task: an append-only log of everything the agents and humans say and do, a live web view, messages to the next run, approvals, forks. | Planned |
+| **Agent factory** | Intake from labels and reviews, triage, the team sequence, budgets, the kill switch, and the merge gate. | Planned |
 | Observability | One Grafana page per run: status, logs, metrics, traces. | Designed, next to build |
+
+## Works across repositories
+
+A repository opts in with four steps, none of which touches the platform code:
+
+1. Install the agents' GitHub App on it, and the factory's App for narration.
+2. Add the octo-sts trust policies for the roles it allows, in that repository.
+3. Apply the `agent/**` branch ruleset.
+4. List it in the factory's `repositories` configuration.
+
+Runs are per repository: a task never spans two. By hand, `task agent:run -- --repo owner/name` targets one.
 
 ## Security boundaries
 
@@ -64,7 +76,7 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 | Network | Default-deny CNP per run; egress only to named FQDNs and the gateway |
 | Identity | A projected token per run, one audience per data class, living until the run's deadline |
 | GitHub | Short-lived installation tokens from octo-sts, scoped to one repository and the role's permissions; a ruleset lets the agents' App push only `agent/**` |
-| Spend | Per-run deadline; token budgets at the gateway; SP3's run meter enforces `maxTokens` |
+| Spend | Per-run deadline; token budgets at the gateway; the factory's run meter enforces `maxTokens` |
 | Merge | Only low-risk classes (`docs-links`, `revert`) auto-merge, through policy-bot and a separate merger App; everything else waits for a human |
 | Stop | One label on a pinned control issue stops intake, refuses new runs and revokes every running one |
 
