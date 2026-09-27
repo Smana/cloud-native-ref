@@ -1,0 +1,19 @@
+# For admission webhooks that fail closed. While one has no ready endpoint, the
+# API server rejects every matching request cluster-wide, so evicting it to make
+# room for another pod stops the whole cluster from creating pods.
+#
+# On 2026-09-26 Kyverno's admission controller, at priority 0, was preempted by an
+# efs-csi-node DaemonSet pod during a rebuild, and a Helm install that landed in
+# the gap failed. With this class, the scheduler evicts ordinary workloads first.
+#
+# Not system-cluster-critical: GKE restricts the system-* classes outside
+# kube-system, and this manifest is shared by both clouds. 1000000000 is the
+# highest value a user-defined class may take.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: platform-critical
+value: 1000000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Fail-closed admission webhooks. Evicting one blocks pod creation cluster-wide.
