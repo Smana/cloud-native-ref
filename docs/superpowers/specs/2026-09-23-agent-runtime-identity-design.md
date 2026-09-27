@@ -42,7 +42,10 @@ Folded into §2, §5 and §6 above; the reasoning is in the plan's departure row
   (R2). gVisor raises no inotify for kubelet's host-side rotation, so the proxy's file watch never fires.
 - §5: the published agent-server image is the PyInstaller binary; the harness image installs the SDK.
 - §6 identity-proxy: its bootstrap declares an Envoy `node` (file SDS refuses to start without one).
-- R7 is verified: a deleted sandbox pod is recreated at once under the same name.
+- R7, corrected live (2026-09-27): a lost pod ends its run `Failed`. The Sandbox controller does
+  recreate a deleted pod, but agent-sandbox v1.0.3 reports `Finished=PodFailed` for any pod ending
+  in phase `Failed`, deletion and eviction included, so the composition latches `Failed` first and
+  F2b withholds the ServiceAccount. A new run resumes the branch.
 
 **Amendments from programme r5 (2026-09-26, owner):**
 - §3: every consumer validates offline and issuer-agnostically, including the room broker, which
@@ -573,7 +576,7 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | R4 | agent-sandbox is `v1beta1` and ships weekly | Pin the tag; its schema is in the CI catalog |
 | R5 | EG pod labels `gateway.envoyproxy.io/owning-gateway-name` and `-namespace` are assumed | Confirm on first render. Every selector of the `agent-router` data plane pins both |
 | R6 | Whether the `DeletingPolicy` time function exists (UNVERIFIED) | Delete terminal runs daily until proven |
-| R7 | A *deleted* pod (spot interruption, expiry) is recreated by the Sandbox controller (**verified** by the spike, same name, same second) | `agent-run` resumes an existing `spec.branch`; retries spend from the same `maxTokens` |
+| R7 | A *deleted* pod (spot interruption, expiry) ends its run `Failed`: the spike's same-second recreate holds for the Sandbox controller alone, but the composition latches the transient `Finished=PodFailed` and F2b refuses the recreated pod (**live, 2026-09-27**) | `agent-run --branch` resumes an existing `spec.branch` in a new run; retries spend from the same `maxTokens`. Transparent resume needs the composition to see the pod's `deletionTimestamp`/`DisruptionTarget` (CC-1 follow-up) |
 | R8 | A run can request any logical name on its listener, and binding it to `spec.model` at the gateway is unverified (C5) | Within a class the blast radius is cost, capped by R1 and `maxTokens`. SP4 carries the route-level check |
 | R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
 
