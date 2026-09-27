@@ -25,7 +25,7 @@ spec:
               value: tier-frontier
       backendRefs:
         - name: zai
-          modelNameOverride: glm-5.2
+          modelNameOverride: glm-5.3
           weight: 100
       # Agent Router defaults a rule to 60 s. A reasoning completion from a
       # frontier model, streamed or not, routinely runs longer.
