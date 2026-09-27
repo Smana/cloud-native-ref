@@ -7,6 +7,7 @@ section 4): every rule it passes to the agent is enforced outside the sandbox.
 """
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -25,6 +26,13 @@ TERMINAL_FAIL = {"error", "stuck"}
 # The model key is a placeholder: identity-proxy overwrites Authorization (S5).
 PLACEHOLDER_KEY = "injected-by-identity-proxy"
 POLL_INTERVAL_S = 15
+# USD per 1M tokens, set on the LLM so the SDK prices calls itself instead of
+# asking litellm, which does not know the `agent-default` alias and warns on
+# every call. The defaults mirror GLM-5.3 behind agent-default; the gateway's
+# table (infrastructure/base/llm-gateway/vmrule-llm-gateway.yaml) stays the
+# source of truth, and LLM_*_USD_PER_MTOK override these.
+DEFAULT_INPUT_USD_PER_MTOK = "1.40"
+DEFAULT_OUTPUT_USD_PER_MTOK = "4.40"
 # A blip in the loopback connection to agent-server shouldn't fail the run;
 # a run that's actually gone stays gone, so this still fails fast.
 MAX_POLL_ERRORS = 5
@@ -43,6 +51,8 @@ def build_request(env: dict, task: str, rules: str) -> dict:
         usage_id="agent",
         # A budget 429 is terminal (design section 5); never retry it.
         num_retries=0,
+        input_cost_per_token=float(env.get("LLM_INPUT_USD_PER_MTOK", DEFAULT_INPUT_USD_PER_MTOK)) / 1e6,
+        output_cost_per_token=float(env.get("LLM_OUTPUT_USD_PER_MTOK", DEFAULT_OUTPUT_USD_PER_MTOK)) / 1e6,
     )
     # The SDK redacts secrets on dump and drops the redacted value on load, so
     # without this the key never reaches agent-server and litellm refuses to
@@ -136,6 +146,17 @@ def _on_sigterm(signum, frame):
     raise SystemExit(128 + signum)
 
 
+def server_env(env: dict) -> dict:
+    """agent-server's environment, with an OH_SECRET_KEY made for this pod when unset.
+
+    The key encrypts the secrets and MCP OAuth state agent-server stores. A run
+    is single-use, so a per-pod key loses nothing and nothing is seeded by hand.
+    """
+    out = dict(env)
+    out.setdefault("OH_SECRET_KEY", secrets.token_urlsafe(32))
+    return out
+
+
 def main() -> int:
     signal.signal(signal.SIGTERM, _on_sigterm)
     env = dict(os.environ)
@@ -143,7 +164,7 @@ def main() -> int:
     # its cwd; pin it to "/" so its state lands in the intended paths
     # whatever workingDir the pod sets, rather than wherever agent-run itself
     # happens to be launched from.
-    server = subprocess.Popen(SERVER_CMD, cwd="/")
+    server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env(env))
     try:
         wait_ready()
         clone(env)
