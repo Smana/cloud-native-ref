@@ -17528,8 +17528,9 @@ Expected: a digest, which Task 7.4 pins.
 
   Re-capture the goldens and run `task check` (exit 0).
 - [ ] **Step 2:** Merge in order CC-1 and CC-2 (SP1's, unless its wave already did), then CC-S1,
-  CC-S2, CC-S3, CC-S4 and CC-S5. After each merge, retarget the next PR to `main`, merge `origin/main`
-  into it and wait for CI green. [OWNER] merges each one.
+  CC-S2, CC-S3, CC-S4 and CC-S5, then SP3's CC-F1 (the `AgentRun` printer columns, SP3 Task 8.7),
+  which stacks on CC-S5 and must be in the same release. After each merge, retarget the next PR to
+  `main`, merge `origin/main` into it and wait for CI green. [OWNER] merges each one.
 - [ ] **Step 3:** [OWNER] tags the next minor release (for example `v0.8.0`), which publishes the
   packages and `xrd-crds.yaml`.
 
