@@ -21,7 +21,7 @@ spec:
               value: agent-default
       backendRefs:
         - name: zai
-          modelNameOverride: glm-5.2
+          modelNameOverride: glm-5.3
           weight: 100
       # Agent Router defaults a rule to 60 s: a long GLM-5.2 completion would 504
       # here. Same value as SP4's tier-frontier on the same backend. The identity
