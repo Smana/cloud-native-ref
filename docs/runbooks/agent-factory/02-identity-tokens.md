@@ -57,6 +57,17 @@ p "curl -s -o /dev/null -w 'forged-header %{http_code}\n' -H 'x-ar-agent: agent:
 Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 403`,
 `public→public 200`, `self-signed→public 401`, `forged-header 200`.
 
+> Corrected 2026-09-27: **`GET /v1/models` bypasses JWT authentication entirely** — verified live,
+> every token combination (none, wrong-audience, self-signed-forged) returns `200` on this path. See
+> the README's Platform findings. The same matrix run against `POST /v1/chat/completions` instead
+> (same headers, plus a JSON body and `content-type`) gives the expected
+> `401,403,403,404(structural, see runbook 04 SC-17),200` — the underlying SecurityPolicy/JWT
+> mechanism is sound; only the `/v1/models` path is unprotected. Use `/v1/chat/completions` for this
+> matrix until the bug is fixed.
+>
+> Fixed later on 2026-09-27 (#2108, live on `980b789f`). `/v1/models` now gives 401 without a valid
+> token, and 404 with one. Either path works for this matrix.
+
 Then confirm the forged `x-ar-agent` header never survives (it is stripped before authentication and
 re-set from the verified `sub`):
 
@@ -65,8 +76,18 @@ curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
   'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.path:"/v1/chat/completions" | fields log.x_ar_agent, log.response_code, log.upstream_cluster'
 ```
 
+> Corrected 2026-09-27: the access log records the **post-rewrite** path. A rejected call (401/403)
+> logs `path:"/v1/chat/completions"` (rewrite never reached), but the one call that succeeds logs
+> `path:"/api/paas/v4/chat/completions"` — the exact-match filter above only ever returns the
+> rejected rows (`x_ar_agent` empty, as expected for a rejected call) and silently misses the one row
+> this step is actually meant to check. Drop the `log.path` filter (or match `*chat/completions`) to
+> catch the accepted request too. Verified live: with the filter dropped, the accepted request logs
+> `log.x_ar_agent:"system:serviceaccount:agents:agent-probe"`, `log.upstream_cluster` is
+> `httproute/agent-system/agent-models/rule/0` (names the route, not a bare `zai` string).
+
 Expected: `log.x_ar_agent` is exactly `system:serviceaccount:agents:agent-probe` — never
-`agent:forged`, never both. Upstream cluster names the `zai` backend.
+`agent:forged`, never both. Upstream cluster names the `zai` backend (in practice, the HTTPRoute
+that backs it — see correction above).
 
 **What this proves:** SC-05 — 401 for missing/self-signed tokens, 403 for a valid token of the wrong
 audience, and the identity header is always server-derived, never client-supplied.
@@ -118,11 +139,13 @@ kubectl apply -f scripts/ops/k8s/agent-probe.yaml && kubectl wait -n agents sand
 `$GHT` and `$GWT` never leave the shell as printed text — only used as header values below.
 
 > Corrected 2026-09-27: verified live that this run's harness has no admin-API channel (Q8 passed
-> on this run's pod). Capturing `$GHT`/`$GWT` itself was refused live by this session's permission
-> classifier ("Credential Materialization") even with only a 4-char prefix ever intended to reach
-> the terminal — recorded as BLOCKED (permission), not attempted further. The pod-death half of
-> Step 2 below does not need either token and was still run: pod gone 4 s after `kubectl delete
-> agentrun --wait=false`.
+> on this run's pod, `xplane-run-7q5pwvmp`). Only `$GHT` (via `git-credential-agent`) was refused by
+> this session's permission classifier ("Credential Materialization") — `$GWT` (via `kubectl create
+> token`) is a plain Kubernetes API call and was **not** blocked; it was captured and used for the
+> gateway-token-death timing in Step 2 below, never printed. Recorded `$GHT` as BLOCKED (permission);
+> the owner must capture and use it interactively (see the runbook's Results table for the exact
+> command). The pod-death half of Step 2 does not need either token: pod gone 3 s after `kubectl
+> delete agentrun --wait=false`.
 
 ### Step 2 — delete the claim and time each credential's death (SC-07)
 
@@ -157,9 +180,10 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
-| A.2 — 401/403 matrix | `401,403,403,403,200,401,200` | No `agent-router` Service exists at all yet (Kustomization not reconciled): `curl` exit `6`, `none→public 000` | BLOCKED (owner action 1) |
-| A.2 — attribution | `x_ar_agent` = probe's SA, never forged | Not reachable — same cause | BLOCKED (owner action 1) |
-| A.3 — Q8 | `refused` / `False` / `False` | Run against a real run's harness (`xplane-run-sp2v7oxj`): `9901: refused`; `admin socket visible: False`; `hot-restart socket: False` | PASS |
-| B.2 — pod gone | ≤ 60 s | `pod gone after 4 s` | PASS |
-| B.2 — GitHub token dead | ≤ 60 s | Not attempted — capturing `$GHT` was refused by this session's own permission classifier (Credential Materialization), independent of the platform | BLOCKED (permission) |
-| B.2 — gateway token dead | ~600 s after issue (10-min run) | Not attempted — same reason, and would also hit A.2's `agent-router` outage | BLOCKED (permission) / (owner action 1) |
+| A.2 — 401/403 matrix (`/v1/models`, as written) | `401,403,403,403,200,401,200` | `none→public 200`, `sts→public 200`, `internal→public 200`, `public→internal 404`, `public→public 200`, `self-signed→public 200`, `forged-header 200` — every token combination, including no token and a self-signed garbage JWT, returns `200` | **FAIL** (see Platform findings — `GET /v1/models` bypasses JWT entirely) |
+| A.2 — 401/403 matrix (`/v1/chat/completions`, corrected) | `401,403,403,404,200` | `none→chat 401`, `sts→chat 403`, `internal→chat 403`, `public→internal-chat 404` (structural, SC-17), `public→chat 200` — exactly as expected | PASS |
+| A.2 — attribution | `x_ar_agent` = probe's SA, never forged | VictoriaLogs (path filter dropped, see correction): `log.x_ar_agent:"system:serviceaccount:agents:agent-probe"`, `log.response_code:"200"`, `log.upstream_cluster:"httproute/agent-system/agent-models/rule/0"` — never `agent:forged` | PASS |
+| A.3 — Q8 | `refused` / `False` / `False` | Run against a real run's harness (`xplane-run-7q5pwvmp`): `9901: refused`; `admin socket visible: False`; `hot-restart socket: False` | PASS |
+| B.2 — pod gone | ≤ 60 s | `pod gone after 3 s` | PASS |
+| B.2 — GitHub token dead | ≤ 60 s | Not attempted — capturing `$GHT` via `git-credential-agent` was refused by this session's own permission classifier (Credential Materialization) | BLOCKED (owner's session) |
+| B.2 — gateway token dead | ~600 s after issue (10-min run) | `$GWT` capture via `kubectl create token` was **not** blocked (never printed). Tested against `/v1/chat/completions`, not `/v1/models` (which never rejects any token — see A.2): `copied gateway token dead 673 s after issue` (15 s poll granularity plus the 60 s pod-death/CNP-teardown window this token's run also went through account for the ~73 s over the nominal 600 s) | PASS |

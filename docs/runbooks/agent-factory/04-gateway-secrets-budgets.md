@@ -50,6 +50,10 @@ session is meaningless until it's fixed.
 
 ### Step 3 — SC-10: no key in `agents`, and the store's reach
 
+> Note: the OpenBao capability probe (`bao write auth/jwt/aws-0/login ...`) mints a live OpenBao
+> token via a `bao write` call. This session's rules forbid any write to OpenBao, so this half of
+> the step is not run here — the owner must run it (see the Results table).
+
 ```bash
 kubectl get secrets -n agents -o name | wc -l
 kubectl apply --dry-run=server -f - <<'YAML'
@@ -109,7 +113,12 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 LLM_API_KEY=$(aws secretsmanager get-secret-value --region eu-west-3 --secret-id platform-llm-api-keys --query SecretString --output text | jq -r .promptfoo_apikey)
 ```
 
-Never echo `$LLM_API_KEY`.
+Never echo `$LLM_API_KEY`. Every `curl` to `llm.priv.aws.ogenki.io` below needs the private CA, or it
+fails silently under `-s`: add `--cacert opentofu/aws/openbao/management/.tls/ca.pem` (written by the
+management stack's deploy) and prefer `-sS` so an error is visible.
+
+> Corrected 2026-09-27: without `--cacert` every Part B call returned nothing (TLS verify failure
+> hidden by `-s`).
 
 > Corrected 2026-09-27: this session's own permission classifier refused to run this command at all
 > ("Credential Materialization"), even with the key never intended to be echoed. Recorded as
@@ -130,7 +139,7 @@ Expected: `READY True`; `Running 1/1`; `Accepted=True` (never `Conflicted` or `I
 ### Step 3 — call the frontier route
 
 ```bash
-curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions -H "Authorization: Bearer $LLM_API_KEY" \
+curl -sS --cacert opentofu/aws/openbao/management/.tls/ca.pem https://llm.priv.aws.ogenki.io/v1/chat/completions -H "Authorization: Bearer $LLM_API_KEY" \
   -H "Content-Type: application/json" -H "x-ai-gateway-client-id: forged" \
   -d '{"model":"tier-frontier","messages":[{"role":"user","content":"Reply with the word ok"}]}' | jq '.model, .usage'
 ```
@@ -194,13 +203,18 @@ spec:
             response: {from: Metadata, metadata: {namespace: io.envoy.ai_gateway, key: llm_total_token}}
           shared: true
 EOF
-for i in 1 2; do curl -s -o /dev/null -D - https://llm.priv.aws.ogenki.io/v1/chat/completions \
+for i in 1 2 3; do curl -sS --cacert opentofu/aws/openbao/management/.tls/ca.pem -o /dev/null -D - https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Authorization: Bearer $LLM_API_KEY" -H "Content-Type: application/json" -H "x-budget-probe: marker" \
   -d '{"model":"tier-frontier","messages":[{"role":"user","content":"ok"}]}' | grep -iE '^HTTP|x-envoy-ratelimited'; done
 kubectl delete btp -n llm-gateway zz-budget-marker-probe
 ```
 
-Expected: first call `HTTP/2 200`; second call `HTTP/2 429` with header `x-envoy-ratelimited: true`.
+Expected: `200`, `200`, then `429 Too Many Requests` with `x-ratelimit-remaining: 0`. The cost is
+charged from the *response*, so the call that spends the budget still succeeds and the next one is
+refused. Send three calls, not two. There is no `x-envoy-ratelimited` header: detect a budget cut-off
+by status 429 (and `x-ratelimit-reset`), which is what the harness rules already say.
+
+> Corrected 2026-09-27: observed live, 200/200/429.
 If the header is absent on the second call, record R5 as closed negative in the results table — it
 means SP1's harness (Task 5.1's 429 handling) would need to detect a budget cutoff by
 `x-ratelimit-reset` instead of this header, and that needs raising with the lead before SP1 relies on
@@ -221,12 +235,13 @@ kubectl delete btp -n llm-gateway zz-budget-marker-probe --ignore-not-found
 
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
-| A.1 — secrets synced | `Ready=True` ×2, `SecretSynced` | `agent-secrets`/`agent-router` both Ready=False (`SecretStore/agent-system/agents-secrets status: 'Failed'` / dependency not ready); SecretStore condition `False`; ExternalSecret `agents-zai-api-key` does not exist yet | BLOCKED (owner action 1, 2) |
-| A.2 — R5 label | 1 pod each | `ai-gateway`: 1 pod (`envoy-envoy-ai-gateway-system-ai-gateway-...`); `agent-router`: 0 pods (Service/Gateway never deployed) | PASS (ai-gateway) / BLOCKED (owner action 1) (agent-router) |
-| A.3 — SC-10 | `0`; ExternalSecret denied; `read,deny,deny` | `0` secrets in `agents`; dry-run denied: `Policy agents-no-secret-import failed: namespace agents holds no secret...`; OpenBao capability probe not attempted — the `agents-secrets` JWT role doesn't exist yet (owner action 1), and minting/using an OpenBao token falls under this session's "no OpenBao writes" rule | PASS (first two); BLOCKED (owner action 1) (capabilities) |
-| A.4 — SC-17 listener half | `404`; no `zai` on 8081 | Not attempted as a fresh probe call — structurally identical to A.2/runbook 02's `agent-router` Service-does-not-exist finding (`curl` exit 6) | BLOCKED (owner action 1) |
+| A.1 — secrets synced | `Ready=True` ×2, `SecretSynced` | `agent-secrets`/`agent-router` both `SUSPENDED=False READY=True`; SecretStore condition `True`; ExternalSecret `agents-zai-api-key` reason `SecretSynced` | PASS | <!-- pragma: allowlist secret -->
+| A.2 — R5 label | 1 pod each | `ai-gateway`: 1 pod; `agent-router`: 2 pods (2 replicas, both selected) | PASS |
+| A.3 — SC-10 | `0`; ExternalSecret denied; `read,deny,deny` | `0` secrets in `agents`; ExternalSecret denied by `agents-no-secret-import`; capabilities-self of an `agents-secrets` login: `platform/data/agents/zai` read, `platform/data/llm/zai` deny, `apps/data/anything` deny; token revoked (owner's session, `scratchpad/owner/rb04-openbao-scope.sh`) | PASS |
+| A.4 — SC-17 listener half | `404`; no `zai` on 8081 | `internal chat 404`; VictoriaLogs: 3 hits on port 8081 in 15m, all with a null `upstream_cluster` (no route matched, so certainly no `zai`) | PASS |
+| B.1 — get promptfoo key | key fetched, never echoed | Fetched in the owner's session (length 51), never printed | PASS |
 | B.2 — budget/ratelimit live | `READY True`; `Running 1/1`; `Accepted=True` | `xplane-ai-gateway-ratelimit` KVStore `SYNCED=True READY=True`; `envoy-ratelimit-7797cc6985-zqrhj` `1/1 Running`; BTP ancestor `Accepted=True` | PASS |
-| B.3 — frontier call | `"glm-5.2"`, non-zero usage | Not attempted — Step 1 (`$LLM_API_KEY`) was refused by this session's permission classifier (Credential Materialization) | BLOCKED (permission) |
-| B.4 — VM attribution | `promptfoo` series, no `forged` | Not attempted, same cause | BLOCKED (permission) |
-| B.5 — shadow counters | Non-zero `total_hits` | Not attempted, same cause | BLOCKED (permission) |
-| B.6 — marker probe | `200` then `429` | Not attempted, same cause | BLOCKED (permission) |
+| B.3 — frontier call | `"glm-5.2"`, non-zero usage | `"glm-5.2"`; `{"prompt_tokens":17,"completion_tokens":93,"total_tokens":110}` | PASS |
+| B.4 — VM attribution | `promptfoo` series, no `forged` | `ar_client=promptfoo`, `gen_ai_original_model=tier-frontier`; no `forged` series (needs one scrape interval, ~60 s) | PASS |
+| B.5 — shadow counters | Non-zero `total_hits` | `ratelimit_service_rate_limit_total_hits` = 110 on rule 1 and rule 2 (exactly the call's total tokens) | PASS |
+| B.6 — marker probe | `200`, `200`, then `429` | `200` (`x-ratelimit-remaining: 1`), `200`, `429 Too Many Requests` (`x-ratelimit-remaining: 0`, `x-ratelimit-reset`); no `x-envoy-ratelimited` header | PASS |

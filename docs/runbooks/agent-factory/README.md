@@ -5,25 +5,25 @@ the live test cluster `aws-0`. Every command is copy-paste, and every step names
 Start with [Runbook 00](#runbook-00-one-time-cluster-setup): the cluster is already deployed, but four
 owner actions gate most runbooks.
 
-## Status after the night run (2026-09-27)
+## Status (2026-09-27)
 
-Executed against `aws-0` on `integration/agent-factory` @ `76716898`. Owner actions 1–5 were not
-done (as expected — see the checklist below), so most later runbooks are BLOCKED; every blocked
-step still got its static check against the code/live XRD. Two mixed rows (04's A.2 and A.3, each
-half-PASS/half-BLOCKED) are folded into that runbook's BLOCKED count below — see its own results
-table for the split.
+Round 3, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Owner actions 1–4 are
+now done; action 5 (issue URL) is done, using `#2112`. #2113 (trust policies) merged to `main`.
+Runbook 04 was run to fully PASS by the coordinator directly (not re-run in this session). Runbooks
+05 and 07 were run live this round; 01, 02, 03, 06, 08 are carried over unchanged from earlier
+rounds. Two platform bugs surfaced this round, both in README Platform findings below.
 
 | Runbook | PASS | FAIL | BLOCKED | Notes |
 |---|---|---|---|---|
 | [01](01-runtime-sandbox.md) | 9 | 0 | 0 | R7 fails closed by design and resumes via `--branch` (see Platform findings) |
-| [02](02-identity-tokens.md) | 2 | 0 | 4 | `agent-router` down (action 1); credential capture refused by this session's own permission classifier |
+| [02](02-identity-tokens.md) | 5 | 1 | 1 | The 1 FAIL (`/v1/models` auth bypass) is FIXED in #2108 and verified live; GitHub-token timing waits for the harness image |
 | [03](03-egress.md) | 6 | 0 | 0 | Fully clean |
-| [04](04-gateway-secrets-budgets.md) | 1 | 0 | 8 | Part A gated by actions 1–2; Part B gated by a permission refusal on the API key fetch |
-| [05](05-github-octo-sts.md) | 0 | 0 | 9 | Gated by actions 1, 3, 4; every claim statically verified against the code instead |
-| [06](06-mcp.md) | 1 | 0 | 5 | Gated by action 1 (`agent-mcp` depends on `agent-router`) |
-| [07](07-end-to-end.md) | 2 | 0 | 5 | Gated by actions 1, 3, 4, 5; harness-pin check confirms the documented `0`/upstream-image fallback |
+| [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Fully PASS — run to completion by the coordinator directly, not re-verified in this session |
+| [05](05-github-octo-sts.md) | 5 | 2 | 3 | octo-sts's installation-token mint 422s for every role (see Platform findings); the rest was verified with the `agent-probe`'s `sts` token in place of the missing harness git tooling |
+| [06](06-mcp.md) | 6 | 0 | 0 | Fully clean — `agent-mcp` and both MCPRoutes are `Ready`/`Accepted` now that `agent-router` is up |
+| [07](07-end-to-end.md) | 5 | 0 | 2 | The upstream `agent-server` image never submits a task at all (see Platform findings) — stronger than the anticipated push-only gap; SC-13/SC-14 (status projection, cleanup) are independent and PASS live |
 | [08](08-observability.md) | 5 | 0 | 0 | Dashboard data verified via the same VM/VL proxy calls; UI render itself is SSO-gated, not exercised headlessly |
-| **Total** | **26** | **0** | **31** | |
+| **Total** | **51** | **3** | **6** | |
 
 ## What each runbook proves
 
@@ -153,9 +153,87 @@ Each runbook ends with a results table (step, expected, observed, pass/fail). Fi
 you go — there is no separate consolidated form. Paste failing steps' `kubectl`/`curl` output
 verbatim; a summary line ("worked") is not evidence per this repo's evidence rule.
 
-### Platform findings (2026-09-27 night run)
+### Platform findings
 
-**Fixed in git during the run (live since `76716898`):**
+**New, round 3 (2026-09-27, live on `580042e6`) — octo-sts's installation-token mint returns 422 for
+every trust policy, both roles tested.** `agent-router`'s `sts` listener correctly verifies the caller
+and forwards to octo-sts (confirmed: cross-repo and non-run-subject requests are denied with the
+*right* octo-sts-level errors, not a network failure), but the actual GitHub call octo-sts makes to
+mint the scoped installation token always fails:
+
+```
+github_api_call method=POST path_raw=/app/installations/165342698/access_tokens status_code=422
+```
+
+Reproduced from a real implementer run (`xplane-run-bx7qwi6i`, trust policy `contents:write,
+pull_requests:write, issues:read, checks:read, actions:read`) and a real reviewer run
+(`xplane-run-iqeuqxbv`, `contents:read, pull_requests:read, issues:read, checks:read, actions:read`)
+— both roles' *scoped* mint 422s identically, even though the *unscoped* installation token octo-sts
+uses internally to read the trust-policy file from the repo succeeds (`201`) most of the time. Since
+both a write-heavy and a read-only permission set fail the same way, the likely cause is a permission
+declared in **every** trust policy that the `ogenki-agents` GitHub App installation was not actually
+granted — `checks: read` and `actions: read` are the two most easily missed in the App's repository
+permissions UI (`docs/superpowers/plans/2026-09-25-agent-runtime-identity-plan.md` line ~5080 has the
+intended table). GitHub 422s an installation-token request that asks for a permission the app-level
+grant doesn't include. **Owner check:** compare `Smana` → Settings → GitHub Apps → `ogenki-agents` →
+Permissions against that table; if it was edited after the initial install, GitHub also requires the
+installation to re-accept the updated permission set before tokens honoring it can mint. This blocks
+every push-capable path in runbooks 05 and 07 — not fixed here (no code or config changed).
+
+**New, round 3 (2026-09-27, live on `580042e6`) — the upstream `agent-server` image never submits a
+task; an `AgentRun` idles at `Running` doing nothing.** With CC-2/#2110 (the repo-built harness image)
+not yet published, the Sandbox's only app container runs the bare OpenHands image with
+`command: ["--port","8000"]` — no wrapper reads the composition's `TASK_FILE`/`CONVERSATION_ID` env
+vars and calls `POST /api/conversations`. Verified on `xplane-run-n7tfcziv` (issue `#2112`): phase
+reached `Running`, `status.conversationId` was allocated, but after 8+ minutes: zero rows for
+`sum(gen_ai_client_token_usage_sum{ar_agent="system:serviceaccount:agents:xplane-run-n7tfcziv"})`,
+zero `agent-router` access-log lines for that `x_ar_agent`, zero octo-sts activity, no PR. This is a
+harder block than "no git credential helper" — the agent loop itself never starts. Expected until
+#2110 ships; not fixed here.
+
+> **FIXED 2026-09-27, in #2108 (PR 3, 4fda7196), live on `980b789f`.** The root cause was filter
+> order, not the `Overridden` status. On `public` the chain is
+> `ext_proc/aigateway → custom_response → jwt_authn → …`, and AI Gateway enables its ext_proc only on
+> the `agent-models` routes, where it answers `/v1/models` itself before `jwt_authn` runs.
+> A dedicated Exact-path `/v1/models` route with no ext_proc now answers 404 behind the
+> listener's JWT policy. CI gate A7 requires that guard on every agent-router listener carrying an
+> AIGatewayRoute. Live after the fix:
+> - `/v1/models`: no token 401, forged 401, valid 404;
+> - chat: no token 401, valid 200, served by `glm-5.3`.
+>
+> Not covered: the human gateway's `llm.priv…/v1/models` also answers without credentials. It is
+> tailnet-only and exposes model names only.
+
+**Round 2 (2026-09-27, live on `580042e6`) — `GET /v1/models` bypasses `agent-router`'s JWT
+authentication entirely (SC-05).** Every token combination tested against the public listener's
+`/v1/models` returns `200`, including no `Authorization` header at all and a self-signed,
+wrong-signature JWT:
+
+```
+none→public 200
+sts→public 200
+internal→public 200
+self-signed→public 200
+```
+
+The `agent-router-public` SecurityPolicy (JWT, `agent-router.implementer.public` etc. audiences) is
+correctly `Accepted=True` but carries an `Overridden=True` condition:
+
+```
+message: 'This policy is being overridden by other securityPolicies for these
+  routes: [agent-system/ai-eg-mcp-main-agent-mcp-public]'
+```
+
+`POST /v1/chat/completions` on the same listener, same Gateway, enforces JWT correctly
+(`none→401`, `sts→403`, `internal→403`, `public→200`) — the SecurityPolicy mechanism itself works.
+Only the ai-gateway-synthesized `/v1/models` listing bypasses it, most likely because that endpoint
+is answered by the `ai-gateway-extproc` filter before the JWT filter runs, independent of the
+per-route SecurityPolicy attachment. Anyone with network access to `agent-router` (any pod in the
+cluster, absent a CiliumNetworkPolicy restricting it) can currently enumerate configured models with
+no credential. Not fixed here per this session's scope (no code changes); use
+`/v1/chat/completions` for auth-matrix testing until this is fixed.
+
+**Fixed in git during the round-1 run (live since `76716898`):**
 - **`agent-sandbox`:** `reconcileStrategy: Revision` put `+<sha>` into the chart's `helm.sh/chart`
   label, and the API server rejected the release. A postRenderer now replaces the label.
 - **`envoy-ai-gateway`:** ESO's second write to the watched MCP seed Secret cancelled an in-flight

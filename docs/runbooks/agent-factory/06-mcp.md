@@ -48,6 +48,10 @@ Expected: exactly three tool names — `search_flux_docs`, and one `documentatio
 `mcp-victoriametrics` and `mcp-victorialogs`. No `get_kubernetes_*`, no `query`, no mutating tool of
 any kind.
 
+> Corrected 2026-09-27: tool names are namespaced by backend, e.g.
+> `flux-operator-mcp__search_flux_docs`, not the bare `search_flux_docs` — verified live. Match on
+> the suffix.
+
 ### Step 4 — `internal` adds real read tools, gated by role
 
 ```bash
@@ -64,10 +68,15 @@ Expected (the probe is an `implementer`): Flux's `search_flux_docs`, `get_flux_i
 ### Step 5 — SC-12: an implementer is denied the logs tool by the MCPRoute, and the backend SA has no secrets access
 
 ```bash
-kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
+kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"flux-operator-mcp__get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -A
 kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -A
 ```
+
+> Corrected 2026-09-27: the tool name must be the namespaced form
+> (`flux-operator-mcp__get_kubernetes_logs`, per Step 3's correction above) — the bare
+> `get_kubernetes_logs` used previously here fails with a generic `400 invalid tool name` before
+> authorization is ever evaluated, which looks like a pass but proves nothing about SC-12.
 
 Expected: the call is refused (HTTP 403, or a JSON-RPC error naming authorization — the MCPRoute's
 `defaultAction: Deny` plus per-role rules never grant `implementer` this tool on `internal`); `no`;
@@ -91,9 +100,9 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
-| 1 — routes accepted | `Ready=True`, both `True` | `agent-mcp` Ready=False (`dependency 'flux-system/agent-router' is not ready`); no MCPRoute objects exist yet at all | BLOCKED (owner action 1) |
-| 2 — SC-08 recheck | No `kubernetes.io` dir | `ls: cannot access '/var/run/secrets/kubernetes.io': No such file or directory`, exit=2 | PASS |
-| 3 — `public` tools | Exactly 3 docs tools | Not reachable — no MCPRoute/backends deployed | BLOCKED (owner action 1) |
-| 4 — `internal` tools | Implementer: no logs tool; full VM set; VL docs only | Not reachable, same cause. Statically verified in `infrastructure/base/agent-mcp/mcproutes.yaml`: implementer's `agent-router.implementer.internal` rules grant exactly `search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_resources`, `get_kubernetes_metrics` (no `get_kubernetes_logs`), the full `mcp-victoriametrics` tool list, and only `mcp-victorialogs`'s `documentation`; `reviewer` additionally gets `get_kubernetes_logs` | BLOCKED (owner action 1) — static match confirmed |
-| 5 — SC-12 denial | Refused | Not reachable, same cause | BLOCKED (owner action 1) |
-| 5 — RBAC | `no` (secrets), `yes` (pods/log) | ClusterRole `agent-mcp-flux-read` does not exist yet (never applied): `can-i get secrets` → `no`, `can-i get pods/log` → `no` (not `yes` — the resource itself is missing, not merely denying `pods/log`). Statically verified in `infrastructure/base/agent-mcp/flux-operator-mcp-rbac.yaml`: no `secrets` verb anywhere; `pods/log` is granted `get,list,watch` once the Kustomization reconciles | BLOCKED (owner action 1) — static match confirmed |
+| 1 — routes accepted | `Ready=True`, both `True` | `agent-mcp` `SUSPENDED=False READY=True`; both `agent-mcp-internal` and `agent-mcp-public` MCPRoutes `Accepted=True` | PASS |
+| 2 — SC-08 recheck | No `kubernetes.io` dir | Run `xplane-run-n6uymuev`: `ls: cannot access '/var/run/secrets/kubernetes.io': No such file or directory`, exit=2 | PASS |
+| 3 — `public` tools | Exactly 3 docs tools | `flux-operator-mcp__search_flux_docs`, `mcp-victoriametrics__documentation`, `mcp-victorialogs__documentation` — exactly 3, no `get_kubernetes_*`, no `query` | PASS |
+| 4 — `internal` tools | Implementer: no logs tool; full VM set; VL docs only | 5 flux tools (`search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_resources`, `get_kubernetes_metrics`, no `get_kubernetes_logs`); all 13 `mcp-victoriametrics` tools; only `mcp-victorialogs__documentation` | PASS |
+| 5 — SC-12 denial | Refused | `flux-operator-mcp__get_kubernetes_logs` call → `access denied`, HTTP 403 (the bare, unprefixed name instead fails with a generic 400 before authz runs — see correction above) | PASS |
+| 5 — RBAC | `no` (secrets), `yes` (pods/log) | `can-i get secrets --as=...flux-operator-mcp -A` → `no`; `can-i get pods/log` → `yes` | PASS | <!-- pragma: allowlist secret -->
