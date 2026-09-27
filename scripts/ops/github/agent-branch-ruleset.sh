@@ -19,7 +19,7 @@ set -euo pipefail
 REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-branches.json"
-name="$(jq -r .name "$SOURCE")"
+name="$(jq -er .name "$SOURCE")"
 
 # GitHub's built-in RepositoryRole ids: 5 admin (the owner of a user repo),
 # 2 maintain, 4 write.

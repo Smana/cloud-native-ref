@@ -15,7 +15,7 @@ spec:
       interval: 5m
       rules:
         - alert: AgentRouterUnauthorizedBurst
-          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:~"(401|403)" | stats count() as rejected | filter rejected:>20'
+          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:"agent-system" | unpack_json | log.response_code:~"(401|403)" | stats count() as rejected | filter rejected:>20'
           labels:
             severity: warning
           annotations:

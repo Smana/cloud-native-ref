@@ -4,7 +4,8 @@
 # in ANY eu-west-3 EKS cluster, an attacker's with a same-named ServiceAccount
 # included. It is safe only because every token reaching octo-sts has already
 # been verified by agent-router's `sts` listener against this cluster's issuer
-# and JWKS, and octo-sts admits no other ingress.
+# and JWKS. Besides that data plane, octo-sts's CNP admits node-local `host` on
+# :8080 (kubelet's probes), which can already read the mounted App key.
 issuer_pattern: 'https://oidc\.eks\.eu-west-3\.amazonaws\.com/id/[0-9A-F]{32}'
 subject_pattern: 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'
 audience: octo-sts/Smana/cloud-native-ref/implementer

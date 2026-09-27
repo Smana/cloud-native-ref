@@ -6,6 +6,8 @@
 #                     (--task "<text>" | --task-url <issue or PR URL>)
 #                     [--repo <owner/name>] [--branch agent/<id>] [--size small|medium|large]
 #                     [--minutes <1-480>] [--profiles pypi,npm,golang,crates] [--dry-run]
+# --class internal has no model route until SP4 PR 2, so such a run 404s on every model call; it is
+# still accepted because the runbooks use it to test the internal listener.
 # AGENT_PRINCIPAL overrides the principal (default: human:<git user.email>) and must match
 # the design's principal CEL: human:<id> or system:<name> (lowercase, plan Task 1.1).
 # Only the run's name goes to stdout (callers capture it with `| tail -1`); the
@@ -47,6 +49,12 @@ esac
 case "$minutes" in
   ''|*[!0-9]*) echo "--minutes must be an integer between 1 and 480" >&2; exit 2 ;;
 esac
+# 480 is 3 digits: reject anything longer before it reaches arithmetic, where
+# a huge digit string makes `[ -lt ]`/`[ -gt ]` fail their own comparison
+# (non-fatal under set -e) and the range check silently passes it through.
+if [ "${#minutes}" -gt 3 ]; then
+  echo "--minutes must be an integer between 1 and 480" >&2; exit 2
+fi
 if [ "$minutes" -lt 1 ] || [ "$minutes" -gt 480 ]; then
   echo "--minutes must be an integer between 1 and 480" >&2; exit 2
 fi

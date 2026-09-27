@@ -53,6 +53,7 @@ bash "$SUBJECT" --role implementer --class public --task x --minutes abc >/dev/n
 bash "$SUBJECT" --role implementer --class public --task x --minutes 0 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses --minutes below 1"
 bash "$SUBJECT" --role implementer --class public --task x --minutes 481 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses --minutes above 480"
 bash "$SUBJECT" --role implementer --class public --task x --minutes 480 --dry-run >/dev/null 2>&1 || fail "accepts --minutes at the upper bound"
+bash "$SUBJECT" --role implementer --class public --task x --minutes 99999999999999999999999999 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --minutes value that overflows arithmetic"
 
 AGENT_PRINCIPAL="bogus" bash "$SUBJECT" --role implementer --class public --task x >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a malformed AGENT_PRINCIPAL"
 AGENT_PRINCIPAL="system:Agent-Factory" bash "$SUBJECT" --role implementer --class public --task x >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses an uppercase system: principal"

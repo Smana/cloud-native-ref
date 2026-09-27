@@ -1,4 +1,4 @@
-# Panel 2 ("Tokens per run through agent-router"): the ar_agent label is produced by SP4 PR 1's metricsRequestHeaderAttributes (x-ar-agent -> ar_agent) on the envoy-ai-gateway controller (feat/ai-gateway-frontier, infrastructure/base/envoy-ai-gateway/helmrelease.yaml) — "No data" until that PR merges, by design (no absent() alert: no run is not an outage).
+# Panel 2 ("Tokens per run through agent-router"): the ar_agent label comes from metricsRequestHeaderAttributes (x-ar-agent -> ar_agent) on the envoy-ai-gateway controller (infrastructure/base/envoy-ai-gateway/helmrelease.yaml). Empty when no run is active, by design (no absent() alert: no run is not an outage).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -33,10 +33,10 @@ spec:
          "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
-         "targets": [{"refId": "A", "expr": "sum by (resource_type) (karpenter_nodepool_usage{nodepool=\"agents-gvisor\"}) / sum by (resource_type) (karpenter_nodepool_limit{nodepool=\"agents-gvisor\"})", "legendFormat": "{{resource_type}}"}]},
+         "targets": [{"refId": "A", "expr": "sum by (resource_type) (karpenter_nodepools_usage{nodepool=\"agents-gvisor\"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool=\"agents-gvisor\"})", "legendFormat": "{{resource_type}}"}]},
         {"id": 4, "type": "logs", "title": "agent-router 4xx",
          "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "expr": "kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" | unpack_json | log.response_code:4*", "queryType": "instant"}]}
+         "targets": [{"refId": "A", "expr": "kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\" | unpack_json | log.response_code:4*", "queryType": "instant"}]}
       ]
     }
