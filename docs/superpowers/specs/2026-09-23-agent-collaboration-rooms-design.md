@@ -187,7 +187,7 @@ accepts a human `review_verdict` is SP3's policy.
 
 **A verdict reaches its pull request** (Δ1, accepted 2026-09-27). When an agent's `room_verdict` names a pull request,
 the broker's leader posts it there as one comment from SP3's factory App, `ogenki-agent-factory`, which SP2 creates
-early (Issues and Pull requests write, Contents and Metadata read, key at `platform/agents/factory-app`). The comment
+early (Issues and Pull requests write, Contents and Metadata read, key at `agents/factory-app`). The comment
 quotes the summary only for a `public` room, links the room, and ends with the marker
 `<!-- agent-room:<roomId>:<seq> -->`. A comment by the App that already carries the marker is never posted again. The
 outcome is appended as `state_changed{verdict_posted, url}` or `state_changed{verdict_not_posted, reason}`. The verdict
@@ -277,7 +277,7 @@ sequenceDiagram
 | Claim (`agent-system`) | Settings | Why standalone |
 |---|---|---|
 | `SQLInstance xplane-rooms` | 1 instance, 20 Gi, daily backup to `${region}-ogenki-cnpg-backups`, `objectStoreRecovery`, `atlasSchema` | Only the standalone XRD has `objectStoreRecovery`, which lets the log survive routine rebuilds |
-| `KVStore xplane-rooms` | nano, `auth.existingSecret` from the `agents-secrets` store (`platform/agents/*`, C1) | The App sub-block has no `auth`, and the KVStore CNP admits the whole namespace |
+| `KVStore xplane-rooms` | nano, `auth.existingSecret` from the `agents-secrets` store (the dedicated `agents` mount (`agents/*`, SP2 plan P38), C1) | The App sub-block has no `auth`, and the KVStore CNP admits the whole namespace |
 
 **Append.** One transaction: `UPDATE rooms SET last_seq = last_seq + 1 RETURNING`, `INSERT`, `COMMIT`. The row lock
 serialises writers per room, and a rollback also undoes the counter, so `seq` stays gapless. The broker's database
@@ -416,7 +416,7 @@ No manifest in the repo selects `cnpg.io/cluster` pods, so SP2 writes the CNPG p
 **Workload.** 2 replicas, PDB `minAvailable: 1`; 100m/128Mi requests, 500m/256Mi limits; PSS restricted; `/healthz`,
 `/readyz` (Postgres), `/startupz` (schema). RBAC: read and delete on `agentruns` (never create,
 C3), CRUD on `rooms`; no cluster-admin. Secrets come only from the namespaced `agents-secrets` store
-(`platform/agents/*`, C1), never `openbao-platform`; the `rooms-proxy` client is written under that path.
+(the dedicated `agents` mount (`agents/*`, SP2 plan P38), C1), never `openbao-platform`; the `rooms-proxy` client is written under that path.
 
 **Metrics:** `rooms{phase}`, `rooms_participants`, `rooms_connections`, `rooms_events_appended_total{type,origin}`,
 `rooms_append_seconds`, `rooms_fanout_lag_seconds`, `rooms_approvals_pending`, `rooms_approval_decision_seconds`,

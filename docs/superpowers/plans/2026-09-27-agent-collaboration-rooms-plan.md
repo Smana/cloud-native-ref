@@ -58,7 +58,7 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
   | Storage | `SQLInstance xplane-rooms`, database `rooms`, roles `rooms_owner` (Atlas), `rooms_broker`, `rooms_retention`; `KVStore xplane-rooms` |
   | Human host | `rooms.${private_domain_name}` on `platform-tailscale-general`; room URL `/r/<roomId>` |
   | Branch | a human room's runs share `agent/<roomId>`; a fork gets its new room's (C3) |
-  | Factory App | `ogenki-agent-factory`, SP3's GitHub App created early (ruling P28); key at `platform/agents/factory-app` (`app_id`, `private_key`) |
+  | Factory App | `ogenki-agent-factory`, SP3's GitHub App created early (ruling P28); key at `agents/factory-app` (the `agents` OpenBao mount, P38; `app_id`, `private_key`) |
   | Verdict comment | one per agent `review_verdict`, marked `<!-- agent-room:<roomId>:<seq> -->` (ruling P30) |
   | PR footer | `Agent-Room`, `Agent-Run`, `Agent-Role`, `Agent-Task`, `Agent-Model`, appended by the harness's `gh pr create` (ruling P32) |
 - **Audiences.** Bridge `room-broker` (C2, fixed by SP1), projected with `expirationSeconds: 600`;
@@ -87,12 +87,21 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
   (schema). Bridge requests 20m/32Mi, limits 100m/64Mi. RBAC: read and delete on `agentruns`,
   **never create** (C3); CRUD on `rooms`; no cluster-admin.
 - **Secrets (C1 + no-seed rule).** `agent-system` reads secrets only through the namespaced
-  `agents-secrets` store (`platform/agents/*`), never `openbao-platform` or `clustersecretstore`.
+  `agents-secrets` store, never `openbao-platform` or `clustersecretstore`. From Task 1.15a that
+  store reads the dedicated kv-v2 mount **`agents`**, which no policy but `agents-secrets` and
+  `secrets-admin` names (ruling P38, review M1); SP1 built it on `platform/agents/*`, which
+  `external-secrets` also reads. OpenBao paths in this plan are `<mount>/<key>`: `agents/github-app`
+  is the key `github-app` on the mount `agents` (`bao kv get -mount=agents github-app`).
   Every new secret is **generated in-cluster** (ESO `Password` generator, `refreshPolicy:
   CreatedOnce`) or read from a path OpenBao already restores and the deploy already writes. **Never a
   manual seed**, with one exception: a key GitHub issues, which nothing in-cluster can generate. The
-  factory App's key is written once by the owner to `platform/agents/factory-app`, like SP1's
-  `platform/agents/github-app` (ruling P31).
+  factory App's key is written once by the owner to `agents/factory-app`, like SP1's
+  `agents/github-app` (ruling P31).
+- **Alerts** under `observability/base/agent-platform/` carry `runbook_url` and `dashboard` (review
+  M9): `scripts/ci/tests/test-agent-alert-annotations.sh` (Task 0.5.5) fails `task check` otherwise.
+  The rule snippets of this plan predate that suite: add both annotations when writing them,
+  `runbook_url` to the runbook or design section that covers the alert, `dashboard` to
+  `https://grafana.${private_domain_name}/d/agent-platform`.
 - **Composition changes** land in `Smana/crossplane-configuration`. They are validated live through
   that PR's CI pre-release, pinned on the never-merged `integration/agent-factory` branch that aws-0
   tracks. That CI names it `v<next>-pr<N>.<sha7>` after the PR's **synthetic merge commit, not its
@@ -140,7 +149,9 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
 - **Live gotchas.** A live `flux resume` is reverted by drift correction: unsuspend in git.
   `flux get kustomization a b` reads only the first name. Curls to `*.priv.aws.ogenki.io` need
   `--cacert opentofu/aws/openbao/management/.tls/ca.pem`. VictoriaLogs stores parsed JSON as `log.*`
-  at ingest.
+  at ingest. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an
+  `integration/agent-factory` checkout: a deploy from `main` destroys the `agents` and `merge-gate`
+  mounts and every key in them (P38).
 - **Constitution on every workload.** Default-deny CNP per endpoint, with DNS L7
   (`rules.dns matchPattern "*"`) wherever a `toFQDNs` rule exists; requests **and** limits; liveness,
   readiness and startup probes; restricted securityContext with `seccompProfile: RuntimeDefault`;
@@ -202,10 +213,10 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P6 | The bridge's `/healthz` "checks the process and its harness socket" | The bridge is a **native sidecar** (`restartPolicy: Always`, after `identity-proxy`). `/healthz` fails only when the harness was reachable once and has been unreachable for more than 60 s | A native sidecar's startup probe gates the harness container, so a probe that required the harness would deadlock. A sidecar also lets the pod finish when the harness exits | A bridge wedged before the harness first answers is not restarted by kubelet; its loop logs and retries |
 | P7 | `SQLInstance xplane-rooms` with a role holding "INSERT and SELECT on `events`, nothing else" | CC-S1 teaches `SQLInstance` **generated credentials** (`spec.credentials.source: generated`) and **login roles that own no database**. The broker also gets INSERT on `rooms`. Row-level security confines `rooms_retention` to rooms closed past retention | The composition reads role passwords from `clustersecretstore`, which `secret-store.sh seed` fills by hand: a manual seed, and a store C1 forbids to `agent-system`. A room row is inserted when a Room is created | One more composition release; the default (`store`) leaves every existing claim byte-identical |
 | P8 | `objectStoreRecovery` "lets the log survive routine rebuilds" | The first deploy has **no** recovery source; nothing exists to recover. After a day of real rooms, the seed is promoted with `cnpg-promote-seed.sh` and the claim gains `objectStoreRecovery.path: rooms-<date>` (Task 2.12). Every later teardown promotes a fresh seed first | Recovery needs a seed, and the repo's seed discipline (zitadel) is the proven path | Events after the last promoted seed are lost on a rebuild |
-| P9 | `KVStore` `auth.existingSecret` from `platform/agents/*` | The Valkey password comes from an ESO `Password` generator, `CreatedOnce` | Valkey carries hints only, so a per-cluster password loses nothing. A `platform/agents/*` path would need a manual seed | None found |
+| P9 | `KVStore` `auth.existingSecret` from `platform/agents/*` | The Valkey password comes from an ESO `Password` generator, `CreatedOnce` | Valkey carries hints only, so a per-cluster password loses nothing. An `agents/*` path would need a manual seed | None found |
 | P10 | S11: `App` claim "with its own route off … The App XRD takes custom CNP rules and extra ports" | The App claim is named **`room-broker`**. Its `networkPolicies` are **disabled** and a standalone CNP sits beside it; metrics and probes are on `:9090` with a standalone `VMServiceScrape` | SP1 as built hardcodes `app.kubernetes.io/name: room-broker` in every run CNP and the data-plane CNP, and the FQDN `room-broker.agent-system.svc.cluster.local`. The App egress schema has no `rules.dns`, without which the IdP `toFQDNs` rule never matches (`security/AGENTS.md` trap 1) | Renaming later is a delete-and-create of a stateless Deployment plus three selector edits |
 | P11 | §9 broker egress lists "toFQDNs identity provider 443" | It also allows `oidc.eks.${region}.amazonaws.com:443` | Offline validation of run tokens needs the EKS JWKS (`${oidc_issuer_url}/keys`), as `agent-router` already does | None |
-| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `platform/agents/rooms-proxy` through the root-token session the aws-0 sync already opens | That script runs on every deploy (`opentofu/aws/eks/init/workflows.tm.hcl`) and OpenBao restores the path. Every other consumer goes to AWS Secrets Manager, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
+| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the aws-0 sync already opens | That script runs on every deploy (`opentofu/aws/eks/init/workflows.tm.hcl`) and OpenBao restores the path. Every other consumer goes to AWS Secrets Manager, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
 | P13 | Room MCP: "Injected credential plus `x-ar-agent`"; fallback: bridge relay | The MCPRoute backend injects a generated key in header `x-room-mcp-key` (`securityPolicy.apiKey`). **The relay fallback is not built** | SP1 confirmed from source that `x-ar-agent` reaches MCP backends (SP1 §6). A key in a custom header keeps `Authorization` out of every MCP hop (gate A6's intent) | If Task 3.11 finds no `x-ar-agent`, ruling P36 applies: the relay is not built in this plan |
 | P14 | Before SP3, "the broker shows the `AgentRun` for the owner to create" (fork) | The same holds for **hand to role** and **add agent**. The broker renders the claim; the owner runs it. `task agent:run` gains `--room <id>` | C3: only the factory creates runs, and it does not exist yet. The broker's RBAC never includes `create` | The owner is in the loop for every run until SP3; the factory client (`POST /v1/runs`) is built and unit-tested, and switches on with `factoryURL` |
 | P15 | `state_changed{run_phase}` | When a run ends, the broker appends `state_changed{kind: run_phase, phase, reason}` with reason `agent_finished`, `agent_error`, `agent_stuck`, `deadline`, `pod_lost`, `revoked`, `deleted` (the claim was deleted first, review M15) or `budget-*`. It derives the reason from the harness's last status in the log and the run's timings | UX finding H3: every failure reads `Failed/PodFailed`. The log is the only place that knows whether the agent ended its conversation | A pod lost within 30 s of its deadline reads `deadline` |
@@ -224,12 +235,16 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P28 | Δ1 (accepted 2026-09-27): "a reviewer's verdict reaches GitHub before SP3" | The broker posts it as **SP3's factory App `ogenki-agent-factory`, created early** in phase 3: Issues and Pull requests write, Contents and Metadata read, installed on `Smana/cloud-native-ref` only, on no bypass list | One App for the owner to create and install, not two. SP3 §3 already has the factory App post this very comment, so the duty and the identity carry over | SP3 must not post the verdict again: it reads `verdict_posted` from the log. If it does, the marker check (P30) makes a repeat from the same App a no-op |
 | P29 | Δ1: "the PR named in the room" | The comment goes to the pull request in the verdict run's `spec.task.url`, recorded as `pullRequest` in the `review_verdict` payload (an additive field). A verdict without one is recorded as `verdict_not_posted{no_pull_request}` | A reviewer's task is always its PR (P24), and the run is live when the tool is called, so no GitHub search is needed | A tester's verdict on a text task stays in the room only |
 | P30 | Δ1: "one PR comment" | The leader sweeps every 15 s over the last 24 h of agent-authored verdicts that have no outcome. It posts each one with a hidden marker, and reuses a comment by the App that already carries the marker. The outcome is appended as `state_changed{verdict_posted \| verdict_not_posted}` with origin `(broker:verdicts, <verdict seq>)`. An internal room's comment carries the verdict and the link but never the summary, and `@` mentions are neutralised | Restart-safe with no new table, and a new leader writes nothing twice. The log already holds C7's data class | ≤ 15 s from verdict to comment. A verdict older than 24 h when the key lands, or in a room sealed before it posts, stays in the room |
-| P31 | Constitution: every secret generated or restored, never a manual seed | The App key is the plan's one owner-written secret: `platform/agents/factory-app` (`app_id`, `private_key`) through `agents-secrets`. The broker mounts it as an **optional** Secret volume and reads it on every mint | GitHub issues the key, so nothing in-cluster can make it. OpenBao keeps it across rebuilds, as it does SP1's `platform/agents/github-app`. The optional volume lets phases 1–3 run before the App exists and picks the key up without a restart, where an env var from the Secret would keep the empty value it started with | Until the owner step, verdicts stay in the room; `RoomVerdictsNotReachingGitHub` fires only once posting has been attempted <!-- pragma: allowlist secret --> |
+| P31 | Constitution: every secret generated or restored, never a manual seed | The App key is the plan's one owner-written secret: `agents/factory-app` (`app_id`, `private_key`) through `agents-secrets`. The broker mounts it as an **optional** Secret volume and reads it on every mint | GitHub issues the key, so nothing in-cluster can make it. OpenBao keeps it across rebuilds, as it does SP1's `agents/github-app`. The optional volume lets phases 1–3 run before the App exists and picks the key up without a restart, where an env var from the Secret would keep the empty value it started with | Until the owner step, verdicts stay in the room; `RoomVerdictsNotReachingGitHub` fires only once posting has been attempted <!-- pragma: allowlist secret --> |
 | P32 | Δ4 (accepted 2026-09-27): "a footer with `Agent-Room`, the run id, role, task link and model": `privateDomainName` in the core composition environment, or a harness `gh pr create` wrapper | **The harness wrapper.** After a successful `gh pr create`, `pr_footer.py` appends `Agent-Room: <roomId>`, `Agent-Run`, `Agent-Role`, `Agent-Task` and `Agent-Model` to the body. CC-S3 passes `ROOM_ID` and `TASK_URL`. The room is named by id; the verdict comment (P30) carries the full link | Deterministic whatever flags write the body: #2114's body carries only OpenHands' own line. Every field is in the pod, and the `AgentRun` composition stays cloud-neutral with no EnvironmentConfig step | A pull request with no verdict yet shows the room id, not a link. A pull request opened through `gh api` has no footer: it is guidance, like the `commit-msg` hook |
-| P33 | The owner, 2026-09-27: "I don't want to merge any SPx until I get the whole picture done and we agree on the ux" | **No SP2 PR merges and no release tag before Phase 7.** One stack per repo, merge-only, each PR on the previous open branch (PR map). Live gates run on `integration/agent-factory` with CI pre-releases pinned by digest; a branch CRD, a branch `atlasSchema.ref` and `XRD_CRDS_FILE` stand in for release assets. Phase 7: [OWNER] UX sign-off, then one merge wave in dependency order, re-pinned to release tags, branches deleted last | The owner's rule. Pre-releases and branch refs are what SP1's live gates already ran on | Every S PR's `Kubernetes validation` CI check stays red until Phase 7: a pre-release package has no `xrd-crds.yaml` asset. The local `XRD_CRDS_FILE` gate is the evidence. Long-lived stacks need `origin/main` merged in regularly |
+| P33 | The owner, 2026-09-27: "I don't want to merge any SPx until I get the whole picture done and we agree on the ux" | **No SP2 PR merges and no release tag before Phase 7.** One stack per repo, merge-only, each PR on the previous open branch (PR map). Live gates run on `integration/agent-factory` with CI pre-releases pinned by digest; a branch CRD, a branch `atlasSchema.ref` and `XRD_CRDS_FILE` stand in for release assets. Phase 7: [OWNER] UX sign-off, then one merge wave in dependency order, re-pinned to release tags, branches deleted last | The owner's rule. Pre-releases and branch refs are what SP1's live gates already ran on | Long-lived stacks need `origin/main` merged in regularly. The `Kubernetes validation` check no longer stays red on a pre-release pin: P40 publishes its `xrd-crds.yaml` |
 | P34 | Review M10: least privilege for the factory App | The App keeps the owner's permissions: Issues write, Pull requests write, Contents read, Metadata read. The broker mints every installation token for **the one repository and only the permission that call needs**: `pull_requests: write` for a verdict comment | SP3 reuses the App for issue narration (Δ6), and a permission requested later makes the owner re-accept the installation | Whoever steals the private key can still mint the App's full permissions; only the tokens the broker holds are narrow |
 | P35 | Review M14: agent-server 1.49.6 skips an event file it cannot read (`_get_searchable_event` returns `None`) | **A known limit, not fixed.** The bridge keys items by event position (`SeqFor`), so a transiently skipped event shifts every later position by one. The live cursor moves on by event id; a restarted bridge's `Skip` recounts | The window is a partly written event file on the sandbox's own disk, and keying by event id would need another idempotency scheme in the store | For that run only: one event can be missed, or the events after it re-appended under new keys (visible duplicates) |
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
+| P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
+| P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
+| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
+| P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
 
 ## Interfaces with other sub-projects
 
@@ -242,7 +257,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | `agent-router-data-plane` CNP | Egress to `room-broker` :8090 already present |
 | MCPRoutes `agent-mcp-public` / `agent-mcp-internal` | Deny by default, one allow rule per role and backend; SP2 adds the `room-broker` backend and its rules |
 | Kyverno `agent-audience-reservation`, `agent-audience-token-request` | `room-broker*` audiences only in `agents` (forces P3) |
-| `SecretStore agents-secrets` | Reads `platform/agents/*` in `agent-system` |
+| `SecretStore agents-secrets` | Reads `platform/agents/*` in `agent-system` as SP1 built it; the `agents` mount from Task 1.15a (P38) |
 | Harness | agent-server 1.49.6 on `127.0.0.1:8000`, conversation id = `CONVERSATION_ID` = the XR uid; `agent-run` polls every 15 s and stops agent-server once the conversation is terminal. Its `gh` wrapper (`container-images/agent-harness/gh`, #2110) is where H-S3 adds the footer; its env already carries `RUN_ID`, `ROLE` and `MODEL` |
 | `scripts/ops/k8s/agent-run.sh` (`task agent:run`) | The pre-SP3 run creator; SP2 adds `--room` |
 
@@ -258,7 +273,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | `review_verdict.pullRequest` | the log | the PR an agent's verdict is about (P29) |
 | The verdict comment | the PR | posted by the broker as the factory App, marker `<!-- agent-room:<roomId>:<seq> -->`, outcome in `state_changed{verdict_posted}`; SP3's factory does not post it again (P28) |
 | The PR footer | the PR body | `Agent-Room`, `Agent-Run`, `Agent-Role`, `Agent-Task`, `Agent-Model` lines, one per field (P32) |
-| The factory App | GitHub, `platform/agents/factory-app` | `ogenki-agent-factory`, installed; SP3 raises Contents to write and adds it to the bypass list |
+| The factory App | GitHub, `agents/factory-app` | `ogenki-agent-factory`, installed; SP3 raises Contents to write and adds it to the bypass list |
 | `Room.status.driver` / `driverEpoch` | the CR | the factory never advances a room while a `human:` holds the driver token (C4) |
 | Run-request client | broker `internal/runrequest` | `POST {factoryURL}/v1/runs` with body `{role, repository, baseRef, task, dataClass, roomRef, egressProfiles?}` and the human's access token as `Authorization: Bearer`; enabled when `factoryURL` is set |
 | System allowlist entry | `room-broker` config `systemPrincipals` | `system:serviceaccount:agent-system:agent-factory: system:factory` ships commented until SP3; Task 1.22 Step 8 enables it for its probe only |
@@ -267,21 +282,24 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 
 Each phase is one PR in this repo plus one in `Smana/agent-platform` (spec outline), and sometimes a
 composition PR. `AP-*` is `Smana/agent-platform`, `CC-*` is `Smana/crossplane-configuration`, `S*`
-is this repo, and `H-S3` is this repo's harness image. **Nothing merges and nothing is tagged before
+is this repo, and `H-S3` is this repo's harness image. `H-1` and `CC-H1` harden SP1 after the
+external reviews (Phase 0.5). **Nothing merges and nothing is tagged before
 Phase 7 (ruling P33).** Each PR is based on its *Base*, the previous open branch of its repo:
 merge-only, never rebased.
 
 | # | Repo · branch | Base (stack parent) | Phase | Needs | Carries | Live gate (aws-0) |
 |---|---|---|---|---|---|---|
 | AP-0 | agent-platform · `chore/bootstrap` | `main` | 0 | [OWNER] repo created | Go module, mise, taskfile, CI, pre-release image workflow, stub binaries | Pre-release images pull from ghcr anonymously |
+| CC-H1 | crossplane-configuration · `ci/prerelease-xrd-crds` | `feat/agentrun-harness` (SP1 CC-2, head `c304bbf`) | 0.5 | CC-2 (#29) open | The pre-release job also publishes `xrd-crds.yaml` as `oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<version>` (B2, P40) | via H-1: its `Kubernetes validation ☸` green |
+| H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | The next aws-0 rebuild: runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
 | AP-1 | agent-platform · `feat/room-log` | `chore/bootstrap` | 1 | AP-0 | Envelope, redaction, store + migrations, Room CRD, authn, run watch, Room controller, :8443, bridge | via S1 |
-| CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `feat/agentrun-harness` (SP1 CC-2, head `c304bbf`) | 1 | CC-1 (#27) and CC-2 (#29), open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
+| CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `ci/prerelease-xrd-crds` (CC-H1, on SP1's CC-2) | 1 | CC-1 (#27), CC-2 (#29) and CC-H1, open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
 | CC-S2 | crossplane-configuration · `feat/agentrun-room-bridge` | `feat/sqlinstance-generated-credentials` | 1 | CC-S1; AP-1's bridge pre-release | `room-bridge` native sidecar, room token, bridge health ingress | via S1 |
-| S1 | this · `feat/rooms-log` | `feat/agent-e2e` (SP1 PR 6, #2111) | 1 | #2111 open; AP-1 and CC-S2 pre-releases | ADR-0044, CRD + catalog, `xplane-rooms`, CNPG CNP, broker App + RBAC + CNP, retention, VMRule, `agent:run --room`, ESO generator RBAC | SC-1, SC-8, SC-10; the transcript and end reason outlive the pod; P17 |
+| S1 | this · `feat/rooms-log` | `fix/agent-review-hardening` (H-1, on SP1 PR 6 #2111) | 1 | H-1 and #2111 open; AP-1 and CC-S2 pre-releases | The `agents` and `merge-gate` OpenBao mounts (M1, P38), ADR-0044, CRD + catalog, `xplane-rooms`, CNPG CNP, broker App + RBAC + CNP, retention, VMRule, `agent:run --room`, ESO generator RBAC | M1's migration; SC-1, SC-8, SC-10; the transcript and end reason outlive the pod; P17 |
 | AP-2 | agent-platform · `feat/room-viewers` | `feat/room-log` | 2 | AP-1 | Policy matrix, human auth, fan-out hub, WebSocket replay, read-only UI | via S2 |
 | S2 | this · `feat/rooms-viewers` | `feat/rooms-log` | 2 | S1; AP-2 pre-release | ADR-0049, ZITADEL roles + `rooms-proxy`, oauth2-proxy, route, `KVStore`, 2 replicas, recovery seed | SC-2, SC-9, SC-11, SC-12; P17 across two replicas |
 | AP-3 | agent-platform · `feat/room-tools` | `feat/room-viewers` | 3 | AP-2 | MCP server :8090 with `room_*`; GitHub App client; verdict poster (Δ1) | via S3 |
-| H-S3 | this · `feat/agent-harness-pr-footer` | `feat/agent-harness` (SP1 PR 5, #2110), **beside** the S stack | 3 | #2110 open | `gh pr create` provenance footer (Δ4); harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
+| H-S3 | this · `feat/agent-harness-pr-footer` | `fix/agent-review-hardening` (H-1, P37), **beside** the S stack | 3 | H-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
 | CC-S3 | crossplane-configuration · `feat/agentrun-room-rules` | `feat/agentrun-room-bridge` | 3 | CC-S2; H-S3's pre-release | Room rules in `rules.md`; `ROOM_ID` and `TASK_URL` for the harness; the H-S3 harness pin | via S3 |
 | S3 | this · `feat/rooms-tools` | `feat/rooms-viewers` | 3 | S2; AP-3 and CC-S3 pre-releases; [OWNER] factory App (Task 3.9) | `room-broker` MCP backend on both MCPRoutes, MCP key, CNP; factory App key, `api.github.com` egress, `RoomVerdictsNotReachingGitHub` | SC-4 (owner-sequenced), tool lists per role, SC-14, SC-15 |
 | AP-4 | agent-platform · `feat/room-driver` | `feat/room-tools` | 4 | AP-3 | Driver token, queue, steering, interrupt, brief, hand to role, new room | via S4 |
@@ -299,9 +317,10 @@ cut (P33).
 
 **Why H-S3 sits beside the S stack.** In Phase 7 the harness must be released before the
 crossplane-configuration release, because CC-S3 pins that harness. S1 in turn pins the CC release.
-Stacked on S2, H-S3 could merge only after S1, and S1 not before that CC release: a cycle. On
-`feat/agent-harness` it merges right after SP1's #2110 and breaks it. `integration/agent-factory`
-merges H-S3 like any S branch from phase 3.
+Stacked on S2, H-S3 could merge only after S1, and S1 not before that CC release: a cycle. On H-1
+(ruling P37), which pins no crossplane-configuration release of SP2's, it merges right after SP1's
+#2111 and H-1, and breaks it; its `v0.2.0` ships H-1's M4 redaction with the footer.
+`integration/agent-factory` merges H-S3 like any S branch from phase 3.
 
 **SP1 branches SP2 builds on, as of 2026-09-27.** SP1 SC-04 **passes live**: an agent opened #2114
 for #2112, and it was merged. Everything below is open and in draft, and merges in its own wave
@@ -310,9 +329,9 @@ before SP2's (Phase 7).
 | SP1 PR | Branch (base) | Pin today | SP2 stacks on it |
 |---|---|---|---|
 | CC-1, crossplane-configuration#27 | `feat/agentrun` (`main`) | — | via CC-2 |
-| CC-2, crossplane-configuration#29 | `feat/agentrun-harness` (`feat/agentrun`), head `c304bbf` | package `v0.7.2-pr29.3ad168a` on integration; harness `v0.1.0-pr2110.29b5f228` | CC-S1 |
-| PR 5, #2110 | `feat/agent-harness` (`feat/agent-github`) | — | H-S3 |
-| PR 6, #2111 | `feat/agent-e2e` (`feat/agent-harness`) | — | S1 |
+| CC-2, crossplane-configuration#29 | `feat/agentrun-harness` (`feat/agentrun`), head `c304bbf` | package `v0.7.2-pr29.3ad168a` on integration; harness `v0.1.0-pr2110.29b5f228` | CC-H1, then CC-S1 on it |
+| PR 5, #2110 | `feat/agent-harness` (`feat/agent-github`) | — | — (H-S3 through #2111 and H-1) |
+| PR 6, #2111 | `feat/agent-e2e` (`feat/agent-harness`) | — | H-1, then S1 and H-S3 on it |
 
 **Pre-release names.**
 - agent-platform's CI names an image `v0.0.1-pr<N>.<sha8>` after the PR **head** (Task 0.2).
@@ -331,9 +350,11 @@ before SP2's (Phase 7).
    - the crossplane-configuration stack tip's package in `configuration-packages.yaml`. The App
      Wizard's clone tag stays on the last release, `v0.7.1`, as integration already keeps it.
 3. Hand-patch the core package to the same pre-release, as in Global Constraints.
-4. Validate with the XRD CRDs of the crossplane-configuration stack tip: run `task crds` in its
-   checkout, then `XRD_CRDS_FILE=<that file> ./scripts/ci/validate-manifests.sh` → `Invalid: 0`.
-   The PR's own `Kubernetes validation` check stays red until Phase 7 (P33).
+4. Validate with the XRD CRDs of the crossplane-configuration stack tip:
+   `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+   → `Invalid: 0`. The script pulls the pinned pre-release's OCI artifact (P40); `task crds` in the
+   stack tip's checkout is the fallback. The PR's own `Kubernetes validation` check does the same
+   and is green.
 5. Wait for `flux get kustomization room-broker -n flux-system` → `Ready True`.
 6. Run the task's [LIVE] checks. Tear down any probe in the same task.
 
@@ -376,6 +397,7 @@ tags and merges it.
 
 | Path | PR | Responsibility |
 |---|---|---|
+| `.github/workflows/ci.yaml` | CC-H1 | The pre-release job also publishes `xrd-crds.yaml` as an OCI artifact (P40) |
 | `apis/sqlinstance/{definition.yaml,kcl/main.k,kcl/main_test.k}`, `examples/sqlinstance-generated.yaml`, `tests/golden/sqlinstance-generated.yaml` | CC-S1 | Generated credentials, roles without a database |
 | `apis/agentrun/{kcl/main.k,kcl/main_test.k,kcl/README.md}`, `tests/golden/agentrun-complete.yaml` | CC-S2…S5 | Bridge sidecar, room token, room rules, harness `ROOM_ID`/`TASK_URL` and pin, bridge digest |
 
@@ -383,6 +405,14 @@ tags and merges it.
 
 | Path | Phase | Responsibility |
 |---|---|---|
+| `container-images/agent-harness/{agent_run.py,tests/test_agent_run.py,Dockerfile}` | 0.5 (H-1) | M4: GitHub tokens redacted from the step log; harness source `v0.1.1` |
+| `scripts/ci/flux-schema/assert-ai-gateway.py`, `scripts/ci/tests/flux-schema/test-assert-ai-gateway.py` | 0.5 | M6: gate A3 over every listener |
+| `infrastructure/base/agent-mcp/{mcproutes.yaml,flux-operator-mcp-rbac.yaml}`, `scripts/ci/tests/test-agent-mcp-scope.sh` | 0.5 | M2, M3: the internal MCP surface |
+| `observability/base/agent-platform/{vmrule.yaml,vmrule-logs.yaml}`, `scripts/ci/tests/test-agent-alert-annotations.sh` | 0.5 | M9: runbook and dashboard links on every alert |
+| `docs/runbooks/agent-factory/{06-mcp.md,08-observability.md}` | 0.5 | M7's seed check, M8's metric names |
+| `.doc-claims.yaml`, `scripts/ops/k8s/agent-probe.yaml`, `infrastructure/base/agent-sandbox/rbac-crossplane.yaml` | 0.5 | B1's pin, N3, N8 |
+| `scripts/ci/fetch-xrd-crds.sh`, `scripts/ci/tests/test-fetch-xrd-crds.sh`, `.github/workflows/ci.yaml` | 0.5 | B2: a pinned pre-release's XRD CRDs for `XRD_CRDS_FILE` |
+| `opentofu/aws/openbao/management/{mounts.tf,policies/*.hcl}`, `security/base/agent-secrets/secretstore.yaml`, the agents' ExternalSecrets, `scripts/ci/tests/test-openbao-agent-mounts.sh` | 1 (S1) | M1: the `agents` and `merge-gate` mounts (P38) |
 | `website/content/docs/decisions/0044-room-session-protocol.md`, `0049-room-client-and-human-auth.md`, `_index.md` | 1, 2 | ADRs |
 | `infrastructure/base/room-broker/` | 1–6 | CRD, App claim, RBAC, CNPs, SQLInstance, KVStore, generators, ExternalSecrets (the factory App key from phase 3), config, oauth2-proxy, HTTPRoute, retention CronJob, VMServiceScrape |
 | `clusters/aws-0-agent-platform/infrastructure-room-broker.yaml`, `kustomization.yaml`, `README.md` | 1, 3 | Umbrella child `room-broker`; the factory App prerequisite |
@@ -423,7 +453,10 @@ tags and merges it.
 |---|---|---|
 | [OWNER] | 0.1 | Create the public repo `Smana/agent-platform` (OD-4, approved 2026-09-27) with a README on `main` |
 | [OWNER] | 0.3 | Make the ghcr packages `room-broker` and `room-bridge` public after their first push |
-| [OWNER] | 3.9 | Create SP3's factory App `ogenki-agent-factory` early (ruling P28): Contents read, Issues write, Pull requests write, Metadata read; webhook off; installed on `Smana/cloud-native-ref` only; on no bypass list. Then `bao kv put -mount=platform agents/factory-app app_id=<id> private_key=@<pem>` and `shred -u <pem>` |
+| [OWNER] | 0.5.2 | Make the ghcr package `crossplane-configuration-xrd-crds` public after its first push |
+| [OWNER] | 0.5.14 | Rebuild aws-0 from an `integration/agent-factory` checkout (P38) with H-1 merged in: H-1's live gate runs on it |
+| [OWNER] | 1.15a | Apply `aws/openbao/management` from the integration checkout; move `github-app`, `zai` and `factory-app` to the `agents` mount; run the two capability probes; delete the old `platform/agents/*` keys once every ExternalSecret is Ready |
+| [OWNER] | 3.9 | Create SP3's factory App `ogenki-agent-factory` early (ruling P28): Contents read, Issues write, Pull requests write, Metadata read; webhook off; installed on `Smana/cloud-native-ref` only; on no bypass list. Then `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem>` and `shred -u <pem>` (done 2026-09-27 on `platform/agents/factory-app`; Task 1.15a moves it) |
 | [OWNER] | 3.6 | Only if the session's gh token lacks `write:packages`: push H-S3's harness pre-release (four commands, given in the task) |
 | [OWNER] | 2.14 | Grant `agents-admin` to yourself and `agents-member` to each developer: `scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --grant agents-admin=<email> --grant agents-member=<email> --apply` (each user must have logged in once) |
 | [OWNER] | 7.1 | Sign off the whole programme's UX (ruling P33). Nothing merges before it |
@@ -748,6 +781,941 @@ Expected: `amd64`, no `unauthorized`. The same for `room-broker`.
 
 - [ ] **Step 5: Leave AP-0 open (ruling P33).** AP-1 is stacked on `chore/bootstrap`; AP-0 merges in
   Phase 7.
+
+---
+
+## Phase 0.5 — SP1 hardening from the external reviews (H-1, CC-H1)
+
+The external reviews of 2026-09-27 (`docs/superpowers/specs/2026-09-27-agent-factory-review.md` on
+`integration/agent-factory`) found gaps in SP1 as built that the owner accepted. They land as one PR
+in this repo, **H-1** (`fix/agent-review-hardening`, stacked on SP1's `feat/agent-e2e`, #2111), plus
+**CC-H1** in crossplane-configuration for B2. S1 and H-S3 stack on H-1 (ruling P37). M1, the secrets
+mount, is not here: it lands with S1, before this plan writes its first new secret (Task 1.15a,
+ruling P38).
+
+Gate: H-1's CI green, `Kubernetes validation ☸` included (B2). On the next aws-0 rebuild: runbook 08
+re-run with a real PASS, and the seed, MCP-scope and RBAC checks of Task 0.5.14. Nothing merges
+(P33).
+
+### Task 0.5.1: H-1 — worktree
+
+- [ ] **Step 1: Worktree**
+
+`EnterWorktree` with branch `fix/agent-review-hardening`, then `git reset --hard origin/feat/agent-e2e`
+before the first commit (the tool branches from `origin/main`; this branch stacks). Merge
+`origin/main` in (the pre-push hook requires it). PR base `feat/agent-e2e`, merge-only (P33). Every
+task of this phase commits here except Task 0.5.2 (crossplane-configuration).
+
+- [ ] **Step 2: The base carries both umbrellas suspended**
+
+Run: `grep -n '^  suspend:' clusters/aws-0/agent-platform.yaml clusters/aws-0/ai-gateway.yaml`
+Expected: `suspend: true` twice. Only `integration/agent-factory` carries `false`, in its test-only
+commit (review B1). A PR branch showing `false`: stop, that flip must never reach a PR.
+
+### Task 0.5.2: CC-H1 — pre-releases publish their XRD CRDs (crossplane-configuration, B2)
+
+Ruling P40. `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only
+`release.yaml` publishes, so `validate-manifests.sh` cannot run on a pinned pre-release. The
+pre-release job publishes the same file as an OCI artifact.
+
+**Files** (in `Smana/crossplane-configuration`, branch `ci/prerelease-xrd-crds`, from
+`origin/feat/agentrun-harness`, SP1's CC-2 at head `c304bbf`, merge-only, P33):
+- Modify: `.github/workflows/ci.yaml` (the `prerelease` job)
+
+**Interfaces:**
+- Produces: `oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<pre-release version>`, one file
+  `xrd-crds.yaml`, the output of `task crds`, the same file a release attaches. Its version is the
+  package's (`v<next>-pr<N>.<sha7>`, the synthetic merge commit). CC-S1 stacks on this branch, so
+  every later CC pre-release carries it.
+
+- [ ] **Step 1: Branch**
+
+```bash
+cd ~/Sources/crossplane-configuration && git fetch origin
+git switch -c ci/prerelease-xrd-crds origin/feat/agentrun-harness
+```
+
+- [ ] **Step 2: Publish the artifact**
+
+In the `prerelease` job, after `Push packages` (whose `docker login ghcr.io` the `flux` CLI reuses):
+
+```yaml
+      # The XRD-to-CRD file release.yaml attaches as an asset, for cloud-native-ref's gate on a
+      # pinned pre-release (its CI passes it as XRD_CRDS_FILE). An OCI artifact, not a GitHub
+      # pre-release: that would create a v* tag, and "Derive the pre-release version" above
+      # takes the newest v* tag as the last release.
+      - name: Publish the XRD CRDs as an OCI artifact
+        run: |
+          task crds
+          mkdir -p build/xrd-artifact && cp build/xrd-crds.yaml build/xrd-artifact/
+          flux push artifact "oci://ghcr.io/smana/crossplane-configuration-xrd-crds:${{ steps.v.outputs.version }}" \
+            --path=build/xrd-artifact \
+            --source="${{ github.server_url }}/${{ github.repository }}" \
+            --revision="${{ steps.v.outputs.version }}@sha1:$(git rev-parse HEAD)"
+```
+
+In `How to test this build`, after the package lines, add:
+
+```bash
+            echo "XRD CRDs for cloud-native-ref's gate: \`oci://ghcr.io/smana/crossplane-configuration-xrd-crds:${{ steps.v.outputs.version }}\`"
+```
+
+- [ ] **Step 3: Gate, commit, open CC-H1**
+
+```bash
+task check
+git add .github/workflows/ci.yaml
+git commit -m "ci: publish each pre-release's XRD CRDs as an OCI artifact"
+git push -u origin ci/prerelease-xrd-crds
+gh pr create --repo Smana/crossplane-configuration --base feat/agentrun-harness --draft \
+  --title "ci: publish each pre-release's XRD CRDs as an OCI artifact" \
+  --body "cloud-native-ref SP2 ruling P40 (external review B2): validate-manifests.sh can then run on a pinned pre-release."
+gh pr checks --repo Smana/crossplane-configuration --watch
+```
+
+Expected: `task check` exit 0; CI green; the job summary names the package pre-release and the
+artifact, both `v0.7.2-pr<N>.<sha7>`.
+
+- [ ] **Step 4: [OWNER] Make the package public**
+
+A new ghcr package starts private. Ask the owner to set `crossplane-configuration-xrd-crds` public
+(`https://github.com/users/Smana/packages/container/crossplane-configuration-xrd-crds/settings`), so
+this repo's CI pulls it anonymously.
+
+- [ ] **Step 5: The artifact is the release asset's twin**
+
+Run: `flux pull artifact oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<version> --output /tmp/xrd && task crds && diff /tmp/xrd/xrd-crds.yaml build/xrd-crds.yaml && grep -c '^kind: CustomResourceDefinition' /tmp/xrd/xrd-crds.yaml`
+Expected: no diff, and a positive count. CC-H1 stays open until Phase 7 (P33).
+
+### Task 0.5.3: B2 — this repo's CI feeds the pre-release's XRD CRDs
+
+**Files:**
+- Create: `scripts/ci/fetch-xrd-crds.sh`, `scripts/ci/tests/test-fetch-xrd-crds.sh`
+- Modify: `.github/workflows/ci.yaml` (`kubernetes-validation`)
+
+**Interfaces:**
+- Produces: `fetch-xrd-crds.sh` prints the path of the pinned pre-release's `xrd-crds.yaml`, or
+  nothing for a release pin (`gen-catalog.sh` fetches the release asset itself). `XPKG_SOURCE` and
+  `XRD_CRDS_DIR` override the pin file and the output directory (tests). Every local gate of this
+  plan uses `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)"`.
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-fetch-xrd-crds.sh`:
+
+```bash
+#!/usr/bin/env bash
+#
+# fetch-xrd-crds.sh (SP2 ruling P40, review B2): a release pin needs no artifact, and a
+# pre-release pin pulls its PR's OCI artifact. flux is stubbed on PATH.
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SUBJECT="$HERE/../fetch-xrd-crds.sh"
+fails=0
+fail() { printf 'FAIL  %s\n' "$*" >&2; fails=$((fails + 1)); }
+
+d="$(mktemp -d)"
+mkdir -p "$d/bin" "$d/out"
+cat >"$d/bin/flux" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >>"$FLUX_CALLS"
+out="${*: -1}"
+[ -n "${FLUX_EMPTY:-}" ] || printf 'apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n' >"$out/xrd-crds.yaml"
+EOF
+chmod +x "$d/bin/flux"
+pin() { printf '    package: ghcr.io/smana/crossplane-configuration-aws:%s\n' "$1" >"$d/pkgs.yaml"; }
+run() { PATH="$d/bin:$PATH" FLUX_CALLS="$d/calls" XPKG_SOURCE="$d/pkgs.yaml" XRD_CRDS_DIR="$d/out" bash "$SUBJECT"; }
+
+pin v0.8.0
+[ -z "$(run)" ] || fail "a release pin prints nothing"
+[ ! -e "$d/calls" ] || fail "a release pin pulls nothing"
+
+pin v0.7.2-pr35.abcdef1
+got="$(run)" || fail "a pre-release pin succeeds"
+[ "$got" = "$d/out/xrd-crds.yaml" ] || fail "it prints the file, got '$got'"
+grep -q 'pull artifact oci://ghcr.io/smana/crossplane-configuration-xrd-crds:v0.7.2-pr35.abcdef1 --output' "$d/calls" \
+  || fail "it pulls the pinned version's artifact"
+
+rm -f "$d/out/xrd-crds.yaml"
+FLUX_EMPTY=1 run >/dev/null 2>&1 && fail "an artifact without the file fails"
+
+[ "$fails" -eq 0 ] || exit 1
+echo PASS
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-fetch-xrd-crds.sh; echo "exit $?"`
+Expected: `exit 1`; `bash: …/fetch-xrd-crds.sh: No such file or directory` and the pre-release
+failures.
+
+- [ ] **Step 3: Implement**
+
+`scripts/ci/fetch-xrd-crds.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Print the path of the Crossplane XRD CRDs of the pinned crossplane-configuration
+# pre-release, for XRD_CRDS_FILE (gen-catalog.sh). A release pin prints nothing:
+# gen-catalog.sh fetches the release asset itself. A pre-release (v<x.y.z>-pr<N>.<sha>)
+# has no release; its PR CI publishes the same file as an OCI artifact (SP2 ruling P40).
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SRC="${XPKG_SOURCE:-$ROOT/infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml}"
+# The expression gen-catalog.sh reads XPKG_VERSION with.
+ver="$(sed -nE 's#^[[:space:]]*package:[[:space:]]*"?[^":[:space:]]+:(v?[0-9][^"[:space:]]*)"?[[:space:]]*$#\1#p' "$SRC" | head -n1)"
+case "$ver" in
+  *-pr*) ;;
+  *) exit 0 ;;
+esac
+out="${XRD_CRDS_DIR:-$(mktemp -d)}"
+flux pull artifact "oci://ghcr.io/smana/crossplane-configuration-xrd-crds:${ver}" --output "$out" >&2
+[ -s "$out/xrd-crds.yaml" ] || { echo "error: no xrd-crds.yaml in the artifact of ${ver}" >&2; exit 1; }
+echo "$out/xrd-crds.yaml"
+```
+
+`chmod +x scripts/ci/fetch-xrd-crds.sh`. In `.github/workflows/ci.yaml`'s `kubernetes-validation`,
+before `Test suites`:
+
+```yaml
+      # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
+      # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
+      # nothing, and gen-catalog.sh fetches the release asset as before.
+      - name: Fetch the pinned pre-release's XRD CRDs
+        run: |
+          f="$(./scripts/ci/fetch-xrd-crds.sh)"
+          [ -z "$f" ] || echo "XRD_CRDS_FILE=$f" >> "$GITHUB_ENV"
+```
+
+- [ ] **Step 4: Run the suite, then the gate on CC-H1's pre-release**
+
+Pin `package: ghcr.io/smana/crossplane-configuration-aws:<CC-H1 pre-release>` in
+`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` (Task 0.5.2's CI
+summary; the XRDs are CC-2's).
+
+Run: `bash scripts/ci/tests/test-fetch-xrd-crds.sh && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; `==> Using pre-built Crossplane XRD CRDs from …/xrd-crds.yaml`, then
+`Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/ci/fetch-xrd-crds.sh scripts/ci/tests/test-fetch-xrd-crds.sh .github/workflows/ci.yaml infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
+git commit -m "ci: validate manifests against a pinned pre-release's XRD CRDs"
+```
+
+### Task 0.5.4: M8 — runbook 08 queries Karpenter v1's metric names
+
+Runbook 08 checks `AgentGvisorPoolNearLimit` against `karpenter_nodepool_usage`/`_limit`, names
+Karpenter v1 no longer exports. A missing metric returns `[]`, which the runbook read as a pass, so
+its recorded PASS proved nothing. The rule and the dashboard already use `karpenter_nodepools_*`.
+
+**Files:**
+- Modify: `docs/runbooks/agent-factory/08-observability.md` (lines 32, 40 and 74, Step 2's Expected)
+
+- [ ] **Step 1: The old name is empty, the new one is not** (read-only, [LIVE]; skip if aws-0 is down)
+
+```bash
+vmq() { kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=$(jq -rn --arg q "$1" '$q|@uri')" | jq -c '.data.result | length'; }
+vmq 'sum by (resource_type) (karpenter_nodepool_limit{nodepool="agents-gvisor"})'
+vmq 'sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"})'
+```
+
+Expected: `0`, then a positive count (one series per limited resource).
+
+- [ ] **Step 2: Fix the names**
+
+Run: `sed -i 's/karpenter_nodepool_\(usage\|limit\)/karpenter_nodepools_\1/g' docs/runbooks/agent-factory/08-observability.md && grep -c 'karpenter_nodepool_[ul]' docs/runbooks/agent-factory/08-observability.md`
+Expected: `0` (line 32's query, line 40's prose and line 74's panel row now name the plural).
+
+Then replace Step 2's Expected paragraph with:
+
+```markdown
+Expected: both queries return `success`. The first may be `[]` when no pod is Pending. The second
+must not be: `karpenter_nodepools_limit` exists for every NodePool with a limit, idle or busy. If
+the ratio is `[]`, run `sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"})`
+alone: a series there means the pool has no usage series yet, while `[]` means the metric name is
+wrong, and that is a FAIL.
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/runbooks/agent-factory/08-observability.md
+git commit -m "docs(runbooks): query Karpenter v1's karpenter_nodepools_* in runbook 08"
+```
+
+### Task 0.5.5: M9 — every agent-platform alert names its runbook and dashboard
+
+**Files:**
+- Create: `scripts/ci/tests/test-agent-alert-annotations.sh`
+- Modify: `observability/base/agent-platform/vmrule.yaml`, `observability/base/agent-platform/vmrule-logs.yaml`
+
+**Interfaces:**
+- Produces: a suite `run.sh` discovers, so `task check` and CI's "Test suites" step run it. It reads
+  the real tree: SP2's `vmrule-rooms.yaml` and SP3's factory rules land in the same directory and
+  are held to it (Global Constraints).
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-agent-alert-annotations.sh`:
+
+```bash
+#!/usr/bin/env bash
+# requires: python3
+#
+# External review M9: every alert the agent platform ships names its runbook and its
+# dashboard, as the karpenter and openbao VMRules do. The real tree, not fixtures: SP2's
+# and SP3's alerts land in the same directory and are held to the same rule.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+python3 -c 'import yaml' 2>/dev/null || { echo "SKIP: pyyaml not installed"; exit 77; }
+ROOT="$ROOT" python3 - <<'PY'
+import glob, os, sys, yaml
+
+root = os.environ["ROOT"]
+missing = []
+for path in sorted(glob.glob(os.path.join(root, "observability/base/agent-platform/vmrule*.yaml"))):
+    for doc in yaml.safe_load_all(open(path)):
+        if not doc or doc.get("kind") != "VMRule":
+            continue
+        for group in doc["spec"]["groups"]:
+            for rule in group.get("rules") or []:
+                if "alert" not in rule:
+                    continue
+                annotations = rule.get("annotations") or {}
+                for key in ("runbook_url", "dashboard"):
+                    if not annotations.get(key):
+                        missing.append(f"{os.path.relpath(path, root)}: {rule['alert']} has no {key}")
+if missing:
+    print("\n".join(missing), file=sys.stderr)
+    sys.exit(1)
+print("PASS")
+PY
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-agent-alert-annotations.sh; echo "exit $?"`
+Expected: `exit 1` and twelve lines, `runbook_url` and `dashboard` missing for each of
+`AgentSandboxPodPending`, `AgentGvisorPoolNearLimit`, `AgentRunTokenSpendHigh`,
+`AgentFleetTokenSpendHigh`, `AgentRouterUnauthorizedBurst` and `OctoStsExchangeFailures`.
+
+- [ ] **Step 3: Add the annotations**
+
+The repo's convention (`observability/aws-0/victoria-metrics-k8s-stack/vmrules/karpenter.yaml`,
+`observability/base/victoria-metrics-k8s-stack/vmrules/openbao.yaml`) is two lines after
+`description`. The dashboard is the agent platform's (`uid: agent-platform` in
+`grafana-dashboard.yaml`), linked by uid rather than the convention's `/dashboards` list. The
+Kustomization `agent-observability` already substitutes `${private_domain_name}`.
+
+| Alert | `runbook_url` file under `https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/` |
+|---|---|
+| `AgentSandboxPodPending`, `AgentGvisorPoolNearLimit` | `01-runtime-sandbox.md` |
+| `AgentRunTokenSpendHigh`, `AgentFleetTokenSpendHigh` | `04-gateway-secrets-budgets.md` |
+| `AgentRouterUnauthorizedBurst` | `02-identity-tokens.md` |
+| `OctoStsExchangeFailures` | `05-github-octo-sts.md` |
+
+For example, `AgentSandboxPodPending`'s `annotations` end with:
+
+```yaml
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/01-runtime-sandbox.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+```
+
+The links resolve once the runbooks merge in Phase 7; until then the path still names the file.
+
+- [ ] **Step 4: Run the suite and the rule gates**
+
+Run: `bash scripts/ci/tests/test-agent-alert-annotations.sh && ./scripts/ci/validate-vmrules.sh && python3 scripts/ci/flux-schema/check-substitution.py`
+Expected: `PASS`; `validate-vmrules.sh` exit 0 with `agent-platform` checked and
+`agent-platform-logs` skipped as `type: vlogs`; `check-substitution.py` exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/ci/tests/test-agent-alert-annotations.sh observability/base/agent-platform
+git commit -m "fix(observability): runbook and dashboard links on every agent-platform alert"
+```
+
+### Task 0.5.6: M4 — the harness redacts GitHub tokens before it prints
+
+`StepLog` prints the agent's command text (200 characters), error details (400) and final message
+(8000) to stdout, which Vector ships to VictoriaLogs. A prompt-injected agent can read its
+installation token with `git-credential-agent token` and write it into a command or its message.
+The fix redacts the cached token value and any `gh[posu]_` token before anything is printed.
+
+**Files:**
+- Modify: `container-images/agent-harness/agent_run.py`, `container-images/agent-harness/Dockerfile`
+- Test: `container-images/agent-harness/tests/test_agent_run.py`
+
+**Interfaces:**
+- Produces: `agent_run.redact(text: str) -> str`, `agent_run.TOKEN_CACHE` (the same
+  `GIT_TOKEN_CACHE` default as `git_credential_agent.py`), `agent_run.REDACTED =
+  "[REDACTED:github-token]"`. Harness source version `v0.1.1` (ruling P37).
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `StepLogTest` in `tests/test_agent_run.py`:
+
+```python
+    def test_tokens_are_redacted_before_anything_is_printed(self):
+        # M4: an injected agent can print its own installation token into a command or its
+        # final message, and stdout reaches VictoriaLogs. The cached value is redacted even
+        # when it has no gh*_ shape; any gh*_ token is redacted even when it is not cached.
+        cached, other = "tok_" + "C" * 36, "ghs_" + "S" * 36
+        cache = os.path.join(tempfile.mkdtemp(), "token.json")
+        with open(cache, "w") as f:
+            json.dump({"token": cached, "expires_at": time.time() + 3600}, f)
+        events = [
+            {"id": "a", "kind": "ActionEvent", "tool_name": "terminal", "summary": "leak " + cached,
+             "action": {"command": "curl -H 'Authorization: token %s' https://x" % cached}},
+            {"id": "b", "kind": "AgentErrorEvent", "error": "bad credential " + other},
+            {"id": "c", "kind": "MessageEvent", "source": "agent",
+             "llm_message": {"content": [{"type": "text", "text": "done, token " + cached}]}},
+        ]
+        log = agent_run.StepLog("cid")
+        with mock.patch.object(agent_run, "TOKEN_CACHE", cache):
+            out = self.tick(log, [{"items": events, "next_page_id": None}])
+            with mock.patch("sys.stdout", new=io.StringIO()) as summary:
+                log.summary()
+        printed = out + summary.getvalue()
+        self.assertNotIn(cached, printed)
+        self.assertNotIn(other, printed)
+        # the action's summary and command, the error, the message line and the final message
+        self.assertEqual(printed.count(agent_run.REDACTED), 5, printed)
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `docker build --target test container-images/agent-harness`
+Expected: the build fails in the test stage on
+`test_tokens_are_redacted_before_anything_is_printed`:
+`AttributeError: <module 'agent_run' …> does not have the attribute 'TOKEN_CACHE'`.
+
+- [ ] **Step 3: Implement**
+
+In `agent_run.py`, add `import re` to the imports, and after `MAX_POLL_ERRORS`:
+
+```python
+# The run's installation token as git-credential-agent caches it (T3), and every GitHub
+# token shape. An injected agent can print its token into a command or its final message,
+# and these lines reach VictoriaLogs (review M4), so both are redacted before any print.
+TOKEN_CACHE = os.environ.get("GIT_TOKEN_CACHE", "/run/agent/git/token.json")
+GITHUB_TOKEN = re.compile(r"gh[posu]_[A-Za-z0-9_]{20,}")
+REDACTED = "[REDACTED:github-token]"
+
+
+def redact(text: str) -> str:
+    try:
+        with open(TOKEN_CACHE) as f:
+            cached = json.load(f).get("token")
+    except (OSError, ValueError, AttributeError):
+        cached = None
+    if cached:
+        text = text.replace(cached, REDACTED)
+    return GITHUB_TOKEN.sub(REDACTED, text)
+```
+
+The cache is read at every call: git-credential-agent replaces the token before it expires.
+`_short` redacts before it truncates, so a token cut at the limit is still whole when it is
+matched:
+
+```python
+def _short(value, limit: int) -> str:
+    text = " ".join(redact(str(value or "")).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+```
+
+In `StepLog.describe`, the message branch keeps the redacted text for `summary()`:
+`self.last_message = redact(_text(event.get("llm_message")))`. Add to the class docstring:
+"Agent-written text is redacted first (M4)."
+
+In the `Dockerfile`: `ARG AGENT_HARNESS_VERSION=v0.1.1`, with the comment
+`# H-1 (SP2 ruling P37): a new source version, so its merge never republishes SP1's v0.1.0 tag.`
+
+- [ ] **Step 4: Run every harness suite**
+
+Run: `docker build --target test container-images/agent-harness`
+Expected: exit 0; the test stage lists `test_tokens_are_redacted_before_anything_is_printed ... ok`
+and every other suite `OK`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add container-images/agent-harness
+git commit -m "fix(agent-harness): redact GitHub tokens from the step log"
+```
+
+### Task 0.5.7: M6 — gate A3 wants the whole Gateway covered
+
+`check_identity_strips` marks a Gateway covered as soon as any ClientTrafficPolicy targets it, with or
+without `sectionName`. A policy scoped to one listener then passes for the whole Gateway while its
+other listeners go unstripped, and the test at line 172 codifies it. Latent today: both Gateways
+carry a Gateway-scoped policy.
+
+**Files:**
+- Modify: `scripts/ci/flux-schema/assert-ai-gateway.py` (`check_identity_strips`, the A3 docstring)
+- Test: `scripts/ci/tests/flux-schema/test-assert-ai-gateway.py`
+
+- [ ] **Step 1: Write the failing tests**
+
+In the test file, `gateway()` declares listeners:
+
+```python
+def gateway(name="ai-gateway", ns="envoy-ai-gateway-system", cls="envoy-ai-gateway", listeners=()):
+    return {"apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway",
+            "metadata": {"name": name, "namespace": ns},
+            "spec": {"gatewayClassName": cls, "listeners": [{"name": n} for n in listeners]}}
+```
+
+Replace the check `"a listener-scoped policy that itself fully strips satisfies the Gateway"` with:
+
+```python
+errs = gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public")])
+check("a listener-scoped policy covers its own listener only (M6): the other one is reported",
+      len(errs) == 1 and errs[0].endswith("covers listener(s) internal"), str(errs))
+check("listener-scoped policies covering every listener satisfy the Gateway",
+      gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public"),
+                                  ctp(STRIPS, section="internal")]) == [])
+check("a listener-scoped policy on a Gateway that declares no listener covers nothing",
+      len(gate.check_identity_strips([gateway(), ctp(STRIPS, section="public")])) == 1)
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-ai-gateway.py; echo "exit $?"`
+Expected: `exit 1`, `2 failed`: the first and third new checks (the gate returns `[]` for both).
+
+- [ ] **Step 3: Implement**
+
+In `check_identity_strips`, replace `targeted = set()` and `targeted.add(key)` with a split between
+Gateway-scoped and listener-scoped policies:
+
+```python
+    whole, sections = set(), {}
+```
+
+```python
+            if target.get("sectionName"):
+                sections.setdefault(key, set()).add(target["sectionName"])
+            else:
+                whole.add(key)
+```
+
+and the final loop with:
+
+```python
+    for obj in gateways:
+        meta = obj.get("metadata") or {}
+        key = (meta.get("namespace", ""), meta.get("name"))
+        if key in whole:
+            continue
+        if key not in sections:
+            errors.append(f"{ref(obj)}: no ClientTrafficPolicy removes the identity headers before authentication")
+            continue
+        listeners = {listener.get("name") for listener in spec_of(obj).get("listeners") or []}
+        uncovered = sorted(listeners - sections[key])
+        if not listeners or uncovered:
+            errors.append(f"{ref(obj)}: no Gateway-scoped ClientTrafficPolicy, and no listener-scoped one "
+                          f"covers listener(s) {', '.join(uncovered) or '(none declared)'}")
+    return errors
+```
+
+The per-policy header check above it is unchanged: every policy, whatever its scope, must still
+remove all four headers. In the docstring, A3 gains: "A Gateway is covered by a Gateway-scoped
+ClientTrafficPolicy, or by listener-scoped ones whose `sectionName`s cover every listener it
+declares (review M6)."
+
+- [ ] **Step 4: Run the tests and the real bundle**
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-ai-gateway.py && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `all passed`; `Invalid: 0, Skipped: 0`, and step 6 (`assert-ai-gateway.py`) passes on
+both real Gateways.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/ci/flux-schema/assert-ai-gateway.py scripts/ci/tests/flux-schema/test-assert-ai-gateway.py
+git commit -m "fix(ci): gate A3 needs every listener of a Gateway stripped"
+```
+
+### Task 0.5.8: M7 — a live check that the MCP session seed is the generated one
+
+`render-bundle.py` cannot resolve a Secret `valuesFrom`, so the rendered bundle always shows
+`--mcpSessionEncryptionSeed=default-insecure-seed`. A typo in `valuesKey` or `targetPath` renders the
+same, reconciles fine, and runs the controller on the published seed. Only the live pod can tell.
+
+**Files:**
+- Modify: `docs/runbooks/agent-factory/06-mcp.md` (a new step before Step 1, and a Results row)
+
+- [ ] **Step 1: Write the step**
+
+Insert before `### Step 1 — the routes are accepted`:
+
+````markdown
+### Step 0 — the MCP session seed is the generated one (review M7)
+
+```bash
+kubectl get pods -n envoy-ai-gateway-system -l app.kubernetes.io/instance=envoy-ai-gateway,app.kubernetes.io/name=ai-gateway-helm -o json \
+  | jq -r '[.items[].spec.containers[].args[]? | select(startswith("--mcpSessionEncryptionSeed="))
+           | sub("^--mcpSessionEncryptionSeed="; "")
+           | if . == "default-insecure-seed" then "INSECURE" elif length == 48 then "generated" else "length \(length)" end]
+           | unique | join(",")'
+```
+
+Expected: `generated`, never the value itself. `INSECURE` means the HelmRelease's `valuesFrom`
+(`ai-gateway-mcp-session-seed`, key `seed`) no longer reaches the chart: stop, every MCP session ID
+is encrypted with a published seed. `length N` means the value is not the 48-character `Password`
+generator's. An empty output means the flag moved: read the pod's args by hand.
+````
+
+and the Results row `| 0 — MCP session seed | generated | | |`.
+
+- [ ] **Step 2: Commit** (the check runs in Task 0.5.14)
+
+```bash
+git add docs/runbooks/agent-factory/06-mcp.md
+git commit -m "docs(runbooks): check the MCP session seed on the live controller"
+```
+
+### Task 0.5.9: B1's pin — `.doc-claims.yaml` holds the `agent-platform` umbrella suspended
+
+`ai-gateway-umbrella-suspended` already pins the `ai-gateway` umbrella. Nothing pins
+`agent-platform`'s, so a branch cut or cherry-picked from integration could ship `suspend: false`
+and deploy the whole agent platform with no opt-in.
+
+**Files:**
+- Modify: `.doc-claims.yaml` (a new claim after `ai-gateway-umbrella-suspended`)
+
+- [ ] **Step 1: Add the claim**
+
+```yaml
+  - id: agent-platform-umbrella-suspended
+    why: >-
+      The agent-platform umbrella ships `spec.suspend: true` (programme C1): a
+      default deploy runs no sandbox controller, gVisor pool, agent-router or
+      octo-sts. integration/agent-factory flips it in a test-only commit, and a
+      branch cut from there would deploy the agent platform with no opt-in
+      (review B1). Pinning the source makes that flip fail a gate.
+    source:
+      file: clusters/aws-0/agent-platform.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: clusters/aws-0-agent-platform/README.md
+        must_contain: 'suspended by default'
+```
+
+- [ ] **Step 2: Green here, and it bites**
+
+Run: `./scripts/ci/validate-doc-claims.sh; echo "exit $?"; sed -i 's/^  suspend: true/  suspend: false/' clusters/aws-0/agent-platform.yaml; ./scripts/ci/validate-doc-claims.sh; echo "exit $?"; git checkout clusters/aws-0/agent-platform.yaml`
+Expected: `exit 0`, then `exit 1` naming `agent-platform-umbrella-suspended`. On
+`integration/agent-factory` both umbrella claims fail by design: its test-only commit is the one
+place `false` is allowed.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add .doc-claims.yaml
+git commit -m "chore(docs): pin the agent-platform umbrella's suspend in doc-claims"
+```
+
+### Task 0.5.10: N3 — the probe resolves over TCP too
+
+**Files:**
+- Modify: `scripts/ops/k8s/agent-probe.yaml` (the CNP's DNS rule)
+
+- [ ] **Step 1: Allow TCP 53**
+
+Every sibling CNP allows UDP and TCP 53: a response larger than 512 bytes retries over TCP. The DNS
+rule's `ports` become:
+
+```yaml
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+```
+
+- [ ] **Step 2: Check and commit**
+
+Run: `python3 -c 'import yaml,sys; d=[x for x in yaml.safe_load_all(open("scripts/ops/k8s/agent-probe.yaml")) if x and x["kind"]=="CiliumNetworkPolicy"][0]; print(sorted(p["protocol"] for p in d["spec"]["egress"][0]["toPorts"][0]["ports"]))'`
+Expected: `['TCP', 'UDP']`. The probe is applied live in Task 0.5.14.
+
+```bash
+git add scripts/ops/k8s/agent-probe.yaml
+git commit -m "fix(ops): the agent probe resolves DNS over TCP too"
+```
+
+### Task 0.5.11: N8 — Crossplane's sandbox verbs, enumerated
+
+**Files:**
+- Modify: `infrastructure/base/agent-sandbox/rbac-crossplane.yaml`
+
+- [ ] **Step 1: Replace `verbs: ["*"]`**
+
+```yaml
+rules:
+  # The lifecycle the AgentRun composition drives, and nothing else (review N8): no
+  # deletecollection, no escalate or bind through a future verb.
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes/status"]
+    verbs: ["get"]
+```
+
+Crossplane writes no composed resource's status; it reads readiness from the resource itself.
+
+- [ ] **Step 2: Validate and commit**
+
+Run: `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `Invalid: 0, Skipped: 0`. The live proof (a run created and deleted) is Task 0.5.14.
+
+```bash
+git add infrastructure/base/agent-sandbox/rbac-crossplane.yaml
+git commit -m "fix(agent-sandbox): enumerate Crossplane's verbs on sandboxes"
+```
+
+### Task 0.5.12: M2, M3 — the internal MCP surface, trimmed (ruling P39)
+
+On the `internal` listener every role gets VictoriaMetrics' operator-introspection tools
+(`tsdb_status`, `active_queries`, `top_queries`), an implementer gets the arbitrary-kind
+`get_kubernetes_resources`, and `flux-operator-mcp` reads `configmaps`, `serviceaccounts`, `nodes` and
+`pods/log` cluster-wide. VictoriaLogs `query`, `hits` and `facets` stay with reviewer, tester and
+triager: logs by role is the design, and the unscoped residual is named in P39.
+
+**Files:**
+- Create: `scripts/ci/tests/test-agent-mcp-scope.sh`
+- Modify: `infrastructure/base/agent-mcp/mcproutes.yaml`, `infrastructure/base/agent-mcp/flux-operator-mcp-rbac.yaml`
+- Modify: `docs/runbooks/agent-factory/06-mcp.md` (Step 4's Expected)
+
+**Interfaces:**
+- Produces: the tool grants and RBAC below, held by a real-tree suite. SP2's Task 3.8 adds the
+  `room-broker` backend to the trimmed MCPRoutes.
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-agent-mcp-scope.sh`:
+
+```bash
+#!/usr/bin/env bash
+# requires: python3
+#
+# External review M2 and M3 (SP2 ruling P39): no role gets VictoriaMetrics' operator
+# introspection, an internal implementer gets no arbitrary-kind resource read, and the Flux
+# MCP server reads ConfigMaps and pod logs in flux-system only. The real tree.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+python3 -c 'import yaml' 2>/dev/null || { echo "SKIP: pyyaml not installed"; exit 77; }
+ROOT="$ROOT" python3 - <<'PY'
+import os, sys, yaml
+
+root = os.environ["ROOT"]
+base = os.path.join(root, "infrastructure/base/agent-mcp")
+INTROSPECTION = {"tsdb_status", "active_queries", "top_queries"}
+errors = []
+
+for route in yaml.safe_load_all(open(os.path.join(base, "mcproutes.yaml"))):
+    if not route or route.get("kind") != "MCPRoute":
+        continue
+    name = route["metadata"]["name"]
+    for backend in route["spec"]["backendRefs"]:
+        if INTROSPECTION & set((backend.get("toolSelector") or {}).get("include") or []):
+            errors.append(f"{name}: backend {backend['name']} exposes {sorted(INTROSPECTION)}")
+    for rule in route["spec"]["securityPolicy"]["authorization"]["rules"]:
+        auds = {v for c in rule["source"]["jwt"]["claims"] for v in c["values"]}
+        tools = {t["tool"] for t in rule["target"]["tools"]}
+        if INTROSPECTION & tools:
+            errors.append(f"{name}: {sorted(auds)} granted {sorted(INTROSPECTION & tools)}")
+        if "agent-router.implementer.internal" in auds and "get_kubernetes_resources" in tools:
+            errors.append(f"{name}: the internal implementer holds get_kubernetes_resources")
+
+docs = list(yaml.safe_load_all(open(os.path.join(base, "flux-operator-mcp-rbac.yaml"))))
+cluster = next(d for d in docs if d and d["kind"] == "ClusterRole")
+wide = {r for rule in cluster["rules"] if "" in rule["apiGroups"] for r in rule["resources"]}
+for r in ("configmaps", "serviceaccounts", "nodes", "pods/log"):
+    if r in wide:
+        errors.append(f"ClusterRole {cluster['metadata']['name']} reads {r} cluster-wide")
+role = next((d for d in docs if d and d["kind"] == "Role" and d["metadata"]["namespace"] == "flux-system"), None)
+if role is None or {"configmaps", "pods/log"} - {r for rule in role["rules"] for r in rule["resources"]}:
+    errors.append("no Role in flux-system grants configmaps and pods/log")
+if not any(d and d["kind"] == "RoleBinding" and d["metadata"]["namespace"] == "flux-system"
+           and d["subjects"][0]["name"] == "flux-operator-mcp" for d in docs):
+    errors.append("no RoleBinding gives flux-operator-mcp the flux-system Role")
+
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    sys.exit(1)
+print("PASS")
+PY
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-agent-mcp-scope.sh; echo "exit $?"`
+Expected: `exit 1`; lines for `agent-mcp-internal`'s VictoriaMetrics backend, the four internal
+roles' grants, the implementer's `get_kubernetes_resources`, the four cluster-wide resources, and the
+missing Role and RoleBinding.
+
+- [ ] **Step 3: Trim the MCPRoutes**
+
+```bash
+F=infrastructure/base/agent-mcp/mcproutes.yaml
+# The backend include list and every role's grant lose the three introspection tools.
+sed -i '/^          - \(tsdb_status\|active_queries\|top_queries\)$/d; /tool: \(tsdb_status\|active_queries\|top_queries\)}$/d' "$F"
+# The first grant line of get_kubernetes_resources is the internal implementer's (the public
+# route has none): only that one goes, reviewer, tester and triager keep theirs.
+sed -i '0,/{backend: flux-operator-mcp, tool: get_kubernetes_resources}/{/{backend: flux-operator-mcp, tool: get_kubernetes_resources}/d}' "$F"
+```
+
+In the file's header comment, after "toolSelector hides every other tool, including all mutating
+ones.", add: "No role gets VictoriaMetrics' operator introspection (`tsdb_status`, `active_queries`,
+`top_queries`), and an implementer gets no `get_kubernetes_resources`, which reads any kind in any
+namespace (external review M2, M3)."
+
+- [ ] **Step 4: Trim the ClusterRole, add the `flux-system` Role**
+
+In `flux-operator-mcp-rbac.yaml`, the header comment's last sentence becomes "ConfigMaps and pod logs
+only in `flux-system` (the Role below): either can carry whatever a process printed." The claims
+comment's parenthesis becomes "(`get_kubernetes_resources` takes any kind and namespace, like
+`kubectl get`, so this ClusterRole, not the tool, is the boundary)". The core rule becomes:
+
+```yaml
+  - apiGroups: [""]
+    resources: [pods, services, endpoints, events, namespaces, persistentvolumeclaims]
+    verbs: [get, list, watch]
+```
+
+Append:
+
+```yaml
+---
+# ConfigMaps and pod logs, in flux-system only (external review M3). Cluster-wide they reached
+# `security`, `crossplane-system` and other runs' sandboxes; Flux's controllers are what an
+# agent debugs through this server.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-mcp-flux-read
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, pods/log]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-mcp-flux-read
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-mcp-flux-read
+subjects:
+  - kind: ServiceAccount
+    name: flux-operator-mcp
+    namespace: agent-system
+```
+
+- [ ] **Step 5: The runbook's expected tool list**
+
+In runbook 06 Step 4, the Expected paragraph becomes: "Flux's `search_flux_docs`,
+`get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics`: **no**
+`get_kubernetes_logs` and **no** `get_kubernetes_resources`. Thirteen `mcp-victoriametrics` tools,
+none of `tsdb_status`, `active_queries`, `top_queries`. Only `mcp-victorialogs`'s `documentation`.
+Reviewer, tester and triager also get `get_kubernetes_resources`, `get_kubernetes_logs` and the
+VictoriaLogs query tools."
+
+- [ ] **Step 6: Run the suite and the gates**
+
+Run: `bash scripts/ci/tests/test-agent-mcp-scope.sh && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; `Invalid: 0, Skipped: 0`, gates A5 and A6 still pass on both MCPRoutes.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add scripts/ci/tests/test-agent-mcp-scope.sh infrastructure/base/agent-mcp docs/runbooks/agent-factory/06-mcp.md
+git commit -m "fix(agent-mcp): trim introspection tools and cluster-wide reads from internal runs"
+```
+
+### Task 0.5.13: Gates and PR H-1
+
+- [ ] **Step 1: Run every gate**
+
+Run: `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh && ./scripts/ci/validate-vmrules.sh && ./scripts/ci/validate-links.sh && ./scripts/ci/validate-doc-claims.sh && python3 scripts/ci/flux-schema/check-substitution.py && docker build --target test container-images/agent-harness && task check`
+Expected: all exit 0; `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 2: Open H-1 as a draft with `create-pr`**, base `feat/agent-e2e`
+
+Title: `fix(agents): harden SP1 after the external reviews`. The body lists the findings H-1 closes
+(M2, M3, M4, M6, M7, M8, M9, B1's pin, B2's CI step, N3, N8), links CC-H1, and names what it does
+not: M1 lands with S1 (P38), and M4 reaches a running image with H-S3's harness `v0.2.0` (P37).
+It keeps a "Live evidence" section that Task 0.5.14 fills in.
+
+Run: `gh pr checks <H-1> --watch`
+Expected: every check green, `Kubernetes validation ☸` included; its log shows
+`==> Using pre-built Crossplane XRD CRDs from`. That check was red on every SP1 PR (B2).
+
+### Task 0.5.14: [LIVE] H-1 on the next aws-0 rebuild
+
+Merge H-1 into `integration/agent-factory` (live-check routine step 1) and hand-patch the core
+package to CC-H1's pre-release (Global Constraints). The owner's next rebuild of aws-0, deployed from
+the `integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
+evidence".
+
+- [ ] **Step 1: Runbook 08, a real PASS**
+
+Start one run so the pool has a node:
+`task agent:run -- --role implementer --class public --task "Run \`ls docs\` in the terminal, then finish."`.
+While it runs, execute runbook 08 Steps 1–5 as Task 0.5.4 fixed them.
+Expected: Step 2's second query returns one series per resource type of `agents-gvisor`, and
+`karpenter_nodepools_limit` alone is non-empty. Rewrite the runbook's Results table with today's
+date and the observed values, replacing the vacuous row of 2026-09-27, and commit it on H-1.
+
+- [ ] **Step 2: M9 on the cluster**
+
+Run: `kubectl get vmrule -n observability agent-platform agent-platform-logs -o json | jq -r '.items[].spec.groups[].rules[] | [.alert, (.annotations.runbook_url | test("/docs/runbooks/agent-factory/0[1-5]-")), (.annotations.dashboard | test("^https://grafana\\.priv\\.aws\\.ogenki\\.io/d/agent-platform$"))] | @tsv'`
+Expected: six rows ending `true	true`: Flux substituted the domain.
+
+- [ ] **Step 3: M7**
+
+Run runbook 06 Step 0. Expected: `generated`.
+
+- [ ] **Step 4: M2, M3 and N3 through the probe**
+
+Apply the probe (`kubectl apply -f scripts/ops/k8s/agent-probe.yaml`, which carries N3's rule) and
+list the tools as runbook 06 Step 4 does, once per class:
+`kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/list | grep -o '"name":"[^"]*"' | sort`, then
+the same with `internal-reviewer`.
+Expected: the implementer list has no `get_kubernetes_resources`, `tsdb_status`, `active_queries` or
+`top_queries`; the reviewer list has `get_kubernetes_resources` and `get_kubernetes_logs` and none
+of the three. Then:
+
+```bash
+SA=system:serviceaccount:agent-system:flux-operator-mcp
+for q in "get configmaps -n security" "list configmaps -n flux-system" "get pods --subresource=log -n agents" \
+         "get pods --subresource=log -n flux-system" "list serviceaccounts -A" "get nodes" "list kustomizations.kustomize.toolkit.fluxcd.io -A"; do
+  printf '%-55s %s\n' "$q" "$(kubectl auth can-i $q --as=$SA)"
+done
+kubectl delete -f scripts/ops/k8s/agent-probe.yaml --ignore-not-found
+```
+
+Expected, in order: `no`, `yes`, `no`, `yes`, `no`, `no`, `yes`.
+
+- [ ] **Step 5: N8**
+
+```bash
+XP=system:serviceaccount:crossplane-system:crossplane
+for v in create delete deletecollection; do printf '%-18s %s\n' "$v" "$(kubectl auth can-i $v sandboxes.agents.x-k8s.io -n agents --as=$XP)"; done
+```
+
+Expected: `yes`, `yes`, `no`. Step 1's run reached `Succeeded`; `kubectl delete agentrun -n agents <run>`
+then leaves `kubectl get sandbox -n agents` without it within 2 minutes.
+
+- [ ] **Step 6: H-1 out of draft** for review. It stays open until Phase 7 (P33).
 
 ---
 
@@ -6268,8 +7236,8 @@ append-only role cannot be declared. The default (`store`) keeps every existing 
 byte-identical.
 
 **Files** (in `Smana/crossplane-configuration`, branch `feat/sqlinstance-generated-credentials`,
-from `origin/feat/agentrun-harness`, SP1's CC-2 at head `c304bbf`: one stack per repo, merge-only,
-ruling P33):
+from `origin/ci/prerelease-xrd-crds` (CC-H1, Task 0.5.2), which stacks on SP1's CC-2 at head
+`c304bbf`: one stack per repo, merge-only, ruling P33):
 - Modify: `apis/sqlinstance/definition.yaml` (`spec.credentials`)
 - Modify: `apis/sqlinstance/kcl/main.k`, `apis/sqlinstance/kcl/main_test.k`,
   `apis/sqlinstance/kcl/README.md`
@@ -6591,7 +7559,7 @@ names, and the note that `generated` needs `generators.external-secrets.io` RBAC
 git add apis/sqlinstance examples/sqlinstance-generated.yaml tests/golden/sqlinstance-generated.yaml taskfile.yaml
 git commit -m "feat(sqlinstance): generated credentials and roles that own no database"
 git push -u origin feat/sqlinstance-generated-credentials
-gh pr create --repo Smana/crossplane-configuration --base feat/agentrun-harness --title "feat(sqlinstance): generated credentials and roles that own no database" \
+gh pr create --repo Smana/crossplane-configuration --base ci/prerelease-xrd-crds --title "feat(sqlinstance): generated credentials and roles that own no database" \
   --body "SP2 ruling P7 (cloud-native-ref docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md). Default store mode is byte-identical."
 gh pr checks --repo Smana/crossplane-configuration --watch
 ```
@@ -6762,9 +7730,10 @@ the release, merges the stack and tags the release that publishes `xrd-crds.yaml
 
 - [ ] **Step 1: Worktree**
 
-`EnterWorktree` with branch `feat/rooms-log`, stacked on SP1's `feat/agent-e2e` (#2111, open until
-Phase 7): merge `origin/feat/agent-e2e` in, then `origin/main` (the pre-push hook requires it). PR
-base `feat/agent-e2e`, merge-only (ruling P33).
+`EnterWorktree` with branch `feat/rooms-log`, stacked on H-1 `fix/agent-review-hardening` (Phase
+0.5, itself on SP1's `feat/agent-e2e`, #2111; both open until Phase 7, ruling P37): merge
+`origin/fix/agent-review-hardening` in, then `origin/main` (the pre-push hook requires it). PR base
+`fix/agent-review-hardening`, merge-only (ruling P33).
 
 - [ ] **Step 2: Write the ADR**
 
@@ -6904,6 +7873,268 @@ Expected: exit 0.
 git add website/content/docs/decisions
 git commit -m "docs(adr): 0044 room session protocol"
 ```
+
+### Task 1.15a: M1 — the agents' own OpenBao mount (ruling P38)
+
+Review M1: SP1 put the agents' GitHub App key and Z.ai key under `platform/agents/*`. The identity
+behind `openbao-platform`, `external-secrets`, reads `platform/data/*`, and that ClusterSecretStore
+has no `conditions`: anything allowed to create an `ExternalSecret` in any namespace can pull the
+App key. This task moves every agent secret to a kv-v2 mount of its own, `agents`, before this plan
+writes its first new one (`agents/rooms-proxy`, Task 2.8). It also creates `merge-gate`, the mount
+SP3's policy-bot key needs for the same reason (SP3 R44), so the owner applies the stack once.
+
+**Files** (on S1, `feat/rooms-log`):
+- Create: `scripts/ci/tests/test-openbao-agent-mounts.sh`
+- Modify: `opentofu/aws/openbao/management/mounts.tf`, `opentofu/aws/openbao/management/policies.tf` (comments),
+  `opentofu/aws/openbao/management/policies/{agents-secrets.hcl,secrets-admin.hcl,external-secrets.hcl}`,
+  `opentofu/aws/eks/configure/openbao.tf` (comment)
+- Modify: `security/base/agent-secrets/secretstore.yaml`, `security/base/octo-sts/externalsecret.yaml`,
+  `infrastructure/base/agent-router/externalsecret-zai.yaml`, `infrastructure/base/llm-gateway/externalsecret-zai.yaml` (comment)
+- Modify (docs): `clusters/aws-0-agent-platform/README.md`,
+  `docs/runbooks/agent-factory/{README.md,04-gateway-secrets-budgets.md,05-github-octo-sts.md}`,
+  `website/content/docs/decisions/{0043-octo-sts-for-agent-github-tokens.md,0046-frontier-providers-zai-and-bedrock.md}`
+
+**Interfaces:**
+- Produces:
+  - kv-v2 mounts `agents` and `merge-gate`, both carried by the raft snapshot
+    (`bao operator raft snapshot save` in `container-images/openbao-snapshot/openbao-snapshot.sh` is
+    the whole storage backend), so a rebuild restores them with no seed.
+  - Policy `agents-secrets`: read on `agents/data/*`, read and list on `agents/metadata/*`, nothing
+    on `platform/`. `secrets-admin` gains both mounts. `external-secrets` names neither.
+  - `SecretStore agents-secrets` on path `agents`. Keys, written `<mount>/<key>` in this plan:
+    `agents/github-app` (`app_id`, `private_key`), `agents/zai` (`api_key`), then
+    `agents/factory-app` (written on 2026-09-27, moved in Step 8), `agents/rooms-proxy` (Task 2.8)
+    and `agents/roomctl` (Task 6.3).
+- Consumed by SP3: `agents/merger-app`, `agents/runlore-intake`, and `merge-gate/policy-bot`
+  through its own store (SP3 R44, R45).
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-openbao-agent-mounts.sh`:
+
+```bash
+#!/usr/bin/env bash
+#
+# External review M1 (SP2 ruling P38): the agents' and the merge gate's secrets live on
+# mounts only their own namespaced SecretStores read. `external-secrets` backs a
+# ClusterSecretStore any namespace can use (T14), so it must never name them. Real tree.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+P="$ROOT/opentofu/aws/openbao/management"
+fails=0
+fail() { printf 'FAIL  %s\n' "$*" >&2; fails=$((fails + 1)); }
+
+grep -Eq '^path "(agents|merge-gate)/' "$P/policies/external-secrets.hcl" && fail "external-secrets names the agents or merge-gate mount"
+grep -Eq '^path "platform/' "$P/policies/agents-secrets.hcl" && fail "agents-secrets still reads platform/"
+[ "$(grep -c '^path "agents/' "$P/policies/agents-secrets.hcl")" -eq 2 ] || fail "agents-secrets reads agents/data and agents/metadata"
+for m in agents merge-gate; do
+  grep -Eq "^[[:space:]]*path[[:space:]]*=[[:space:]]*\"$m\"" "$P/mounts.tf" || fail "no vault_mount with path $m"
+done
+grep -q '^      path: "agents"$' "$ROOT/security/base/agent-secrets/secretstore.yaml" || fail "the agents-secrets SecretStore is not on the agents mount"
+
+[ "$fails" -eq 0 ] || exit 1
+echo PASS
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-openbao-agent-mounts.sh; echo "exit $?"`
+Expected: `exit 1`; `FAIL` lines for `platform/`, `agents/data and agents/metadata`, both mounts and
+the SecretStore.
+
+- [ ] **Step 3: The mounts and the policies**
+
+Append to `mounts.tf`:
+
+```hcl
+# The agents' own secrets (SP2 ruling P38, external review M1): the GitHub App keys, the
+# agents' Z.ai key and the OIDC clients agent-system reads. A mount of its own because
+# `external-secrets` reads all of platform/ through a ClusterSecretStore any namespace can
+# use (T14): only `agents-secrets` and `secrets-admin` name this one.
+resource "vault_mount" "agents" {
+  path        = "agents"
+  type        = "kv-v2"
+  description = "Agent platform secrets, read only by agent-system's SecretStore (SP2 P38)"
+}
+
+# policy-bot's App key and webhook secret (SP3 R44): a mount of its own for the same reason,
+# apart from `agents` because nothing in agent-system may ever read the merge gate's key.
+resource "vault_mount" "merge_gate" {
+  path        = "merge-gate"
+  type        = "kv-v2"
+  description = "The merge gate's secrets, read only by merge-gate's SecretStore (SP3 R44)"
+}
+```
+
+`policies/agents-secrets.hcl` becomes:
+
+```hcl
+# agent-system's namespaced SecretStore reads the `agents` mount and nothing else (SP1 S9,
+# SP2 ruling P38). A mount of its own, not platform/agents/*: `external-secrets` reads all of
+# platform/ through a ClusterSecretStore any namespace can use (T14, review M1).
+
+path "agents/data/*" {
+  capabilities = ["read"]
+}
+
+path "agents/metadata/*" {
+  capabilities = ["read", "list"]
+}
+
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
+
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}
+```
+
+In `policies/secrets-admin.hcl`, the header says "Full control of the four secret mounts", and
+before `sys/mounts` it gains, for `agents` and again for `merge-gate`:
+
+```hcl
+# The agents' and the merge gate's mounts (SP2 ruling P38): an administrator writes the
+# GitHub App keys there once, and deletes a leaked one.
+path "agents/data/*" {
+  capabilities = ["create", "read", "update", "patch", "delete", "list"]
+}
+
+path "agents/metadata/*" {
+  capabilities = ["create", "read", "update", "list", "delete"]
+}
+
+path "agents/delete/*" {
+  capabilities = ["update"]
+}
+
+path "agents/undelete/*" {
+  capabilities = ["update"]
+}
+
+path "agents/destroy/*" {
+  capabilities = ["update"]
+}
+
+path "agents/config" {
+  capabilities = ["read", "update"]
+}
+```
+
+`policies/external-secrets.hcl` grants nothing new; its header gains:
+
+```hcl
+# Never the `agents` or `merge-gate` mounts (SP2 ruling P38, external review M1): this
+# identity backs `openbao-platform`, a ClusterSecretStore any namespace can use (T14), and
+# those mounts hold GitHub App keys only their own namespaced stores may read.
+# scripts/ci/tests/test-openbao-agent-mounts.sh fails if a path here names them.
+```
+
+The comments naming `platform/agents/*` become "the `agents` mount": `policies.tf` above
+`vault_policy.agents_secrets`, `secrets_admin`'s "the two Stage 2 secret mounts" (now "…and the
+`agents` and `merge-gate` mounts"), and `eks/configure/openbao.tf` in the `agents-secrets` role.
+
+- [ ] **Step 4: The store and its ExternalSecrets**
+
+In `security/base/agent-secrets/secretstore.yaml`: `path: "agents"`, and the header's first
+sentence becomes "Its OpenBao role reads the `agents` mount and nothing else (SP2 P38)". In
+`security/base/octo-sts/externalsecret.yaml` both `key: agents/github-app` become `key: github-app`;
+in `infrastructure/base/agent-router/externalsecret-zai.yaml`, `key: agents/zai` becomes `key: zai`.
+The comment in `infrastructure/base/llm-gateway/externalsecret-zai.yaml` names `agents/zai` "on the
+`agents` mount".
+
+- [ ] **Step 5: The docs**
+
+| File | Change |
+|---|---|
+| `clusters/aws-0-agent-platform/README.md` | the `agent-secrets` row: "`SecretStore agents-secrets` → the `agents` OpenBao mount"; the App paragraph: "key written to `github-app` on the `agents` mount" |
+| `docs/runbooks/agent-factory/README.md` | owner action 2: `bao kv put -mount=agents zai api_key=-`; action 4: `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`. The footgun note gains: "Until SP2's S1 merges, deploy `aws/openbao/management` from this checkout only: a deploy from `main` destroys the `agents` and `merge-gate` mounts and every key in them (SP2 P38)." |
+| `docs/runbooks/agent-factory/04-gateway-secrets-budgets.md` | lines 4, 15 and 81 name the `agents` mount. Step 3's probes: `agents/data/zai`, `platform/data/agents/zai`, `platform/data/llm/zai`, `apps/data/anything`, Expected `read`, `deny`, `deny`, `deny` |
+| `docs/runbooks/agent-factory/05-github-octo-sts.md` | line 18: "`github-app` on the `agents` mount" |
+| ADR-0043 (line 145), ADR-0046 (line 94) | "…at `github-app` (resp. `zai`) on the `agents` OpenBao mount, moved from `platform/agents/` by SP2 ruling P38 (external review M1)" |
+
+- [ ] **Step 6: Run the gates**
+
+Run: `bash scripts/ci/tests/test-openbao-agent-mounts.sh && (cd opentofu/aws/openbao/management && tofu validate) && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml opentofu/aws/openbao/management && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh && ./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
+Expected: `PASS`; `Success! The configuration is valid.`; trivy exit 0; `Invalid: 0, Skipped: 0`; both
+link gates exit 0.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add scripts/ci/tests/test-openbao-agent-mounts.sh opentofu security infrastructure clusters docs/runbooks website/content/docs/decisions
+git commit -m "fix(openbao): the agents' secrets on a mount only their own store reads"
+```
+
+- [ ] **Step 8: [OWNER] + [LIVE] Migrate, after S1 is merged into integration**
+
+Run it right after the live-check routine's step 1 for S1, before Task 1.22 Step 2. From the
+**integration checkout** (P38), after `git pull`:
+
+```bash
+cd opentofu
+grep -n 'parallelism=1' aws/openbao/management/workflows.tm.hcl   # the OpenBao 2.6 write deadlock: never override it
+TM_CLOUD=aws terramate -C aws/openbao/management script run preview
+TM_CLOUD=aws terramate -C aws/openbao/management script run deploy
+```
+
+Expected: the preview shows `2 to add` (`vault_mount.agents`, `vault_mount.merge_gate`), `3 to
+change` (the `agents_secrets`, `secrets_admin` and `external_secrets` policies, the last its comment
+only) and `0 to destroy`. Anything else: stop, the checkout is stale.
+
+Copy the keys already written (SP1's two, and the factory App's), without printing a value:
+
+```bash
+export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200 VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem
+for k in github-app zai factory-app; do
+  if bao kv get -mount=platform "agents/$k" >/dev/null 2>&1; then
+    bao kv get -format=json -mount=platform "agents/$k" | jq -c '.data.data' | bao kv put -mount=agents "$k" - >/dev/null
+    printf '%s: %s\n' "$k" "$(bao kv get -format=json -mount=agents "$k" | jq -c '.data.data | keys')"
+  else
+    echo "$k: not on platform/, nothing to move"
+  fi
+done
+kubectl annotate externalsecret -n agent-system --all force-sync="$(date +%s)" --overwrite
+kubectl get externalsecret -n agent-system -o custom-columns=NAME:.metadata.name,STORE:.spec.secretStoreRef.name,READY:.status.conditions[0].status
+```
+
+Expected: `github-app: ["app_id","private_key"]`, `zai: ["api_key"]` and
+`factory-app: ["app_id","private_key"]` (the owner wrote it on 2026-09-27, Task 3.9 Step 1; if it
+is absent, Task 3.9 writes it straight to `agents`); every ExternalSecret on `agents-secrets` `True`. Between the apply and the sync the ExternalSecrets cannot refresh; their Secrets are
+`Retain`, so octo-sts and agent-router keep running. Task 1.22's runs are the end-to-end proof: they
+mint GitHub tokens through octo-sts and call the model with the agents' key.
+
+- [ ] **Step 9: [OWNER] Only the agents' store reads the mount**
+
+The probe logs in with two roles, a write to OpenBao an agent session never makes (runbook 04):
+
+```bash
+T=$(bao write -field=token auth/jwt/aws-0/login role=external-secrets jwt="$(kubectl create token external-secrets -n security --audience openbao --duration 10m)")
+bao token capabilities "$T" agents/data/github-app; bao token capabilities "$T" merge-gate/data/policy-bot; bao token revoke "$T"
+T=$(bao write -field=token auth/jwt/aws-0/login role=agents-secrets jwt="$(kubectl create token agents-secrets -n agent-system --audience openbao --duration 10m)")
+bao token capabilities "$T" agents/data/github-app; bao token capabilities "$T" platform/data/agents/github-app
+bao token capabilities "$T" merge-gate/data/policy-bot; bao token revoke "$T"
+```
+
+Expected: `deny`, `deny`; then `read`, `deny`, `deny`.
+
+- [ ] **Step 10: [OWNER] Delete the old keys once every ExternalSecret is Ready**
+
+```bash
+for k in github-app zai factory-app; do bao kv metadata delete -mount=platform "agents/$k"; done
+bao kv list -mount=platform agents; echo "exit $?"
+```
+
+Expected: `No value found at platform/metadata/agents` and a non-zero exit: nothing is left under
+the prefix `openbao-platform` can read.
+
+- [ ] **Step 11: [LIVE] The first rebuild after Step 10**
+
+Before anyone writes a secret on the rebuilt cluster:
+`bao kv get -format=json -mount=agents github-app | jq -c '.data.data | keys'` → `["app_id","private_key"]`,
+and `kubectl get externalsecret -n agent-system octo-sts-github-app -o jsonpath='{.status.conditions[0].reason}'`
+→ `SecretSynced`. The mount came back from the snapshot with no seed. If H-1's live gate (Task
+0.5.14) runs on that rebuild, record it there too.
 
 ### Task 1.16: The Room CRD, vendored, and its schema in the catalog
 
@@ -7833,18 +9064,18 @@ Run: `(cd <crossplane-configuration checkout of feat/agentrun-room-bridge> && ta
 Expected: all exit 0; `validate-manifests.sh` prints `Invalid: 0, Skipped: 0`, and its resource
 count grows by the new objects (App, SQLInstance, CNPs, CronJob, VMServiceScrape, CRD, RBAC).
 
-- [ ] **Step 4: Open S1 as a draft with `create-pr`**, base `feat/agent-e2e`
+- [ ] **Step 4: Open S1 as a draft with `create-pr`**, base `fix/agent-review-hardening`
 
 Title: `feat(rooms): the room log, SP2 phase 1`. The body links the design and this plan, lists the
-rulings this PR carries (P3, P7, P8, P10, P11, P15, P16, P17, P33), and keeps a "Live evidence"
-section that Task 1.22 fills in. It says that the `Kubernetes validation` check stays red until
-Phase 7, because the pinned pre-release package has no `xrd-crds.yaml` asset, and it cites Step 3's
-local gate output instead.
+rulings this PR carries (P3, P7, P8, P10, P11, P15, P16, P17, P33, P38), and keeps a "Live evidence"
+section that Task 1.22 fills in. Its `Kubernetes validation` check pulls the pinned pre-release's
+XRD CRDs (P40) and is green; the body cites it beside Step 3's local gate output.
 
 ### Task 1.22: [LIVE] SC-1, SC-8, SC-10; the transcript and end reason outlive the pod
 
 Run the live-check routine (PR map) with S1, AP-1's pre-release images, and CC-S2's pre-release
-package. Record every command's output in the PR's "Live evidence" section.
+package. Record every command's output in the PR's "Live evidence" section. Task 1.15a Steps 8–10,
+M1's migration, run right after the routine's step 1, before Step 2 here.
 
 - [ ] **Step 1: Everything came up**
 
@@ -10094,7 +11325,7 @@ binding; its auth model is Kubernetes RBAC, not room roles.
 ### Negative
 
 - `rooms-proxy` is the platform's first ZITADEL client issuing JWT access tokens; its secret lives in
-  OpenBao under `platform/agents/`, not in the cloud secret store.
+  OpenBao's `agents` mount (SP2 ruling P38), not in the cloud secret store.
 
 ### Neutral
 
@@ -10129,7 +11360,7 @@ Add its row to `_index.md`, then run `./scripts/ci/validate-links.sh` (exit 0) a
   - The project roles `agents-admin` and `agents-member`.
   - A `rooms-proxy` app: a web app with JWT access tokens and redirect
     `https://rooms.${PRIVATE_DOMAIN}/oauth2/callback`. Its secret
-    `{client-id, client-secret, cookie-secret}` is written to OpenBao `platform/agents/rooms-proxy`
+    `{client-id, client-secret, cookie-secret}` is written to OpenBao `agents/rooms-proxy`
     (ruling P12).
   - `--grant <role>=<email>`, repeatable.
   - The consumer table's optional 4th and 5th columns: the store (`openbao`) and the token type
@@ -10174,19 +11405,19 @@ check "others: bearer" OIDC_TOKEN_TYPE_BEARER "$(oidc_config_payload https://gra
 # 2. The oauth2-proxy payload, cookie secret exactly 32 characters and preserved.
 store_exists() { return 1; }
 store_read() { echo '{}'; }
-p="$(merge_secret agents/rooms-proxy rooms-proxy CID SECRET)"
+p="$(merge_secret rooms-proxy rooms-proxy CID SECRET)"
 check "client-id" CID "$(jq -r '."client-id"' <<<"$p")"
 check "cookie length" 32 "$(jq -r '."cookie-secret" | length' <<<"$p")"
 check "converge keeps the secret" SECRET "$(converge_secret rooms-proxy CID2 "$p" | jq -r '."client-secret"')"
 check "converge updates the id" CID2 "$(converge_secret rooms-proxy CID2 "$p" | jq -r '."client-id"')"
 
-# 3. An openbao consumer writes platform/data/<key> with {"data": …}.
+# 3. An openbao consumer writes agents/data/<key> with {"data": …} (the agents mount, P38).
 calls="$(mktemp)"
 openbao_req() { printf '%s %s %s\n' "$1" "$2" "$(cat)" >> "$calls"; echo '{"data":{"data":{"client-id":"CID"}}}'; }
-printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao agents/rooms-proxy
-check "openbao write path" "POST platform/data/agents/rooms-proxy" "$(cut -d' ' -f1,2 "$calls")"
+printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao rooms-proxy
+check "openbao write path" "POST agents/data/rooms-proxy" "$(cut -d' ' -f1,2 "$calls")"
 check "openbao write body" '{"data":{"client-id":"CID"}}' "$(cut -d' ' -f3- "$calls" | jq -c .)"
-check "openbao read" CID "$(consumer_store_read openbao agents/rooms-proxy | jq -r '."client-id"')"
+check "openbao read" CID "$(consumer_store_read openbao rooms-proxy | jq -r '."client-id"')"
 
 # 4. --grant: a user holding a grant gets the role added to it (PUT), else a new grant (POST).
 api_calls="$(mktemp)"
@@ -10226,12 +11457,12 @@ sleep 1
 # /dev/null anyway, point OPENBAO_CA_FILE at any PEM on the runner.
 OPENBAO_URL=http://127.0.0.1:18200; OPENBAO_ROOT_TOKEN_SECRET=openbao/root; OPENBAO_CA_FILE=/dev/null
 unset OPENBAO_TOKEN_CONFIG
-printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao agents/rooms-proxy 2>/dev/null
+printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao rooms-proxy 2>/dev/null
 check "no session: nothing is written" "" "$(cat "$seen")"
 openbao_session_open
-printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao agents/rooms-proxy
+printf '%s' '{"client-id":"CID"}' | consumer_store_write openbao rooms-proxy
 wait "$server"
-check "session: the path" /v1/platform/data/agents/rooms-proxy "$(cut -d' ' -f1 "$seen")"
+check "session: the path" /v1/agents/data/rooms-proxy "$(cut -d' ' -f1 "$seen")"
 check "session: the root token" t0k3n "$(cut -d' ' -f2 "$seen")"
 
 # 6. The session opens before the consumer loop, so no app is ever created without it.
@@ -10325,9 +11556,9 @@ oidc_config_payload() {
 
 ```bash
   # SP2: the room broker's oauth2-proxy. JWT access tokens, so the broker and SP3's
-  # factory validate them offline (C4). Its secret goes to OpenBao under
-  # platform/agents/, the only store agent-system may read (C1, ruling P12).
-  "rooms-proxy|https://rooms.${PRIVATE_DOMAIN}/oauth2/callback|agents/rooms-proxy|openbao|jwt"
+  # factory validate them offline (C4). Its secret goes to OpenBao's agents
+  # mount, the only store agent-system may read (C1, rulings P12 and P38).
+  "rooms-proxy|https://rooms.${PRIVATE_DOMAIN}/oauth2/callback|rooms-proxy|openbao|jwt"
 ```
 
    In `cmd_sync` read five fields: `IFS='|' read -r consumer redirect key store token <<< "$entry"`.
@@ -10338,15 +11569,16 @@ oidc_config_payload() {
 
 ```bash
 # One consumer's secret store: the cloud's (store_* in cloud-secret-store.sh), or
-# OpenBao's platform/ kv-v2 mount through openbao_session_open's root-token session
+# OpenBao's agents kv-v2 mount (P38: every OpenBao consumer is agent-system's),
+# through openbao_session_open's root-token session
 # (item 7). Without that session an openbao call fails loudly, never as "not found".
 openbao_session_ready() { [ -n "${OPENBAO_TOKEN_CONFIG:-}" ] || { echo "[FAILED ] openbao -- no session: openbao_session_open did not run" >&2; return 1; }; }
-consumer_store_probe() { if [ "$1" = openbao ]; then openbao_session_ready || exit 1; openbao_req GET "platform/data/$2" >/dev/null 2>&1 || return 1; else store_probe "$2"; fi; }
-consumer_store_read()  { if [ "$1" = openbao ]; then openbao_session_ready && openbao_req GET "platform/data/$2" | jq -c '.data.data'; else store_read "$2"; fi; }
+consumer_store_probe() { if [ "$1" = openbao ]; then openbao_session_ready || exit 1; openbao_req GET "agents/data/$2" >/dev/null 2>&1 || return 1; else store_probe "$2"; fi; }
+consumer_store_read()  { if [ "$1" = openbao ]; then openbao_session_ready && openbao_req GET "agents/data/$2" | jq -c '.data.data'; else store_read "$2"; fi; }
 consumer_store_write() {
     if [ "$1" = openbao ]; then
         openbao_session_ready || return 1
-        jq -c '{data: .}' | openbao_req POST "platform/data/$2" --data-binary @- >/dev/null
+        jq -c '{data: .}' | openbao_req POST "agents/data/$2" --data-binary @- >/dev/null
     else
         store_write "$2"
     fi
@@ -10426,7 +11658,7 @@ spec:
     name: agents-secrets
   dataFrom:
     - extract:
-        key: agents/rooms-proxy
+        key: rooms-proxy
   target:
     name: rooms-proxy
     creationPolicy: Owner
@@ -10446,7 +11678,7 @@ spec:
   data:
     - secretKey: client-id
       remoteRef:
-        key: agents/rooms-proxy
+        key: rooms-proxy
         property: client-id
   target:
     name: room-broker-oidc
@@ -10863,7 +12095,7 @@ exactly as `opentofu/aws/eks/init/workflows.tm.hcl` does.
 
 Then prove that the OpenBao write used a real session (review C1). The deploy's sync log shows
 `[created] rooms-proxy` (`[skip   ]` on a later sync) and no `unbound variable`. Then
-`bao kv get -format=json -mount=platform agents/rooms-proxy | jq -c '.data.data | keys'` prints
+`bao kv get -format=json -mount=agents rooms-proxy | jq -c '.data.data | keys'` prints
 `["client-id","client-secret","cookie-secret"]`: keys only, never print the values.
 
 - [ ] **Step 2: SC-9, a user without an agents group gets 403**
@@ -12771,8 +14003,9 @@ Expected: green; record the broker pre-release digest from the CI summary (it su
 Δ4, ruling P32. The harness's `gh` wrapper appends the footer after the pull request exists, so every
 way of writing the body gets it.
 
-**Files** (branch `feat/agent-harness-pr-footer`, from `origin/feat/agent-harness` with PR base
-`feat/agent-harness`, merge-only: beside the S stack, see the PR map. It stays open until Phase 7):
+**Files** (branch `feat/agent-harness-pr-footer`, from `origin/fix/agent-review-hardening` (H-1) with
+PR base `fix/agent-review-hardening`, merge-only: beside the S stack, see the PR map and ruling P37.
+It stays open until Phase 7):
 - Create: `container-images/agent-harness/pr_footer.py`
 - Test: `container-images/agent-harness/tests/test_pr_footer.py`
 - Modify: `container-images/agent-harness/gh`, `container-images/agent-harness/Dockerfile`,
@@ -12798,6 +14031,7 @@ way of writing the body gets it.
     `pr_footer.main(argv, env) -> int`.
   - `ghcr.io/smana/agent-harness:v0.2.0-pr<N>.<sha8>`, pushed by hand (Step 5). `v0.2.0` itself is
     published when H-S3 merges in Phase 7.
+  - The image also carries H-1's M4 redaction (Task 0.5.6): H-S3 stacks on H-1 (ruling P37).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -12969,7 +14203,7 @@ Expected: 6 tests `OK`; the test stage runs every suite and exits 0.
 git add container-images/agent-harness
 git commit -m "feat(agent-harness): provenance footer on gh pr create"
 git push -u origin feat/agent-harness-pr-footer
-gh pr create --draft --base feat/agent-harness --title "feat(agent-harness): provenance footer on gh pr create (SP2 design §5)" \
+gh pr create --draft --base fix/agent-review-hardening --title "feat(agent-harness): provenance footer on gh pr create (SP2 design §5)" \
   --body "SP2 phase 3, ruling P32. Live gate from S3."
 PR=$(gh pr view --json number --jq .number)
 TAG="v0.2.0-pr${PR}.$(git rev-parse --short=8 HEAD)"
@@ -13281,7 +14515,7 @@ git commit -m "feat(rooms): room_* tools on both MCPRoutes, behind a generated k
 - Modify: `clusters/aws-0-agent-platform/README.md`
 
 **Interfaces:**
-- Consumes: the OpenBao path `platform/agents/factory-app` (`app_id`, `private_key`), written by
+- Consumes: the OpenBao path `agents/factory-app` (`app_id`, `private_key`; moved there by Task 1.15a), written by
   the owner in Step 1; `ROOMS_GITHUB_APP_DIR` and `rooms_verdict_posts_total` (Task 3.5).
 - Produces: the Secret `room-broker-factory-app`, mounted optionally at
   `/var/run/secrets/factory-app`; the broker's egress to `api.github.com:443`; the alert
@@ -13299,7 +14533,7 @@ Ask the owner to:
    - installable **Only on this account**.
 2. Install it with **Only select repositories** → `Smana/cloud-native-ref`.
 3. Generate a private key, then run
-   `bao kv put -mount=platform agents/factory-app app_id=<App ID> private_key=@<downloaded .pem>`
+   `bao kv put -mount=agents factory-app app_id=<App ID> private_key=@<downloaded .pem>`
    and `shred -u <downloaded .pem>`.
 4. Leave it off every ruleset bypass list. SP3 adds it with the merge work (OD-7) and raises
    Contents to Read and write then; GitHub asks the owner to accept the new permission.
@@ -13324,7 +14558,7 @@ nothing waits on this step before the live gate.
 ---
 # SP3's factory App, created early (ruling P28): the broker posts agents' review
 # verdicts as one PR comment. GitHub issues the key, so the owner writes it once
-# (ruling P31); OpenBao keeps it across rebuilds, like platform/agents/github-app.
+# (ruling P31); OpenBao keeps it across rebuilds, like agents/github-app (the agents mount, P38).
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -13342,11 +14576,11 @@ spec:
   data:
     - secretKey: app_id  # pragma: allowlist secret
       remoteRef:
-        key: agents/factory-app
+        key: factory-app
         property: app_id
     - secretKey: private_key  # pragma: allowlist secret
       remoteRef:
-        key: agents/factory-app
+        key: factory-app
         property: private_key  # pragma: allowlist secret
 ```
 
@@ -13414,11 +14648,11 @@ Append to `observability/base/agent-platform/vmrule-rooms.yaml`:
 
 - [ ] **Step 6: The owner prerequisite, where the others are**
 
-In `clusters/aws-0-agent-platform/README.md`, after the paragraph on `platform/agents/github-app`:
+In `clusters/aws-0-agent-platform/README.md`, after the paragraph on the agents' App key:
 
 ```markdown
 From SP2 phase 3, the factory App `ogenki-agent-factory` (SP3's, created early) is installed on
-`Smana/cloud-native-ref` with its key at `platform/agents/factory-app`. Without it, the room broker
+`Smana/cloud-native-ref` with its key at `factory-app` on the `agents` mount. Without it, the room broker
 still runs, and reviewers' verdicts stay in the room instead of reaching the pull request.
 ```
 
@@ -13575,6 +14809,15 @@ second implementer run in the room with the verdict's summary as its task. The l
 
 Run: `CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}'); kubectl exec -n kube-system $CILIUM_POD -- hubble observe --namespace agent-system --to-fqdn api.github.com --since 1h -o compact | tail -n 3; kubectl exec -n kube-system $CILIUM_POD -- hubble observe --namespace agent-system --verdict DROPPED --since 1h`
 Expected: `FORWARDED` flows from `room-broker` to `api.github.com:443`, and no `DROPPED` flow.
+
+- [ ] **Step 5a: No GitHub token reaches VictoriaLogs (review M4, ruling P37)**
+
+Steps 2 and 3 ran H-S3's harness, which carries H-1's redaction.
+
+Run: `curl -s --cacert opentofu/aws/openbao/management/.tls/ca.pem https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode 'query=_time:3h kubernetes.pod_namespace:"agents" kubernetes.container_name:"harness" _msg:~"gh[posu]_[A-Za-z0-9_]{20,}" | stats count() as leaked'`
+Expected: `{"leaked":"0"}`. Quiet is not proof, so check that the pinned image redacts:
+`docker run --rm --entrypoint /agent-server/.venv/bin/python ghcr.io/smana/agent-harness:<H-S3 tag>@sha256:<digest> -c 'import sys; sys.path.insert(0, "/opt/agent"); import agent_run; print(agent_run.redact("x ghs_" + "A" * 36))'`
+→ `x [REDACTED:github-token]`.
 
 - [ ] **Step 6: Clean up, and ship S3**
 
@@ -17302,7 +18545,7 @@ Task 6.4 builds `roomctl` from this branch.
 **Interfaces:**
 - Produces:
   - A ZITADEL **native** app `roomctl`: auth method `NONE`, grants device code and refresh token,
-    JWT access tokens. Its `{client-id}` goes to OpenBao `platform/agents/roomctl`.
+    JWT access tokens. Its `{client-id}` goes to OpenBao `agents/roomctl`.
   - oauth2-proxy accepts `roomctl` bearer tokens (`skip-jwt-bearer-tokens`, and
     `OAUTH2_PROXY_EXTRA_JWT_ISSUERS=<issuer>=<roomctl client id>` from a Secret).
   - The broker reads `/etc/room-broker/roomctl/client-id`.
@@ -17316,7 +18559,7 @@ check "native: app type" OIDC_APP_TYPE_NATIVE "$(jq -r .appType <<<"$n")"
 check "native: no secret" OIDC_AUTH_METHOD_TYPE_NONE "$(jq -r .authMethodType <<<"$n")"
 check "native: device code" true "$(jq -r '.grantTypes | index("OIDC_GRANT_TYPE_DEVICE_CODE") != null' <<<"$n")"
 check "native: JWT" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType <<<"$n")"
-check "native payload" '{"client-id":"RID"}' "$(merge_secret agents/roomctl roomctl RID '' | jq -c .)"
+check "native payload" '{"client-id":"RID"}' "$(merge_secret roomctl roomctl RID '' | jq -c .)"
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -17341,7 +18584,7 @@ Add the consumer:
 ```bash
   # SP2 phase 6: roomctl, a native client with no secret (device flow). Its id is
   # not a credential, but the broker and oauth2-proxy both need it (ruling P12).
-  "roomctl|http://localhost:8765/callback|agents/roomctl|openbao|native"
+  "roomctl|http://localhost:8765/callback|roomctl|openbao|native"
 ```
 
 `merge_secret` gets `elif $name == "roomctl" then $base + {"client-id": $id}`, and
@@ -17365,7 +18608,7 @@ spec:
   data:
     - secretKey: client-id
       remoteRef:
-        key: agents/roomctl
+        key: roomctl
         property: client-id
   target:
     name: room-broker-roomctl
@@ -17386,7 +18629,7 @@ spec:
   data:
     - secretKey: clientid
       remoteRef:
-        key: agents/roomctl
+        key: roomctl
         property: client-id
   target:
     name: rooms-proxy-extra-issuers
@@ -17479,10 +18722,11 @@ Gate: SC-13 on `main`, and `integration/agent-factory` reconciling on release ta
 ```mermaid
 flowchart LR
   UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: AP-0…AP-6, one release"]
-  UX --> H["7.3 H-S3 after SP1 #2110: harness v0.2.0"]
-  AP --> CC["7.4 crossplane-configuration: CC-1, CC-2, CC-S1…CC-S5, one release"]
+  UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1"]
+  H1 --> H["7.3 H-S3 after H-1: harness v0.2.0"]
+  AP --> CC["7.4 crossplane-configuration: CC-1, CC-2, CC-H1, CC-S1…CC-S5, one release"]
   H --> CC
-  CC --> S["7.5 this repo: S1…S6 after SP1 #2111"]
+  CC --> S["7.5 this repo: S1…S6 after H-1"]
   S --> DEL["7.6 integration on tags, then delete branches"]
 ```
 
@@ -17508,9 +18752,20 @@ flowchart LR
 Run: `gh release view v0.6.0 --repo Smana/agent-platform --json assets --jq '[.assets[].name] | sort'`
 Expected: `crd-rooms.yaml`, the four `roomctl-<os>-<arch>` binaries and `roomctl.sha256`.
 
-### Task 7.3: the harness: H-S3 after SP1's #2110
+### Task 7.2a: this repo: H-1 after SP1's #2111
 
-- [ ] **Step 1:** Once #2110 has merged in SP1's wave, retarget H-S3 to `main` with
+- [ ] **Step 1:** Once #2111 has merged in SP1's wave, retarget H-1 to `main`
+  (`gh api -X PATCH repos/Smana/cloud-native-ref/pulls/<H-1> -f base=main`, because `gh pr edit`
+  fails silently on this repo) and merge `origin/main` in. `main`'s crossplane-configuration pin,
+  SP1's release, wins over CC-H1's pre-release. Wait for CI green; [OWNER] merges it. CI on `main`
+  publishes `ghcr.io/smana/agent-harness:v0.1.1`, which nothing pins: `v0.2.0` (Task 7.3) is the
+  first release the composition uses, and it carries M4 (P37).
+- [ ] **Step 2:** The management stack's restriction (P38) holds until S1 merges in Task 7.5: H-1
+  carries no mount.
+
+### Task 7.3: the harness: H-S3 after H-1
+
+- [ ] **Step 1:** Once H-1 has merged (Task 7.2a, after SP1's #2111), retarget H-S3 to `main` with
   `gh api -X PATCH repos/Smana/cloud-native-ref/pulls/<H-S3> -f base=main`, because `gh pr edit`
   fails silently on this repo. Merge `origin/main` in, then [OWNER] merges it. CI on `main`
   publishes `ghcr.io/smana/agent-harness:v0.2.0`.
@@ -17527,7 +18782,7 @@ Expected: a digest, which Task 7.4 pins.
   - `examples/sqlinstance-generated.yaml`'s `atlasSchema.ref` to `v0.6.0`.
 
   Re-capture the goldens and run `task check` (exit 0).
-- [ ] **Step 2:** Merge in order CC-1 and CC-2 (SP1's, unless its wave already did), then CC-S1,
+- [ ] **Step 2:** Merge in order CC-1 and CC-2 (SP1's, unless its wave already did), then CC-H1, CC-S1,
   CC-S2, CC-S3, CC-S4 and CC-S5, then SP3's CC-F1 (the `AgentRun` printer columns, SP3 Task 8.7),
   which stacks on CC-S5 and must be in the same release. After each merge, retarget the next PR to
   `main`, merge `origin/main` into it and wait for CI green. [OWNER] merges each one.
@@ -17556,7 +18811,7 @@ Run: `./scripts/ci/validate-manifests.sh && ./scripts/ci/validate-vmrules.sh && 
 Expected: all exit 0; `Invalid: 0, Skipped: 0` (SC-13 on release pins). The `Kubernetes validation`
 check is green on every S PR from here on.
 
-- [ ] **Step 3: Merge** S1 (after SP1's #2111), then S2, S3, S4, S5 and S6, in order. Retarget each
+- [ ] **Step 3: Merge** S1 (after H-1, Task 7.2a), then S2, S3, S4, S5 and S6, in order. Retarget each
   one to `main` with `gh api -X PATCH`, merge `origin/main` in, and wait for CI green. H-S3 already
   merged in Task 7.3. [OWNER] merges each one (a ruleset bypass).
 
@@ -17571,9 +18826,9 @@ Expected: `Ready True` throughout; the Atlas GitRepository tracks the tag `v0.6.
 
 - [ ] **Step 2:** Delete the branches, once nothing tracks them:
   - agent-platform: `chore/bootstrap` and `feat/room-*`;
-  - crossplane-configuration: `feat/sqlinstance-generated-credentials`, `feat/agentrun-room-bridge`,
+  - crossplane-configuration: `ci/prerelease-xrd-crds`, `feat/sqlinstance-generated-credentials`, `feat/agentrun-room-bridge`,
     `feat/agentrun-room-rules`, `chore/room-bridge-v0.4.0` and `chore/room-bridge-v0.5.0`;
-  - this repo: `feat/rooms-*` and `feat/agent-harness-pr-footer`.
+  - this repo: `fix/agent-review-hardening`, `feat/rooms-*` and `feat/agent-harness-pr-footer`.
 
   [OWNER] then turns "Automatically delete head branches" back on in all three repos. Retiring
   `integration/agent-factory` itself is the programme's step, not SP2's.
@@ -17628,7 +18883,7 @@ Insert:
 **A verdict reaches its pull request.** When an agent's `room_verdict` names a pull request, the
 broker's leader posts it there as one comment from SP3's factory App, `ogenki-agent-factory`, which
 SP2 creates early (Issues and Pull requests write, Contents and Metadata read, key at
-`platform/agents/factory-app`). The comment quotes the summary only for a `public` room, links the
+`factory-app` on the `agents` OpenBao mount). The comment quotes the summary only for a `public` room, links the
 room, and ends with the marker `<!-- agent-room:<roomId>:<seq> -->`. A comment by the App that
 already carries the marker is never posted again. The outcome is appended as
 `state_changed{verdict_posted, url}` or `state_changed{verdict_not_posted, reason}`. The verdict is
@@ -17696,3 +18951,24 @@ One line per finding of the independent review (`sp2-plan-review.md`).
 | M15 | `Watcher.OnRemove` and `Events.ObserveDeleted` record a deleted run as `Revoked`, reason `deleted`, tested in 1.7 and live in 2.14 Step 5 |
 | M16 | A web session requires the ID token and the access token to differ, so a bearer oauth2-proxy lets through is never a WebUI session (test in 2.2) |
 | M17 | Ruling P36: the relay is not built; the risk and its cost are accepted explicitly |
+
+## External review findings applied (2026-09-27)
+
+The owner accepted these findings of the two external security reviews
+(`docs/superpowers/specs/2026-09-27-agent-factory-review.md` on `integration/agent-factory`).
+SP3's share (G2, G3, G5, G6, G8, and M1 for its keys) is in the SP3 plan.
+
+| ID | Where | What |
+|---|---|---|
+| M1 | Task 1.15a (S1), ruling P38; Global Constraints; Tasks 2.8, 2.14, 3.9, 6.3; owner actions | kv-v2 mounts `agents` and `merge-gate`; `agents-secrets` reads `agents/` only, `external-secrets` neither; [OWNER] moves `github-app`, `zai`, `factory-app` and deletes the old keys; every `platform/agents/*` path is now `agents/<key>`; the management stack deploys from integration only until S1 merges |
+| M2, M3 | Task 0.5.12 (H-1), ruling P39 | Three VictoriaMetrics introspection tools off every role, `get_kubernetes_resources` off the implementer, `configmaps`, `serviceaccounts`, `nodes` and `pods/log` off the ClusterRole (a `flux-system` Role keeps two); no internal model route before H-1's live gate |
+| M4 | Task 0.5.6 (H-1), ruling P37, Task 3.6, Task 3.11 Step 5a | `redact()` before every step-log print (the cached token, `gh[posu]_…`); ships in harness `v0.2.0` through H-S3 on H-1 |
+| M6 | Task 0.5.7 | Gate A3 needs a Gateway-scoped policy or listener policies covering every listener; failing test first |
+| M7 | Tasks 0.5.8, 0.5.14 | Runbook 06 Step 0: the controller's MCP session seed is the generated one |
+| M8 | Tasks 0.5.4, 0.5.14 | Runbook 08 queries `karpenter_nodepools_*`; a real PASS re-recorded |
+| M9 | Task 0.5.5; Global Constraints | `runbook_url` and `dashboard` on the six alerts; `test-agent-alert-annotations.sh` holds SP2's and SP3's alerts to it |
+| B1 (pin) | Task 0.5.9 | `.doc-claims.yaml` pins the `agent-platform` umbrella's `suspend: true` |
+| B2 | Tasks 0.5.2 (CC-H1), 0.5.3, ruling P40; PR map; live-check routine step 4; Task 1.21 | Pre-release XRD CRDs as an OCI artifact; CI feeds `XRD_CRDS_FILE`; CC-S1 stacks on CC-H1; P33's red check is gone |
+| N3 | Task 0.5.10 | The probe's CNP allows DNS over TCP |
+| N8 | Task 0.5.11 | Crossplane's verbs on sandboxes enumerated |
+| — | PR map; Tasks 1.13, 1.15, 3.6, 7.2a–7.6 | The new stack order: CC-2 ← CC-H1 ← CC-S1, and #2111 ← H-1 ← S1 and H-S3 |
