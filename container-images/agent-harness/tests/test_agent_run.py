@@ -58,6 +58,39 @@ class BuildRequestTest(unittest.TestCase):
         self.assertAlmostEqual(llm["input_cost_per_token"], 2e-6)
         self.assertAlmostEqual(llm["output_cost_per_token"], 8e-6)
 
+    def test_reasoning_effort_is_sent_in_the_body(self):
+        self.assertEqual(self.body["agent"]["llm"]["litellm_extra_body"], {"reasoning_effort": "high"})
+        env = {**ENV, "LLM_REASONING_EFFORT": "low"}
+        self.assertEqual(agent_run.build_request(env, "t", "r")["agent"]["llm"]["litellm_extra_body"], {"reasoning_effort": "low"})
+
+    def test_reasoning_effort_reaches_the_wire(self):
+        # The regression that cost minutes per step: litellm silently dropped it.
+        from openhands.sdk import LLM, Message, TextContent
+
+        bodies = []
+
+        class OpenAI(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                bodies.append(json.loads(self.rfile.read(int(self.headers["content-length"]))))
+                out = json.dumps({"id": "x", "object": "chat.completion", "created": 0, "model": "m",
+                                  "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}],
+                                  "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}).encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), OpenAI)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        spec = dict(self.body["agent"]["llm"], base_url="http://127.0.0.1:%d/v1" % server.server_port)
+        LLM.model_validate(spec).completion(messages=[Message(role="user", content=[TextContent(text="hi")])])
+        self.assertEqual(bodies[-1].get("reasoning_effort"), "high")
+
     def test_autotitle_is_disabled(self):
         # Each auto-title is an extra model call that spends the run's budget.
         self.assertFalse(self.body["autotitle"])
