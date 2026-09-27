@@ -279,11 +279,50 @@ errs = gate.check_mcp_token_passthrough([gateway()])
 check("zero MCPRoutes on an envoy-ai-gateway Gateway fails, not passes vacuously",
       len(errs) == 1 and "no MCPRoute" in errs[0], str(errs))
 
+
+def models_guard_route(name="agent-models-list", section="public", gw="agent-router", ns="agent-system",
+                        path_type="Exact", path_value="/v1/models", filter_name="agent-models-list",
+                        filter_kind="HTTPRouteFilter"):
+    parent = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": gw}
+    if section:
+        parent["sectionName"] = section
+    return {"apiVersion": "gateway.networking.k8s.io/v1", "kind": "HTTPRoute",
+            "metadata": {"name": name, "namespace": ns},
+            "spec": {"parentRefs": [parent],
+                     "rules": [{"matches": [{"path": {"type": path_type, "value": path_value}}],
+                                "filters": [{"type": "ExtensionRef",
+                                            "extensionRef": {"group": "gateway.envoyproxy.io",
+                                                              "kind": filter_kind, "name": filter_name}}]}]}}
+
+
+def models_guard_filter(name="agent-models-list", ns="agent-system", direct_response=True):
+    spec = {"directResponse": {"statusCode": 404}} if direct_response else {}
+    return {"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "HTTPRouteFilter",
+            "metadata": {"name": name, "namespace": ns}, "spec": spec}
+
+
+print("A7 -- /v1/models guard route on every agent-router listener an AIGatewayRoute attaches to")
+check("the guard present passes",
+      gate.check_v1_models_guard([route(), models_guard_route(), models_guard_filter()]) == [])
+errs = gate.check_v1_models_guard([route()])
+check("the guard missing fails, naming the listener",
+      len(errs) == 1 and "public" in errs[0], str(errs))
+errs = gate.check_v1_models_guard([route(), models_guard_route(section="internal"), models_guard_filter()])
+check("the guard on the wrong sectionName fails",
+      len(errs) == 1 and "public" in errs[0], str(errs))
+errs = gate.check_v1_models_guard([route(), models_guard_route(path_type="PathPrefix"), models_guard_filter()])
+check("a path prefix instead of Exact fails", len(errs) == 1, str(errs))
+errs = gate.check_v1_models_guard([route(), models_guard_route(), models_guard_filter(direct_response=False)])
+check("a filter with no directResponse fails", len(errs) == 1, str(errs))
+errs = gate.check_v1_models_guard([])
+check("no AIGatewayRoute on agent-router fails, not passes vacuously",
+      len(errs) == 1 and "no AIGatewayRoute attaches" in errs[0], str(errs))
+
 print("main()")
 with tempfile.TemporaryDirectory() as d:
     p = pathlib.Path(d)
-    (p / "overlay-a.yaml").write_text(
-        yaml.safe_dump_all([gateway(), ctp(STRIPS), btp([rule()]), route(), mcproute()]))
+    (p / "overlay-a.yaml").write_text(yaml.safe_dump_all(
+        [gateway(), ctp(STRIPS), btp([rule()]), route(), mcproute(), models_guard_route(), models_guard_filter()]))
     check("exit 0 on a compliant bundle", quiet(gate.main, [d]) == 0)
     (p / "overlay-b.yaml").write_text(yaml.safe_dump_all([btp([rule(shared=False)], name="bad")]))
     check("exit 1 on a violation", quiet(gate.main, [d]) == 1)
