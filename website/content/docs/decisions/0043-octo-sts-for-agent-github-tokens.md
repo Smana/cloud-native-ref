@@ -124,6 +124,11 @@ repository it grants.
   `.github/chainguard/*.sts.yaml` files with no such check: installed on a repository that
   carries these policies, it would mint that repository's tokens for anyone with an eu-west-3
   EKS cluster. Confirm it is absent (github.com/settings/installations) before a repository opts in
+- The ruleset's `update` rule covers `main` too, since that is what stops the App merging its own
+  PR, so every human merge to `main` is a bypass that GitHub asks for explicitly: the "bypass
+  rules" checkbox, or `gh pr merge --admin`. A plain merge is refused (seen on #2113). Branch
+  protection still applies (`enforce_admins`), so the bypass waives only this ruleset. GitHub
+  auto-merge is untested against it. Renovate is on the bypass list for the same reason
 
 ### Neutral
 
