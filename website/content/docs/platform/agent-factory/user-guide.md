@@ -21,6 +21,7 @@ New to the vocabulary (run, role, sandbox, room)? Read
 | Access to the tailnet | The room UI, Grafana and the cluster API are private |
 | SSO membership in `agents-member` | To watch rooms and runs. Requesting `internal` work or a `triager` run needs `agents-admin` |
 | Maintainer rights on the repository | Labels, reviews and merges are how you steer. The agents never merge on their own, except for the low-risk classes below |
+| Rights to create `AgentRun`s in `agents` (Part 2 only) | Until the factory exists runs are created by hand, today by the platform owner |
 
 ---
 
@@ -36,12 +37,14 @@ sequenceDiagram
   participant F as Factory
   participant I as Implementer run
   participant R as Reviewer run
+  participant RM as Room
   M->>GH: label the issue factory/ready
   F->>GH: comment "started": run id, branch, budget, watch link
-  F->>I: run on branch agent/<task>
+  F->>I: run on branch agent/taskId
   I->>GH: open a PR (provenance footer)
   F->>R: review the PR
-  R-->>GH: verdict posted as one PR comment
+  R->>RM: verdict
+  RM->>GH: the verdict as one PR comment
   M->>GH: review: "Request changes"
   F->>I: new run on the same branch, with your review as input
   I->>GH: push fixes
@@ -79,14 +82,18 @@ The PR is opened by the agents' bot on a branch `agent/<task>`. Its body ends wi
 **provenance footer**:
 
 ```text
+---
 Agent-Room: 7hq2mc4d
 Agent-Run: zma62cms
 Agent-Role: implementer
-Agent-Task: https://github.com/Smana/cloud-native-ref/issues/2112
-Agent-Model: glm-5.3
+Agent-Model: agent-default
 ```
 
-A reviewer agent reads the PR and posts its **verdict** as one comment. That comment is advice only:
+`Agent-Model` is the alias the run asked for. A run started from an issue or PR URL also carries
+`Agent-Task: <url>`.
+
+A reviewer agent reads the PR and records its **verdict** in the room, which posts it on the PR as one
+comment. That comment is advice only:
 it neither approves nor blocks. The decision stays yours.
 
 ### 4. Steer it
@@ -96,17 +103,18 @@ it neither approves nor blocks. The decision stays yours.
 | Ask for changes | A normal GitHub review with **"Request changes"**. Your review becomes the input of a new run on the same branch |
 | Accept the work | Approve and merge as usual |
 | Try again after a failure | Comment **`/factory retry`** |
-| Add context while it runs | Post a message in the room. The next run of the task receives it |
+| Add context while it runs | If you are a collaborator in the room, post a message there: it is queued for the next run |
 
 The **merge gate** merges nothing but two low-risk classes, and only once CI and the policy agree:
-`docs-links` (fixing broken links) and `revert` (undoing an agent change that broke `main`). Until
-the design is signed off, it runs in **shadow mode**: it says in the issue what it *would*
-merge, and merges nothing.
+`docs-links` (fixing broken links) and `revert` (the factory's revert of an auto-merged `docs-links`
+change, same paths and size limits). Until everything is built and merged, it runs in **shadow
+mode**: it says in the issue what it *would* merge, and merges nothing.
 
 ### 5. Stop it
 
 | Scope | How |
 |---|---|
+| **One task** | Add the label **`factory/stop`** to its issue or PR. Its runs are revoked; its branch stays |
 | **Everything, now** | Add the label **`factory/stop`** to the pinned *control issue*. Intake stops, new runs are refused, and every running run is revoked, including runs started by hand. Remove the label to resume |
 | One run you started by hand | See [Part 2](#stop-or-resume) |
 
@@ -126,7 +134,7 @@ Every model call is metered per run at the gateway, so the dashboard shows what 
 ## Part 2: what works today (`aws-0`)
 
 Today there is no factory and no room: **you** start a run from a terminal with cluster access, and
-it does the rest. This is how issue #2112 became PR #2114 in 68 seconds of agent work.
+it does the rest. This is how issue #2112 became PR #2114.
 
 ### Start a run
 
@@ -140,12 +148,13 @@ task agent:run -- --role implementer --class public \
 |---|---|
 | `--role` | `implementer` (pushes to `agent/<id>`, opens a PR), `reviewer`, `tester`, `triager` |
 | `--class` | `public` for this public repository. `internal` has no model route yet |
-| `--repo` | The repository to work on, `owner/name` (default: this repository) |
+| `--repo` | The repository to work on, `owner/name` (default: this repository, today the only one the agents' App is installed on) |
 | `--task-url` or `--task` | The issue or PR to work on, or the task as text |
 | `--minutes` | Deadline, 1–480 (default 120) |
 | `--size` | `small`, `medium` or `large`: CPU, memory and scratch space |
 | `--branch` | Continue an earlier run's branch `agent/<id>` |
 | `--profiles` | Extra package-registry egress: `pypi`, `npm`, `golang`, `crates` |
+| `--dry-run` | Validate the claim server-side without creating it |
 
 ### Follow it
 
@@ -164,11 +173,11 @@ agent-run summary: 10 steps
 
 | Phase | Meaning |
 |---|---|
-| `Pending` | Waiting for a node or pulling the image. A cold start takes about 2 minutes |
+| `Pending` | Waiting for a node or pulling the image |
 | `Running` | The agent is working |
-| `Succeeded` | Finished. The PR, if any, is in `status.pullRequest` |
-| `Failed` | The harness failed or the deadline passed. Check the reason and the step log |
-| `Revoked` / `BudgetExhausted` | Stopped by a human or by its budget |
+| `Succeeded` | Finished. Its branch is in the `BRANCH` column; find the PR with `gh pr list --head <branch>` (`status.pullRequest` is filled once the factory exists) |
+| `Failed` | The harness failed, the deadline passed, or the pod was lost. `status.reason` is always `PodFailed`: read the step log |
+| `Revoked` / `BudgetExhausted` | Stopped by hand with the `agents.ogenki.io/revoked` annotation. Nothing enforces the token budget yet; the factory's run meter will |
 
 ### Stop or resume
 
@@ -202,17 +211,21 @@ the human's, except for the two low-risk classes above, which go through a separ
 
 **Can it read our secrets?**
 The sandbox holds no long-lived credential. Its GitHub token is minted per run, scoped to one
-repository and one role, and revoked when the run ends. Model and tool calls carry a run token that
-the gateway verifies.
+repository and one role, and revoked when the run ends (at worst it expires within an hour). Model and
+tool calls carry a run token that the gateway verifies. It has no access to Kubernetes Secrets. An
+`internal` run can read logs and pod specs over the read-only MCP tools, and those can contain
+secrets.
 
 **Can it reach the internet?**
 Only the hosts its network policy names: GitHub, the gateway and, with `--profiles`, package
 registries. Everything else is dropped.
 
 **What if it loops or goes off track?**
-The deadline and the token budget end it, and the kill switch ends everything. Every step is in the
+Today its deadline ends it, and you can delete it. Planned: the factory's run meter ends it at its
+token budget, and the kill switch ends everything. Every step is in the
 step log, and planned: in the room and the trace.
 
 **Why gVisor?**
-The agent runs arbitrary commands. gVisor intercepts its system calls in user space, so a kernel
-exploit in the sandbox does not reach the node.
+The agent runs arbitrary commands. gVisor answers their system calls in user space, so a kernel
+exploit hits gVisor, not the node. Escaping takes a gVisor bug as well; the node pool is dedicated
+and tainted to limit what that would reach.
