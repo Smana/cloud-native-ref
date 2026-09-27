@@ -11,9 +11,10 @@ token never reaches the proxy).
 **Architecture:** A namespaced Crossplane XR, `AgentRun`, lives in `Smana/crossplane-configuration`'s
 core package. It composes a ServiceAccount, a task ConfigMap, a CiliumNetworkPolicy and a bare
 agent-sandbox `Sandbox` on a Karpenter AL2023 spot pool where runsc is installed. Inside the pod, an
-Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live until the run's deadline (R2). It injects
-them towards `agent-router` (Envoy Gateway JWT on one listener per data class) and a self-hosted
-octo-sts. Everything outside the XR ships behind the suspended `agent-platform` Flux umbrella.
+Envoy native sidecar (`identity-proxy`) is the only holder of the two projected tokens, which live
+until the run's deadline (R2). It injects them towards `agent-router` (Envoy Gateway JWT on one
+listener per data class, plus an `sts` listener that fronts a self-hosted octo-sts). Everything outside the XR ships behind the suspended
+`agent-platform` Flux umbrella.
 
 **Tech Stack:** Crossplane v2 + function-kcl (KCL 0.11.3), agent-sandbox v1.0.3, gVisor
 `release-20260921.0` on EKS AL2023 (containerd 2.2, config v3), Karpenter 1.14.1, Cilium (ENI, KPR,
@@ -45,8 +46,9 @@ task; OD-1…OD-17 are accepted at their recommended defaults).
 - **Audiences (C2).** Gateway `agent-router.<role>.<dataClass>`; octo-sts
   `octo-sts/<owner>/<repo>/<role>`; room `room-broker` (SP2). The gateway and octo-sts tokens have
   `expirationSeconds: max(600, maxMinutes × 60)`, the run's deadline (R2, spike Q2).
-- **Ports.** `agent-router` listeners `public` :8080 and `internal` :8081. identity-proxy
-  `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` → octo-sts, health `0.0.0.0:9902` (`/ready`).
+- **Ports.** `agent-router` listeners `public` :8080, `internal` :8081 and `sts` :8082 (the only way
+  to octo-sts :8080). identity-proxy `127.0.0.1:4000` → `public`, `:4002` → `internal`, `:4001` →
+  `sts`, health `0.0.0.0:9902` (`/ready`).
   Admin is the pathname socket `/tmp/envoy-admin.sock` in `proxy-tmp`, never on the pod network, and
   the proxy runs `--disable-hot-restart --concurrency 1` (P13). Harness :8000 on loopback only.
 - **Stripped headers (C5).** `x-ar-agent`, `x-ar-human`, `x-ai-gateway-client-id`, `agent-session-id`,
@@ -106,7 +108,7 @@ owner can take; the executor stops and asks for it.
 
 | Name | Where | Consumer |
 |---|---|---|
-| Gateway `agent-router` (`agent-system`), listeners `public` :8080 / `internal` :8081, `allowedRoutes: Same` | `infrastructure/base/agent-router/gateway.yaml` | SP4 attaches `agent-models-internal` and B1–B2 |
+| Gateway `agent-router` (`agent-system`), listeners `public` :8080 / `internal` :8081 / `sts` :8082, `allowedRoutes: Same` | `infrastructure/base/agent-router/gateway.yaml` | SP4 attaches `agent-models-internal` and B1–B2 |
 | `AIGatewayRoute agent-models` seeded with `agent-default` → `glm-5.2` | `infrastructure/base/agent-router/aigatewayroute-agent-models.yaml` | SP4 owns the file from PR 2 |
 | `AIServiceBackend zai` + `BackendSecurityPolicy zai-api-key` | `infrastructure/base/agent-router/backend-zai.yaml` | SP4 tiers |
 | Data-plane CNP `agent-router-data-plane` (`envoy-gateway-system`) | `infrastructure/base/agent-router/network-policy-data-plane.yaml` | SP4 PR 2 adds the Bedrock (`bedrock-runtime.eu-west-3.amazonaws.com:443`) and rate-limit egress; SP2's broker :8090 allow is already there |
@@ -186,7 +188,7 @@ three manifest directories over with `git checkout spike/agent-gvisor -- <paths>
 | `opentofu/aws/openbao/management/{policies.tf,policies/agents-secrets.hcl}`, `opentofu/aws/eks/configure/openbao.tf` | 3 | OpenBao policy and JWT role for `agents-secrets` |
 | `security/base/agent-secrets/` | 3 | SA, SecretStore `agents-secrets`, `openbao-ca` in `agent-system` |
 | `infrastructure/base/agent-router/` | 3 | Gateway, EnvoyProxy, SecurityPolicies, CTP, Z.ai backend, `agent-models`, data-plane CNP |
-| `security/base/octo-sts/` | 4 | octo-sts Deployment, Service, ExternalSecret, CNP |
+| `security/base/octo-sts/` | 4 | octo-sts Deployment, Service, ExternalSecret, CNP, and its `HTTPRoute` on `agent-router`'s `sts` listener |
 | `.github/chainguard/agent-{implementer,reviewer,tester,triager}.sts.yaml` | 4 | Trust policies (gate path) |
 | `.github/rulesets/agent-branches.json`, `scripts/ops/github/agent-branch-ruleset.sh`, `scripts/ci/tests/test-agent-branch-ruleset.sh` | 4 | Branch ruleset source, its idempotent applier, its test |
 | `container-images/agent-harness/` | 5 | Harness image: `agent-run`, `git-credential-agent`, `gh` wrapper, trailer hook, tests |
@@ -923,7 +925,8 @@ print(f"RESULT requests={sent} non200={bad}", flush=True)
 ```
 
 `spike/agent-runtime/bench.yaml` (Q9, SC-15). The same image as the harness, the same node, one
-runtime at a time. `__NODE__` and `__RUNTIME__` are replaced in Task 0.5; the `runtimeClassName` line is deleted for the runc run.
+runtime at a time. `__NODE__` and `__RUNTIME__` are replaced in Task 0.5; the `runtimeClassName`
+line is deleted for the runc run.
 
 ```yaml
 apiVersion: v1
@@ -1127,9 +1130,9 @@ kubectl get node "$(kubectl get pod -n agents $POD -o jsonpath='{.spec.nodeName}
 kubectl exec -n agents $POD -c harness -- dmesg | head -3
 kubectl exec -n agents $POD -c harness -- grep Seccomp /proc/self/status
 ```
-Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 0`: `oci-seccomp` is off until gVisor honours
-`errnoRet` (#14688; with it on, runsc answers `clone3` with EPERM and no glibc ≥ 2.34 process can start
-a thread). Record all four lines.
+Expected: `gvisor <node>`, `gvisor`, a `Starting gVisor...` banner line, and `Seccomp: 0`:
+`oci-seccomp` is off until gVisor honours `errnoRet` (#14688; with it on, runsc answers `clone3`
+with EPERM and no glibc ≥ 2.34 process can start a thread). Record all four lines.
 
 - [ ] **Step 4: Writable paths and entrypoint facts**
 
@@ -1315,6 +1318,15 @@ spike notes. Docs PRs wait for the owner's review.
 ---
 ## Phase 1 — `AgentRun` in `Smana/crossplane-configuration` (CC-1)
 
+> **The code in this phase is the first draft.** CC-1
+> ([#27](https://github.com/Smana/crossplane-configuration/pull/27), head `68bb570`) is authoritative,
+> and its reviews changed it: every spec field is immutable except `budget.maxTokens`; a terminal run
+> withholds its ServiceAccount and suspends its Sandbox (P12); both tokens live until the run's
+> deadline (R2); the status is patched with `target: Default`; agent-server stays on loopback with
+> `exec` probes (P13); the run reaches octo-sts only through `agent-router`'s `sts` listener, and a
+> `Usage` holds its CNP until the Sandbox is gone; `status.usage.tokens` never decreases. Read the
+> code there, never from this text; the test counts below are the first draft's too.
+
 Runs in `/home/smana/Sources/crossplane-configuration`, in a fresh worktree off `origin/main`
 (branch `feat/agentrun`). Gate: `task check` exit 0. Read that repo's `CLAUDE.md` and
 `.claude/rules/kcl.md` first: `composition.yaml` is generated, never edit it; `kcl fmt` must leave the
@@ -1373,15 +1385,15 @@ metadata:
   name: xplane-run-k2m4q7wa
   namespace: agents
   labels:
-    agents.ogenki.io/task: t-9f2kq3ma
+    agents.ogenki.io/task: 6f2kq3ma
   annotations:
     agents.ogenki.io/usage-tokens: "184223"
     agents.ogenki.io/pull-request: "https://github.com/Smana/cloud-native-ref/pull/2090"
 spec:
   role: tester
   repository: Smana/cloud-native-ref
-  baseRef: agent/t-9f2kq3ma
-  branch: agent/t-9f2kq3ma
+  baseRef: agent/6f2kq3ma
+  branch: agent/6f2kq3ma
   principal: "system:factory"
   model: tier-standard
   dataClass: internal
@@ -1394,7 +1406,7 @@ spec:
   size: medium
   egress:
     profiles: [pypi, golang]
-  roomRef: r-3kq9x2ma
+  roomRef: 3kq7x2ma
   queueName: agents-standard
 ```
 
@@ -1760,8 +1772,8 @@ test_names_labels_and_principal = lambda {
 }
 
 test_task_label_propagates_from_the_claim = lambda {
-    _res = _render(_xr({}, {}, {"agents.ogenki.io/task" = "t-9f2k"}, {}), {}, _DXR)
-    assert _kind(_res, "Sandbox")[0].spec.podTemplate.metadata.labels["agents.ogenki.io/task"] == "t-9f2k"
+    _res = _render(_xr({}, {}, {"agents.ogenki.io/task" = "6f2kq3ma"}, {}), {}, _DXR)
+    assert _kind(_res, "Sandbox")[0].spec.podTemplate.metadata.labels["agents.ogenki.io/task"] == "6f2kq3ma"
     assert "agents.ogenki.io/task" not in _kind(_run({}), "Sandbox")[0].metadata.labels
 }
 
@@ -1853,7 +1865,7 @@ test_cnp_is_default_deny_with_named_egress = lambda {
 }
 
 test_room_ref_adds_broker_egress = lambda {
-    _egress = _kind(_run({roomRef = "r-3kq9x2ma"}), "CiliumNetworkPolicy")[0].spec.egress
+    _egress = _kind(_run({roomRef = "3kq7x2ma"}), "CiliumNetworkPolicy")[0].spec.egress
     assert any e in _egress {
         e.toEndpoints and e.toEndpoints[0].matchLabels["app.kubernetes.io/name"] == "room-broker" and e.toPorts[0].ports[0].port == "8443"
     }
@@ -1872,8 +1884,8 @@ test_size_presets = lambda {
 
 test_branch_defaults_to_run_id = lambda {
     assert _status(_run({})).branch == "agent/7f3cq2xz"
-    assert _status(_run({branch = "agent/t-9f2k"})).branch == "agent/t-9f2k"
-    assert {e.name: e.value for e in _pod(_run({branch = "agent/t-9f2k"})).containers[0].env}.BRANCH == "agent/t-9f2k"
+    assert _status(_run({branch = "agent/6f2kq3ma"})).branch == "agent/6f2kq3ma"
+    assert {e.name: e.value for e in _pod(_run({branch = "agent/6f2kq3ma"})).containers[0].env}.BRANCH == "agent/6f2kq3ma"
 }
 
 test_queue_label = lambda {
@@ -1975,11 +1987,15 @@ Expected: FAIL — `name '_render' is not defined` (there is no `main.k` yet).
 
 **Interfaces:**
 - Consumes: Task 1.2 tests; the identity-proxy ConfigMap name `agent-identity-proxy` and its ports
-  (Task 0.1 Step 5); the Service FQDNs `agent-router.envoy-gateway-system.svc.cluster.local` (Task 3.4)
-  and `octo-sts.agent-system.svc.cluster.local` (Task 4.3); pod label
-  `app.kubernetes.io/name: octo-sts` (Task 4.3); Gateway label
-  `gateway.envoyproxy.io/owning-gateway-name: agent-router` (R5, confirmed in Task 3.8).
-- Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`; the
+  (Task 0.1 Step 5); the Service FQDN `agent-router.envoy-gateway-system.svc.cluster.local` and its
+  ports 8080/8081 plus 8082 `sts` (Task 3.4). The run's CNP opens 8082 for octo-sts and has no rule
+  or DNS name for octo-sts itself (CC-1 `b8c68c1`); Gateway labels
+  `gateway.envoyproxy.io/owning-gateway-name: agent-router` and
+  `gateway.envoyproxy.io/owning-gateway-namespace: agent-system` (R5, confirmed in Task 3.8).
+- Produces: composition-resource names `<xr>-sa`, `<xr>-task`, `<xr>-cnp`, `<xr>-sandbox`, and
+  `<xr>-usage`: a `Usage` (object `xplane-run-<runId>-cnp`, `replayDeletion: true`) that holds the CNP
+  until the Sandbox is gone, rendered while the run is live, because Crossplane deletes composed
+  resources in parallel and the `preStop` revoke needs the CNP's GitHub egress (CC-1 `b8c68c1`); the
   harness env contract of design §5 (`RUN_ID ROLE REPOSITORY BASE_REF BRANCH MODEL DATA_CLASS
   CONVERSATION_ID LLM_BASE_URL MCP_URL STS_URL TASK_FILE RULES_FILE HOME`), consumed by Task 5.1.
 
@@ -3567,30 +3583,41 @@ metadata: {name: run-1, namespace: agents}
 spec: {role: implementer, repository: Smana/cloud-native-ref, principal: "human:1", dataClass: public, task: {text: x}}
 ```
 
+Both pods carry a full restricted securityContext: PSS `restricted` runs before Kyverno and would
+otherwise deny them first, proving nothing about `agents-pod-shape`.
+
 ```bash
-kubectl apply --dry-run=server -n agents -f - <<'YAML'
+kubectl apply --dry-run=server -n agents -f - <<'YAML' 2>&1 | grep -c 'every pod in agents runs under RuntimeClass gvisor'
 apiVersion: v1
 kind: Pod
 metadata: {name: sc03-runc}
 spec:
   automountServiceAccountToken: false
-  containers: [{name: c, image: busybox}]
+  securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: c
+      image: busybox
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 YAML
-kubectl apply --dry-run=server -n agents -f - <<'YAML'
+kubectl apply --dry-run=server -n agents -f - <<'YAML' 2>&1 | grep -c 'a pod in agents never mounts a Kubernetes API token'
 apiVersion: v1
 kind: Pod
 metadata: {name: sc03-token}
 spec:
   runtimeClassName: gvisor
   automountServiceAccountToken: true
-  containers: [{name: c, image: busybox}]
+  securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: c
+      image: busybox
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 YAML
 kubectl apply --dry-run=server -f /tmp/agentrun-bad.yaml
 ```
-Expected: the two pods are denied by `agents-pod-shape` (messages "runs under RuntimeClass gvisor"
-and "never mounts a Kubernetes API token"); both claims are denied, the first for `spec.branch: main`
-(XRD pattern), the second for its name (XRD CEL, and `agentrun-admission` behind it). Record each
-denial message.
+Expected: `1` and `1`: each pod is denied by `agents-pod-shape` with its own message, not by
+`violates PodSecurity` (if a `0` prints, rerun without the `grep` and read which admission denied
+it). Both claims are denied, the first for `spec.branch: main` (XRD pattern), the second for its
+name (XRD CEL, and `agentrun-admission` behind it). Record each denial message.
 
 - [ ] **Step 5: Logs reach VictoriaLogs**
 
@@ -3601,7 +3628,7 @@ Expected: at least one line from `xplane-run-7f3cq2xz`.
 
 ```bash
 kubectl delete agentrun -n agents xplane-run-7f3cq2xz --wait
-kubectl get sa,cm,cnp,sandbox,pod -n agents -l agents.ogenki.io/run-id=7f3cq2xz
+kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -n agents -l agents.ogenki.io/run-id=7f3cq2xz
 ```
 Expected: `No resources found`. Paste the outputs of Steps 1–5 into the PR as the SC-01–03 evidence.
 
@@ -3637,7 +3664,7 @@ day):
 title: Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens
 linkTitle: 0042 · Agent identity gateway
 weight: 420
-description: Agent runs reach models and MCP tools only through a dedicated agent-router Gateway, one listener per data class, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
+description: Agent runs reach models, MCP tools and octo-sts only through a dedicated agent-router Gateway, one listener per data class plus one pinned to this cluster's issuer in front of octo-sts, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -3722,7 +3749,11 @@ structural, using controllers the platform already runs.
 
 - Agents and humans use separate Gateways and separate provider keys (C1)
 - Every harness gets the same contract: `127.0.0.1:4000` (public), `:4002` (internal), `:4001`
-  (octo-sts)
+  (octo-sts, through the `sts` listener)
+- octo-sts sits behind a third listener, `sts` (:8082), whose `SecurityPolicy` pins this cluster's
+  exact issuer: the trust policies match the issuer by pattern (OD-5), which alone would accept a
+  token minted by any EKS cluster in the region. octo-sts relies on Envoy Gateway forwarding the
+  validated token upstream, which 1.9.1 always does
 
 ### Negative
 
@@ -3999,19 +4030,23 @@ Ask the owner to create a **dedicated** Z.ai API key for agents (not RunLore's, 
 ### Task 3.4: The `agent-router` Gateway
 
 **Files:**
-- Create: `infrastructure/base/agent-router/{kustomization.yaml,gateway.yaml,envoyproxy.yaml,securitypolicy-public.yaml,securitypolicy-internal.yaml,clienttrafficpolicy.yaml,backend-zai.yaml,externalsecret-zai.yaml,aigatewayroute-agent-models.yaml,network-policy-data-plane.yaml}`
+- Create: `infrastructure/base/agent-router/{kustomization.yaml,gateway.yaml,envoyproxy.yaml,securitypolicy-public.yaml,securitypolicy-internal.yaml,securitypolicy-sts.yaml,clienttrafficpolicy.yaml,backend-zai.yaml,externalsecret-zai.yaml,aigatewayroute-agent-models.yaml,network-policy-data-plane.yaml}`
 - Create: `clusters/aws-0-agent-platform/infrastructure-agent-router.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0/agent-platform.yaml`
-  (`dependsOn: ai-gateway`), `clusters/aws-0-agent-platform/README.md` (two rows)
+  (`dependsOn: ai-gateway`), `clusters/aws-0-agent-platform/README.md` (two rows),
+  `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (`:4001` → the `sts` listener),
+  `scripts/ci/flux-schema/render-bundle.py` (the issuer fixtures carry their `/id/<ID>` path)
 - Not set here: `EnvoyProxy.spec.provider.kubernetes.envoyServiceAccount` (SP4 PR 2 adds
   `xplane-agent-router-bedrock` and owns its EPI)
 
 **Interfaces:**
 - Consumes: GatewayClass `envoy-ai-gateway`, Kustomization `envoy-ai-gateway` (SP4 PR 1);
-  `SecretStore agents-secrets` (Task 3.3); `${oidc_issuer_url}`, `${oidc_issuer_host}`.
-- Produces: Service `agent-router.envoy-gateway-system.svc.cluster.local` ports 8080/8081 (the
-  identity-proxy clusters of Task 0.1); data-plane pods labelled
-  `gateway.envoyproxy.io/owning-gateway-name: agent-router` (the run CNP of Task 1.3); access-log
+  `SecretStore agents-secrets` (Task 3.3); `${oidc_issuer_url}` (JWT issuer and JWKS, path
+  included); `${region}` (the issuer's DNS name in `toFQDNs`, which `${oidc_issuer_host}` is not).
+- Produces: Service `agent-router.envoy-gateway-system.svc.cluster.local` ports 8080/8081/8082 (the
+  identity-proxy clusters); listener `sts`, which Task 4.3's `HTTPRoute` attaches to; data-plane pods labelled
+  `gateway.envoyproxy.io/owning-gateway-name: agent-router` and `…/owning-gateway-namespace:
+  agent-system`, both pinned by every selector of this data plane (the run CNP of Task 1.3); access-log
   fields `x_ar_agent`, `listener_port`, `upstream_cluster`, `response_code` (Tasks 3.8, 6.4).
 
 - [ ] **Step 1: Gateway, proxy shape, access log**
@@ -4030,6 +4065,7 @@ resources:
   - clienttrafficpolicy.yaml
   - securitypolicy-public.yaml
   - securitypolicy-internal.yaml
+  - securitypolicy-sts.yaml
   - externalsecret-zai.yaml
   - backend-zai.yaml
   - aigatewayroute-agent-models.yaml
@@ -4043,7 +4079,8 @@ resources:
 ---
 # One listener per data class (S6): "internal never reaches Z.ai" is structural.
 # Each listener accepts only its class's audiences, and Z.ai routes attach to
-# `public` only. Only routes from agent-system attach.
+# `public` only. `sts` is the only way to octo-sts. Only routes from
+# agent-system attach.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -4061,6 +4098,12 @@ spec:
     - name: internal
       protocol: HTTP
       port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: sts
+      protocol: HTTP
+      port: 8082
       allowedRoutes:
         namespaces:
           from: Same
@@ -4229,6 +4272,43 @@ spec:
             header: x-ar-agent
 ```
 
+`infrastructure/base/agent-router/securitypolicy-sts.yaml`:
+
+```yaml
+---
+# The `sts` listener fronts octo-sts, and its point is the issuer. The trust
+# policies match the EKS issuer by pattern (OD-5), which alone would accept a
+# token minted by any EKS cluster in the region; this accepts THIS cluster's
+# issuer only. Envoy Gateway forwards the validated token, so octo-sts checks it
+# again against the trust policy. A second repository adds its four audiences
+# here (EG's maximum is 8).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agent-router-sts
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  jwt:
+    providers:
+      - name: eks-agents-sts
+        issuer: ${oidc_issuer_url}
+        audiences:
+          - octo-sts/Smana/cloud-native-ref/implementer
+          - octo-sts/Smana/cloud-native-ref/reviewer
+          - octo-sts/Smana/cloud-native-ref/tester
+          - octo-sts/Smana/cloud-native-ref/triager
+        remoteJWKS:
+          uri: ${oidc_issuer_url}/keys
+        claimToHeaders:
+          - claim: sub
+            header: x-ar-agent
+```
+
 - [ ] **Step 3: The agents' Z.ai backend and the seed route**
 
 `infrastructure/base/agent-router/externalsecret-zai.yaml`:
@@ -4347,6 +4427,10 @@ spec:
         - name: zai
           modelNameOverride: glm-5.2
           weight: 100
+      # Agent Router defaults a rule to 60 s. A reasoning completion from a
+      # frontier model, streamed or not, routinely runs longer.
+      timeouts:
+        request: 600s
 ```
 
 - [ ] **Step 4: Data-plane CNP**
@@ -4356,9 +4440,10 @@ spec:
 ```yaml
 ---
 # Data plane of the agents' Gateway. Envoy Gateway runs it in its own namespace
-# whatever the Gateway's, so this CNP lives there. Scoped by gateway name, as is
-# envoy-data-plane (narrowed by SP4 PR 1), so neither Gateway inherits the
-# other's allows (R5). SP4 PR 2 adds the Bedrock egress here.
+# whatever the Gateway's, so this CNP lives there. Scoped by gateway name and
+# namespace (an app claim can name a Gateway agent-router anywhere), as
+# envoy-data-plane is by name (narrowed by SP4 PR 1), so neither Gateway
+# inherits the other's allows (R5). SP4 PR 2 adds the Bedrock egress here.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -4370,6 +4455,7 @@ spec:
       app.kubernetes.io/managed-by: envoy-gateway
       app.kubernetes.io/component: proxy
       gateway.envoyproxy.io/owning-gateway-name: agent-router
+      gateway.envoyproxy.io/owning-gateway-namespace: agent-system
   ingress:
     # Sandbox pods only. EG cannot prefix-match `sub`; this and the Kyverno
     # audience reservation are what keep other namespaces' tokens out.
@@ -4384,6 +4470,8 @@ spec:
             - port: "8080"
               protocol: TCP
             - port: "8081"
+              protocol: TCP
+            - port: "8082"
               protocol: TCP
     - fromEntities:
         - host
@@ -4430,10 +4518,11 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
-    # The agents' provider and the JWKS the listeners validate against.
+    # The agents' provider and the JWKS the listeners validate against. The
+    # issuer's host only: ${oidc_issuer_host} carries its /id/<ID> path.
     - toFQDNs:
         - matchName: api.z.ai
-        - matchName: ${oidc_issuer_host}
+        - matchName: oidc.eks.${region}.amazonaws.com
       toPorts:
         - ports:
             - port: "443"
@@ -4466,6 +4555,38 @@ spec:
         - ports:
             - port: "8090"
               protocol: TCP
+    # octo-sts (phase 4), behind the `sts` listener only.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: octo-sts
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+```
+
+In `scripts/ci/flux-schema/render-bundle.py`, give the two issuer fixtures the real shape. Without the
+path, `matchName: ${oidc_issuer_host}` renders a valid name in CI and one that never resolves on the
+cluster; with it, `matchName`'s pattern rejects the `/` and `validate-manifests.sh` fails:
+
+```python
+    # The real issuer carries the cluster's /id/<ID> path, so the host variable is
+    # not a DNS name: a toFQDNs rule must use oidc.eks.${region}.amazonaws.com.
+    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com/id/0123456789ABCDEF0123456789ABCDEF",
+    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com/id/0123456789ABCDEF0123456789ABCDEF",
+```
+
+In `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml` (Task 2.4), send `:4001` to the
+`sts` listener. The run's CNP already opens 8082 and no longer resolves or reaches octo-sts (CC-1):
+
+```diff
+@@ … @@ header comment
+-#   127.0.0.1:4001  /sts/exchange          -> octo-sts :8080
++#   127.0.0.1:4001  /sts/exchange          -> agent-router `sts`      :8082 -> octo-sts
+@@ … @@ cluster octo_sts (its name stays)
+-                        socket_address: {address: octo-sts.agent-system.svc.cluster.local, port_value: 8080}
++                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8082}
 ```
 
 - [ ] **Step 5: Child Kustomization, umbrella dependency**
@@ -4516,13 +4637,13 @@ Add to the README table:
 
 ```markdown
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
-| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
+| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener (octo-sts behind `sts`), the agents' Z.ai backend |
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infrastructure/base/agent-router clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
+git add infrastructure/base/agent-router infrastructure/base/agent-runtime/identity-proxy-configmap.yaml scripts/ci/flux-schema/render-bundle.py clusters/aws-0-agent-platform clusters/aws-0/agent-platform.yaml
 git commit -m "feat(agents): agent-router Gateway with one JWT listener per data class"
 ```
 
@@ -4589,23 +4710,19 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    # octo-sts only through the `sts` listener (8082), as for a run.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8080"
               protocol: TCP
             - port: "8081"
               protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: agent-system
-            app.kubernetes.io/name: octo-sts
-      toPorts:
-        - ports:
-            - port: "8080"
+            - port: "8082"
               protocol: TCP
 ---
 apiVersion: agents.x-k8s.io/v1beta1
@@ -4717,7 +4834,7 @@ Step 3).
 - [ ] **Step 2: R5 — the gateway-name label exists**
 
 ```bash
-kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router -o name
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router,gateway.envoyproxy.io/owning-gateway-namespace=agent-system -o name
 kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-gateway -o name
 ```
 Expected: one pod each. If either is empty, **stop**: both data-plane CNPs select nothing, and the
@@ -4743,7 +4860,7 @@ print(h+"."+b+"."+base64.urlsafe_b64encode(hmac.new(b"not-the-issuer-key",(h+"."
 p "curl -s -o /dev/null -w 'self-signed→public %{http_code}\n' -H 'Authorization: Bearer $FORGED' $R:8080/v1/models"
 p "curl -s -o /dev/null -w 'forged-header %{http_code}\n' -H 'x-ar-agent: agent:forged' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/public/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}]}' $R:8080/v1/chat/completions"
 ```
-Expected: `none→public 401`, `sts→public 401`, `internal→public 401`, `public→internal 401`,
+Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 403`,
 `public→public 200`, `self-signed→public 401`, `forged-header 200`.
 
 Then the attribution:
@@ -4816,7 +4933,7 @@ PR 4 merges (Task 4.7), on a cluster running `main`.
 title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's issuer-pinned sts listener, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-25
 ---
 
@@ -4849,19 +4966,27 @@ and never a human's.
 
 ### Option 1: Self-hosted octo-sts with the agents' GitHub App
 
-The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`; octo-sts checks it
-against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns an installation
-token with that policy's permissions.
+The run presents a token that lives until its deadline (R2), with audience `octo-sts/<owner>/<repo>/<role>`,
+to `agent-router`'s `sts` listener, which validates it against this cluster's exact issuer. octo-sts
+then checks it against `.github/chainguard/agent-<role>.sts.yaml` on the default branch and returns
+an installation token with that policy's permissions.
 
 **Pros**:
 - Trust policies are files in the repository, on a gate path
 - Resolves installations by account login, so a user-owned installation works
-- Records issuer, subject and the token's SHA-256 on every exchange
+- octo-sts logs the repository and policy checked on every exchange, and `agent-router`'s `sts`
+  access log carries `x-ar-agent`
 
 **Cons**:
-- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). That is safe only
-  because octo-sts is not publicly reachable: a ClusterIP Service whose CNP admits only `agents` pods
+- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5), and the pattern
+  accepts a token minted by any EKS cluster in the region. Keeping `agents` pods as the only callers
+  would not help, since they are the untrusted ones. So octo-sts is reachable only through
+  `agent-router`'s `sts` listener, whose `SecurityPolicy` pins this cluster's exact issuer (owner
+  decision 2026-09-26), and its CNP admits only that data plane
 - One more service in `agent-system`
+- octo-sts v0.10.0 emits issuer, subject and the token's SHA-256 only in a CloudEvent, gated on
+  `METRICS` and a sink — neither is configured here, so no record ties an installation token to a
+  run. GitHub's own audit log covers the App's actions instead
 
 ### Option 2: Personal access tokens
 
@@ -4884,8 +5009,9 @@ token with that policy's permissions.
 ## Decision Outcome
 
 **Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`, with the owner, Renovate
-and the factory's App on the bypass list (OD-7).
+`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`, with the repository
+roles `admin` (the owner), `maintain` and `write`, Renovate and the factory's App on the bypass list
+(OD-7): only the agents' App is confined, never a human collaborator.
 
 **Rationale**: Short-lived, per-repository, per-role tokens whose authorisation is reviewed in the
 repository it grants.
@@ -4914,8 +5040,10 @@ repository it grants.
 
 ## Implementation Notes
 
-`security/base/octo-sts/`, `.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json`
-applied by `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`.
+`security/base/octo-sts/` (with its `HTTPRoute` on the `sts` listener),
+`infrastructure/base/agent-router/securitypolicy-sts.yaml`, `.github/chainguard/agent-*.sts.yaml`,
+`.github/rulesets/agent-branches.json` applied by `task ops:github:agent-branch-ruleset`. The App key
+is at `platform/agents/github-app`.
 
 ---
 
@@ -4967,14 +5095,16 @@ Expected: a current version exists. The executor never prints the `private_key` 
 ### Task 4.3: octo-sts
 
 **Files:**
-- Create: `security/base/octo-sts/{kustomization.yaml,serviceaccount.yaml,externalsecret.yaml,deployment.yaml,service.yaml,network-policy.yaml}`
+- Create: `security/base/octo-sts/{kustomization.yaml,serviceaccount.yaml,externalsecret.yaml,deployment.yaml,service.yaml,httproute.yaml,network-policy.yaml}`
 - Create: `clusters/aws-0-agent-platform/security-octo-sts.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0-agent-platform/README.md`
 
 **Interfaces:**
-- Consumes: `SecretStore agents-secrets` (Task 3.3); `platform/agents/github-app` (Task 4.2).
+- Consumes: `SecretStore agents-secrets` (Task 3.3); `platform/agents/github-app` (Task 4.2);
+  `agent-router`'s `sts` listener (Task 3.4).
 - Produces: `octo-sts.agent-system.svc.cluster.local:8080`, pod label `app.kubernetes.io/name:
-  octo-sts` (the run CNP of Task 1.3, the identity-proxy cluster of Task 0.1).
+  octo-sts` (the `agent-router-data-plane` CNP egress of Task 3.4), and the `HTTPRoute` that makes
+  identity-proxy `:4001` reach it.
 
 - [ ] **Step 1: Manifests**
 
@@ -4992,6 +5122,7 @@ resources:
   - externalsecret.yaml
   - deployment.yaml
   - service.yaml
+  - httproute.yaml
   - network-policy.yaml
 ```
 
@@ -5151,13 +5282,44 @@ spec:
       protocol: TCP
 ```
 
+`security/base/octo-sts/httproute.yaml`:
+
+```yaml
+---
+# The only way to octo-sts: agent-router's `sts` listener validates the run's
+# token against this cluster's exact issuer before this route passes it on
+# (ADR-0043). Same namespace as the Gateway, as `allowedRoutes: Same` requires.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /sts/exchange
+      backendRefs:
+        - name: octo-sts
+          port: 8080
+      timeouts:
+        request: 30s
+```
+
 `security/base/octo-sts/network-policy.yaml`:
 
 ```yaml
 ---
-# Ingress from sandbox pods only: that, not the trust policy's issuer pattern,
-# is what keeps other EKS clusters' tokens out (ADR-0043). Egress to GitHub's
-# API and the EKS issuer (discovery + JWKS).
+# Ingress from the agent-router data plane only: its `sts` listener pins this
+# cluster's issuer, which the trust policies' pattern cannot (OD-5, ADR-0043).
+# Sandbox pods never reach octo-sts directly. Host for kubelet's probes. Egress
+# to GitHub's API and the EKS issuer (discovery + JWKS).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -5170,10 +5332,9 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: agents
-          matchExpressions:
-            - key: agents.ogenki.io/run-id
-              operator: Exists
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8080"
@@ -5198,9 +5359,10 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    # The issuer's host only: ${oidc_issuer_host} carries its /id/<ID> path.
     - toFQDNs:
         - matchName: api.github.com
-        - matchName: ${oidc_issuer_host}
+        - matchName: oidc.eks.${region}.amazonaws.com
       toPorts:
         - ports:
             - port: "443"
@@ -5231,6 +5393,8 @@ spec:
         name: eks-aws-0-vars
   dependsOn:
     - name: agent-secrets
+    # The HTTPRoute's parent: the only way in.
+    - name: agent-router
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -5265,8 +5429,9 @@ git commit -m "feat(security): self-hosted octo-sts for the agents' GitHub App"
 ```yaml
 # Agents' App, implementer runs (ADR-0043). A gate path (C6): octo-sts reads it
 # from the default branch only. The issuer is a pattern because the EKS issuer
-# ID changes on every rebuild (OD-5); octo-sts is reachable from sandbox pods
-# only, which is what keeps other clusters' tokens out.
+# ID changes on every rebuild (OD-5), and it matches any EKS cluster in the
+# region: agent-router's `sts` listener, the only way to octo-sts, pins this
+# cluster's exact issuer, and that is what keeps other clusters' tokens out.
 issuer_pattern: 'https://oidc\.eks\.eu-west-3\.amazonaws\.com/id/[0-9A-F]{32}'
 subject_pattern: 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'
 audience: octo-sts/Smana/cloud-native-ref/implementer
@@ -5384,7 +5549,7 @@ run() { : >"$STUB_LOG"; rm -f "$STUB_BODY"; bash "$SUBJECT" Smana/demo >/dev/nul
 
 run
 grep -q '^api --method POST repos/Smana/demo/rulesets ' "$STUB_LOG" || fail "creates the ruleset when absent"
-jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the owner and Renovate, always"
+jq -e '.bypass_actors == [{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":4,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2740,"actor_type":"Integration","bypass_mode":"always"}]' "$STUB_BODY" >/dev/null || fail "bypass is the admin, write and maintain roles and Renovate, always"
 jq -e '.conditions.ref_name == {"include":["~ALL"],"exclude":["refs/heads/agent/**"]}' "$STUB_BODY" >/dev/null || fail "confines everyone else to agent/**"
 jq -e '[.rules[].type] == ["creation","update","deletion"]' "$STUB_BODY" >/dev/null || fail "restricts creation, update and deletion"
 
@@ -5395,7 +5560,7 @@ if grep -q -- '--method POST' "$STUB_LOG"; then fail "never creates a second rul
 
 export STUB_EXISTING="" FACTORY_APP_SLUG=ogenki-factory
 run
-jq -e '[.bypass_actors[].actor_id] == [5, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
+jq -e '[.bypass_actors[].actor_id] == [5, 4, 2, 2740, 999]' "$STUB_BODY" >/dev/null || fail "adds the factory's App when named"
 
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"
@@ -5435,10 +5600,11 @@ Expected: FAIL — `subject exited non-zero` (the script does not exist yet).
 # Applies the agents' branch ruleset (SP1 design §6, OD-7) to one repository.
 #
 # Every actor NOT on the bypass list may only create, update or delete
-# refs/heads/agent/**. The bypass list is the owner (the repository admin role),
-# Renovate and, once SP3 ships, the factory's App, all `always`. The agents' App
-# is therefore the only confined actor, and since it cannot update main, it
-# cannot merge. SP3's merge-gate ruleset is a separate ruleset.
+# refs/heads/agent/**. The bypass list is the repository roles admin (the
+# owner), write and maintain, so no human collaborator is confined, Renovate
+# and, once SP3 ships, the factory's App, all `always`. An App holds no role,
+# so the agents' App is the only confined actor, and since it cannot update
+# main, it cannot merge. SP3's merge-gate ruleset is a separate ruleset.
 #
 # Idempotent: updates the ruleset named `agent-branches` when it exists.
 # usage: agent-branch-ruleset.sh <owner/repo>
@@ -5449,8 +5615,9 @@ REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-branches.json"
 
-# RepositoryRole 5 is GitHub's built-in admin role: the owner of a user repo.
-bypass='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
+# GitHub's base repository roles: 5 admin (the owner of a user repo), 4 write,
+# 2 maintain.
+bypass='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":4,"actor_type":"RepositoryRole","bypass_mode":"always"},{"actor_id":2,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
 for slug in renovate ${FACTORY_APP_SLUG:-}; do
   id="$(gh api "/apps/$slug" --jq .id)"
   bypass="$(jq -c --argjson id "$id" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
@@ -5585,10 +5752,12 @@ a rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->`
 kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py reviewer Smana/cloud-native-ref
 kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/crossplane-configuration
 kubectl exec -n agents xplane-run-screvwaa -c harness -- /usr/local/bin/python /tmp/sc11.py implementer Smana/cloud-native-ref
+kubectl exec -n agents xplane-run-scimplaa -c harness -- /usr/local/bin/python -c "import urllib.request; urllib.request.urlopen('http://octo-sts.agent-system.svc.cluster.local:8080/', timeout=5)"; echo "exit=$?"
 ```
 Expected: the reviewer gets a token but every push is rejected (`403`/permission); the other
 repository's exchange fails (`HTTP Error 403`/PermissionDenied: no trust policy there, App not
-installed); the reviewer asking for `agent-implementer` fails (audience mismatch).
+installed); the reviewer asking for `agent-implementer` fails (audience mismatch); the direct call
+exits 1, because a run reaches octo-sts only through the `sts` listener.
 
 - [ ] **Step 6: Clean up and record**
 
@@ -5821,6 +5990,7 @@ Expected: `Ran 5 tests … OK`.
 Needs the openhands SDK, so it runs inside the image: docker build --target test.
 """
 import os
+import signal
 import sys
 import unittest
 
@@ -5861,6 +6031,14 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(agent_run.outcome("stuck"), 1)
         self.assertIsNone(agent_run.outcome("running"))
         self.assertIsNone(agent_run.outcome("waiting_for_confirmation"))
+
+
+class SigtermTest(unittest.TestCase):
+    def test_sigterm_unwinds_so_finally_revokes(self):
+        self.addCleanup(signal.signal, signal.SIGTERM, signal.SIG_DFL)
+        agent_run.exit_on_sigterm()
+        with self.assertRaises(SystemExit):
+            signal.raise_signal(signal.SIGTERM)
 
 
 if __name__ == "__main__":
@@ -5992,6 +6170,7 @@ section 4): every rule it passes to the agent is enforced outside the sandbox.
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -6061,6 +6240,12 @@ def outcome(status: str) -> int | None:
     return None
 
 
+def exit_on_sigterm() -> None:
+    """Pod deletion sends SIGTERM, whose default action kills the process without
+    running `finally`; exiting through SystemExit runs it, so the token is revoked."""
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+
+
 def _verified(ref: str) -> bool:
     return subprocess.run(["git", "-C", REPO_DIR, "rev-parse", "--verify", "--quiet", ref], capture_output=True).returncode == 0
 
@@ -6078,8 +6263,11 @@ def clone(env: dict) -> None:
 
 
 def main() -> int:
+    exit_on_sigterm()
     env = dict(os.environ)
-    server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "0.0.0.0", "--port", "8000"])
+    # Loopback only (P13): the agent-server API is unauthenticated, and the
+    # composition probes it with exec from inside this container.
+    server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "127.0.0.1", "--port", "8000"])
     try:
         wait_ready()
         clone(env)
@@ -6102,7 +6290,7 @@ if __name__ == "__main__":
 ```
 
 Run: `docker build --target test container-images/agent-harness`
-Expected: the build succeeds and the log shows `Ran 8 tests … OK` (5 helper + 3 driver). If an
+Expected: the build succeeds and the log shows `Ran 9 tests … OK` (5 helper + 4 driver). If an
 `openhands.*` import fails, the SDK moved a symbol: find it with
 `docker build --target harness -t agent-harness:dev container-images/agent-harness && docker run --rm --entrypoint /agent-server/.venv/bin/python agent-harness:dev -c "import openhands.sdk as s; print(dir(s))"`
 and fix the import, not the test.
@@ -6134,7 +6322,7 @@ The AgentRun sandbox's harness (SP1 design §5): `ghcr.io/openhands/agent-server
 
 | File | Role |
 |---|---|
-| `agent_run.py` → `agent-run` | Entrypoint: start agent-server, clone and resume `$BRANCH`, POST the conversation, wait, revoke, exit 0/1 |
+| `agent_run.py` → `agent-run` | Entrypoint: start agent-server, clone and resume `$BRANCH`, POST the conversation, wait, revoke (on SIGTERM too), exit 0/1 |
 | `git_credential_agent.py` → `git-credential-agent` | git credential helper; exchanges through identity-proxy `:4001`, caches in memory, `revoke` on exit and in `preStop` |
 | `gh` | gh with that token in `GH_TOKEN` |
 | `commit-msg` | adds `Agent-Run: $RUN_ID` |
@@ -6313,6 +6501,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "9090"
@@ -6463,6 +6652,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8081"
@@ -6595,6 +6785,7 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
       toPorts:
         - ports:
             - port: "8081"
@@ -6661,6 +6852,13 @@ backend. These two routes were validated against the pinned `ai-gateway-crds-hel
 # listener's issuer and audiences for `oauth`, deny by default, and allow each
 # role its tools on `aud`. toolSelector hides every other tool, including all
 # mutating ones. SP2 adds the room-broker backend (:8090) and its room_* rules.
+#
+# Envoy Gateway forwards the run's validated token upstream (1.9.1 always does),
+# and no MCP server may receive it. Agent Router 1.1.0 has no header-removal
+# field on an MCPRoute: its MCP proxy calls each backend with a fresh request
+# carrying only the headers `forwardHeaders` names. So no backendRef here ever
+# lists Authorization in `forwardHeaders`, and any plain HTTPRoute to an MCP
+# server removes it with a RequestHeaderModifier.
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
@@ -7108,6 +7306,9 @@ resources:
   - mcproutes.yaml
 ```
 
+Run: `kustomize build infrastructure/base/agent-mcp | grep -c forwardHeaders`
+Expected: `0`. No route here forwards a client header, so the run's token never reaches an MCP server.
+
 `clusters/aws-0-agent-platform/infrastructure-agent-mcp.yaml`:
 
 ```yaml
@@ -7259,28 +7460,29 @@ Runs in `Smana/crossplane-configuration`, fresh worktree `feat/agentrun-harness`
 
 **Files:**
 - Modify: `apis/agentrun/kcl/main.k` (`_HARNESS_PROFILES`), `apis/agentrun/kcl/main_test.k` (one
-  test replaced), `apis/agentrun/composition.yaml` (regenerated), `tests/golden/agentrun-*.yaml`
-  (re-captured), `packages/aws/crossplane.yaml` (core floor)
+  test added, one assertion moved into it), `apis/agentrun/composition.yaml` (regenerated),
+  `tests/golden/agentrun-*.yaml` (re-captured), `packages/aws/crossplane.yaml` (core floor)
 
 **Interfaces:**
 - Consumes: `ghcr.io/smana/agent-harness:v0.1.0` (Task 5.1), whose entrypoint `agent-run` starts
-  agent-server on `0.0.0.0:8000` itself.
+  agent-server on `127.0.0.1:8000` itself. The exec probes and the CNP stay as CC-1 made them (P13).
 - Produces: release `v0.8.1`.
 
-- [ ] **Step 1: Replace the test first**
+- [ ] **Step 1: The test first**
 
-In `main_test.k`, replace `test_harness_binds_for_probes` with:
+In `main_test.k`, add this test, and delete the `_h.args == ["--port", "8000"]` assertion from
+`test_harness_stays_on_loopback` (the new test owns `args`; the exec-probe assertions stay):
 
 ```kcl
 test_harness_profile_is_the_platform_image = lambda {
     _c = _pod(_run({})).containers[0]
     assert _c.image.startswith("ghcr.io/smana/agent-harness:v0.1.0@sha256:"), "the openhands profile is the repo-built harness (S7)"
-    assert _c.args == [], "agent-run starts agent-server on 0.0.0.0 itself"
+    assert _c.args == [], "agent-run starts agent-server on 127.0.0.1:8000 itself"
 }
 ```
 
 Run: `cd apis/agentrun/kcl && kcl test . -Y settings-example.yaml`
-Expected: FAIL on `test_harness_profile_is_the_platform_image` only (27/28 pass).
+Expected: FAIL on `test_harness_profile_is_the_platform_image` only.
 
 - [ ] **Step 2: Pin the harness by digest**
 
@@ -7291,11 +7493,13 @@ python3 - apis/agentrun/kcl/main.k <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-old = """        # agent-server binds 127.0.0.1 unless told otherwise, and kubelet probes
-        # the pod IP. The CNP admits only `host` on this port.
-        args = ["--host", "0.0.0.0", "--port", "8000"]"""
-new = """        # agent-run, the image's entrypoint, starts agent-server on 0.0.0.0:8000
-        # itself; the CNP admits only `host` on this port.
+old = """        # No --host: agent-server keeps its default 127.0.0.1. Its API is
+        # unauthenticated, so it stays off the pod network — the node included
+        # — and the probes run inside the container instead (_localGet).
+        args = ["--port", "8000"]"""
+new = """        # agent-run, the image's entrypoint, starts agent-server on
+        # 127.0.0.1:8000 itself. Its API is unauthenticated, so it stays off the
+        # pod network, and the probes run inside the container (_localGet).
         args = []"""
 assert old in s, "profile block moved; edit by hand"
 open(p, "w").write(s.replace(old, new))
@@ -7305,7 +7509,7 @@ grep -c 'ghcr.io/smana/agent-harness:v0.1.0@sha256:[0-9a-f]\{64\}' apis/agentrun
 Expected: `1`.
 
 Run: `cd apis/agentrun/kcl && kcl fmt . && kcl test . -Y settings-example.yaml`
-Expected: `PASS: 28/28`.
+Expected: every test passes.
 
 - [ ] **Step 3: Raise the core floor, regenerate, re-capture**
 
@@ -7319,7 +7523,7 @@ for ex in agentrun-basic agentrun-complete; do
     --extra-resources examples/environmentconfig.yaml > tests/golden/$ex.yaml
 done
 git diff --stat tests/golden
-git diff tests/golden | grep '^[-+] ' | grep -v -E 'image:|args|--host|0\.0\.0\.0|--port|"8000"' | head
+git diff tests/golden | grep '^[-+] ' | grep -v -E 'image:|args|--port|"8000"' | head
 task check
 ```
 Expected: the golden diff touches only the harness `image` and `args` lines (the last `grep` prints
@@ -7573,12 +7777,12 @@ spec:
       interval: 5m
       rules:
         - alert: AgentRouterUnauthorizedBurst
-          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:401 | stats count() as unauthorized | filter unauthorized:>20'
+          expr: 'kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:(401|403) | stats count() as unauthorized | filter unauthorized:>20'
           labels:
             severity: warning
           annotations:
             summary: "agent-router rejected {{ $value }} requests in 5 minutes"
-            description: "Replayed or foreign tokens (T8), or identity-proxy rotation broken (R2)."
+            description: "401: missing, unsigned or wrongly-signed tokens (T8), or identity-proxy rotation broken (R2). 403: valid token with wrong audience (T8)."
         - alert: OctoStsExchangeFailures
           expr: 'kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
           labels:
@@ -7810,7 +8014,8 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHT
 until [ "$(kubectl exec -n agents agent-probe -c probe -- curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GWT" http://agent-router.envoy-gateway-system.svc.cluster.local:8080/v1/models)" = 401 ]; do sleep 15; done; echo "copied gateway token dead $(( $(date +%s) - ISSUED )) s after issue"
 unset GHT GWT
 ```
-Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke); copied gateway token
+Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke, which still reaches
+`api.github.com` because the run's `Usage` holds its CNP until the pod is gone); copied gateway token
 rejected ≤ 600 s after issue: a 10-minute run's tokens live 600 s, because R2 sets the TTL to the
 deadline (a default 120-minute run's copied token would verify for 7200 s).
 
@@ -7834,7 +8039,7 @@ Expected: empty `status.usage` after `-5`; `1234`; `BudgetExhausted` with the po
 ```bash
 kubectl delete agentrun -n agents $B --wait
 kubectl delete -f scripts/ops/k8s/agent-probe.yaml
-for r in $REV $B; do kubectl get sa,cm,cnp,sandbox,pod -A -l agents.ogenki.io/run-id=${r#xplane-run-}; done
+for r in $REV $B; do kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=${r#xplane-run-}; done
 ```
 Expected: `No resources found` for both.
 
