@@ -55,12 +55,13 @@ spec:
               port: mcp
             periodSeconds: 20
           resources:
+            # 89Mi idle against a 128Mi limit on aws-0: headroom for the same embedded-docs load.
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 64Mi
             limits:
               cpu: 200m
-              memory: 128Mi
+              memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
