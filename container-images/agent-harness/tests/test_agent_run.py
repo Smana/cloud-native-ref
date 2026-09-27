@@ -1,4 +1,4 @@
-"""agent-run's contract with agent-server 1.49.5, checked against the SDK's own models.
+"""agent-run's contract with agent-server 1.49.6, checked against the SDK's own models.
 
 Needs the openhands SDK, so it runs inside the image: docker build --target test.
 """

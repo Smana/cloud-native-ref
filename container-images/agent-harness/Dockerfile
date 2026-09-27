@@ -2,7 +2,7 @@
 # The AgentRun harness (SP1 design §5, ADR-0041): OpenHands agent-server plus
 # the driver, the git credential helper, gh, and the Agent-Run trailer hook.
 # The AgentRun composition pins this image by digest; a claim never names one.
-FROM ghcr.io/openhands/agent-server:1.49.5-python@sha256:1e7b08ffef732d6520e0b0048931b6ef425a7742c5fb80a82c9397a285c669eb AS harness
+FROM ghcr.io/openhands/agent-server:1.49.6-python@sha256:02ef66fdf0b22a40b0b55c5cca8d1790cfd260c5069f7c0b99edc1b505d5ab37 AS harness
 
 # `.github/workflows/build-container-images.yml` tags the image with this.
 ARG AGENT_HARNESS_VERSION=v0.1.0
