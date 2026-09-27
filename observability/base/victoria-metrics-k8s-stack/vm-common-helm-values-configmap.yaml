@@ -653,3 +653,11 @@ data:
     victoria-metrics-operator:
       admissionWebhooks:
         policy: Ignore
+      # The pre-delete cleanup hook cannot run with this release name: its Job is
+      # "<fullname>-cleanup-hook", 65 characters, and Kubernetes copies a Job's
+      # name into its pod's job-name label (max 63). Every uninstall failed and
+      # left the release stuck in "uninstalling" (2026-09-26, operator chart
+      # 0.67.3, unfixed upstream). CRDs are Flux-owned anyway (crds.enabled: false).
+      crds:
+        cleanup:
+          enabled: false
