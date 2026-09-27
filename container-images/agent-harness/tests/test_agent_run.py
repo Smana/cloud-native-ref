@@ -46,9 +46,30 @@ class BuildRequestTest(unittest.TestCase):
         self.assertEqual(self.body["conversation_id"], ENV["CONVERSATION_ID"])
         self.assertEqual(self.body["workspace"]["working_dir"], "/workspace/repo")
 
+    def test_calls_are_priced_without_a_litellm_lookup(self):
+        llm = self.body["agent"]["llm"]
+        self.assertAlmostEqual(llm["input_cost_per_token"], 1.40e-6)
+        self.assertAlmostEqual(llm["output_cost_per_token"], 4.40e-6)
+
+    def test_prices_can_be_overridden(self):
+        env = {**ENV, "LLM_INPUT_USD_PER_MTOK": "2", "LLM_OUTPUT_USD_PER_MTOK": "8"}
+        llm = agent_run.build_request(env, "t", "r")["agent"]["llm"]
+        self.assertAlmostEqual(llm["input_cost_per_token"], 2e-6)
+        self.assertAlmostEqual(llm["output_cost_per_token"], 8e-6)
+
     def test_autotitle_is_disabled(self):
         # Each auto-title is an extra model call that spends the run's budget.
         self.assertFalse(self.body["autotitle"])
+
+
+class ServerEnvTest(unittest.TestCase):
+    def test_secret_key_is_made_per_pod_when_unset(self):
+        key = agent_run.server_env({})["OH_SECRET_KEY"]
+        self.assertGreaterEqual(len(key), 32)
+        self.assertNotEqual(key, agent_run.server_env({})["OH_SECRET_KEY"])
+
+    def test_a_set_secret_key_is_kept(self):
+        self.assertEqual(agent_run.server_env({"OH_SECRET_KEY": "given"})["OH_SECRET_KEY"], "given")  # pragma: allowlist secret
 
 
 class OutcomeTest(unittest.TestCase):
