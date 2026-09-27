@@ -50,6 +50,12 @@ spec:
           readinessProbe:
             tcpSocket:
               port: mcp
+          # Same docs-index startup as mcp-victoriametrics: liveness waits until it listens.
+          startupProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             tcpSocket:
               port: mcp

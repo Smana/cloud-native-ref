@@ -51,6 +51,12 @@ spec:
           readinessProbe:
             tcpSocket:
               port: mcp
+          # It listens only after loading its docs index; liveness killed it first on aws-0 (2026-09-27).
+          startupProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             tcpSocket:
               port: mcp
@@ -61,7 +67,7 @@ spec:
               cpu: 10m
               memory: 128Mi
             limits:
-              cpu: 200m
+              cpu: 1000m
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
