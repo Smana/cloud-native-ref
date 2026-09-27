@@ -25,7 +25,7 @@ reads, RunLore findings) may reach only EU-resident Anthropic or self-hosted mod
 - No provider key in any workload pod; keys live only where the gateways read them.
 - Internal data stays in EU regions.
 - Both client formats: OpenAI (OpenWebUI, OpenCode) and Anthropic (Claude Code).
-- Cost: GLM-5.2 is $1.40 / $4.40 per 1M tokens; Claude Opus 5.5 is $4 / $20.
+- Cost: GLM-5.2 is $1.40 / $4.40 per 1M tokens (GLM-5.3, which replaced it on 2026-09-27, lists at the same price); Claude Opus 5.5 is $4 / $20.
 
 ## Considered Options
 
