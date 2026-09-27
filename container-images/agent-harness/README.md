@@ -1,6 +1,6 @@
 # agent-harness
 
-The AgentRun sandbox's harness (SP1 design §5): `ghcr.io/openhands/agent-server:1.49.5-python` plus
+The AgentRun sandbox's harness (SP1 design §5): `ghcr.io/openhands/agent-server:1.49.6-python` plus
 
 | File | Role |
 |---|---|
