@@ -29,6 +29,9 @@ key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
 
+`--class internal` runs have no model route until SP4 PR 2, so such a run 404s on every model call;
+`agent-run.sh` still accepts it because the runbooks use it to test the internal listener.
+
 ## Teardown
 
 Suspending leaves the children in place. To remove them:

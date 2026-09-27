@@ -6,6 +6,8 @@
 #                     (--task "<text>" | --task-url <issue or PR URL>)
 #                     [--repo <owner/name>] [--branch agent/<id>] [--size small|medium|large]
 #                     [--minutes <1-480>] [--profiles pypi,npm,golang,crates] [--dry-run]
+# --class internal has no model route until SP4 PR 2, so such a run 404s on every model call; it is
+# still accepted because the runbooks use it to test the internal listener.
 # AGENT_PRINCIPAL overrides the principal (default: human:<git user.email>) and must match
 # the design's principal CEL: human:<id> or system:<name> (lowercase, plan Task 1.1).
 # Only the run's name goes to stdout (callers capture it with `| tail -1`); the
