@@ -19,7 +19,7 @@ spec:
             summary: "Agent sandbox pod {{ $labels.pod }} has been Pending for 15 minutes"
             description: "Check the agents-gvisor NodePool (limit, spot capacity) and runsc on the node: kubectl describe pod -n agents {{ $labels.pod }}"
         - alert: AgentGvisorPoolNearLimit
-          expr: sum by (resource_type) (karpenter_nodepool_usage{nodepool="agents-gvisor"}) / sum by (resource_type) (karpenter_nodepool_limit{nodepool="agents-gvisor"}) * 100 > 90
+          expr: sum by (resource_type) (karpenter_nodepools_usage{nodepool="agents-gvisor"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"}) * 100 > 90
           for: 10m
           labels:
             severity: warning

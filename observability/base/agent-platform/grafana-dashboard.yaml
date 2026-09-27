@@ -33,7 +33,7 @@ spec:
          "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
-         "targets": [{"refId": "A", "expr": "sum by (resource_type) (karpenter_nodepool_usage{nodepool=\"agents-gvisor\"}) / sum by (resource_type) (karpenter_nodepool_limit{nodepool=\"agents-gvisor\"})", "legendFormat": "{{resource_type}}"}]},
+         "targets": [{"refId": "A", "expr": "sum by (resource_type) (karpenter_nodepools_usage{nodepool=\"agents-gvisor\"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool=\"agents-gvisor\"})", "legendFormat": "{{resource_type}}"}]},
         {"id": 4, "type": "logs", "title": "agent-router 4xx",
          "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
