@@ -12,7 +12,9 @@ vlogscli -datasource.url='https://vl.priv.aws.ogenki.io/select/logsql/query'
 Two rules account for most broken queries:
 
 1. **Kubernetes labels use dot notation** — `kubernetes.container_name`, never underscores.
-2. **After `unpack_json`, fields are prefixed `log.`**
+2. **`log.*` fields are present at ingest for JSON logs** — they exist without any
+   `unpack_json` stage, so `| log.level:error` works on its own. The `unpack_json` in
+   the examples below is redundant for JSON logs but harmless.
 
 ```
 {kubernetes.container_name="myapp"} | unpack_json | log.level:error | limit 10   # correct
@@ -33,9 +35,9 @@ keys onto semconv (`internal/observability/logger.go`), so a query or panel keye
 matches nothing once that image is deployed. Apps still on the old key emit `log.service`; both may
 be present mid-rollout.
 
-These names contain dots, which LogsQL treats as path separators after `unpack_json`, so a bare
-`log.service.name:x` may need quoting. **The exact form is unverified against a live instance** —
-check it with `vlogscli` before relying on it in a dashboard rather than trusting this line.
+These names contain dots, which LogsQL treats as path separators, so a bare `log.service.name:x`
+may need quoting. That quoting behavior was not tested — check it with `vlogscli` before relying
+on it in a dashboard rather than trusting this line.
 
 In Grafana, the same syntax takes variables unquoted:
 `{kubernetes.container_name=$service} | unpack_json | log.level:error`
