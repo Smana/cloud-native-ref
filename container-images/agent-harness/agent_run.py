@@ -100,10 +100,11 @@ def outcome(status: str) -> int | None:
     return None
 
 
-def poll(cid: str) -> int:
+def poll(cid: str, on_tick=None) -> int:
     """Poll the conversation until it reaches a terminal status, tolerating
     up to MAX_POLL_ERRORS consecutive network errors so one slow or dropped
-    connection to the loopback agent-server doesn't fail the run."""
+    connection to the loopback agent-server doesn't fail the run. on_tick runs
+    after every successful poll."""
     status = ""
     errors = 0
     while True:
@@ -117,11 +118,79 @@ def poll(cid: str) -> int:
             time.sleep(POLL_INTERVAL_S)
             continue
         errors = 0
+        if on_tick:
+            on_tick()
         code = outcome(status)
         if code is not None:
             print("agent-run: conversation ended with execution_status=%s" % status, file=sys.stderr)
             return code
         time.sleep(POLL_INTERVAL_S)
+
+
+def _text(message: dict | None) -> str:
+    content = (message or {}).get("content") or []
+    return " ".join(c.get("text", "") for c in content if c.get("type") == "text").strip()
+
+
+def _short(value, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+class StepLog:
+    """Prints each new agent step to stdout, one line each, so `kubectl logs -c
+    harness` shows what the agent is doing, and VictoriaLogs keeps it after the
+    pod is gone. The final agent message is printed in full: for a read-only
+    role it is the report. Actions are printed, their outputs never are. Best
+    effort: a failure here is logged and never fails the run."""
+
+    def __init__(self, cid: str):
+        self.cid = cid
+        self.page = None
+        self.seen = set()
+        self.steps = 0
+        self.last_message = ""
+
+    def __call__(self) -> None:
+        try:
+            page = self.page
+            while True:
+                path = "/api/conversations/%s/events/search?limit=100" % self.cid
+                body = http("GET", path + ("&page_id=" + page if page else ""))
+                for event in body.get("items") or []:
+                    if event.get("id") in self.seen:
+                        continue
+                    self.seen.add(event.get("id"))
+                    line = self.describe(event)
+                    if line:
+                        print(line, flush=True)
+                nxt = body.get("next_page_id")
+                if not nxt:
+                    break
+                # Resume from the last page next tick: at most one page is re-read.
+                self.page = page = nxt
+        except Exception as exc:  # noqa: BLE001 -- logging must never fail the run
+            print("agent-run: step log unavailable: %s" % exc, file=sys.stderr, flush=True)
+
+    def describe(self, event: dict) -> str | None:
+        kind = event.get("kind")
+        if kind == "ActionEvent":
+            self.steps += 1
+            action = event.get("action") or {}
+            target = action.get("command") or action.get("path") or ""
+            tool = event.get("tool_name") or action.get("kind")
+            return "agent-run step %d: %s | %s | %s" % (self.steps, tool, _short(event.get("summary"), 120), _short(target, 200))
+        if kind == "MessageEvent" and event.get("source") == "agent":
+            self.last_message = _text(event.get("llm_message"))
+            return "agent-run message: " + _short(self.last_message, 400)
+        if kind in ("ConversationErrorEvent", "AgentErrorEvent"):
+            return "agent-run error: %s %s" % (event.get("code") or kind, _short(event.get("detail") or event.get("error"), 400))
+        return None
+
+    def summary(self) -> None:
+        print("agent-run summary: %d steps" % self.steps, flush=True)
+        if self.last_message:
+            print("agent-run final message:\n" + self.last_message[:8000], flush=True)
 
 
 def _verified(ref: str) -> bool:
@@ -171,7 +240,12 @@ def main() -> int:
         with open(env["TASK_FILE"]) as t, open(env["RULES_FILE"]) as r:
             request = build_request(env, t.read(), r.read())
         conversation = http("POST", "/api/conversations", request)
-        return poll(conversation["id"])
+        steps = StepLog(conversation["id"])
+        try:
+            return poll(conversation["id"], on_tick=steps)
+        finally:
+            steps()
+            steps.summary()
     finally:
         # A second SIGTERM during cleanup must not abort the revoke, and
         # agent-server must be stopped BEFORE the token is revoked so it
