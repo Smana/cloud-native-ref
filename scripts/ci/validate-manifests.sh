@@ -64,7 +64,7 @@ polaris audit \
   --set-exit-code-on-danger \
   --only-show-failed-tests
 
-echo "==> [5/6] Gate 3 — AI gateway invariants (budget rules, identity-header strip, agent-router listener pinning)"
+echo "==> [5/6] Gate 3 — AI gateway invariants (budget rules, identity-header strip, agent-router listener pinning, /v1/models guard)"
 python3 scripts/ci/flux-schema/assert-ai-gateway.py "${BUNDLE_DIR}"
 
 echo "==> [6/6] Gate 4 — Alertmanager Slack templates render"

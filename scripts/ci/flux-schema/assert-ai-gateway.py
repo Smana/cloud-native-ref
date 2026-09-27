@@ -38,6 +38,17 @@ wrong:
       generated HTTPRoute) or a label selector is assumed in scope. At least
       one route must attach -- zero is a layout regression. Other Gateways'
       routes may omit sectionName.
+  A7  Every agent-router listener that an AIGatewayRoute attaches to has an
+      HTTPRoute on that same Gateway and sectionName which directly responds
+      to an Exact `/v1/models` match via an HTTPRouteFilter's directResponse.
+      Envoy AI Gateway enables its ext_proc per route, only on the
+      AIGatewayRoute-generated routes -- and on agent-router's listeners
+      ext_proc precedes jwt_authn in the filter chain, so without this guard
+      ext_proc answers GET /v1/models itself before authentication ever runs
+      (verified live: no token, a wrong audience and a forged token all
+      returned 200). At least one AIGatewayRoute must attach to agent-router --
+      zero is a layout regression, not compliance, and used to pass this check
+      vacuously.
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -215,7 +226,66 @@ def check_agent_router_routes(objs):
     return errors
 
 
-CHECKS = [check_rate_limit_rules, check_identity_strips, check_agent_router_routes]
+def _agent_router_sections(obj):
+    """sectionNames obj's parentRefs pin it to on Gateway agent-router (namespace-local)."""
+    ns = (obj.get("metadata") or {}).get("namespace", "")
+    sections = set()
+    for p in spec_of(obj).get("parentRefs") or []:
+        if (p.get("kind") or "Gateway") != "Gateway":
+            continue
+        if ((p.get("namespace") or ns), p.get("name")) != AGENT_ROUTER:
+            continue
+        if p.get("sectionName"):
+            sections.add(p["sectionName"])
+    return sections
+
+
+def check_v1_models_guard(objs):
+    # HTTPRouteFilters that actually direct-respond -- an ExtensionRef to one
+    # missing directResponse (a rewrite filter, say) does not guard anything.
+    direct_response_filters = {
+        ((f.get("metadata") or {}).get("namespace", ""), (f.get("metadata") or {}).get("name"))
+        for f in objs if f.get("kind") == "HTTPRouteFilter" and spec_of(f).get("directResponse") is not None
+    }
+
+    listeners = set()
+    for obj in objs:
+        if obj.get("kind") == "AIGatewayRoute":
+            listeners |= _agent_router_sections(obj)
+
+    guarded = set()
+    for obj in objs:
+        if obj.get("kind") != "HTTPRoute":
+            continue
+        ns = (obj.get("metadata") or {}).get("namespace", "")
+        sections = _agent_router_sections(obj)
+        if not sections:
+            continue
+        for rule in spec_of(obj).get("rules") or []:
+            exact_models = any((m.get("path") or {}).get("type") == "Exact"
+                               and (m.get("path") or {}).get("value") == "/v1/models"
+                               for m in rule.get("matches") or [])
+            if not exact_models:
+                continue
+            for filt in rule.get("filters") or []:
+                if filt.get("type") != "ExtensionRef":
+                    continue
+                ext = filt.get("extensionRef") or {}
+                if ext.get("kind") == "HTTPRouteFilter" and (ns, ext.get("name")) in direct_response_filters:
+                    guarded |= sections
+
+    errors = []
+    if not listeners:
+        errors.append(f"no AIGatewayRoute attaches to Gateway {'/'.join(AGENT_ROUTER)} "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+    for section in sorted(listeners - guarded):
+        errors.append(f"Gateway {'/'.join(AGENT_ROUTER)} listener {section}: an AIGatewayRoute attaches here "
+                      "but no HTTPRoute directly responds to an Exact /v1/models match, so its ext_proc "
+                      "answers GET /v1/models itself before jwt_authn runs")
+    return errors
+
+
+CHECKS = [check_rate_limit_rules, check_identity_strips, check_agent_router_routes, check_v1_models_guard]
 
 
 def main(argv):
