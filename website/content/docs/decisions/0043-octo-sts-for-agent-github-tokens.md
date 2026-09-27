@@ -117,6 +117,13 @@ repository it grants.
   (design T14, fix deferred as O1)
 - Dependabot is off on this repository (no `dependabot.yml`, security updates disabled, checked
   2026-09-26). Enabling it means adding its App to the bypass list, or its branches are refused
+- The trust policies' issuer is a pattern (any EKS cluster in eu-west-3, because aws-0's issuer ID
+  changes on every rebuild). That is safe only behind this self-hosted octo-sts, whose only caller,
+  agent-router's `sts` listener, has already verified the token against this cluster's issuer.
+  Chainguard's hosted octo-sts App (`octo-sts`, app id 801323) reads the same
+  `.github/chainguard/*.sts.yaml` files with no such check: installed on a repository that
+  carries these policies, it would mint that repository's tokens for anyone with an eu-west-3
+  EKS cluster. Confirm it is absent (github.com/settings/installations) before a repository opts in
 
 ### Neutral
 
