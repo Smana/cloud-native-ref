@@ -37,7 +37,54 @@ GRANT = f"{PLATFORM}/referencegrant-agent-traces.yaml"
 # Keys that carry prompts, completions, tool input or output, headers or error text (lmnr
 # 0.7.60, OpenHands SDK 1.49.6, OTel semconv). None may be allowlisted (rulings O2, O18).
 CONTENT = re.compile(r"^(gen_ai\.(input|output|prompt|completion|tool\.definitions|system_instructions)"
+                     r"|gen_ai\.tool\.call\.(arguments|result)|http\.(request|response)\.header\.|url\.(full|query)|http\.url"
                      r"|lmnr\.span\.(input|output)|llm\.headers|exception\.(message|stacktrace))")
+EXPORTERS = ["otlp_http/victoriatraces"]
+# Links and tracestate carry run-controlled text that no attribute processor sees, and names
+# and versions are free text too (AK5, review I1). Substring is byte-based unless told otherwise.
+CAPS = ["truncate_all(resource.attributes, 256)",
+        "truncate_all(span.attributes, 256)",
+        "truncate_all(spanevent.attributes, 256)",
+        "set(span.links, nil)",
+        'set(span.trace_state, "")'] + [
+    f"set({path}, Substring({path}, 0, {n}, true)) where Len({path}) > {n}"
+    for path, n in (("span.name", 128), ("span.status.message", 128),
+                    ("spanevent.name", 256), ("scope.name", 256), ("scope.version", 256))]
+
+
+def tcp(port):
+    return [{"ports": [{"port": port, "protocol": "TCP"}]}]
+
+
+# Whole rules, so an extra peer, entity or port-less rule fails too.
+CNP_SELECTOR = {"matchLabels": {"app.kubernetes.io/name": "agent-traces-collector",
+                                "app.kubernetes.io/instance": "agent-traces"}}
+CNP_INGRESS = [
+    # Run pods only (O4).
+    {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "agents"},
+                        "matchExpressions": [{"key": "agents.ogenki.io/run-id", "operator": "Exists"}]}],
+     "toPorts": tcp("4318")},
+    # agent-router's data plane, then SP3's factory (O20). No sandbox reaches :4317 (O5).
+    {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "envoy-gateway-system",
+                                        "gateway.envoyproxy.io/owning-gateway-name": "agent-router",
+                                        "gateway.envoyproxy.io/owning-gateway-namespace": "agent-system"}},
+                       {"matchLabels": {"io.kubernetes.pod.namespace": "agent-system",
+                                        "app.kubernetes.io/name": "agent-factory"}}],
+     "toPorts": tcp("4317")},
+    {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "observability",
+                                        "app.kubernetes.io/name": "vmagent"}}],
+     "toPorts": tcp("8888")},
+    {"fromEntities": ["host"], "toPorts": tcp("13133")},
+]
+CNP_EGRESS = [
+    {"toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "kube-system", "k8s-app": "kube-dns"}}],
+     "toPorts": [{"ports": [{"port": "53", "protocol": "UDP"}, {"port": "53", "protocol": "TCP"}],
+                  "rules": {"dns": [{"matchPattern": "*"}]}}]},
+    {"toEntities": ["kube-apiserver"], "toPorts": tcp("443")},
+    {"toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "observability",
+                                      "app.kubernetes.io/name": "vt-single"}}],
+     "toPorts": tcp("10428")},
+]
 
 
 def check_collector():
@@ -45,45 +92,68 @@ def check_collector():
     check(not re.search(r"(?<!\$)\$\{env:", raw), "every ${env:…} is escaped as $${env:…} for Flux")
     values = find(COLLECTOR, "HelmRelease", "agent-traces-collector").get("spec", {}).get("values", {})
     image = values.get("image", {})
-    check(image.get("repository") == "otel/opentelemetry-collector-k8s" and image.get("digest", "").startswith("sha256:"),
+    check(image.get("repository") == "otel/opentelemetry-collector-k8s"
+          and re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("digest", "")),
           "the collector is otelcol-k8s, pinned by digest")
     check(not values.get("presets"), "no chart preset: k8s_attributes must run after the strip step (O3)")
+    check(values.get("clusterRole", {}).get("create") is False,
+          "the chart's ClusterRole is off: the collector's only API read is the Role below")
+    res = values.get("resources", {})
+    check(all(res.get(k, {}).get(r) for k in ("requests", "limits") for r in ("cpu", "memory")),
+          "cpu and memory requests and limits are set")
+    sc, psc = values.get("securityContext", {}), values.get("podSecurityContext", {})
+    check(sc.get("allowPrivilegeEscalation") is False and sc.get("readOnlyRootFilesystem") is True
+          and sc.get("runAsNonRoot") is True and sc.get("capabilities") == {"drop": ["ALL"]}
+          and sc.get("seccompProfile") == {"type": "RuntimeDefault"}
+          and psc.get("runAsNonRoot") is True and psc.get("seccompProfile") == {"type": "RuntimeDefault"},
+          "the pod and container securityContexts are restricted")
     cfg = values.get("alternateConfig", {})
     pipes = cfg.get("service", {}).get("pipelines", {})
     check(set(pipes) == {"traces/agents", "traces/router"}, f"pipelines are traces/agents and traces/router, got {sorted(pipes)}")
     agents, router = pipes.get("traces/agents", {}), pipes.get("traces/router", {})
     check(agents.get("receivers") == ["otlp/agents"] and router.get("receivers") == ["otlp/router"], "one receiver per pipeline (O5)")
+    check(agents.get("exporters") == EXPORTERS and router.get("exporters") == EXPORTERS,
+          f"both pipelines export to VictoriaTraces only, got {agents.get('exporters')} and {router.get('exporters')}")
     receivers = cfg.get("receivers", {})
     check(list(receivers.get("otlp/agents", {}).get("protocols", {})) == ["http"], "sandboxes speak OTLP/HTTP only")
     check(list(receivers.get("otlp/router", {}).get("protocols", {})) == ["grpc"], "agent-router speaks OTLP/gRPC only (EG 1.9)")
     want = ["memory_limiter", "transform/untrusted", "k8s_attributes", "filter/unattributed",
             "transform/attribute", "redaction", "transform/cap", "batch"]
     check(agents.get("processors") == want, f"traces/agents processors are {want}, got {agents.get('processors')}")
+    # Platform spans carry run-controlled strings too (path, user agent, tracestate): capped, not allowlisted.
+    want = ["memory_limiter", "transform/cap", "batch"]
+    check(router.get("processors") == want, f"traces/router processors are {want}, got {router.get('processors')}")
     proc = cfg.get("processors", {})
     k8s = proc.get("k8s_attributes", {})
     check(k8s.get("pod_association") == [{"sources": [{"from": "connection"}]}],
           "the run id comes from the connection only, never a span's resource attributes (O4)")
+    check(k8s.get("passthrough") is False, "k8s_attributes resolves the pod itself, not just tags its IP")
     check(k8s.get("filter", {}).get("namespace") == "agents", "k8s_attributes watches pods in agents only (its Role)")
     labels = {l["tag_name"]: l["key"] for l in k8s.get("extract", {}).get("labels", [])}
     check(labels.get("agent.run_id") == "agents.ogenki.io/run-id", "agent.run_id is the pod's agents.ogenki.io/run-id label")
+    # Every key k8s_attributes sets is deleted from the client's copy first, or the client's would win.
     strip = [s for g in proc.get("transform/untrusted", {}).get("trace_statements", []) for s in g.get("statements", [])]
-    for target in ("resource", "span"):
-        check(f'delete_key({target}.attributes, "agent.run_id")' in strip, f"the client's {target} agent.run_id is deleted first")
+    check(strip == [f'delete_key(resource.attributes, "{k}")'
+                    for k in ("agent.run_id", "agent.role", "k8s.pod.name", "k8s.namespace.name")]
+          + ['delete_key(span.attributes, "agent.run_id")'],
+          "the client's agent.run_id, agent.role and pod identity are deleted before k8s_attributes (O4)")
+    stamp = [s for g in proc.get("transform/attribute", {}).get("trace_statements", []) for s in g.get("statements", [])]
+    check(stamp == ['set(resource.attributes["service.name"], "agent-harness")',
+                    'set(span.attributes["agent.run_id"], resource.attributes["agent.run_id"])'],
+          "service.name is agent-harness and every span carries the run id")
     check(proc.get("filter/unattributed", {}).get("trace_conditions") == ['resource.attributes["agent.run_id"] == nil'],
           "a span no run sent is dropped")
     redaction = proc.get("redaction", {})
     allowed = redaction.get("allowed_keys", [])
     check(redaction.get("allow_all_keys") is False, "redaction is an allowlist (O2)")
+    check(redaction.get("summary") in ("silent", "info"), "redaction's summary never writes key names (debug does)")
     check({"agent.run_id", "service.name", "gen_ai.usage.input_tokens", "gen_ai.request.model"} <= set(allowed),
           "the run id, service name, model and token counts are kept")
     leaks = [k for k in allowed if CONTENT.match(k)]
     check(not leaks, f"content keys allowlisted: {leaks}")
-    # Names are free text a run controls, and redaction only sees attributes (AK5).
     cap = [s for g in proc.get("transform/cap", {}).get("trace_statements", []) for s in g.get("statements", [])]
-    for path, n in (("span.name", 128), ("span.status.message", 128),
-                    ("spanevent.name", 256), ("scope.name", 256), ("scope.version", 256)):
-        check(f"set({path}, Substring({path}, 0, {n})) where Len({path}) > {n}" in cap,
-              f"transform/cap bounds {path} to {n} characters")
+    for statement in CAPS:
+        check(statement in cap, f"transform/cap has `{statement}`")
     endpoint = cfg.get("exporters", {}).get("otlp_http/victoriatraces", {}).get("traces_endpoint")
     check(endpoint == "http://victoria-traces-vt-single-server.observability.svc:10428/insert/opentelemetry/v1/traces",
           f"the exporter writes VictoriaTraces' OTLP path, got {endpoint!r}")
@@ -91,18 +161,16 @@ def check_collector():
     check(role.get("metadata", {}).get("namespace") == "agents"
           and role.get("rules") == [{"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list", "watch"]}],
           "the collector reads pods in agents and nothing else")
+    binding = find(COLLECTOR, "RoleBinding", "agent-traces-collector")
+    check(binding.get("metadata", {}).get("namespace") == "agents"
+          and binding.get("roleRef") == {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "agent-traces-collector"}
+          and binding.get("subjects") == [{"kind": "ServiceAccount", "name": "agent-traces-collector", "namespace": "observability"}],
+          "the Role is bound to the collector's ServiceAccount only")
     cnp = find(COLLECTOR, "CiliumNetworkPolicy", "agent-traces-collector").get("spec", {})
-    ingress = {p["port"]: rule for rule in cnp.get("ingress", []) for tp in rule.get("toPorts", []) for p in tp["ports"]}
-    check(set(ingress) == {"4318", "4317", "8888", "13133"}, f"collector ingress ports, got {sorted(ingress)}")
-    run_peer = (ingress.get("4318", {}).get("fromEndpoints") or [{}])[0]
-    check(run_peer.get("matchLabels") == {"io.kubernetes.pod.namespace": "agents"}
-          and run_peer.get("matchExpressions") == [{"key": "agents.ogenki.io/run-id", "operator": "Exists"}],
-          "only run pods reach :4318")
-    router_peer = (ingress.get("4317", {}).get("fromEndpoints") or [{}])[0].get("matchLabels", {})
-    check(router_peer == {"io.kubernetes.pod.namespace": "envoy-gateway-system",
-                          "gateway.envoyproxy.io/owning-gateway-name": "agent-router",
-                          "gateway.envoyproxy.io/owning-gateway-namespace": "agent-system"},
-          "only agent-router's data plane reaches :4317")
+    check(cnp.get("endpointSelector") == CNP_SELECTOR, f"the CNP selects the collector pods, got {cnp.get('endpointSelector')}")
+    check(cnp.get("ingress") == CNP_INGRESS, "collector ingress is exactly run pods on :4318, agent-router and the "
+          "factory on :4317, vmagent on :8888 and kubelet on :13133")
+    check(cnp.get("egress") == CNP_EGRESS, "collector egress is exactly kube-dns, the API server and VictoriaTraces")
 
 
 def check_reference_grant():
@@ -117,16 +185,7 @@ def check_reference_grant():
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
 
 
-def check_platform_port():
-    cnp = find(COLLECTOR, "CiliumNetworkPolicy", "agent-traces-collector").get("spec", {})
-    peers = [p.get("matchLabels", {}) for rule in cnp.get("ingress", []) for tp in rule.get("toPorts", [])
-             if any(x["port"] == "4317" for x in tp["ports"]) for p in rule.get("fromEndpoints", [])]
-    check({"io.kubernetes.pod.namespace": "agent-system", "app.kubernetes.io/name": "agent-factory"} in peers,
-          "SP3's factory sends its task spans to :4317 (O20)")
-    check(all(p.get("io.kubernetes.pod.namespace") != "agents" for p in peers), "no sandbox ever reaches :4317 (O5, O20)")
-
-
-CHECKS = [check_collector, check_reference_grant, check_platform_port]
+CHECKS = [check_collector, check_reference_grant]
 
 for run in CHECKS:
     run()

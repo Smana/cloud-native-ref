@@ -1,7 +1,8 @@
 ---
 # The agents' trace gate (ADR-0051, observability plan O1-O5, O18). A run's spans reach
 # VictoriaTraces only through here. The run id comes from the sending pod's label, never
-# from the span, and an allowlist drops every attribute that is not metadata.
+# from the span, an allowlist drops every attribute that is not metadata, and span links
+# and tracestate are dropped outright.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -187,22 +188,25 @@ spec:
             - error.type
             - exception.type
             - exception.escaped
-        # Names and versions are free text a run controls, and redaction only sees attributes.
+        # Names, versions, links and tracestate are free text a sender controls, and redaction
+        # only sees attributes. Substring's `true` keeps a cut on a UTF-8 rune boundary.
         transform/cap:
           error_mode: ignore
           trace_statements:
             - statements:
                 - truncate_all(resource.attributes, 256)
             - statements:
-                - set(scope.name, Substring(scope.name, 0, 256)) where Len(scope.name) > 256
-                - set(scope.version, Substring(scope.version, 0, 256)) where Len(scope.version) > 256
+                - set(scope.name, Substring(scope.name, 0, 256, true)) where Len(scope.name) > 256
+                - set(scope.version, Substring(scope.version, 0, 256, true)) where Len(scope.version) > 256
             - statements:
                 - truncate_all(span.attributes, 256)
-                - set(span.name, Substring(span.name, 0, 128)) where Len(span.name) > 128
-                - set(span.status.message, Substring(span.status.message, 0, 128)) where Len(span.status.message) > 128
+                - set(span.links, nil)
+                - set(span.trace_state, "")
+                - set(span.name, Substring(span.name, 0, 128, true)) where Len(span.name) > 128
+                - set(span.status.message, Substring(span.status.message, 0, 128, true)) where Len(span.status.message) > 128
             - statements:
                 - truncate_all(spanevent.attributes, 256)
-                - set(spanevent.name, Substring(spanevent.name, 0, 256)) where Len(spanevent.name) > 256
+                - set(spanevent.name, Substring(spanevent.name, 0, 256, true)) where Len(spanevent.name) > 256
         batch: {}
       exporters:
         otlp_http/victoriatraces:
@@ -222,11 +226,12 @@ spec:
             receivers: [otlp/agents]
             processors: [memory_limiter, transform/untrusted, k8s_attributes, filter/unattributed, transform/attribute, redaction, transform/cap, batch]
             exporters: [otlp_http/victoriatraces]
-          # Platform spans: agent-router (EnvoyProxy manifest) and SP3's factory (task spans, ids
-          # and end reason only). No sandbox reaches this receiver.
+          # Platform spans: agent-router (EnvoyProxy manifest) and SP3's factory. No sandbox
+          # reaches this receiver, but Envoy's tags carry a run's path, user agent and
+          # tracestate: bounded by transform/cap, not allowlisted.
           traces/router:
             receivers: [otlp/router]
-            processors: [memory_limiter, batch]
+            processors: [memory_limiter, transform/cap, batch]
             exporters: [otlp_http/victoriatraces]
 ---
 # k8s_attributes reads run pods' labels, in `agents` only: filter.namespace scopes its
