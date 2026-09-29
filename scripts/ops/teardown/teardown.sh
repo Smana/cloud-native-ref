@@ -49,6 +49,7 @@ wants() { # $1 = lane
 }
 
 destroy_rc=0
+retry=0
 if [ "$VERIFY_ONLY" -eq 0 ]; then
   echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
   # --continue-on-error is the point: one stack whose target is already gone must
@@ -93,28 +94,33 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
       bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-
-      echo
-      echo "=== retrying the destroy after the sweep ==="
-      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
-      destroy_rc=$?
-      echo "=== terramate exit after retry: ${destroy_rc} ==="
-      echo
+      retry=1
     fi
   fi
 
   # GKE's LB leftovers (GCP parity GP-22, owner 2026-09-29): swept only on a
-  # confirmed teardown, and only once gcp-0 is gone (the script refuses otherwise).
+  # confirmed teardown, and only once no GKE cluster is left in the project (the
+  # script refuses otherwise). Retried only while the network stands, like the
+  # AWS VPC check above: a clean teardown must not re-run the whole destroy.
   if wants gcp && [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
-    echo "=== sweeping the LoadBalancer leftovers GKE left in the platform VPC ==="
-    if bash "${ROOT}/scripts/ops/gcp/sweep-lb-orphans.sh" --project "${GCP_PROJECT:-ogenki-435905}" \
-         --network "${GCP_NETWORK:-vpc-europe-west4-dev}" --cluster "${GKE_CLUSTER_NAME:-gcp-0}" --apply; then
-      echo
-      echo "=== retrying the destroy after the GCP sweep ==="
-      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
-      destroy_rc=$?
-      echo "=== terramate exit after retry: ${destroy_rc} ==="
+    _project="${GCP_PROJECT:-ogenki-435905}"
+    _network="${GCP_NETWORK:-vpc-europe-west4-dev}"
+    echo "=== sweeping the LoadBalancer leftovers GKE left in ${_project} ==="
+    bash "${ROOT}/scripts/ops/gcp/sweep-lb-orphans.sh" --project "$_project" \
+      --network "$_network" --cluster "${GKE_CLUSTER_NAME:-gcp-0}" --apply || true
+    if gcloud compute networks describe "$_network" --project "$_project" >/dev/null 2>&1; then
+      retry=1
     fi
+  fi
+
+  # One retry for every lane, so TM_CLOUD=all never destroys three times.
+  if [ "$retry" -eq 1 ]; then
+    echo
+    echo "=== retrying the destroy after the sweep ==="
+    ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+    destroy_rc=$?
+    echo "=== terramate exit after retry: ${destroy_rc} ==="
+    echo
   fi
 fi
 

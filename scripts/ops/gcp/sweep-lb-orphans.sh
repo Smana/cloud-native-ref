@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Delete what a deleted GKE cluster leaves in the platform VPC: its
-# LoadBalancers' forwarding rules and target pools, and the k8s-* firewall
-# rules. No tofu state holds them, forwarding rules bill hourly, and the
+# Delete what a deleted GKE cluster leaves behind: every GKE LoadBalancer's
+# forwarding rules and target pools IN THE PROJECT, and the k8s-* firewall rules
+# on the network. No tofu state holds them, forwarding rules bill hourly, and the
 # firewall rules block the VPC delete (memory gke_lb_orphans_block_vpc_delete;
-# GCP parity GP-22). Dry-run unless --apply.
+# GCP parity GP-22). Dry-run unless --apply. --cluster only names the teardown
+# in the output: the guard below is project-wide.
 #
 # Usage: sweep-lb-orphans.sh --project P --network N --cluster C [--apply]
 set -euo pipefail
@@ -25,14 +26,17 @@ done
 { [ -n "$PROJECT" ] && [ -n "$NETWORK" ] && [ -n "$CLUSTER" ]; } \
   || { echo "--project, --network and --cluster are required" >&2; exit 2; }
 
-# A live cluster still owns these: its service controller would recreate them,
-# and deleting a live LoadBalancer's rule is an outage, not a sweep.
+# The rule and pool lists below are project-wide, so ANY cluster, in any state,
+# may own what they return: deleting a live LoadBalancer's rule is an outage,
+# not a sweep, and its service controller would recreate it anyway.
 if ! clusters="$(gcp_gcloud container clusters list --project "$PROJECT" \
-                   --filter="name=${CLUSTER}" --format='value(name)')"; then
+                   --format='value(name,location,status)')"; then
   echo "cannot list clusters in ${PROJECT}: refusing to sweep blind" >&2; exit 3
 fi
 if [ -n "$clusters" ]; then
-  echo "cluster ${CLUSTER} still exists: nothing is swept while it does" >&2; exit 3
+  echo "GKE clusters still exist in ${PROJECT}; nothing is swept for ${CLUSTER} while any does:" >&2
+  sed 's/^/  /' <<<"$clusters" >&2
+  exit 3
 fi
 
 # GKE's service controller writes {"kubernetes.io/service-name": ...} into the
