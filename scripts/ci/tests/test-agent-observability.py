@@ -276,7 +276,17 @@ def check_run_dashboard():
           "the panels filter on the run: KSM run_id, the pod and principal, the span tag")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard]
+def check_run_trace_link():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run"))
+    names = [n for tr in panels.get("Run", {}).get("transformations", []) if tr["id"] == "filterFieldsByName"
+             for n in tr["options"]["include"]["names"]]
+    check("tier" in names, "the run page shows the run's tier (O23)")
+    step = json.dumps(panels.get("Step log", {}).get("targets", []))
+    check("extract_regexp" in step and "rename trace_id as log.trace_id" in step,
+          "a step line links to its trace through the log.trace_id derived field (O22)")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link]
 
 for run in CHECKS:
     run()

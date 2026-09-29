@@ -5,6 +5,8 @@
 # - agent-router's access log and gen_ai metrics (x_ar_agent / ar_agent = the run's ServiceAccount);
 # - the run's spans in VictoriaTraces (agent.run_id; agent.principal on agent-router's).
 # Tokens read the gateway counter on SP1; status.usage joins once a meter writes it (O7).
+# A step line's trace_id becomes log.trace_id, which the VictoriaLogs datasource links to
+# VictoriaTraces: correlation only (O22), the panels still filter on the pod.
 # $${…} survives Flux's postBuild substitution; bare $__range does too.
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
@@ -43,7 +45,7 @@ spec:
          ],
          "transformations": [
            {"id": "merge", "options": {}},
-           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "role", "data_class", "principal", "repository", "model", "branch", "phase", "reason", "pull_request"]}}}
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "role", "data_class", "principal", "repository", "model", "tier", "branch", "phase", "reason", "pull_request"]}}}
          ],
          "fieldConfig": {"defaults": {}, "overrides": [
            {"matcher": {"id": "byName", "options": "pull_request"}, "properties": [{"id": "links", "value": [{"title": "Pull request", "url": "$${__value.text}", "targetBlank": true}]}]},
@@ -70,7 +72,7 @@ spec:
         {"id": 5, "type": "logs", "title": "Step log",
          "gridPos": {"x": 0, "y": 9, "w": 24, "h": 10},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\""}]},
+         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\" | extract_regexp \"trace_id=(?P<trace_id>[0-9a-f]{32})\" | rename trace_id as log.trace_id"}]},
         {"id": 6, "type": "logs", "title": "Model calls through agent-router",
          "gridPos": {"x": 0, "y": 19, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
