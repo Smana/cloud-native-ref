@@ -5,6 +5,8 @@ region     = "europe-west4"
 cluster_name    = "gcp-0"
 release_channel = "REGULAR"
 
+custom_role_suffix = "_v3"
+
 # Slice 4 must pin the SAME image type on every ComputeClass.
 node_image_type   = "COS_CONTAINERD"
 node_machine_type = "e2-standard-4"

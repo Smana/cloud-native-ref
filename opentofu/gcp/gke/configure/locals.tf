@@ -31,4 +31,12 @@ locals {
   # hosts the IdP" become unanswerable from configuration in the first place.
   # See ADR-0024 and the two-gate note on var.deploy_identity_provider.
   identity_provider_url = var.deploy_identity_provider ? "https://auth.${var.public_domain_name}" : var.identity_provider_url
+
+  # The list filter is a substring match; contains() makes it exact.
+  zitadel_project_secret_present = var.deploy_identity_provider && contains(
+    [for s in try(data.google_secret_manager_secrets.zitadel_project[0].secrets, []) : s.secret_id],
+    "zitadel-project-id"
+  )
+  # Not secret: nonsensitive() keeps the whole ConfigMap out of (sensitive) diffs.
+  zitadel_project_id = local.zitadel_project_secret_present ? nonsensitive(jsondecode(data.google_secret_manager_secret_version.zitadel_project[0].secret_data)["project_id"]) : var.zitadel_project_id
 }
