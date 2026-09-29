@@ -24,6 +24,17 @@ import yaml
 SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
 RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp)\.yaml$")
+# By name, so a renamed overlay directory fails instead of silently leaving scope.
+EXPECTED = (
+    "overlay-infrastructure-gcp-0-agent-router.yaml",
+    "overlay-infrastructure-gcp-0-agent-mcp.yaml",
+    "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml",
+    "overlay-infrastructure-gcp-0-envoy-gateway.yaml",
+    "overlay-infrastructure-gcp-0-vllm-semantic-router.yaml",
+    "overlay-security-gcp-0-octo-sts.yaml",
+    "overlay-security-gcp-0-agent-secrets.yaml",
+    "overlay-observability-gcp-0-agent-platform.yaml",
+)
 FORBIDDEN = [
     (re.compile(r"amazonaws\.com"), "an amazonaws.com host"),
     (re.compile(r"oidc\.eks\."), "an EKS issuer host"),
@@ -49,6 +60,9 @@ def _walk(node, key):
 
 def check_bundle(bundle_dir):
     problems, seen = [], 0
+    for name in EXPECTED:
+        if not (pathlib.Path(bundle_dir) / name).is_file():
+            problems.append(f"{name} is not in the bundle: its checks would silently stop running")
     for f in sorted(pathlib.Path(bundle_dir).glob("overlay-*.yaml")):
         if not SCOPED.match(f.name):
             continue
@@ -59,15 +73,19 @@ def check_bundle(bundle_dir):
                 problems.append(f"{f.name}: {what} on gcp-0")
         if not RUN_TOKEN.search(f.name):
             continue
+        gke = 0
         for doc in yaml.safe_load_all(text):
             if not doc or doc.get("kind") not in ("SecurityPolicy", "MCPRoute"):
                 continue
             for iss in _walk(doc, "issuer"):
+                gke += isinstance(iss, str) and iss.startswith(GKE_ISSUER)
                 if isinstance(iss, str) and not iss.startswith(GKE_ISSUER):
                     problems.append(f"{f.name}: {doc['kind']} {doc['metadata']['name']} issuer {iss} is not GKE's")
             for uri in _walk(doc, "uri"):
                 if isinstance(uri, str) and uri.startswith(GKE_ISSUER) and not uri.endswith("/jwks"):
                     problems.append(f"{f.name}: {doc['kind']} {doc['metadata']['name']} JWKS {uri} is not <issuer>/jwks")
+        if not gke:
+            problems.append(f"{f.name}: no SecurityPolicy or MCPRoute with a GKE issuer: the issuer check would be vacuous")
     if seen == 0:
         problems.append("no gcp-0 agent or AI-gateway overlay in the bundle: the gate would be vacuous")
     return problems
@@ -76,14 +94,18 @@ def check_bundle(bundle_dir):
 def check_umbrellas(root):
     problems = []
     for d in UMBRELLAS:
+        children = 0
         for f in sorted((pathlib.Path(root) / d).glob("*.yaml")):
             for doc in yaml.safe_load_all(f.read_text()):
                 if not doc or doc.get("kind") != "Kustomization" or "toolkit.fluxcd.io" not in doc.get("apiVersion", ""):
                     continue
+                children += 1
                 subs = ((doc.get("spec") or {}).get("postBuild") or {}).get("substituteFrom") or []
                 if any(s.get("name") == "gke-gcp-0-vars" for s in subs) and "/gcp-0/" not in doc["spec"].get("path", ""):
                     problems.append(f"{f.relative_to(root)}: substitutes gke-gcp-0-vars into {doc['spec']['path']}, "
                                     "which CI renders with AWS values; point it at a */gcp-0/* overlay")
+        if not children:
+            problems.append(f"{d}: missing or holds no Flux Kustomization: the umbrella check would be vacuous")
     return problems
 
 
@@ -130,13 +152,30 @@ def check_gcp0_secrets(bundle_dir):
 
 def check_ratelimit(bundle_dir, root):
     """llm-gateway's token budgets need the rate-limit service, whose backend is the KVStore."""
+    # Keyed on the path, not the name: renaming the child must not drop the check.
     children = [d for f in sorted((pathlib.Path(root) / "clusters/gcp-0-ai-gateway").glob("*.yaml"))
-                for d in _docs(f) if d.get("kind") == "Kustomization" and (d.get("metadata") or {}).get("name") == "llm-gateway"]
+                for d in _docs(f) if d.get("kind") == "Kustomization"
+                and str((d.get("spec") or {}).get("path", "")).rstrip("/").endswith("/llm-gateway")]
     f = pathlib.Path(bundle_dir) / "overlay-infrastructure-gcp-0-envoy-gateway.yaml"
     if children and not any(d.get("kind") == "KVStore" for d in _docs(f)):
         return [f"{f.name}: llm-gateway is an ai-gateway child but gcp-0's envoy-gateway renders no KVStore; "
                 "point infrastructure/gcp-0/envoy-gateway at base/envoy-gateway-ratelimit"]
     return []
+
+
+def reaches_port_80(rule):
+    """No ports, port 0 (Cilium's "any"), 80, or a range spanning 80."""
+    ports = [p for tp in rule.get("toPorts") or [] for p in tp.get("ports") or []]
+    if not ports:
+        return True
+    for p in ports:
+        port = str(p.get("port") or "0")
+        if not port.isdigit():  # a named port
+            continue
+        start, end = int(port), int(p.get("endPort") or 0)
+        if start in (0, 80) or start < 80 <= end:
+            return True
+    return False
 
 
 def check_metadata_egress(bundle_dir):
@@ -154,10 +193,10 @@ def check_metadata_egress(bundle_dir):
                 seen |= "169.254.169.254/32" in (rule.get("toCIDR") or [])
                 if "host" not in (rule.get("toEntities") or []):
                     continue
-                ports = [p.get("port") for tp in rule.get("toPorts") or [] for p in tp.get("ports") or []]
-                if not ports or "80" in ports:
+                if reaches_port_80(rule):
                     problems.append(f"{f.name}: CNP {doc['metadata']['name']} egress[{i}] reaches the metadata "
                                     "server via `host`; use toCIDR 169.254.169.254/32 on TCP 80")
+    # Coupled to the runlore chart's toCIDR rule: a runlore bump that changes it turns this red.
     if not seen:
         problems.append("no gcp-0 chart CNP reaches 169.254.169.254/32: the metadata check would be vacuous")
     return problems

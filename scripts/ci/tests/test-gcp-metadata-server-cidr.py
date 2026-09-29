@@ -11,6 +11,7 @@ CiliumNetworkPolicy that reaches host:80 there; nothing else on gcp-0 listens
 on the node's port 80. Charts rendered by a HelmRelease are out of reach here
 (runlore's comes from its chart's gcpWorkloadIdentity option); assert-cloud-shape.py
 checks those in the rendered bundle."""
+import importlib.util
 import pathlib
 import subprocess
 import sys
@@ -22,6 +23,11 @@ except ImportError:
     sys.exit(77)
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+# One definition of "reaches port 80", shared with the rendered-bundle check.
+_spec = importlib.util.spec_from_file_location("acs", ROOT / "scripts/ci/flux-schema/assert-cloud-shape.py")
+_acs = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_acs)
+reaches_port_80 = _acs.reaches_port_80
 CNP_KINDS = {"CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy"}
 MUST_SEE = {"barman-cloud-plugin", "openbao-snapshot"}  # the two GCP metadata-server consumers built from source
 
@@ -55,8 +61,7 @@ for p in sorted(paths):
         for i, rule in enumerate((doc.get("spec") or {}).get("egress") or []):
             if "host" not in (rule.get("toEntities") or []):
                 continue
-            ports = [pp.get("port") for tp in rule.get("toPorts") or [] for pp in tp.get("ports") or []]
-            if not ports or "80" in ports:
+            if reaches_port_80(rule):
                 fails.append(f"{p}: CNP {name} egress[{i}] reaches the metadata server via `host`; "
                              "use toCIDR 169.254.169.254/32 on TCP 80")
         if name in MUST_SEE:
