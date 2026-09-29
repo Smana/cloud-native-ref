@@ -683,6 +683,8 @@ data:
                           repository: [spec, repository]
                           model: [spec, model]
                           branch: [status, branch]
+                          # SP3's triage tier (R47): fixed per run, empty for task agent:run.
+                          tier: [metadata, labels, agents.ogenki.io/tier]
                   - name: status_phase
                     help: "The AgentRun's phase, one series per phase"
                     each:

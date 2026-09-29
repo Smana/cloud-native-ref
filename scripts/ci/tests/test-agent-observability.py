@@ -234,6 +234,8 @@ def check_ksm():
             "started_timestamp_seconds", "finished_timestamp_seconds"}
     check(set(metrics) == want, f"agentrun metrics are {sorted(want)}, got {sorted(metrics)}")
     check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
+    info = metrics.get("info", {}).get("info", {}).get("labelsFromPath", {})
+    check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
 
 
 CHECKS = [check_collector, check_reference_grant, check_router, check_ksm]
