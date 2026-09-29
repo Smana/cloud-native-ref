@@ -1,7 +1,7 @@
 ---
 # The room log's PostgreSQL (SP2 §9). Default deny both ways. The first CNP in this
-# repo that selects cnpg.io/cluster pods, so every allow here was checked with
-# Hubble on first deploy (Task 1.22).
+# repo that selects cnpg.io/cluster pods, so every allow here is checked with
+# Hubble on first deploy (Task 1.22 Step 1).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

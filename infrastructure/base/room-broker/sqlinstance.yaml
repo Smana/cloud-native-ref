@@ -28,9 +28,11 @@ spec:
       superuser: false
   atlasSchema:
     url: https://github.com/Smana/agent-platform
-    # A v* ref resolves as a tag, anything else as a branch. Until Phase 7 it is the
-    # agent-platform stack tip, whose branch holds every migration so far (ruling P33).
-    ref: feat/room-log
+    # A v* ref resolves as a tag, anything else as a branch, never a SHA. agent-platform
+    # merges on green (P33 lifted there, 2026-09-29) and deletes merged branches, so its
+    # main holds every merged migration. S1's live gate therefore needs AP-1 merged to
+    # agent-platform main first. Phase 7 pins the release tag.
+    ref: main
     path: internal/store/migrations
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).

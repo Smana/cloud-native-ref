@@ -2,9 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # The room broker on gcp-0, and a render root of its own so CI renders it with
-# gcp-0's fixture values (GP-14). Only the room log's backups are cloud-shaped: the
-# same three differences as security/gcp-0/zitadel's claim, and GKE's credential
-# endpoint in place of EKS Pod Identity (security/AGENTS.md trap 3).
+# gcp-0's fixture values (GP-14). Cloud-shaped: the claim's composition and backup
+# bucket (as security/gcp-0/zitadel), and the CNP's credential endpoint (GKE's, not
+# EKS Pod Identity: security/AGENTS.md trap 3) and object-store hosts.
 resources:
   - ../../base/room-broker
 
