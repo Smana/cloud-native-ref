@@ -2,7 +2,10 @@
 # listener's issuer and audiences for `oauth`, deny by default, and allow each
 # role its tools on `aud`, one rule per role and backend (a rule's target holds
 # at most 16 tools). toolSelector hides every other tool, including all
-# mutating ones. SP2 adds the room-broker backend (:8090) and its room_* rules.
+# mutating ones. No role gets VictoriaMetrics' operator introspection
+# (`tsdb_status`, `active_queries`, `top_queries`), and an implementer gets no
+# `get_kubernetes_resources`, which reads any kind in any namespace (external
+# review M2, M3). SP2 adds the room-broker backend (:8090) and its room_* rules.
 #
 # Envoy Gateway 1.9.1 forwards the validated JWT to the MCP proxy, and the
 # MCPRoute API has no field to strip it. None is needed: the proxy re-originates
@@ -228,9 +231,6 @@ spec:
           - explain_query
           - prettify_query
           - metric_statistics
-          - tsdb_status
-          - active_queries
-          - top_queries
     - name: mcp-victorialogs
       port: 8081
       path: /mcp
@@ -279,7 +279,6 @@ spec:
               - {backend: flux-operator-mcp, tool: search_flux_docs}
               - {backend: flux-operator-mcp, tool: get_flux_instance}
               - {backend: flux-operator-mcp, tool: get_kubernetes_api_versions}
-              - {backend: flux-operator-mcp, tool: get_kubernetes_resources}
               - {backend: flux-operator-mcp, tool: get_kubernetes_metrics}
         - action: Allow
           source:
@@ -303,9 +302,6 @@ spec:
               - {backend: mcp-victoriametrics, tool: explain_query}
               - {backend: mcp-victoriametrics, tool: prettify_query}
               - {backend: mcp-victoriametrics, tool: metric_statistics}
-              - {backend: mcp-victoriametrics, tool: tsdb_status}
-              - {backend: mcp-victoriametrics, tool: active_queries}
-              - {backend: mcp-victoriametrics, tool: top_queries}
         - action: Allow
           source:
             jwt:
@@ -353,9 +349,6 @@ spec:
               - {backend: mcp-victoriametrics, tool: explain_query}
               - {backend: mcp-victoriametrics, tool: prettify_query}
               - {backend: mcp-victoriametrics, tool: metric_statistics}
-              - {backend: mcp-victoriametrics, tool: tsdb_status}
-              - {backend: mcp-victoriametrics, tool: active_queries}
-              - {backend: mcp-victoriametrics, tool: top_queries}
         - action: Allow
           source:
             jwt:
@@ -415,9 +408,6 @@ spec:
               - {backend: mcp-victoriametrics, tool: explain_query}
               - {backend: mcp-victoriametrics, tool: prettify_query}
               - {backend: mcp-victoriametrics, tool: metric_statistics}
-              - {backend: mcp-victoriametrics, tool: tsdb_status}
-              - {backend: mcp-victoriametrics, tool: active_queries}
-              - {backend: mcp-victoriametrics, tool: top_queries}
         - action: Allow
           source:
             jwt:
@@ -477,9 +467,6 @@ spec:
               - {backend: mcp-victoriametrics, tool: explain_query}
               - {backend: mcp-victoriametrics, tool: prettify_query}
               - {backend: mcp-victoriametrics, tool: metric_statistics}
-              - {backend: mcp-victoriametrics, tool: tsdb_status}
-              - {backend: mcp-victoriametrics, tool: active_queries}
-              - {backend: mcp-victoriametrics, tool: top_queries}
         - action: Allow
           source:
             jwt:
