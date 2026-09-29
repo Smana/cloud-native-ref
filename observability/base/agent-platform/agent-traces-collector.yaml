@@ -2,7 +2,9 @@
 # The agents' trace gate (ADR-0051, observability plan O1-O5, O18). A run's spans reach
 # VictoriaTraces only through here. The run id comes from the sending pod's label, never
 # from the span, an allowlist drops every attribute that is not metadata, and span links
-# and tracestate are dropped outright.
+# and tracestate are dropped outright. Clearing links needs the ALPHA feature gate
+# ottl.set.allowNil (v0.158+, off by default): without it `set(span.links, nil)` is a
+# silent no-op, and `[]` is refused by the links setter's type check.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -36,6 +38,8 @@ spec:
       digest: sha256:76d7a04f2291da1d8b7ce259468d09f0f9f44f71f67a5737539f64ca82b5bdb1
     command:
       name: otelcol-k8s
+      extraArgs:
+        - --feature-gates=ottl.set.allowNil
     replicaCount: 1
     serviceAccount:
       create: true

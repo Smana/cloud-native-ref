@@ -90,7 +90,17 @@ CNP_EGRESS = [
 def check_collector():
     raw = (ROOT / COLLECTOR).read_text()
     check(not re.search(r"(?<!\$)\$\{env:", raw), "every ${env:…} is escaped as $${env:…} for Flux")
-    values = find(COLLECTOR, "HelmRelease", "agent-traces-collector").get("spec", {}).get("values", {})
+    hr = find(COLLECTOR, "HelmRelease", "agent-traces-collector").get("spec", {})
+    values = hr.get("values", {})
+    # The chart labels pods instance=<releaseName>, and CI renders with the object name instead
+    # (render-bundle.py), so only this ties the selectors to the real pods (review M5).
+    check(hr.get("releaseName") == CNP_SELECTOR["matchLabels"]["app.kubernetes.io/instance"],
+          f"releaseName {hr.get('releaseName')!r} is the instance label the CNP selects")
+    check(find(COLLECTOR, "VMServiceScrape", "agent-traces-collector").get("spec", {}).get("selector") == CNP_SELECTOR,
+          "the VMServiceScrape selects the same pods as the CNP")
+    # Without it `set(span.links, nil)` is a silent no-op on 0.160 (review I1').
+    check("--feature-gates=ottl.set.allowNil" in values.get("command", {}).get("extraArgs", []),
+          "the collector runs with ottl.set.allowNil, so set(span.links, nil) clears links")
     image = values.get("image", {})
     check(image.get("repository") == "otel/opentelemetry-collector-k8s"
           and re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("digest", "")),
