@@ -1,0 +1,124 @@
+---
+# The room log's PostgreSQL (SP2 §9). Default deny both ways. The first CNP in this
+# repo that selects cnpg.io/cluster pods, so every allow here was checked with
+# Hubble on first deploy (Task 1.22).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: xplane-rooms-cnpg
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: xplane-rooms-cnpg-cluster
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker-retention
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # The Atlas operator runs migrations from its own pod.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: infrastructure
+            app.kubernetes.io/name: atlas-operator
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # The CNPG operator polls each instance manager.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: infrastructure
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "9187"
+              protocol: TCP
+    # Kubelet's probes of the instance manager on :8000, from the node. PLAUSIBLE: every
+    # repo CNP on a probed pod allows the host explicitly (keda, envoy-gateway, the Barman
+    # plugin); Step 6 checks the flow live (review I5).
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # Replicas, when instances grows past 1.
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: xplane-rooms-cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: xplane-rooms-cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # The Barman Cloud plugin's gRPC API: instance managers dial it for WAL archiving and
+    # backups, and its own CNP admits cnpg.io/podRole=instance on :9090 (review I5).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: infrastructure
+            app: barman-cloud
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # Backups: EKS Pod Identity credentials on the host network (security/AGENTS.md
+    # trap 3), then the bucket over virtual-hosted S3.
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: "s3.${region}.amazonaws.com"
+        - matchPattern: "*.s3.${region}.amazonaws.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

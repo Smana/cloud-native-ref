@@ -53,6 +53,12 @@ rules:
   - apiGroups: ["external-secrets.io"]
     resources: ["externalsecrets"]
     verbs: ["*"]
+  # SQLInstance credentials.source: generated composes a Password generator per role
+  # (crossplane-configuration CC-S1). Without this the XR loops on an informer that
+  # never syncs (infrastructure/AGENTS.md trap 3).
+  - apiGroups: ["generators.external-secrets.io"]
+    resources: ["passwords"]
+    verbs: ["*"]
 ---
 # ClusterRole for aggregating permissions to Crossplane in order to manage Atlas migrations
 apiVersion: rbac.authorization.k8s.io/v1

@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The room broker (SP2): the log of record for every AgentRun with a roomRef.
+resources:
+  - crd-rooms.yaml
+  - sqlinstance.yaml
+  - network-policy-cnpg.yaml

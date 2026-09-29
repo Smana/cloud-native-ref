@@ -1,0 +1,41 @@
+# The room log of record (SP2 §4). Standalone, not an App sub-block: only the
+# standalone XRD has objectStoreRecovery, added once a first seed exists (ruling P8).
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-rooms
+  namespace: agent-system
+spec:
+  instances: 1
+  size: small
+  storageSize: 20Gi
+  postgresVersion: "18"
+  # Generated in-cluster, never seeded (ruling P7).
+  credentials:
+    source: generated
+  databases:
+    - name: rooms
+      owner: rooms_owner
+  roles:
+    - name: rooms_owner
+      comment: Owns the schema; Atlas migrates as it
+      superuser: false
+    - name: rooms_broker
+      comment: The broker appends to and reads the log, nothing else (SC-10)
+      superuser: false
+    - name: rooms_retention
+      comment: The retention job deletes rooms closed past their retention
+      superuser: false
+  atlasSchema:
+    url: https://github.com/Smana/agent-platform
+    # A v* ref resolves as a tag, anything else as a branch. Until Phase 7 it is the
+    # agent-platform stack tip, whose branch holds every migration so far (ruling P33).
+    ref: feat/room-log
+    path: internal/store/migrations
+  backup:
+    # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
+    schedule: "0 0 2 * * *"
+    bucketName: "${region}-ogenki-cnpg-backups"
+  crossplane:
+    compositionRef:
+      name: xsqlinstances.cloud.ogenki.io

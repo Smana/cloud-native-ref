@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The room broker on gcp-0, and a render root of its own so CI renders it with
+# gcp-0's fixture values (GP-14). Only the room log's backups are cloud-shaped: the
+# same three differences as security/gcp-0/zitadel's claim, and GKE's credential
+# endpoint in place of EKS Pod Identity (security/AGENTS.md trap 3).
+resources:
+  - ../../base/room-broker
+
+patches:
+  - target:
+      group: cloud.ogenki.io
+      kind: SQLInstance
+      name: xplane-rooms
+    patch: |-
+      - op: replace
+        path: /spec/crossplane/compositionRef/name
+        value: xsqlinstances-gcp.cloud.ogenki.io
+      - op: replace
+        path: /spec/backup/bucketName
+        value: ${project_id}-ogenki-cnpg-backups
+  # `test` pins the indices: a reordered base fails the build instead of patching the
+  # wrong rule.
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: xplane-rooms-cnpg
+    patch: |-
+      - op: test
+        path: /spec/egress/4/toEntities/0
+        value: host
+      - op: replace
+        path: /spec/egress/4
+        value:
+          toCIDR:
+            - 169.254.169.254/32
+          toPorts:
+            - ports:
+                - port: "80"
+                  protocol: TCP
+      - op: test
+        path: /spec/egress/5/toFQDNs/0/matchName
+        value: s3.${region}.amazonaws.com
+      - op: replace
+        path: /spec/egress/5/toFQDNs
+        value:
+          - matchName: storage.googleapis.com
+          - matchPattern: "*.storage.googleapis.com"
