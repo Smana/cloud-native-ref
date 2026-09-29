@@ -1,8 +1,9 @@
 ---
 # The `public` listener accepts exactly the four `.public` audiences (C2): an
 # internal-class or octo-sts token is a 403 here (Envoy answers an audience
-# mismatch 403, a missing or unverifiable token 401). the JWKS URI is per cloud
-# (`${oidc_jwks_uri}`); validation is offline, so a copied token lives until exp (the run's deadline, R2).
+# mismatch 403, a missing or unverifiable token 401). The JWKS URI is per cloud
+# (`${oidc_jwks_uri}`); validation is offline, so a copied token lives until exp
+# (the run's deadline, R2).
 #
 # agent-mcp's MCPRoutes carry their own `securityPolicy.oauth.{issuer,audiences}`
 # (infrastructure/base/agent-mcp/mcproutes.yaml) which REPLACES this policy on

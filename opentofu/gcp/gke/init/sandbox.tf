@@ -32,7 +32,7 @@ resource "google_container_node_pool" "agents_gvisor" {
     image_type      = "COS_CONTAINERD"
     spot            = true
     disk_size_gb    = var.node_disk_size_gb
-    disk_type       = "pd-balanced"
+    disk_type       = "pd-standard"
     service_account = module.gke.service_account
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
     labels          = local.labels
@@ -54,7 +54,10 @@ resource "google_container_node_pool" "agents_gvisor" {
     }
 
     # Same as the static pool: nothing schedules before Cilium is ready, and
-    # Cilium clears it. GKE adds its own sandbox taint.
+    # Cilium clears it. GKE adds its own sandbox taint. The pool scales from
+    # zero only for a pod that tolerates this taint (ADR-0006, as on every
+    # ComputeClass): gVisor pods get the toleration from the Kyverno policy in
+    # security/gcp-0/sandbox-policies.
     taint {
       key    = "node.cilium.io/agent-not-ready"
       value  = "true"

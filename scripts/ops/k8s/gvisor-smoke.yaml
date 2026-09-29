@@ -1,5 +1,8 @@
 # gVisor smoke probe for gcp-0 (GCP parity Task 8.5). Proves in one pod:
-#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass;
+#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass and the
+#     Cilium-taint toleration (security/gcp-0/sandbox-policies adds it to every
+#     gVisor pod; written here too so the probe runs before that policy lands);
+#   - the pod runs under gVisor: it exits non-zero unless uname reports 4.4.0;
 #   - threads start under RuntimeDefault seccomp (the AWS spike's clone3 trap);
 #   - DNS through kube-dns's ClusterIP and a TCP connection to a ClusterIP work,
 #     i.e. per-packet LB (socketLB.hostNamespaceOnly).
@@ -21,7 +24,8 @@ spec:
   endpointSelector:
     matchLabels:
       app.kubernetes.io/name: gvisor-smoke
-  ingress: []
+  ingress:
+    - {}
   egress:
     - toEndpoints:
         - matchLabels:
@@ -53,8 +57,13 @@ metadata:
 spec:
   runtimeClassName: gvisor
   restartPolicy: Never
+  activeDeadlineSeconds: 900
   automountServiceAccountToken: false
   enableServiceLinks: false
+  tolerations:
+    - key: node.cilium.io/agent-not-ready
+      operator: Exists
+      effect: NoSchedule
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -68,12 +77,15 @@ spec:
         - python3
         - -c
         - |
-          import os, socket, threading
+          import os, socket, sys, threading
+          release = os.uname().release
+          if release != "4.4.0":
+              sys.exit(f"not under gVisor: release={release}")
           ts = [threading.Thread(target=lambda: None) for _ in range(4)]
           [t.start() for t in ts]; [t.join() for t in ts]
           ip = socket.getaddrinfo("kubernetes.default.svc.cluster.local.", 443, proto=socket.IPPROTO_TCP)[0][4][0]
           socket.create_connection((ip, 443), timeout=5).close()
-          print(f"threads={len(ts)} dns=ok tcp=ok release={os.uname().release}")
+          print(f"threads={len(ts)} dns=ok tcp=ok release={release}")
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 200m, memory: 128Mi}

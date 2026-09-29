@@ -162,8 +162,9 @@ gatewayAPI:
 
 # gVisor's netstack sends packets from the Sentry and never calls connect() in
 # the host kernel, so socket-LB cannot translate a ClusterIP for a GKE Sandbox
-# pod; per-packet LB in the pod namespace does (GCP parity GP-11). aws-0 runs the
-# same value, for Tailscale (tailscale#15478). Proved on gcp-0 by the gVisor
-# smoke probe (scripts/ops/k8s/gvisor-smoke.yaml) and the gateway checks.
+# pod; per-packet LB in the pod namespace does (GCP parity GP-11). The chart has
+# already forced this since 1.20 whenever gatewayAPI.enabled (for TCPRoute
+# weights); it is set here so gVisor does not depend on that coupling. aws-0
+# sets it too, for Tailscale (tailscale#15478).
 socketLB:
   hostNamespaceOnly: true

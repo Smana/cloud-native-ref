@@ -166,9 +166,11 @@ variable "custom_role_suffix" {
 }
 
 # The agents' GKE Sandbox pool (GCP parity GP-10). 2 x e2-standard-8 = 16 vCPU /
-# 64 GiB, aws-0's agents-gvisor limits. The NAP ceiling
-# (autoscaling_max_cpu_cores = 32) counts these nodes too: with the static pool
-# (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the ceiling if one starves.
+# 64 GiB, aws-0's agents-gvisor limits. Not e2-standard-4: an AgentRun of size
+# `large` requests 4 vCPU (the XRD's size table), more than its ~3.9 allocatable.
+# The NAP ceiling (autoscaling_max_cpu_cores = 32) counts these nodes too: with
+# the static pool (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the
+# ceiling if one starves.
 variable "agents_pool_machine_type" {
   description = "Machine type of the agents-gvisor GKE Sandbox pool"
   type        = string

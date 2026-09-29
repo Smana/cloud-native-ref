@@ -1,0 +1,50 @@
+# The agents-gvisor pool (opentofu/gcp/gke/init/sandbox.tf) carries Cilium's
+# startup taint and scales from zero. GKE's autoscaler provisions a node only
+# for a pod that tolerates every taint the node will carry (ADR-0006), and GKE's
+# `gvisor` RuntimeClass adds only its own sandbox toleration, so without this
+# no gVisor pod ever scales the pool up. aws-0 needs no equivalent: Karpenter
+# ignores startupTaints when it simulates scheduling.
+#
+# A mutation, unlike agent-policies' validate-only rule, because this is the
+# cloud's node shape rather than a composition bug to surface; the AgentRun
+# composition stays cloud-neutral.
+#
+# JSON6902 append rather than a strategic merge: tolerations have no merge key,
+# so a merge would replace GKE's sandbox toleration. The list always exists by
+# admission time (the RuntimeClass and DefaultTolerationSeconds plugins run
+# before webhooks). Autogen is off so no Deployment template is ever patched.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: gvisor-tolerate-cilium-startup-taint
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: none
+    policies.kyverno.io/title: gVisor pods tolerate Cilium's startup taint
+    policies.kyverno.io/description: >-
+      Adds the node.cilium.io/agent-not-ready toleration to every pod that runs
+      under RuntimeClass gvisor, so GKE scales the agents-gvisor pool from zero.
+spec:
+  background: false
+  rules:
+    - name: tolerate-cilium-agent-not-ready
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              operations: [CREATE]
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.runtimeClassName || '' }}"
+            operator: Equals
+            value: gvisor
+          - key: node.cilium.io/agent-not-ready
+            operator: AnyNotIn
+            value: "{{ request.object.spec.tolerations[].key || `[]` }}"
+      mutate:
+        patchesJson6902: |-
+          - op: add
+            path: /spec/tolerations/-
+            value:
+              key: node.cilium.io/agent-not-ready
+              operator: Exists
+              effect: NoSchedule
