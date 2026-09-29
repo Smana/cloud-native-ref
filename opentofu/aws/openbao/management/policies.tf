@@ -38,8 +38,9 @@ resource "vault_policy" "pki_admin" {
   })
 }
 
-# Full control of the two Stage 2 secret mounts. Held by the OIDC admin group
-# alongside `admin` and `pki-admin`; see oidc.tf.
+# Full control of the two Stage 2 secret mounts and the `agents` mount (SP2
+# P38). Held by the OIDC admin group alongside `admin` and `pki-admin`; see
+# oidc.tf.
 #
 # `admin` deliberately grants no secret path and could not reach one anyway --
 # it is a root-namespace policy and, until Stage 2, the only kv-v2 mount holding
@@ -61,8 +62,9 @@ resource "vault_policy" "external_secrets" {
   policy = file("policies/external-secrets.hcl")
 }
 
-# agent-system's own store (SP1 S9): platform/agents/* only. Attached to the
-# `agents-secrets` JWT role in eks/configure by NAME, like `external-secrets`.
+# agent-system's own store (SP1 S9): the `agents` mount only (SP2 P38).
+# Attached to the `agents-secrets` JWT role in eks/configure by NAME, like
+# `external-secrets`.
 resource "vault_policy" "agents_secrets" {
   name   = "agents-secrets"
   policy = file("policies/agents-secrets.hcl")
