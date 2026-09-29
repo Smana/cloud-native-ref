@@ -51,23 +51,25 @@ spec:
             description: "Shorten spec.retention on busy rooms, or grow storageSize on SQLInstance xplane-rooms."
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # The gauge exists for every room with a Running run, whatever its phase: the room
+        # turns AwaitingHuman at 30 min silent, and the series must outlive that flip.
         - alert: RoomStalled
           expr: time() - max by (room) (rooms_last_event_timestamp_seconds) > 1800
           labels:
             severity: warning
           annotations:
-            summary: "Room {{ $labels.room }} is Active with no event for 30 minutes"
-            description: "Its run is Running but silent. Check the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id -c room-bridge"
+            summary: "Room {{ $labels.room }} has a running run and no event for 30 minutes"
+            description: "The run is Running but silent, and the room shows AwaitingHuman. Find its run: kubectl get agentrun -n agents -o custom-columns=RUN:.metadata.name,ROOM:.spec.roomRef | grep {{ $labels.room }}, then check the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id=<RUN without xplane-run-> -c room-bridge"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
-        # Ruling AN: any stall or refused item is a bridge/harness contract break, not load.
+        # Ruling AN: a stall or a 400 is a bridge/harness contract break, not load.
         - alert: RoomBridgeHarnessStalled
           expr: sum by (reason) (increase(rooms_bridge_harness_stalls_total[10m])) > 0
           labels:
             severity: warning
           annotations:
             summary: "A bridge cannot move past the harness log ({{ $labels.reason }})"
-            description: "The bridge's cursor holds and its room was told a harness_error, so the transcript stops there. Find the room: kubectl logs -n agents -l agents.ogenki.io/run-id -c room-bridge"
+            description: "The bridge's cursor holds and its room was told a harness_error with code {{ $labels.reason }}, so the transcript stops there. List room runs: kubectl get agentrun -n agents -o custom-columns=RUN:.metadata.name,ROOM:.spec.roomRef, then read the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id=<RUN without xplane-run-> -c room-bridge"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         - alert: RoomBridgeItemsRefused
@@ -76,7 +78,19 @@ spec:
             severity: warning
           annotations:
             summary: "The broker refused harness items, kept as stubs in the room log"
-            description: "The broker answered 400 to what a bridge sent: the bridge and the broker disagree on the envelope. Read the broker's refusals: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker"
+            description: "The broker answered 400 to a lone item: the bridge and the broker disagree on the envelope. Read the broker's refusals: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep 'bridge item refused'"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # Harness content the log cannot hold as sent: a value PostgreSQL rejects (a NUL in
+        # tool output) or keys that collide once redacted (Ruling AI). Expected now and then,
+        # so info: a steady rate means a harness pattern worth a look, not a contract break.
+        - alert: RoomBridgeItemsUnstorable
+          expr: sum by (reason) (increase(rooms_bridge_items_stubbed_total{reason=~"invalid_value|key_collision"}[1h])) > 0
+          labels:
+            severity: info
+          annotations:
+            summary: "Harness items were kept as stubs ({{ $labels.reason }})"
+            description: "invalid_value: the store rejected a value; key_collision: keys collide once redacted. Neither loses the slot. Read the broker: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep -E 'payload refused by the database|keys collide once redacted'"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         # Held keys stop verifying 24h after the last fetch (Ruling AF): 6h leaves time to act.
