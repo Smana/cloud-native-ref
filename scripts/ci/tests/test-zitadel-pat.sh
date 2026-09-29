@@ -15,13 +15,29 @@ CLOUD=gcp
 check "gcp secret name" "zitadel-iam-admin-pat" "$(zitadel_pat_secret_name)"
 
 CLOUD=aws
-# 1. Store has it -> used, and the cluster is never consulted. The store holds
-#    a JSON object ({"pat": ...}), matching what store_write actually accepts
-#    on its AWS branch (bare strings fail to parse as JSON there).
+# 1. GCP parity GP-20 (owner, 2026-09-29): the cluster's PAT wins over a stored
+#    one. A fresh directory every build makes a stored PAT belong to a directory
+#    that no longer exists, and every call made with it gets a 401.
+persisted=""
 store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"stale-token"}'; }
+store_write()  { persisted="$(cat)"; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+check "cluster wins over a stale store" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+resolve_zitadel_pat hosting >/dev/null 2>&1
+check "the stale store is overwritten" "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
+
+# 1a. Same token in both: no rewrite (one Secret Manager version per change).
+store_write_called=0
+store_read()   { printf '%s' '{"pat":"token-from-cluster"}'; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+resolve_zitadel_pat hosting >/dev/null 2>&1
+check "an equal store is not rewritten" "0" "$store_write_called"
+
+# 1b. No cluster Secret (a directory restored from a seed): the store is used.
 store_read()   { printf '%s' '{"pat":"token-from-store"}'; }
-kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
-check "store wins" "token-from-store" "$(resolve_zitadel_pat)"
+kubectl()      { return 1; }
+check "the store serves a restored directory" "token-from-store" "$(resolve_zitadel_pat hosting 2>/dev/null)"
 
 # 2. Store empty, cluster has it -> used AND persisted.
 persisted=""
@@ -32,8 +48,8 @@ store_read()   { return 1; }
 # vanish, which is also why the library uses `store_write ... <<< "$json"`.
 store_write()  { persisted="$(cat)"; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
-check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
-resolve_zitadel_pat >/dev/null 2>&1
+check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+resolve_zitadel_pat hosting >/dev/null 2>&1
 check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
 
 # 2a. DEFECT 2: store empty, cluster has it, caller is in a DRY RUN
@@ -56,10 +72,10 @@ store_read()   { return 1; }
 store_write()  { store_write_called=1; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
 ZITADEL_PAT_DRY_RUN=true
-check "dry-run: token still returned" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
-resolve_zitadel_pat >/dev/null 2>&1
+check "dry-run: token still returned" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+resolve_zitadel_pat hosting >/dev/null 2>&1
 check "dry-run: store_write NOT called" "0" "$store_write_called"
-err="$(resolve_zitadel_pat 2>&1 >/dev/null)"
+err="$(resolve_zitadel_pat hosting 2>&1 >/dev/null)"
 case "$err" in *'[dry-run]'*) printf '  ok   dry-run: prints [dry-run], not [persist]\n' ;;
                *) printf '  FAIL dry-run: did not print a [dry-run] line\n'; fail=1 ;; esac
 case "$err" in *'[persist]'*) printf '  FAIL dry-run: also printed [persist]\n'; fail=1 ;;
@@ -75,8 +91,8 @@ store_exists() { return 1; }
 store_read()   { return 1; }
 store_write()  { store_write_called=1; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }
-check "unset ZITADEL_PAT_DRY_RUN: token returned" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
-resolve_zitadel_pat >/dev/null 2>&1
+check "unset ZITADEL_PAT_DRY_RUN: token returned" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+resolve_zitadel_pat hosting >/dev/null 2>&1
 check "unset ZITADEL_PAT_DRY_RUN: still persists (default false)" "1" "$store_write_called"
 
 # 2b. A caller sets STORE_WRITE_DESCRIPTION/LABEL for its OWN secrets (this is
@@ -92,7 +108,7 @@ store_exists() { return 1; }
 store_read()   { return 1; }
 store_write()  { seen_desc="$STORE_WRITE_DESCRIPTION"; seen_label="$STORE_WRITE_LABEL"; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
-resolve_zitadel_pat >/dev/null 2>&1
+resolve_zitadel_pat hosting >/dev/null 2>&1
 check "PAT write ignores caller's Description" \
     "ZITADEL iam-admin PAT for aws-0. Captured by zitadel-pat.sh." "$seen_desc"
 check "PAT write ignores caller's Label" "zitadel-pat" "$seen_label"
@@ -110,26 +126,75 @@ store_exists() { return 1; }
 store_read()   { return 1; }
 store_write()  { seeded="$(cat)"; }
 kubectl()      { printf '%s' "$awkward" | base64 -w0; }
-check "awkward token seeds"     "$awkward" "$(resolve_zitadel_pat 2>/dev/null)"
+check "awkward token seeds"     "$awkward" "$(resolve_zitadel_pat hosting 2>/dev/null)"
 # A second, unwrapped call so store_write's assignment to $seeded (visible only
 # because the library uses a herestring, not a pipe -- see above) isn't lost
 # inside the command substitution's own subshell the check above just ran in.
-resolve_zitadel_pat >/dev/null 2>&1
+resolve_zitadel_pat hosting >/dev/null 2>&1
 
 store_exists() { return 0; }
 store_read()   { printf '%s' "$seeded"; }
 kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
-check "awkward token reads back" "$awkward" "$(resolve_zitadel_pat 2>/dev/null)"
+check "awkward token reads back" "$awkward" "$(resolve_zitadel_pat hosting 2>/dev/null)"
 
 # 4. Neither -> fail, with a diagnosis, and no token on stdout.
 store_exists() { return 1; }
 store_read()   { return 1; }
 kubectl()      { return 1; }
-out="$(resolve_zitadel_pat 2>/dev/null)"; rc=$?
+out="$(resolve_zitadel_pat hosting 2>/dev/null)"; rc=$?
 check "fails"         "1"  "$rc"
 check "silent stdout" ""   "$out"
-err="$(resolve_zitadel_pat 2>&1 >/dev/null)"
+err="$(resolve_zitadel_pat hosting 2>&1 >/dev/null)"
 case "$err" in *FIRSTINSTANCE*) printf '  ok   explains FirstInstance\n' ;;
                *) printf '  FAIL error does not explain the cause\n'; fail=1 ;; esac
+
+# 5. Review I-1: a CONSUMING cluster (--idp-cloud differs) has kubectl on its
+#    own cluster. A chart Secret left there from when it hosted belongs to a
+#    dead directory; trusting it would overwrite the IdP cloud's only PAT and
+#    401 every call there. The store answers, and nothing is written.
+store_write_called=0
+KUBECTL_MARK="$(mktemp)"; rm -f "$KUBECTL_MARK"   # kubectl runs inside $(...): a variable would not survive
+store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"token-from-idp-store"}'; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+kubectl()      { : > "$KUBECTL_MARK"; printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # leftover Secret
+check "consuming: the IdP store's PAT, not the local Secret" "token-from-idp-store" "$(resolve_zitadel_pat consuming 2>/dev/null)"
+resolve_zitadel_pat consuming >/dev/null 2>&1
+check "consuming: the IdP store is never written" "0" "$store_write_called"
+check "consuming: the local Secret is never read" "no" "$([ -e "$KUBECTL_MARK" ] && echo yes || echo no)"
+rm -f "$KUBECTL_MARK"
+
+# 5a. Consuming with an empty store: fail, still without trusting the local Secret.
+store_exists() { return 1; }
+store_read()   { return 1; }
+out="$(resolve_zitadel_pat consuming 2>/dev/null)"; rc=$?
+check "consuming, empty store: fails" "1" "$rc"
+check "consuming, empty store: no local token leaks out" "" "$out"
+
+# 5b. No role is a caller bug, not a guess.
+resolve_zitadel_pat >/dev/null 2>&1; rc=$?
+check "no role: refused" "2" "$rc"
+
+# 6. Review M-2: a failed overwrite warns and still returns the cluster token.
+store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"stale-token"}'; }
+store_write()  { cat >/dev/null; return 1; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }
+out="$(resolve_zitadel_pat hosting 2>/dev/null)"; rc=$?
+check "failed overwrite: token still returned" "token-from-cluster" "$out"
+check "failed overwrite: rc 0" "0" "$rc"
+err="$(resolve_zitadel_pat hosting 2>&1 >/dev/null)"
+case "$err" in *"WARN: zitadel/iam-admin-pat still holds the old PAT; the next --apply retries"*)
+                 printf '  ok   failed overwrite: warns on stderr\n' ;;
+               *) printf '  FAIL failed overwrite: no WARN line\n'; fail=1 ;; esac
+
+# 7. Review M-5: a dry run over a stale store returns the cluster token and writes nothing.
+store_write_called=0
+store_write()  { store_write_called=1; cat >/dev/null; }
+ZITADEL_PAT_DRY_RUN=true
+check "dry-run, stale store: cluster token returned" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+resolve_zitadel_pat hosting >/dev/null 2>&1
+check "dry-run, stale store: nothing written" "0" "$store_write_called"
+unset ZITADEL_PAT_DRY_RUN
 
 exit $fail

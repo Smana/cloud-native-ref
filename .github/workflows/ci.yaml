@@ -83,6 +83,11 @@ jobs:
           # What the pre-commit-terraform hooks call instead of `terraform`.
           PCT_TFPATH: tofu
 
+      - name: Test the OpenBao store-of-record module
+        run: |
+          tofu -chdir=opentofu/shared/modules/openbao-store-of-record init -backend=false -input=false
+          tofu -chdir=opentofu/shared/modules/openbao-store-of-record test
+
   security-scan:
     name: Security scanning 🔒
     runs-on: ubuntu-latest
@@ -321,6 +326,9 @@ jobs:
       # dependency declaration.
       - name: Check identity provider topology
         run: ./scripts/ci/validate-idp-topology.sh
+
+      - name: OpenBao policy parity
+        run: ./scripts/ci/validate-openbao-policies.sh
 
   # ---------------------------------------------------------------------------
   # Post-merge only. A red run on `main` is already visible next to the commit,
