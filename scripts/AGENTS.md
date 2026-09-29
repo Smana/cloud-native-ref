@@ -5,14 +5,15 @@ Layout: [`README.md`](README.md). CI calls the entry point below as `task ci:val
 `./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
-then applies four gates to the result.
+then applies five gates to the result.
 
 | Gate | Tool | Catches |
 |---|---|---|
 | 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog and the CNCF ecosystem catalog |
 | 2 | `polaris audit` | workload best practices — privilege escalation, capabilities, image tags |
 | 3 | `flux-schema/assert-ai-gateway.py` | cross-object AI-gateway invariants: budget rules shared, token-costed and in shadow mode; identity headers stripped on every envoy-ai-gateway Gateway; every `agent-router` route pins a `sectionName` and every SecurityPolicy on one sets `mergeType`; no MCPRoute hands `Authorization` to an MCP server via `forwardHeaders`, `securityPolicy.oauth.claimToHeaders` or `securityPolicy.apiKeyAuth.forwardClientIDHeader` (A6); every `agent-router` listener an AIGatewayRoute attaches to has an Exact `/v1/models` HTTPRoute that direct-responds ahead of that listener's ext_proc (A7) |
-| 4 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
+| 4 | `flux-schema/assert-cloud-shape.py` | gcp-0's agent and AI-gateway overlays carry no AWS-shaped value (an `amazonaws.com` or EKS host, a `certificates/` CA key, `platform-llm-api-keys`), their run-token issuer and JWKS are GKE's, and no gcp-0 umbrella child substitutes `gke-gcp-0-vars` into a path CI renders with AWS values. Exists because the render fixtures were AWS-shaped for both clusters, so a GCP-only break rendered clean (GP-14) |
+| 5 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
 
 Two properties are load-bearing:
 

@@ -7,7 +7,8 @@
 #   2. parse the PromQL inside every repo-authored VMRule
 #   3. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
 #   4. render the repo into a bundle (kustomize + envsubst + helm template)
-#   5. gate the bundle: flux schema validate, polaris audit, AI-gateway invariants
+#   5. gate the bundle: flux schema validate, polaris audit, AI-gateway invariants,
+#      gcp-0 cloud shape
 #   6. render the Alertmanager Slack notification templates against fixtures
 set -euo pipefail
 
@@ -67,7 +68,11 @@ polaris audit \
 echo "==> [5/6] Gate 3 — AI gateway invariants (budget rules, identity-header strip, agent-router listener pinning, MCP token, /v1/models guard)"
 python3 scripts/ci/flux-schema/assert-ai-gateway.py "${BUNDLE_DIR}"
 
-echo "==> [6/6] Gate 4 — Alertmanager Slack templates render"
+echo "==> [5/6] Gate 4 — gcp-0 cloud shape"
+# gcp-0's agent and AI-gateway renders must be GKE-shaped (GCP parity GP-14).
+python3 scripts/ci/flux-schema/assert-cloud-shape.py "${BUNDLE_DIR}"
+
+echo "==> [6/6] Gate 5 — Alertmanager Slack templates render"
 ./scripts/ci/validate-alertmanager-templates.sh
 
 echo "==> All gates passed"
