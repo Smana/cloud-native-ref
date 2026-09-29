@@ -105,13 +105,27 @@ script "deploy" {
         ${global.cloud_gate}
         set -euo pipefail
         cd ../configure
+        # ../configure's vault provider needs the CA chain before init, and a
+        # fresh checkout has no .tls/ (gitignored). gke/configure's own deploy
+        # writes it; this inline apply bypasses that script (09-11 bug 3).
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # A restored lineage already holds jwt/gcp-0, and creating it again 400s
+        # with "path is already in use". Same call as gke/configure's deploy.
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # deploy_identity_provider here too: without it this apply publishes the
+        # consumed (AWS) identity_provider_url until the standalone configure run.
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
         # Forget flux-operator here, in the job that just created it -- NOT only
         # in gke/configure's own `deploy`, which this job bypasses. Left in state,
         # the standalone gke/configure stack plans count=0 against a resource that
-        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS lane
-        # had the identical gap and hit it on 2026-09-16.
+        # IS in state, and that is a destroy: a real `helm uninstall`.
         ${global.provisioner} state rm helm_release.flux_operator 2>/dev/null || true
       BASH
       ],
