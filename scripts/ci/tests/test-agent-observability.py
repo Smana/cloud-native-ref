@@ -240,7 +240,43 @@ def check_ksm():
     check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm]
+DASHBOARDS = "observability/base/agent-platform"
+
+
+def dashboard(rel, name):
+    d = find(rel, "GrafanaDashboard", name)
+    check(not re.search(r"(?<!\$)\$\{", (ROOT / rel).read_text()), f"{rel}: every ${{…}} is written $${{…}} for Flux")
+    check(d.get("spec", {}).get("folderRef") == "agents", f"{rel}: in the agents folder (O10)")
+    try:
+        return json.loads(d.get("spec", {}).get("json", "{}").replace("$${", "${"))
+    except json.JSONDecodeError as exc:
+        errors.append(f"{rel}: invalid JSON: {exc}")
+        return {}
+
+
+def titled(board):
+    return {p["title"]: p for p in board.get("panels", [])}
+
+
+def check_run_dashboard():
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run")
+    check(board.get("uid") == "agent-run", "uid agent-run: task agent:run, SP2 and SP3 link to it")
+    check("run" in [v["name"] for v in board.get("templating", {}).get("list", [])], "a `run` variable")
+    panels = titled(board)
+    want = {"Run", "Duration", "Tokens vs budget", "Phase", "Step log", "Model calls through agent-router",
+            "MCP calls", "Errors", "Tokens in / out", "Cost (USD)", "Model latency p50 / p95", "Error rate",
+            "Steps", "Trace (agent-harness)", "agent-router spans"}
+    check(want <= set(panels), f"missing panels: {sorted(want - set(panels))}")
+    for title in ("Trace (agent-harness)", "agent-router spans"):
+        check(panels.get(title, {}).get("datasource") == {"type": "jaeger", "uid": "VictoriaTraces"}, f"{title} reads VictoriaTraces")
+    for title in ("Step log", "Model calls through agent-router", "MCP calls", "Errors", "Steps"):
+        check(panels.get(title, {}).get("datasource", {}).get("type") == "victoriametrics-logs-datasource", f"{title} reads VictoriaLogs")
+    targets = json.dumps([t for p in board.get("panels", []) for t in p.get("targets", [])])
+    check('run_id=\\"${run}\\"' in targets and "xplane-run-${run}" in targets and "agent.run_id=${run}" in targets,
+          "the panels filter on the run: KSM run_id, the pod and principal, the span tag")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard]
 
 for run in CHECKS:
     run()
