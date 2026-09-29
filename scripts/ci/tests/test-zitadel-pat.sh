@@ -15,13 +15,29 @@ CLOUD=gcp
 check "gcp secret name" "zitadel-iam-admin-pat" "$(zitadel_pat_secret_name)"
 
 CLOUD=aws
-# 1. Store has it -> used, and the cluster is never consulted. The store holds
-#    a JSON object ({"pat": ...}), matching what store_write actually accepts
-#    on its AWS branch (bare strings fail to parse as JSON there).
+# 1. GCP parity GP-20 (owner, 2026-09-29): the cluster's PAT wins over a stored
+#    one. A fresh directory every build makes a stored PAT belong to a directory
+#    that no longer exists, and every call made with it gets a 401.
+persisted=""
 store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"stale-token"}'; }
+store_write()  { persisted="$(cat)"; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+check "cluster wins over a stale store" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
+resolve_zitadel_pat >/dev/null 2>&1
+check "the stale store is overwritten" "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
+
+# 1a. Same token in both: no rewrite (one Secret Manager version per change).
+store_write_called=0
+store_read()   { printf '%s' '{"pat":"token-from-cluster"}'; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+resolve_zitadel_pat >/dev/null 2>&1
+check "an equal store is not rewritten" "0" "$store_write_called"
+
+# 1b. No cluster Secret (a directory restored from a seed): the store is used.
 store_read()   { printf '%s' '{"pat":"token-from-store"}'; }
-kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
-check "store wins" "token-from-store" "$(resolve_zitadel_pat)"
+kubectl()      { return 1; }
+check "the store serves a restored directory" "token-from-store" "$(resolve_zitadel_pat 2>/dev/null)"
 
 # 2. Store empty, cluster has it -> used AND persisted.
 persisted=""

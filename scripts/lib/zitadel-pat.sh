@@ -16,10 +16,11 @@
 #
 # THE FIX
 #
-# Persist the token to the cloud secret store the first time it exists, and read
-# it from there afterwards. This works because the restored database keeps the
-# machine user AND its token hash, so a token captured at first bootstrap stays
-# valid against the restored instance.
+# The chart's Secret when it exists, overwriting the stored copy; the store only
+# when the cluster has none (a restore). GCP parity GP-20, owner 2026-09-29. The
+# restore case works because the restored database keeps the machine user AND
+# its token hash, so a token captured at first bootstrap stays valid against
+# the restored instance.
 #
 # No ExternalSecret: nothing in the cluster consumes this credential, only
 # operator scripts, and an ExternalSecret would contend with the chart for
@@ -58,60 +59,44 @@ zitadel_pat_secret_name() {
 # run must still capture the PAT into the store on its first sight of one,
 # same as before this existed.
 resolve_zitadel_pat() {
-    local name stored token b64
+    local name stored="" current="" token b64
     local dry_run="${ZITADEL_PAT_DRY_RUN:-false}"
     name="$(zitadel_pat_secret_name)"
-
-    # 1. The store, which is the only source that survives a restore. Stored as
-    #    a JSON object {"pat": ...} -- store_write's AWS branch parses stdin as
-    #    JSON (it round-trips the payload through `jq '. | tostring'`), so a
-    #    bare token string fails there with a parse error. Wrapping it is what
-    #    lets both clouds share one store_write/store_read.
+    # 1. The cluster. The chart writes this Secret on FirstInstance, so when it
+    #    exists it belongs to the directory that is running. A stored copy may
+    #    belong to one a fresh build replaced (GCP parity GP-20), so it never
+    #    wins over this.
+    b64="$(kubectl get secret "$ZITADEL_PAT_K8S_SECRET" \
+             -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
+    token=""
+    [ -n "$b64" ] && token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
+    if [ -n "$token" ]; then
+        if store_exists "$name" && stored="$(store_read "$name")"; then
+            current="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null || true)"
+        fi
+        if [ "$current" != "$token" ]; then
+            if [ "$dry_run" = "true" ]; then
+                echo "[dry-run] would write the cluster's admin PAT to ${name}" >&2
+            else
+                echo "[persist] writing the cluster's admin PAT to ${name}" >&2
+                # Own our provenance: a caller's STORE_WRITE_* globals are for its own secrets.
+                local STORE_WRITE_DESCRIPTION="ZITADEL iam-admin PAT for ${CLUSTER:-this cluster}. Captured by zitadel-pat.sh."
+                local STORE_WRITE_LABEL="zitadel-pat"
+                # jq -Rs: the token reaches jq on stdin, never in argv.
+                store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
+            fi
+        fi
+        printf '%s' "$token"
+        return 0
+    fi
+    # 2. The store: the only source after a restore from a seed, where
+    #    FirstInstance never ran and the chart wrote no Secret. Stored as
+    #    {"pat": ...}, the one shape store_write's AWS branch accepts.
     if store_exists "$name" && stored="$(store_read "$name")" \
         && token="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null)" \
         && [ -n "$token" ]; then
         printf '%s' "$token"
         return 0
-    fi
-
-    # 2. The cluster, where the chart writes it on a fresh bootstrap only. This
-    #    read is also the one chance to capture it.
-    b64="$(kubectl get secret "$ZITADEL_PAT_K8S_SECRET" \
-             -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
-    if [ -n "$b64" ]; then
-        token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
-        if [ -n "$token" ]; then
-            if [ "$dry_run" = "true" ]; then
-                # The header promise ("Dry-run unless --apply") is a promise
-                # about every write this script makes, and persisting the PAT
-                # into the cloud secret store is one -- confirmed live:
-                # zitadel/iam-admin-pat got created in Secrets Manager on a
-                # plain sync with no --apply. Nothing is lost by not writing
-                # it here: the token stays exactly where it already was, in
-                # the Kubernetes Secret this branch just read it from, and
-                # will be captured on the next --apply run the normal way.
-                echo "[dry-run] would capture the admin PAT into ${name} so it survives a restore" >&2
-                printf '%s' "$token"
-                return 0
-            fi
-            echo "[persist] capturing the admin PAT into ${name} so it survives a restore" >&2
-            # Own our provenance rather than trusting whatever the caller set.
-            # store_write reads these as plain globals, and a caller that sets
-            # them for ITS OWN secrets (e.g. zitadel-oidc-clients.sh, for the
-            # OIDC client secrets it writes) leaves them set in the shell that
-            # eventually calls us -- a `local` here shadows that for this call
-            # only, so the PAT gets ITS OWN description/label and the caller's
-            # values are unchanged once we return.
-            local STORE_WRITE_DESCRIPTION="ZITADEL iam-admin PAT for ${CLUSTER:-this cluster}. Captured by zitadel-pat.sh."
-            local STORE_WRITE_LABEL="zitadel-pat"
-            # jq -Rs reads stdin as one raw string rather than parsing it as
-            # JSON -- unlike `jq --arg pat "$token"`, the token never appears
-            # in an external process's argv (readable via /proc/<pid>/cmdline
-            # for the life of that call), only on stdin.
-            store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
-            printf '%s' "$token"
-            return 0
-        fi
     fi
 
     echo "ERROR: no ZITADEL admin PAT available." >&2

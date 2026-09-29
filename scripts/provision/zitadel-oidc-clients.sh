@@ -222,9 +222,9 @@ ZITADEL_PAT_DRY_RUN="true"
 # both can be supplied at once.
 #
 # When --idp-cloud differs from --cloud, point kubectl at the cluster that HOSTS
-# the identity provider. resolve_zitadel_pat falls back to reading the PAT from
-# the current context's Kubernetes Secret when the store has none, and on a
-# fresh primary that fallback is the only place the token exists yet.
+# the identity provider. resolve_zitadel_pat reads the PAT from the current
+# context's Kubernetes Secret first (GP-20), and on a fresh primary that Secret
+# is the only place the token exists yet.
 _target_cloud="$CLOUD"
 CLOUD="$IDP_CLOUD"
 PAT="$(resolve_zitadel_pat)" || exit 1
