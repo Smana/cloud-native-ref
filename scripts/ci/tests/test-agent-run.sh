@@ -18,6 +18,8 @@ mkdir -p "$tmp/bin"
 # a CEL/admission rejection would.
 cat >"$tmp/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
+# `get httproute` answers the Grafana host the dashboard link is built from (SO-5).
+if [ "$1" = get ]; then printf '%s' "${STUB_HOST:-}"; exit 0; fi
 printf '%s\n' "$*" >"$STUB_ARGS"
 cat >"$STUB_CLAIM"
 [ "${STUB_FAIL:-0}" = "1" ] && exit 1
@@ -87,6 +89,20 @@ email_out="$(cd "$email_home" && env -u AGENT_PRINCIPAL HOME="$email_home" GIT_C
 rm -rf "$email_home"
 [ "$email_rc" -eq 2 ] || fail "a missing git user.email exits 2"
 printf '%s' "$email_out" | grep -qi 'user.email' || fail "the missing-email message names git config user.email"
+
+# SO-5: the run's page goes to stderr, so `| tail -1` still yields the run's name.
+out="$(AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err")"
+[ "$out" = "$(jq -r .metadata.name "$STUB_CLAIM")" ] || fail "stdout is still only the run's name"
+run_id="$(jq -r '.metadata.name | sub("^xplane-run-"; "")' "$STUB_CLAIM")"
+grep -qE "^agent-run: dashboard https://grafana\.example/d/agent-run/agent-run\?var-run=${run_id}&from=[0-9]{13}&to=now$" "$tmp/err" \
+  || fail "stderr carries the run's dashboard link"
+STUB_HOST=grafana.stub.example bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err" >/dev/null
+grep -q 'agent-run: dashboard https://grafana.stub.example/d/agent-run/agent-run?var-run=' "$tmp/err" \
+  || fail "without AGENT_GRAFANA_URL the host comes from the grafana HTTPRoute"
+bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err" >/dev/null || fail "no Grafana host is not an error"
+grep -q 'agent-run: dashboard' "$tmp/err" && fail "no host, no link"
+AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --dry-run 2>"$tmp/err" >/dev/null
+grep -q 'agent-run: dashboard' "$tmp/err" && fail "a dry run creates no run, so it prints no link"
 
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"
