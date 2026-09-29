@@ -12,8 +12,9 @@ role. Approvers decide pending actions, first decision wins. Anyone who can read
 **Architecture:** A stateless Go `room-broker` (an `App` claim, 2 replicas, `agent-system`) owns a
 namespaced `Room` CRD. It keeps the log of record in a CNPG `SQLInstance`, with a Valkey `KVStore`
 carrying fan-out hints. A Go `room-bridge` native sidecar in every sandbox that has `spec.roomRef`
-polls the OpenHands agent-server on loopback. It pushes events to the broker over plain HTTP, which
-Cilium's WireGuard encrypts on aws-0 (TLS on :8443 is gcp-0's, ruling P2), and takes
+polls the OpenHands agent-server on loopback. The bridge → broker `:8443` serves TLS on both
+clouds (GCP parity GP-18). The broker's certificate comes from cert-manager's internal issuer, the
+`openbao` ClusterIssuer, and the bridge trusts `openbao-ca`. It takes
 steering, interrupts and decisions back over one SSE stream. Humans reach the broker's embedded
 TypeScript UI through the Tailscale Gateway and oauth2-proxy. Agents reach the broker's MCP port
 only through the `agent-router` Gateway. The elected replica posts agents' review verdicts to their
@@ -41,8 +42,15 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
 
 ## Global Constraints
 
-- **Target** aws-0 only. The spec's phase 7 (gcp-0: TLS on :8443, issuer variable, umbrella) is out
-  of this plan (ruling P2).
+- **Target** gcp-0 (GCP parity cross-plan edit, 2026-09-29): the GCP parity plan makes gcp-0 the
+  platform, and aws-0 is not deployed. **Ruling P2 is reversed**: gcp-0 is in scope, not out of it.
+  GP-18's TLS listener lands in Tasks 1.9, 1.11, 1.14, 1.18 and 1.20; GP-12's per-cloud issuer
+  variables in ruling P11 and its egress rule. Conflict: this overrides every "aws-0 only" reading
+  of this plan's tasks below; where a task still names aws-0 verbatim, gcp-0 applies instead.
+- **Live-check routine (GCP parity cross-plan edit, 2026-09-29).** Hand-patch the core package on
+  **gcp-0**. Every child an S PR adds to `clusters/aws-0-agent-platform/` gets its twin in
+  `clusters/gcp-0-agent-platform/`, with `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it
+  substitutes (GP-14).
 - **Code location (OD-4).** `Smana/agent-platform`, public, Apache-2.0 like this repo. Go module
   `github.com/Smana/agent-platform`. Binaries `room-broker`, `room-bridge`, `roomctl`. Images
   `ghcr.io/smana/room-broker` and `ghcr.io/smana/room-bridge`. Tool versions from its own
@@ -147,11 +155,13 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
   CC-2 (crossplane-configuration#29, `feat/agentrun-harness`, draft). CC-2's head is `c304bbf`, which
   adds the harness `preStop` revoke and keys the CNP `Usage` on the run's Pod; its package pre-release is `v0.7.2-pr29.3ad168a`.
 - **Live gotchas.** A live `flux resume` is reverted by drift correction: unsuspend in git.
-  `flux get kustomization a b` reads only the first name. Curls to `*.priv.aws.ogenki.io` need
+  `flux get kustomization a b` reads only the first name. Curls to `*.priv.gcp.ogenki.io` (GCP
+  parity cross-plan edit, 2026-09-29: was `*.priv.aws.ogenki.io`) need
   `--cacert opentofu/aws/openbao/management/.tls/ca.pem`. VictoriaLogs stores parsed JSON as `log.*`
-  at ingest. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an
-  `integration/agent-factory` checkout: a deploy from `main` destroys the `agents` and `merge-gate`
-  mounts and every key in them (P38).
+  at ingest. Until G-5 merges (GCP parity cross-plan edit, 2026-09-29; was "until S1 merges in
+  Phase 7"), `openbao/management` is deployed only from an `integration/agent-factory` checkout: a
+  deploy from `main` destroys the `agents` mount (GP-8) and, once Task 1.15a lands, `merge-gate`
+  too, and every key in them (P38).
 - **Constitution on every workload.** Default-deny CNP per endpoint, with DNS L7
   (`rules.dns matchPattern "*"`) wherever a `toFQDNs` rule exists; requests **and** limits; liveness,
   readiness and startup probes; restricted securityContext with `seccompProfile: RuntimeDefault`;
@@ -206,7 +216,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | # | Spec says / gap | Ruling | Why | Cost if wrong |
 |---|---|---|---|---|
 | P1 | Phases 1 log · 2 viewers · 3 driver · 4 approvals · 5 room tools · 6 fork | **Room tools move to phase 3**; driver becomes 4, approvals 5 | The UX reviews' top gap after "no live view" is "reviewer, tester and triager output has no destination". Tools only append to the room and need no driver token, so nothing earlier depends on phase 3–4 | One extra composition release (CC-S3) lands before driver work; none of phases 4–6 uses the tools |
-| P2 | Phase 7: gcp-0 | Out of this plan, as SP1 did | Programme: aws-0 first, gcp-0 a follow-up per sub-project | gcp-0 needs its own plan: TLS on :8443 (no WireGuard), the GKE issuer in the allowlist |
+| P2 | Phase 7: gcp-0 | **Reversed (GCP parity cross-plan edit, 2026-09-29): gcp-0 is IN scope, and aws-0 is not deployed.** TLS on :8443 (GP-18) and the GKE issuer in the allowlist (GP-11/GP-12) are built here, in Tasks 1.9, 1.11, 1.14, 1.18, 1.20 | The GCP parity plan makes gcp-0 the platform | Conflict with the original ruling: every "aws-0" reference below this row is superseded by the GCP parity plan's Global Constraints edit |
 | P3 | :8443 takes "JWT (allowlisted issuer, audience `room-broker`) → … or `system:factory`" | Runs present audience `room-broker`; **system callers present `rooms-system`**, and their `sub` must be in an explicit allowlist | SP1's Kyverno `agent-audience-reservation` and `agent-audience-token-request` refuse any `room-broker*` audience outside namespace `agents`, so the factory could never mint one | SP3's factory projects `rooms-system` instead of `room-broker`: one line in its manifest |
 | P4 | Bridge reads `WS /sockets/session/{id}?after_seq=` | The bridge **polls `GET …/events/search` every 1 s** (cursor = last event id, inclusive) and `GET /api/conversations/{id}` for `execution_status`. `StreamingDeltaEvent`s are not forwarded | The search API is durable, paged and restart-safe, and the bridge needs no WebSocket client. The harness keeps its own store, so polling loses nothing while the sandbox lives | ≤ 1 s extra latency; the UI shows whole messages, not token streaming. Adding the socket later changes only `internal/bridge/harness.go` |
 | P5 | SP1 lists "the harness session key on a shared in-memory volume" | **No change to the harness's agent-server contract and no session-key volume** (the one image change is P32's footer). The bridge sets `AlwaysConfirm` itself when the conversation appears (phase 5). On SIGTERM it flushes its buffer within the 30 s grace period | agent-server has no session key (SP1 P13: loopback only). `agent-run` detects a terminal status every 15 s; the bridge polls every 1 s, so it has mirrored the final events first. Approvals are oversight, not a boundary (S9, T6) | An action taken in the first ~250 ms of a conversation escapes confirmation (it is still logged). Final events are lost only if the broker is down for the whole grace period, the spec's own "while the sandbox lives" bound |
@@ -215,8 +225,9 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P8 | `objectStoreRecovery` "lets the log survive routine rebuilds" | The first deploy has **no** recovery source; nothing exists to recover. After a day of real rooms, the seed is promoted with `cnpg-promote-seed.sh` and the claim gains `objectStoreRecovery.path: rooms-<date>` (Task 2.12). Every later teardown promotes a fresh seed first | Recovery needs a seed, and the repo's seed discipline (zitadel) is the proven path | Events after the last promoted seed are lost on a rebuild |
 | P9 | `KVStore` `auth.existingSecret` from `platform/agents/*` | The Valkey password comes from an ESO `Password` generator, `CreatedOnce` | Valkey carries hints only, so a per-cluster password loses nothing. An `agents/*` path would need a manual seed | None found |
 | P10 | S11: `App` claim "with its own route off … The App XRD takes custom CNP rules and extra ports" | The App claim is named **`room-broker`**. Its `networkPolicies` are **disabled** and a standalone CNP sits beside it; metrics and probes are on `:9090` with a standalone `VMServiceScrape` | SP1 as built hardcodes `app.kubernetes.io/name: room-broker` in every run CNP and the data-plane CNP, and the FQDN `room-broker.agent-system.svc.cluster.local`. The App egress schema has no `rules.dns`, without which the IdP `toFQDNs` rule never matches (`security/AGENTS.md` trap 1) | Renaming later is a delete-and-create of a stateless Deployment plus three selector edits |
-| P11 | §9 broker egress lists "toFQDNs identity provider 443" | It also allows `oidc.eks.${region}.amazonaws.com:443` | Offline validation of run tokens needs the EKS JWKS (`${oidc_issuer_url}/keys`), as `agent-router` already does | None |
-| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the aws-0 sync already opens | That script runs on every deploy (`opentofu/aws/eks/init/workflows.tm.hcl`) and OpenBao restores the path. Every other consumer goes to AWS Secrets Manager, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
+| P11 | §9 broker egress lists "toFQDNs identity provider 443" | It also allows `${oidc_jwks_host}:443` (GCP parity GP-12, cross-plan edit 2026-09-29: was `oidc.eks.${region}.amazonaws.com:443`), and the JWKS URI is `${oidc_jwks_uri}` (was `${oidc_issuer_url}/keys`) | Offline validation of run tokens needs the run issuer's JWKS, as `agent-router` already does. GKE serves it at `<issuer>/jwks`, not `<issuer>/keys`, so a per-cloud host/URI pair replaces the EKS-shaped derivation | None |
+| P11a | §9 broker egress, gcp-0 hairpin (GCP parity cross-plan edit, GP-11/`gcp_gateway_hairpin_cross_node`) | On gcp-0, `toFQDNs: auth.gcp.cloud.ogenki.io` with `toPorts: 443` reaches gcp-0's own ZITADEL Gateway and hits the socket-LB hairpin. Use `toEntities: [all]` with no `toPorts` for that one rule, as `tooling/gcp-0/headlamp/network-policy.yaml` does | Per-packet LB rewrites the port before policy runs on gcp-0's gVisor nodes, so any `toPorts` on this rule fails | A port-scoped rule silently blocks the broker's own IdP calls on gcp-0 only |
+| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the gcp-0 sync already opens (GCP parity cross-plan edit, 2026-09-29: gcp-0's stage 3 already opens the OpenBao session with `--openbao-url`, GCP parity G-3; the `rooms-proxy` write uses it the same way — was "the aws-0 sync already opens") | That script runs on every deploy and OpenBao restores the path. Every other consumer goes to the cloud's own secret store, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
 | P13 | Room MCP: "Injected credential plus `x-ar-agent`"; fallback: bridge relay | The MCPRoute backend injects a generated key in header `x-room-mcp-key` (`securityPolicy.apiKey`). **The relay fallback is not built** | SP1 confirmed from source that `x-ar-agent` reaches MCP backends (SP1 §6). A key in a custom header keeps `Authorization` out of every MCP hop (gate A6's intent) | If Task 3.11 finds no `x-ar-agent`, ruling P36 applies: the relay is not built in this plan |
 | P14 | Before SP3, "the broker shows the `AgentRun` for the owner to create" (fork) | The same holds for **hand to role** and **add agent**. The broker renders the claim; the owner runs it. `task agent:run` gains `--room <id>` | C3: only the factory creates runs, and it does not exist yet. The broker's RBAC never includes `create` | The owner is in the loop for every run until SP3; the factory client (`POST /v1/runs`) is built and unit-tested, and switches on with `factoryURL` |
 | P15 | `state_changed{run_phase}` | When a run ends, the broker appends `state_changed{kind: run_phase, phase, reason}` with reason `agent_finished`, `agent_error`, `agent_stuck`, `deadline`, `pod_lost`, `revoked`, `deleted` (the claim was deleted first, review M15) or `budget-*`. It derives the reason from the harness's last status in the log and the run's timings | UX finding H3: every failure reads `Failed/PodFailed`. The log is the only place that knows whether the agent ended its conversation | A pod lost within 30 s of its deadline reads `deadline` |
@@ -242,7 +253,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P35 | Review M14: agent-server 1.49.6 skips an event file it cannot read (`_get_searchable_event` returns `None`) | **A known limit, not fixed.** The bridge keys items by event position (`SeqFor`), so a transiently skipped event shifts every later position by one. The live cursor moves on by event id; a restarted bridge's `Skip` recounts | The window is a partly written event file on the sandbox's own disk, and keying by event id would need another idempotency scheme in the store | For that run only: one event can be missed, or the events after it re-appended under new keys (visible duplicates) |
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
 | P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
-| P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
+| P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`. **GCP parity cross-plan edit (2026-09-29): the `agents` mount, `agents-secrets.hcl`, the SecretStore path and the ExternalSecret keys landed in GCP parity G-5 (GP-8), for both clouds — not in Task 1.15a.** Task 1.15a now only creates `merge-gate` (SP3 R44). [OWNER] moves `github-app`, `zai` and `factory-app` and deletes the old keys once every ExternalSecret is Ready, as `aws-0 only, if it is ever rebuilt` (Task 1.15a Steps 8–11). The raft snapshot carries every mount, so a rebuild restores it with no seed. **Until G-5 merges** (was: until S1 merges in Phase 7), `openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before G-5 merges destroys the `agents` mount and every key in it**; its preview shows `to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
 | P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. They also keep `get_kubernetes_resources` cluster-wide, which still reaches pod specs (including inline `env`), workload specs (Deployment/StatefulSet/DaemonSet/ReplicaSet), and `agentruns`' task text — none namespace-scoped. A tenant or a per-run filter is backlog |
 | P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
 
@@ -291,7 +302,7 @@ merge-only, never rebased.
 |---|---|---|---|---|---|---|
 | AP-0 | agent-platform · `chore/bootstrap` | `main` | 0 | [OWNER] repo created | Go module, mise, taskfile, CI, pre-release image workflow, stub binaries | Pre-release images pull from ghcr anonymously |
 | CC-H1 | crossplane-configuration · `ci/prerelease-xrd-crds` | `feat/agentrun-harness` (SP1 CC-2, head `c304bbf`) | 0.5 | CC-2 (#29) open | The pre-release job also publishes `xrd-crds.yaml` as `oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<version>` (B2, P40) | via H-1: its `Kubernetes validation ☸` green |
-| H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | The next aws-0 rebuild: runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
+| H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | gcp-0, after GCP parity Task 8.6 (GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild"): runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
 | AP-1 | agent-platform · `feat/room-log` | `chore/bootstrap` | 1 | AP-0 | Envelope, redaction, store + migrations, Room CRD, authn, run watch, Room controller, :8443, bridge | via S1 |
 | CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `feat/agentrun-observability` (the observability plan's CC-O1, on CC-H1; O12) | 1 | CC-1 (#27), CC-2 (#29), CC-H1 and CC-O1, open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
 | CC-S2 | crossplane-configuration · `feat/agentrun-room-bridge` | `feat/sqlinstance-generated-credentials` | 1 | CC-S1; AP-1's bridge pre-release | `room-bridge` native sidecar, room token, bridge health ingress | via S1 |
@@ -793,9 +804,9 @@ in this repo, **H-1** (`fix/agent-review-hardening`, stacked on SP1's `feat/agen
 mount, is not here: it lands with S1, before this plan writes its first new secret (Task 1.15a,
 ruling P38).
 
-Gate: H-1's CI green, `Kubernetes validation ☸` included (B2). On the next aws-0 rebuild: runbook 08
-re-run with a real PASS, and the seed, MCP-scope and RBAC checks of Task 0.5.14. Nothing merges
-(P33).
+Gate: H-1's CI green, `Kubernetes validation ☸` included (B2). On gcp-0, after GCP parity Task 8.6
+(GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild"): runbook 08 re-run with a
+real PASS, and the seed, MCP-scope and RBAC checks of Task 0.5.14. Nothing merges (P33).
 
 ### Task 0.5.1: H-1 — worktree
 
@@ -1666,11 +1677,12 @@ Run: `gh pr checks <H-1> --watch`
 Expected: every check green, `Kubernetes validation ☸` included; its log shows
 `==> Using pre-built Crossplane XRD CRDs from`. That check was red on every SP1 PR (B2).
 
-### Task 0.5.14: [LIVE] H-1 on the next aws-0 rebuild
+### Task 0.5.14: [LIVE] H-1 on gcp-0, after GCP parity Task 8.6
 
 Merge H-1 into `integration/agent-factory` (live-check routine step 1) and hand-patch the core
-package to CC-H1's pre-release (Global Constraints). The owner's next rebuild of aws-0, deployed from
-the `integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
+package to CC-H1's pre-release (Global Constraints). gcp-0, after GCP parity Task 8.6 (GCP parity
+cross-plan edit, 2026-09-29; was "the owner's next rebuild of aws-0"), deployed from the
+`integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
 evidence".
 
 > **Amendments (final-review fix wave, 2026-09-29):**
@@ -1688,6 +1700,10 @@ evidence".
 > - Runbook 06's Results row 130 (`4 — internal tools`) records a pre-fix observation — the
 >   implementer's tool list still shows `get_kubernetes_resources`, which M2/M3 (H-1) removed. This
 >   task's Step 3 below must re-run Step 4 and overwrite that row, not only the runbook 08 table.
+> - **GCP parity cross-plan edit (2026-09-29), superseding Ruling B's generic substitution with the
+>   literal check:** Step 1's pool check is `kubectl get nodes -l sandbox.gke.io/runtime=gvisor`
+>   instead of `karpenter_nodepools_*` (gcp-0 has no Karpenter). Step 2's regex becomes
+>   `^https://grafana\.priv\.gcp\.ogenki\.io/d/agent-platform$`.
 
 - [ ] **Step 1: Runbook 08, a real PASS**
 
@@ -4598,6 +4614,12 @@ git commit -m "feat(roomctrl): Room reconciler with log row, finalizer and statu
 
 ### Task 1.9: The bridge and system API on :8443
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** the :8443 listener is
+> `ListenAndServeTLS` on `/etc/room-broker/tls/{tls.crt,tls.key}` (Task 1.18's `Certificate
+> room-broker-tls`). It reloads the pair when cert-manager renews it: a `GetCertificate` that
+> re-reads the files once they change. The unit test serves a self-signed pair and asserts a
+> plain-HTTP request fails. :8080 (humans, behind oauth2-proxy) and the MCP port are unchanged.
+
 **Files:**
 - Create: `internal/wire/bridge.go`
 - Create: `internal/bridgeapi/server.go`, `internal/bridgeapi/registry.go`, `internal/bridgeapi/system.go`
@@ -6194,6 +6216,11 @@ git commit -m "feat(bridge): agent-server adapter, event mapping, status transit
 
 ### Task 1.11: The `room-bridge` binary
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `bridge.NewBroker` builds its `http.Client`
+> with a `tls.Config{RootCAs: …}` loaded from `$BROKER_CA_FILE` (default
+> `/etc/room-broker-ca/ca.crt`). It refuses to start if the file is absent or `BROKER_URL` is not
+> `https://`. Unit test: a `httptest.NewTLSServer` whose CA is and is not in the file.
+
 **Files:**
 - Create: `internal/bridge/broker.go`, `internal/bridge/bridge.go`
 - Modify: `cmd/room-bridge/main.go`
@@ -7595,6 +7622,13 @@ synthetic merge commit: copy it from there.
 SP1 left this to SP2 (SP1 plan P8): with `roomRef`, the sandbox also runs `room-bridge`, the only
 container that mounts a token with audience `room-broker`.
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `BROKER_URL` becomes
+> `https://{_BROKER_FQDN}:8443` (the `main_test.k` assertion changes with it). The bridge sidecar
+> mounts the Secret `room-broker-ca` (namespace `agents`, key `ca.crt`, from Task 1.18's
+> ExternalSecret) read-only at `/etc/room-broker-ca`, and sets `BROKER_CA_FILE`. New golden
+> renders, then a CC pre-release pinned on the integration branch. Conflict: superseded the plain
+> `http://` URL this task's original text assumed.
+
 **Files** (branch `feat/agentrun-room-bridge`, stacked on `feat/sqlinstance-generated-credentials`
 with a merge, never a rebase):
 - Modify: `apis/agentrun/kcl/main.k`, `apis/agentrun/kcl/main_test.k`, `apis/agentrun/kcl/README.md`
@@ -7899,6 +7933,14 @@ git commit -m "docs(adr): 0044 room session protocol"
 
 ### Task 1.15a: M1 — the agents' own OpenBao mount (ruling P38)
 
+> **GCP parity cross-plan edit (2026-09-29):** the `agents` mount, `agents-secrets.hcl`, the
+> SecretStore path, the ExternalSecret keys and `test-openbao-agent-mounts.sh` landed in GCP
+> parity G-5 (GP-8), for both clouds — the steps below that build them are superseded by that
+> plan. This task now keeps only: the `merge-gate` mount, its `secrets-admin` paths, and a
+> `merge-gate` line in `test-openbao-agent-mounts.sh`. Steps 8–11 (the live migration) are
+> **aws-0 only, if it is ever rebuilt**. Every "until S1 merges" footgun below reads "until G-5
+> merges".
+
 Review M1: SP1 put the agents' GitHub App key and Z.ai key under `platform/agents/*`. The identity
 behind `openbao-platform`, `external-secrets`, reads `platform/data/*`, and that ClusterSecretStore
 has no `conditions`: anything allowed to create an `ExternalSecret` in any namespace can pull the
@@ -8071,7 +8113,7 @@ The comment in `infrastructure/base/llm-gateway/externalsecret-zai.yaml` names `
 | File | Change |
 |---|---|
 | `clusters/aws-0-agent-platform/README.md` | the `agent-secrets` row: "`SecretStore agents-secrets` → the `agents` OpenBao mount"; the App paragraph: "key written to `github-app` on the `agents` mount" |
-| `docs/runbooks/agent-factory/README.md` | owner action 2: `bao kv put -mount=agents zai api_key=-`; action 4: `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`. The footgun note gains: "Until SP2's S1 merges, deploy `aws/openbao/management` from this checkout only: a deploy from `main` destroys the `agents` and `merge-gate` mounts and every key in them (SP2 P38)." |
+| `docs/runbooks/agent-factory/README.md` | owner action 2: `bao kv put -mount=agents zai api_key=-`; action 4: `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`. The footgun note gains: "Until GCP parity G-5 merges, deploy `openbao/management` from this checkout only: a deploy from `main` destroys the `agents` mount and, once this task lands, `merge-gate` too, and every key in them (SP2 P38, GCP parity GP-8)." |
 | `docs/runbooks/agent-factory/04-gateway-secrets-budgets.md` | lines 4, 15 and 81 name the `agents` mount. Step 3's probes: `agents/data/zai`, `platform/data/agents/zai`, `platform/data/llm/zai`, `apps/data/anything`, Expected `read`, `deny`, `deny`, `deny` |
 | `docs/runbooks/agent-factory/05-github-octo-sts.md` | line 18: "`github-app` on the `agents` mount" |
 | ADR-0043 (line 145), ADR-0046 (line 94) | "…at `github-app` (resp. `zai`) on the `agents` OpenBao mount, moved from `platform/agents/` by SP2 ruling P38 (external review M1)" |
@@ -8089,7 +8131,8 @@ git add scripts/ci/tests/test-openbao-agent-mounts.sh opentofu security infrastr
 git commit -m "fix(openbao): the agents' secrets on a mount only their own store reads"
 ```
 
-- [ ] **Step 8: [OWNER] + [LIVE] Migrate, after S1 is merged into integration**
+- [ ] **Step 8: [OWNER] + [LIVE] Migrate, after S1 is merged into integration (aws-0 only, if it
+  is ever rebuilt — GCP parity cross-plan edit, 2026-09-29)**
 
 Run it right after the live-check routine's step 1 for S1, before Task 1.22 Step 2. From the
 **integration checkout** (P38), after `git pull`:
@@ -8127,7 +8170,8 @@ is absent, Task 3.9 writes it straight to `agents`); every ExternalSecret on `ag
 `Retain`, so octo-sts and agent-router keep running. Task 1.22's runs are the end-to-end proof: they
 mint GitHub tokens through octo-sts and call the model with the agents' key.
 
-- [ ] **Step 9: [OWNER] Only the agents' store reads the mount**
+- [ ] **Step 9: [OWNER] Only the agents' store reads the mount (aws-0 only, if it is ever
+  rebuilt)**
 
 The probe logs in with two roles, a write to OpenBao an agent session never makes (runbook 04):
 
@@ -8141,7 +8185,8 @@ bao token capabilities "$T" merge-gate/data/policy-bot; bao token revoke "$T"
 
 Expected: `deny`, `deny`; then `read`, `deny`, `deny`.
 
-- [ ] **Step 10: [OWNER] Delete the old keys once every ExternalSecret is Ready**
+- [ ] **Step 10: [OWNER] Delete the old keys once every ExternalSecret is Ready (aws-0 only, if
+  it is ever rebuilt)**
 
 ```bash
 for k in github-app zai factory-app; do bao kv metadata delete -mount=platform "agents/$k"; done
@@ -8151,7 +8196,7 @@ bao kv list -mount=platform agents; echo "exit $?"
 Expected: `No value found at platform/metadata/agents` and a non-zero exit: nothing is left under
 the prefix `openbao-platform` can read.
 
-- [ ] **Step 11: [LIVE] The first rebuild after Step 10**
+- [ ] **Step 11: [LIVE] The first rebuild after Step 10 (aws-0 only, if it is ever rebuilt)**
 
 Before anyone writes a secret on the rebuilt cluster:
 `bao kv get -format=json -mount=agents github-app | jq -c '.data.data | keys'` → `["app_id","private_key"]`,
@@ -8468,9 +8513,19 @@ step shows the flow is allowed.
 
 ### Task 1.18: The broker: App claim, config, RBAC, policy, retention, scrape, umbrella child
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** the broker's :8443 listener serves TLS on
+> both clouds. This task adds `certificate.yaml` (a `Certificate room-broker-tls` in
+> `agent-system`, `issuerRef: {kind: ClusterIssuer, name: openbao}`, `dnsNames:
+> [room-broker.agent-system.svc.cluster.local, room-broker.agent-system.svc]`, `duration: 720h`,
+> `renewBefore: 240h`, `secretName: room-broker-tls`) and an ExternalSecret `room-broker-ca` in
+> `agents` that copies the private CA the way `security/base/agent-secrets/externalsecret-openbao-ca.yaml`
+> does. `app.yaml` mounts the `room-broker-tls` Secret at `/etc/room-broker/tls`. The `openbao`
+> ClusterIssuer's egress is already allowed; the broker CNP is unchanged — the port stays 8443.
+
 **Files:**
 - Create in `infrastructure/base/room-broker/`: `kustomization.yaml`, `app.yaml`, `config.yaml`,
-  `rbac.yaml`, `network-policy.yaml`, `retention-cronjob.yaml`, `vmservicescrape.yaml`
+  `rbac.yaml`, `network-policy.yaml`, `retention-cronjob.yaml`, `vmservicescrape.yaml`,
+  `certificate.yaml` (GCP parity GP-18)
 - Create: `clusters/aws-0-agent-platform/infrastructure-room-broker.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0-agent-platform/README.md`
 
@@ -8497,6 +8552,7 @@ resources:
   - rbac.yaml
   - app.yaml
   - network-policy.yaml
+  - certificate.yaml # GCP parity GP-18: TLS on the bridge/system :8443 listener, both clouds
   - sqlinstance.yaml
   - network-policy-cnpg.yaml
   - retention-cronjob.yaml
@@ -8517,14 +8573,16 @@ data:
     publicURL: https://rooms.${private_domain_name}
     # The only run issuer today is this cluster's (C2 r5). A runtime with its own
     # workload JWTs is one more entry here, not a new code path.
+    # jwksURL is ${oidc_jwks_uri}, not <issuer>/keys (GCP parity GP-12, ruling P11): GKE
+    # serves its JWKS at <issuer>/jwks, EKS at <issuer>/keys, so the path is per-cloud.
     runIssuers:
       - issuer: ${oidc_issuer_url}
-        jwksURL: ${oidc_issuer_url}/keys
+        jwksURL: ${oidc_jwks_uri}
         subPattern: '^system:serviceaccount:agents:xplane-run-([a-z2-7]{8})$'
     # System callers present audience rooms-system (ruling P3).
     systemIssuer:
       issuer: ${oidc_issuer_url}
-      jwksURL: ${oidc_issuer_url}/keys
+      jwksURL: ${oidc_jwks_uri}
     # SP3's factory, commented until SP3 ships its ServiceAccount (Interfaces table,
     # review M9). Task 1.22 Step 8 enables it for its probe only, then comments it again.
     systemPrincipals: {}
@@ -8661,12 +8719,60 @@ spec:
     - name: config
       configMap:
         name: room-broker-config
+    # GCP parity GP-18: the bridge/system :8443 listener's TLS pair, both clouds.
+    - name: tls
+      secret:
+        secretName: room-broker-tls
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker
       readOnly: true
+    - name: tls
+      mountPath: /etc/room-broker/tls
+      readOnly: true
   networkPolicies:
     enabled: false
+```
+
+`infrastructure/base/room-broker/certificate.yaml` (GCP parity GP-18, both clouds):
+
+```yaml
+# The broker's :8443 TLS pair. Reloaded by the server's GetCertificate (Task 1.9) when
+# cert-manager renews it; no restart on renewal.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: room-broker-tls
+  namespace: agent-system
+spec:
+  secretName: room-broker-tls
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    kind: ClusterIssuer
+    name: openbao
+  dnsNames:
+    - room-broker.agent-system.svc.cluster.local
+    - room-broker.agent-system.svc
+---
+# The bridge's and the run CNP's trust anchor for the broker's certificate (GCP parity
+# GP-18), copied the way security/base/agent-secrets/externalsecret-openbao-ca.yaml does.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: room-broker-ca
+  namespace: agents
+spec:
+  secretStoreRef:
+    kind: SecretStore
+    name: agents-secrets
+  target:
+    name: room-broker-ca
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: openbao-ca
+        property: ca.crt
 ```
 
 The tag is AP-1's pre-release (`v0.0.1-pr<N>.<sha8>@sha256:…`, from its CI summary). Task 1.21
@@ -8750,14 +8856,20 @@ spec:
         - ports:
             - port: "5432"
               protocol: TCP
-    # The run issuer's JWKS, checked offline (ruling P11). Not ${oidc_issuer_host}:
-    # it carries the /id/<ID> path, which matchName rejects.
+    # The run issuer's JWKS, checked offline (ruling P11; GCP parity GP-12). A dedicated
+    # host var, not derived from the issuer: EKS serves it at <issuer>/keys, GKE at
+    # <issuer>/jwks, and matchName rejects the issuer's own /id/<ID> path anyway.
     - toFQDNs:
-        - matchName: oidc.eks.${region}.amazonaws.com
+        - matchName: ${oidc_jwks_host}
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+    # gcp-0 only (ruling P11a, GCP parity GP-11/GP-26): the IdP FQDN rule above hairpins
+    # through per-packet LB back to this cluster's own ZITADEL Gateway. toEntities: [all]
+    # with no toPorts, as tooling/gcp-0/headlamp/network-policy.yaml does.
+    - toEntities:
+        - all
 ---
 # The retention job reaches the log and nothing else.
 apiVersion: cilium.io/v2
@@ -9005,6 +9117,10 @@ git commit -m "feat(rooms): room log alerts"
 ```
 
 ### Task 1.20: `task agent:run -- --room`
+
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `task agent:run -- --room`, and the live
+> steps that curl :8443 (Task 1.22 and its runbook), use `https://` with `--cacert` on the CA from
+> the `openbao-ca` ExternalSecret, not plain HTTP.
 
 **Files:**
 - Modify: `scripts/ops/k8s/agent-run.sh`, `scripts/ci/tests/test-agent-run.sh`
@@ -14818,7 +14934,8 @@ Expected:
 - within 15 s, one `verdict_posted|$PR#issuecomment-…` row;
 - a count of `1`;
 - a body that opens with `### Agent review:`, quotes the summary (the room is public), links
-  `https://rooms.priv.aws.ogenki.io/r/$ROOM` and ends with the marker.
+  `https://rooms.priv.gcp.ogenki.io/r/$ROOM` (GCP parity cross-plan edit, 2026-09-29: was
+  `priv.aws.ogenki.io`) and ends with the marker.
 
 A new leader posts nothing twice. Run
 `kubectl delete pod -n agent-system -l app.kubernetes.io/name=room-broker && kubectl wait -n agent-system --for=condition=Ready pod -l app.kubernetes.io/name=room-broker --timeout=5m`,
@@ -14841,7 +14958,9 @@ Expected: `FORWARDED` flows from `room-broker` to `api.github.com:443`, and no `
 
 Steps 2 and 3 ran H-S3's harness, which carries H-1's redaction.
 
-Run: `curl -s --cacert opentofu/aws/openbao/management/.tls/ca.pem https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode 'query=_time:3h kubernetes.pod_namespace:"agents" kubernetes.container_name:"harness" _msg:~"gh[posu]_[A-Za-z0-9_]{20,}" | stats count() as leaked'`
+Run (GCP parity cross-plan edit, 2026-09-29: `opentofu/gcp/openbao/management/.tls/ca.pem` and
+`vl.priv.gcp.ogenki.io`, were `opentofu/aws/...` and `vl.priv.aws.ogenki.io`):
+`curl -s --cacert opentofu/gcp/openbao/management/.tls/ca.pem https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode 'query=_time:3h kubernetes.pod_namespace:"agents" kubernetes.container_name:"harness" _msg:~"gh[posu]_[A-Za-z0-9_]{20,}" | stats count() as leaked'`
 Expected: `{"leaked":"0"}`. Quiet is not proof, so check that the pinned image redacts:
 `docker run --rm --entrypoint /agent-server/.venv/bin/python ghcr.io/smana/agent-harness:<H-S3 tag>@sha256:<digest> -c 'import sys; sys.path.insert(0, "/opt/agent"); import agent_run; print(agent_run.redact("x ghs_" + "A" * 36))'`
 → `x [REDACTED:github-token]`.
@@ -19013,3 +19132,23 @@ SP3's share (G2, G3, G5, G6, G8, and M1 for its keys) is in the SP3 plan.
 | N8 | Task 0.5.11 | Crossplane's verbs on sandboxes enumerated |
 | — | PR map; Tasks 1.13, 1.15, 3.6, 7.2a–7.6 | The new stack order: CC-2 ← CC-H1 ← CC-S1, and #2111 ← H-1 ← S1 and H-S3 |
 | — | PR map; Tasks 1.13, 1.15, 7.2a, 7.4, 7.5 | Stacking updated for the observability plan (O12): CC-H1 ← CC-O1 ← CC-S1, and H-1 ← O-1 ← S1; H-S3 stays on H-1 |
+
+## GCP parity cross-plan edits (2026-09-29)
+
+Applied from the GCP parity plan's [Cross-plan edits](2026-09-29-gcp-parity-plan.md#cross-plan-edits) (SP2 share).
+
+| ID | Where | What | Conflict |
+|---|---|---|---|
+| — | Global Constraints (Target) | gcp-0 is the target; aws-0 is not deployed | **Yes** — reverses "Target aws-0 only" |
+| — | Architecture paragraph | TLS on the bridge → broker :8443 on both clouds, terminated with the `openbao` ClusterIssuer's certificate; drops the WireGuard-on-aws-0 wording | **Yes** — replaces "plain HTTP … which Cilium's WireGuard encrypts on aws-0" |
+| P2 | Ruling P2 | **Reversed**: gcp-0 is in scope, not out of it | **Yes** — the ruling's own outcome flips |
+| GP-18 | Tasks 1.9, 1.11, 1.14, 1.18, 1.20 | TLS on :8443: `Certificate room-broker-tls` (`openbao` ClusterIssuer), `ExternalSecret room-broker-ca`, `GetCertificate` reload, `BROKER_CA_FILE`, `BROKER_URL=https://`, `--cacert` on the CLI and live curls | No |
+| P11, GP-12 | Ruling P11; Task 1.18's config and CNP | `${oidc_jwks_host}`/`${oidc_jwks_uri}` replace the EKS-shaped `oidc.eks.${region}.amazonaws.com` and `${oidc_issuer_url}/keys` | No |
+| P11a, GP-11/GP-26 | New ruling P11a; Task 1.18's CNP | `toEntities: [all]` egress rule for gcp-0's IdP hairpin (`gcp_gateway_hairpin_cross_node`) | No |
+| P38, GP-8 | Ruling P38; Task 1.15a | The `agents` mount, its policy, SecretStore and test moved to GCP parity G-5 (both clouds); Task 1.15a keeps only `merge-gate`; Steps 8–11 are aws-0-only, if it is ever rebuilt; the footgun reads "until G-5 merges" | **Yes** — Task 1.15a no longer builds the `agents` mount itself |
+| — | Global Constraints (Live gotchas, new Live-check routine bullet); PR map H-1 row; Phase 0.5 gate; Task 0.5.14; Task 3.11 Step 3 | Every [LIVE] step's `priv.aws.ogenki.io`, `opentofu/aws/openbao/management/.tls/ca.pem` and "the next aws-0 rebuild" replaced with `priv.gcp.ogenki.io`, `opentofu/gcp/...` and "gcp-0, after GCP parity Task 8.6" | No |
+| GP-14 | Global Constraints (new Live-check routine bullet) | Every child an S PR adds to `clusters/aws-0-agent-platform/` gets a `clusters/gcp-0-agent-platform/` twin, `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it substitutes | No |
+| P12, G-3 | Ruling P12 | The `rooms-proxy` OpenBao write uses gcp-0's stage 3 session (`--openbao-url`) the same way | No |
+
+**Not applied here:** the GCP parity plan's SP3 bullet ("when `merge-gate` lands, it lands on GCP's
+management stack too") — out of scope, a different plan.
