@@ -66,12 +66,14 @@ Its children kept their names when they moved, so
 `kv_cache_usage_perc`. The legacy KEDA HTTP add-on, with a proxy in the data path and a lagging
 request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
-### On `gcp-0` — one gate, six children, and do not resume it yet
+### On `gcp-0` — two Kubernetes gates, and do not resume them yet
 
-- **One gate**, `gcp-0/llm-platform.yaml`. There is no `opentofu/gcp/llm-platform/` stack: the
-  weights bucket is a Crossplane claim, not a Terraform-managed filesystem.
-- **Six children.** No `gpu-nodepools` — `infrastructure/gcp-0/computeclass/gpu-l4.yaml` already
-  provisions g2 + L4 on spot. No `runtimeclass-nvidia` — that exists on AWS only because
+- **Two gates, no OpenTofu one.** `gcp-0/ai-gateway.yaml` (children in `gcp-0-ai-gateway/`, the
+  aws-0 twin) and `gcp-0/llm-platform.yaml`, which depends on it. There is no
+  `opentofu/gcp/llm-platform/` stack: the weights bucket is a Crossplane claim, not a
+  Terraform-managed filesystem.
+- **Three `llm-platform` children.** No `gpu-nodepools` —
+  `infrastructure/gcp-0/computeclass/gpu-l4.yaml` already provisions g2 + L4 on spot. No `runtimeclass-nvidia` — that exists on AWS only because
   Bottlerocket's NVIDIA AMI crashloops the upstream device plugin; GKE manages GPU drivers itself.
 - **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
   mount. [ADR-0021](../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)

@@ -27,6 +27,8 @@ spec:
   # "no matches for kind <Backend|EnvoyProxy|...>" on first reconcile.
   dependsOn:
     - name: crds
+    # The KVStore claim needs its XRD.
+    - name: crossplane-configuration
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

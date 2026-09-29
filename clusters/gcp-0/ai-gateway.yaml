@@ -1,0 +1,27 @@
+---
+# AI gateway layer, gcp-0's opt-in umbrella (the aws-0 twin, GCP parity). The
+# Envoy Gateway and Agent Router controllers, the Semantic Router, and the
+# frontier routes. agent-platform and llm-platform depend on it.
+#
+# Default: suspend: true. Only integration/agent-factory unsuspends it, in a
+# test-only commit.
+#
+# deletionPolicy Orphan: removing this object must not uninstall Envoy Gateway
+# and every Gateway on the cluster.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-gateway
+  namespace: flux-system
+spec:
+  suspend: true
+  prune: true
+  deletionPolicy: Orphan
+  interval: 5m0s
+  timeout: 5m0s
+  # A sibling of clusters/gcp-0/, never a sub-path: flux-system syncs that tree
+  # recursively and would apply the children around this suspend.
+  path: ./clusters/gcp-0-ai-gateway
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
