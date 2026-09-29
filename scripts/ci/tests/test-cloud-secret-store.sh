@@ -277,6 +277,27 @@ PATH="$CREATEFAIL:$PATH" bash -c '
 ' || rc=$?
 check "gcp create failure: non-zero" "1" "$rc"
 check_log_absent "gcp create failure: no versions add" 'versions add' "$STUB_LOG"
+
+# A describe that failed transiently sends an existing secret down the create
+# path; ALREADY_EXISTS then proves it exists, so the version is still added.
+cat > "$CREATEFAIL/gcloud" <<'EOF'
+#!/usr/bin/env bash
+printf 'CALL:' >> "$STUB_LOG"; printf ' %q' "$@" >> "$STUB_LOG"; printf '\n' >> "$STUB_LOG"
+for a in "$@"; do case "$a" in
+    describe) exit 1 ;;
+    create) echo "ERROR: (gcloud.secrets.create) ALREADY_EXISTS: Secret [projects/proj/secrets/raced-secret] already exists." >&2; exit 1 ;;
+esac; done
+exit 0
+EOF
+: > "$STUB_LOG"
+rc=0
+PATH="$CREATEFAIL:$PATH" bash -c '
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+    CLOUD=gcp REGION="" GCP_PROJECT=proj
+    store_write raced-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+' 2>/dev/null || rc=$?
+check "gcp create ALREADY_EXISTS: succeeds" "0" "$rc"
+check_log "gcp create ALREADY_EXISTS: versions add still runs" 'versions add' "$STUB_LOG"
 rm -rf "$CREATEFAIL"
 
 exit $fail

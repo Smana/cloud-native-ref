@@ -94,7 +94,7 @@ store_write() {
         # "payload: unbound variable" -- taking the `|| rm -f` fallback with it and
         # leaving the plaintext payload on disk. mktemp paths never contain quotes.
         # shellcheck disable=SC2064
-        trap "shred -u '$payload' '$body' 2>/dev/null || rm -f '$payload' '$body'" EXIT
+        trap "shred -u '$payload' '$body' 2>/dev/null || rm -f '$payload' '$body'; rm -f '$body.err'" EXIT
         cat > "$payload" || exit 1
 
         case "$CLOUD" in
@@ -113,11 +113,15 @@ store_write() {
                 fi
                 ;;
             gcp)
-                store_exists "$name" || gcp_gcloud secrets create "$name" \
+                # A describe that failed transiently lands an existing secret
+                # here; ALREADY_EXISTS proves it exists, so add the version.
+                if ! store_exists "$name" && ! gcp_gcloud secrets create "$name" \
                     ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                     --replication-policy=automatic \
-                    --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" >/dev/null \
-                    || exit 1
+                    --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" \
+                    >/dev/null 2>"${body}.err"; then
+                    grep -q 'ALREADY_EXISTS' "${body}.err" || { cat "${body}.err" >&2; exit 1; }
+                fi
                 gcp_gcloud secrets versions add "$name" \
                     ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                     --data-file="$payload" >/dev/null

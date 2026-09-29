@@ -6,10 +6,15 @@
 #   Stage 1 (this stack):  GKE Standard cluster, static spot node pool, Workload
 #                          Identity, Crossplane WIF bootstrap
 #   Stage 2 (configure):   Gateway API CRDs -> Cilium -> Flux Operator -> Flux Instance
+#   Stage 3:               External Secrets grants, then the OIDC clients; when
+#                          gcp-0 hosts the IdP, first the Google IdP and groups
+#                          Action, and the clients mirrored into OpenBao
+#   Stage 5:               a hosting gcp-0's OpenBao OIDC check, which halts the
+#                          deploy on drift
 #
-# There is no stage 3. The EKS equivalent recycles bootstrap nodes whose ENIs
-# predate Cilium, which is specific to ENI prefix delegation and has no GCP
-# counterpart -- ipam.mode=kubernetes takes pod CIDRs from the node object.
+# Stage 5 keeps aws-0's job name, so one contract suite guards both. EKS's node
+# recycle has no GCP counterpart: it exists for ENI prefix delegation, while
+# ipam.mode=kubernetes takes pod CIDRs from the node object.
 #
 # The control-plane endpoint is PRIVATE, so stage 2 must run from a machine on the
 # tailnet.
@@ -260,6 +265,25 @@ script "deploy" {
           exit 0
         fi
 
+        # The workforce provider's audience is the ZITADEL PROJECT id, which does
+        # not exist until the sync below creates the project. Passing the pool
+        # lets the script reconcile it; without this, per-user RBAC on this
+        # cluster fails as a bare `invalid_grant` with everything looking healthy.
+        # Empty (no such stack / no such key) simply skips that reconciliation.
+        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+        # One flag list per sync, expanded by the real call AND the recovery
+        # printed when ZITADEL is late: a hand re-run missing the OpenBao flags
+        # leaves every ExternalSecret on the dead directory's clients.
+        IDP_SYNC_ARGS=(--cluster "$${NAME}" --cloud gcp --project "$${PROJECT}")
+        CLIENT_SYNC_ARGS=(
+          --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
+          --workforce-pool "$${WORKFORCE_POOL}"
+          --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200"
+          --openbao-root-token-secret openbao-priv-gcp-root-token
+          --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem"
+          --mirror-openbao
+        )
+
         # A BUDGET FOR A COLD BUILD, NOT A REBUILD.
         #
         # ZITADEL is last in a long chain on a fresh cluster --
@@ -290,41 +314,59 @@ script "deploy" {
 
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
           echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
-          echo "       Re-run by hand once it is up:"
-          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
-          echo "         scripts/provision/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
+          echo "       Re-run by hand once it is up, kubectl pointed at $${NAME}:"
+          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} scripts/provision/zitadel-idp.sh sync$(printf ' %q' "$${IDP_SYNC_ARGS[@]}") --apply"
+          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} scripts/provision/zitadel-oidc-clients.sh sync$(printf ' %q' "$${CLIENT_SYNC_ARGS[@]}") --apply"
           exit 0
         fi
 
-        # The workforce provider's audience is the ZITADEL PROJECT id, which does
-        # not exist until the sync below creates the project. Passing the pool
-        # lets the script reconcile it; without this, per-user RBAC on this
-        # cluster fails as a bare `invalid_grant` with everything looking healthy.
-        # Empty (no such stack / no such key) simply skips that reconciliation.
-        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         # A fresh directory (GCP parity GP-3) has neither the Google IdP nor the
         # groups Action; both must exist before the clients, or no token carries
         # a groups claim.
         echo "== registering the Google IdP and the groups Action"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" \
-          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync \
-            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync "$${IDP_SYNC_ARGS[@]}" --apply || \
           echo "[warn] IdP registration failed; re-run it by hand"
 
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
-            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
-            --workforce-pool "$${WORKFORCE_POOL}" \
-            --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200" \
-            --openbao-root-token-secret openbao-priv-gcp-root-token \
-            --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem" \
-            --mirror-openbao \
-            --apply || \
+          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync "$${CLIENT_SYNC_ARGS[@]}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"
         bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
+      BASH
+      ],
+    ]
+  }
+
+  job {
+    name        = "stage5-verify-openbao-oidc"
+    description = "Fail the deploy when a hosting gcp-0's OpenBao OIDC client disagrees with the store or ZITADEL no longer knows it"
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        set -euo pipefail
+        ROOT="${terramate.root.path.fs.absolute}"
+
+        # Stage 3's warn-and-continue lets a failed rotation through; this is
+        # what stops it. The check is the last statement, so exit 1 (drift) and
+        # exit 2 (cannot tell) both halt, as on aws-0.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
+        if [ "$${DEPLOY_IDP}" != "true" ]; then
+          echo "== skipping: this cluster consumes ${global.primary_cloud}'s directory, whose own deploy verifies OpenBao's OIDC client"
+          exit 0
+        fi
+
+        PROJECT="$(${global.provisioner} output -raw project_id)"
+        OPENBAO_URL="https://bao.$(${global.provisioner} output -raw private_domain_name):8200"
+        echo "== verifying OpenBao's OIDC client"
+        bash "$${ROOT}/scripts/provision/openbao-oidc-check.sh" \
+          --url "$${OPENBAO_URL}" \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem" \
+          --cloud gcp --project "$${PROJECT}" \
+          --redirect-uri "$${OPENBAO_URL}/ui/vault/auth/oidc/oidc/callback"
       BASH
       ],
     ]

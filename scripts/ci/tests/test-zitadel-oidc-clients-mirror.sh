@@ -7,9 +7,10 @@
 #
 # --mirror-openbao (GCP parity GP-5): a fresh directory re-registers every client
 # each build, and gcp-0's consumers read OpenBao. The mirror copies only the
-# fields the sync owns onto the mapped path, writes only on a change, says when
-# it skips an unmapped key, and does nothing unset. The functions are lifted out
-# of the script, so this tests the code that ships.
+# fields the sync owns onto an existing value (the whole payload onto an absent
+# one), writes only on a change, says when it skips an unmapped key, and does
+# nothing unset. The functions are lifted out of the script, so this tests the
+# code that ships.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
@@ -73,11 +74,16 @@ out="$(printf '%s' '{"GF_AUTH_GENERIC_OAUTH_CLIENT_ID":"same"}' \
 [ "$rc" -eq 0 ] && ! grep -q '^POST' "$T/calls" && [ ! -e "$T/body" ] \
   && ok "unchanged: no write, so no new KV version" || bad "unchanged: rc=$rc, calls $(cat "$T/calls")"
 
+# A 404 means OpenBao holds nothing the ownership filter could protect, and
+# `migrate` is additive per path: it skips a path that exists. An owned-fields
+# write here would leave grafana-envvars without its admin credentials for good.
 reset
 GET_CODE=404 GET_BODY='{"errors":[]}'
-printf '%s' '{"client_id":"new","not_ours":"x"}' | mirror_to_openbao harbor-oidc >/dev/null
-[ "$(jq -c '.data' "$T/body" 2>/dev/null)" = '{"client_id":"new"}' ] \
-  && ok "absent path (404): written fresh, owned fields only" || bad "404 case: $(cat "$T/body" 2>/dev/null)"
+store_blob='{"GF_SECURITY_ADMIN_USER":"admin","GF_SECURITY_ADMIN_PASSWORD":"fixture-pw","GF_AUTH_GENERIC_OAUTH_CLIENT_ID":"new"}'  # pragma: allowlist secret
+printf '%s' "$store_blob" | mirror_to_openbao observability-victoria-metrics-k8s-stack-grafana-envvars >/dev/null
+[ "$(jq -c '.data' "$T/body" 2>/dev/null)" = "$store_blob" ] \
+  && ok "absent path (404): written fresh with the full store payload" \
+  || bad "404 case: wrote keys $(jq -c '.data | keys' "$T/body" 2>/dev/null)"
 
 reset
 GET_CODE=403
@@ -136,6 +142,52 @@ for consumer in grafana headlamp flux-ui harbor openbao headlamp-proxy; do
     done <<< "$keys"
 done
 [ -z "$missing" ] && ok "every field merge_secret writes is in MIRRORED_FIELDS" || bad "not in MIRRORED_FIELDS:${missing}"
+
+# M-4: the ExternalSecrets reading a mirrored path are force-synced, so they do
+# not wait out their refreshInterval on the dead directory's clients. Matched on
+# store (openbao-<mount>) AND key, through both data and dataFrom.
+fs_body="$(sed -n '/^force_sync_mirrored() {/,/^}/p' "$S")"
+if [ -z "$fs_body" ]; then
+    bad "could not extract force_sync_mirrored() from $S"
+else
+    eval "$fs_body"
+    ES_JSON='{"items":[
+      {"metadata":{"namespace":"observability","name":"grafana-es"},"spec":{"secretStoreRef":{"name":"openbao-platform"},"dataFrom":[{"extract":{"key":"victoria-metrics/grafana-envvars"}}]}},
+      {"metadata":{"namespace":"tooling","name":"harbor-es"},"spec":{"secretStoreRef":{"name":"openbao-platform"},"data":[{"secretKey":"x","remoteRef":{"key":"harbor/oidc"}}]}},
+      {"metadata":{"namespace":"apps","name":"wrong-mount"},"spec":{"secretStoreRef":{"name":"openbao-apps"},"dataFrom":[{"extract":{"key":"harbor/oidc"}}]}},
+      {"metadata":{"namespace":"security","name":"gsm-es"},"spec":{"secretStoreRef":{"name":"clustersecretstore"},"dataFrom":[{"extract":{"key":"harbor-oidc"}}]}},
+      {"metadata":{"namespace":"tooling","name":"find-only"},"spec":{"secretStoreRef":{"name":"openbao-platform"},"dataFrom":[{"find":{"path":"harbor"}}]}}]}'
+    KGET_RC=0
+    kubectl() {
+        printf '%s\n' "$*" >>"$T/kubectl"
+        case "$1" in
+            get) printf '%s' "$ES_JSON"; return "$KGET_RC" ;;
+            annotate) return 0 ;;
+        esac
+    }
+    APPLY=true MIRROR_OPENBAO=true
+    : >"$T/kubectl"
+    force_sync_mirrored observability-victoria-metrics-k8s-stack-grafana-envvars harbor-oidc openbao-oidc >/dev/null 2>&1; rc=$?
+    annotated="$(grep '^annotate' "$T/kubectl" | awk '{print $5"/"$3}' | sort | tr '\n' ' ')"
+    [ "$rc" -eq 0 ] && [ "$annotated" = "observability/grafana-es tooling/harbor-es " ] \
+      && ok "force-sync: exactly the ExternalSecrets reading a mirrored path" || bad "force-sync annotated: '$annotated' rc=$rc"
+    grep '^annotate' "$T/kubectl" | grep -qv -- '--overwrite' \
+      && bad "force-sync annotate without --overwrite" || ok "force-sync annotates with --overwrite"
+    : >"$T/kubectl"
+    APPLY=false force_sync_mirrored harbor-oidc >/dev/null 2>&1
+    [ ! -s "$T/kubectl" ] && ok "force-sync: nothing on a dry run" || bad "force-sync ran on a dry run"
+    : >"$T/kubectl"
+    MIRROR_OPENBAO=false force_sync_mirrored harbor-oidc >/dev/null 2>&1
+    [ ! -s "$T/kubectl" ] && ok "force-sync: nothing without --mirror-openbao" || bad "force-sync ran without the flag"
+    KGET_RC=1
+    err="$(force_sync_mirrored harbor-oidc 2>&1 >/dev/null)"; rc=$?
+    [ "$rc" -eq 0 ] && grep -q 'WARN' <<< "$err" \
+      && ok "force-sync: a failed listing warns and returns 0" || bad "force-sync listing failure: rc=$rc err='$err'"
+    KGET_RC=0
+    unset -f kubectl
+fi
+grep -q '^    force_sync_mirrored "\${mirrored_keys\[@\]}"' "$S" \
+  && ok "cmd_sync force-syncs the mirrored keys" || bad "cmd_sync never calls force_sync_mirrored"
 
 grep -q -- '--mirror-openbao) MIRROR_OPENBAO="true"; shift ;;' "$S" && ok "--mirror-openbao is parsed" || bad "--mirror-openbao is not parsed"
 [ "$(grep -c 'store_write_and_mirror "\$key"' "$S")" -eq 2 ] \

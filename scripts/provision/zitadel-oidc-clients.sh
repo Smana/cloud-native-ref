@@ -42,10 +42,15 @@
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #
 #   # a SECONDARY cluster consuming the primary cloud's identity provider:
-#   # admin PAT from AWS, client secrets into GCP, kubectl pointed at aws-0.
+#   # admin PAT read from AWS's store (never kubectl), client secrets into GCP,
+#   # kubectl pointed at gcp-0 for its vars ConfigMap's audience scope.
 #   IDP_URL=https://auth.cloud.ogenki.io PRIVATE_DOMAIN=priv.gcp.ogenki.io \
 #     zitadel-oidc-clients.sh sync --cluster gcp-0 \
 #       --cloud gcp --project ID --idp-cloud aws --region eu-west-3 --apply
+#
+# On the HOSTING cloud the PAT is resolved from kubectl's cluster and overwrites
+# the stored one (GP-20), so kubectl must point at the hosting cluster: a
+# leftover security/iam-admin-pat anywhere else would replace that cloud's PAT.
 #
 # Dry-run unless --apply. Client secrets are never printed: ZITADEL returns a
 # client secret exactly once, at creation, so it goes straight from the API
@@ -859,10 +864,12 @@ openbao_oidc_config_payload() {
 }
 
 # The fields this script owns in a consumer secret: every key merge_secret and
-# converge_secret write. The mirror copies only these. The rest of a blob
-# belongs to another writer -- seed's GF_SECURITY_ADMIN_PASSWORD in
-# grafana-envvars -- and OpenBao's copy of it may be newer than the store's (a
-# rotation made in OpenBao), so the mirror never overwrites it.
+# converge_secret write. Onto an EXISTING OpenBao value the mirror copies only
+# these. The rest of a blob belongs to another writer -- seed's
+# GF_SECURITY_ADMIN_PASSWORD in grafana-envvars -- and OpenBao's copy of it may
+# be newer than the store's (a rotation made in OpenBao), so the mirror never
+# overwrites it. An ABSENT path gets the whole payload: `migrate` skips a path
+# that exists, so nothing else would ever fill in the rest.
 # test-zitadel-oidc-clients-mirror.sh fails when merge_secret writes a key
 # missing here.
 MIRRORED_FIELDS=(
@@ -876,9 +883,10 @@ MIRRORED_FIELDS=(
 
 # Mirror one consumer secret into the OpenBao path its ExternalSecret reads
 # (--mirror-openbao): MIRRORED_FIELDS from the store's blob, onto what OpenBao
-# holds. Writes only when that changes OpenBao's value, so a re-run adds no KV
-# version. Unmapped keys (openbao-oidc, headlamp-oauth2-proxy) are read from the
-# managed store; they are skipped, and said so. A subshell, like
+# holds, or the whole blob when OpenBao holds nothing. Writes only when that
+# changes OpenBao's value, so a re-run adds no KV version. Unmapped keys
+# (openbao-oidc, headlamp-oauth2-proxy) are read from the managed store; they
+# are skipped, and said so. A subshell, like
 # reconcile_openbao_oidc, so its temp files and trap stay local. Secrets move
 # through stdin and 0700-directory files, never argv.
 mirror_to_openbao() (
@@ -907,19 +915,21 @@ mirror_to_openbao() (
     # error, a timeout) must not become an empty merge base. curl's stderr is
     # shown for those: it holds curl's own error line only -- the token is in a
     # -K file and a body goes to -o -- and a 404's "(22)" line is expected.
+    absent=false
     code="$(openbao_req GET "${mount}/data/${path}" -o "$tmp/read" -w '%{http_code}' 2>"$tmp/err")" || true
     case "$code" in
         200) jq -ce '.data.data // {} | objects' "$tmp/read" > "$tmp/current" \
                  || { echo "[FAILED ] ${key} -- ${target} is not readable JSON; not overwriting it" >&2; exit 1; } ;;
-        404) printf '{}' > "$tmp/current" ;;
+        404) printf '{}' > "$tmp/current"; absent=true ;;
         *)   echo "[FAILED ] ${key} -- reading ${target} returned HTTP ${code:-none}; not overwriting it" >&2
              cat "$tmp/err" >&2
              exit 1 ;;
     esac
     # Field NAMES go in as --args (none is secret); both values on stdin.
-    if ! cat "$tmp/current" "$tmp/payload" | jq -cn '
+    if ! cat "$tmp/current" "$tmp/payload" | jq -cn --argjson absent "$absent" '
             input as $cur | input as $p |
-            ($cur + ($p | with_entries(select(.key | IN($ARGS.positional[]))))) as $new |
+            (if $absent then $p
+             else $cur + ($p | with_entries(select(.key | IN($ARGS.positional[])))) end) as $new |
             if $new == $cur then empty else {data: $new} end' \
             --args "${MIRRORED_FIELDS[@]}" > "$tmp/write"; then
         echo "[FAILED ] ${key} -- could not merge into ${target}; not overwriting it" >&2
@@ -947,6 +957,39 @@ store_write_and_mirror() {
     payload="$(cat)"
     printf '%s' "$payload" | store_write "$key" || return 1
     printf '%s' "$payload" | mirror_to_openbao "$key" || return 2
+}
+
+# Force-sync every ExternalSecret that reads a mirrored path. Left alone, each
+# waits out its refreshInterval (up to 1h) serving the dead directory's client.
+# Matched on store (openbao-<mount>) and key. Warn-only: the mirror already
+# converged OpenBao, and the next refresh picks it up regardless.
+force_sync_mirrored() {
+    [ "$APPLY" = "true" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ] || return 0
+    local key target es_json ns name now targets=()
+    for key in "$@"; do
+        target="$(bao_target_for "$key")" && targets+=("$target")
+    done
+    [ "${#targets[@]}" -gt 0 ] || return 0
+    if ! es_json="$(kubectl get externalsecrets -A -o json 2>/dev/null)"; then
+        echo "WARN: could not list ExternalSecrets; mirrored ones refresh on their own interval" >&2
+        return 0
+    fi
+    now="$(date +%s)"
+    jq -r '.items[]
+        | (.spec.secretStoreRef.name // "") as $store
+        | select($store | startswith("openbao-"))
+        | ($store | ltrimstr("openbao-")) as $mount
+        | select([(.spec.data // [])[].remoteRef.key?, (.spec.dataFrom // [])[].extract.key?]
+                 | map(select(. != null) | $mount + "/" + .)
+                 | any(IN($ARGS.positional[])))
+        | "\(.metadata.namespace) \(.metadata.name)"' --args "${targets[@]}" <<< "$es_json" \
+    | while read -r ns name; do
+        if kubectl annotate externalsecret "$name" -n "$ns" force-sync="$now" --overwrite >/dev/null; then
+            echo "[synced ] externalsecret ${ns}/${name}"
+        else
+            echo "WARN: could not force-sync externalsecret ${ns}/${name}" >&2
+        fi
+    done || echo "WARN: could not match ExternalSecrets to the mirrored paths" >&2
 }
 
 # GCP hosting: publish this directory's project id for gke/configure, which
@@ -1168,6 +1211,8 @@ cmd_sync() {
     # A failed mirror does not stop the loop, like openbao_failed below: the
     # other consumers and both reconciles still run, then the sync exits 1.
     local failed_mirrors="" wrc=0
+    # Keys mirrored without error, force-synced after the loop.
+    local mirrored_keys=()
     # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
     # branches below for where each is set. Empty stays empty on a dry run
     # (reconcile_openbao_oidc treats that as its own skip) and on any topology
@@ -1323,8 +1368,11 @@ cmd_sync() {
                 # converged, so nothing else here would ever retry it. Never on
                 # a dry run; a no-op without --mirror-openbao.
                 if [ "$APPLY" = "true" ]; then
-                    printf '%s' "$existing_secret" | mirror_to_openbao "$key" \
-                        || failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+                    if printf '%s' "$existing_secret" | mirror_to_openbao "$key"; then
+                        mirrored_keys+=("$key")
+                    else
+                        failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+                    fi
                 fi
             elif [ "$APPLY" != "true" ]; then
                 echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
@@ -1333,7 +1381,7 @@ cmd_sync() {
                 wrc=0
                 printf '%s' "$desired" | store_write_and_mirror "$key" || wrc=$?
                 case "$wrc" in
-                    0) ;;
+                    0) mirrored_keys+=("$key") ;;
                     2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
                     *) exit 1 ;;
                 esac
@@ -1373,7 +1421,7 @@ cmd_sync() {
         wrc=0
         printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
         case "$wrc" in
-            0) ;;
+            0) mirrored_keys+=("$key") ;;
             2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
             *) exit 1 ;;
         esac
@@ -1398,6 +1446,7 @@ cmd_sync() {
     # reconcile failure should not hide it.
     local openbao_failed=0
     reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" || openbao_failed=1
+    force_sync_mirrored "${mirrored_keys[@]}"
 
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
@@ -1409,7 +1458,7 @@ cmd_sync() {
         echo "[FAILED ] not mirrored to OpenBao: ${failed_mirrors} -- the managed store has them; re-run sync --apply" >&2
     fi
     if [ "$publish_failed" -ne 0 ]; then
-        echo "[FAILED ] zitadel-project-id not published -- gke/configure keeps the committed id; re-run sync --apply" >&2
+        echo "[FAILED ] zitadel-project-id not published -- gke/configure keeps publishing the id already there (the previous build's, or the committed one on a first build); re-run sync --apply" >&2
     fi
 
     [ "$openbao_failed" -eq 0 ] || exit 1

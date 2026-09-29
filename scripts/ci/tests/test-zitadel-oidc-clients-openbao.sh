@@ -163,8 +163,12 @@ check "gcp/gke/init runs at least one sync" "yes" "$([ "${gcp_syncs:-0}" -ge 1 ]
 gcp_hosting="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -vF -- '--idp-cloud' || true)"
 gcp_consumer="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -F -- '--idp-cloud' || true)"
 contains "$gcp_consumer" '--idp-cloud' "gcp/gke/init's consumer sync is found"
-contains "$gcp_hosting" '--openbao-url' "gcp/gke/init's hosting sync passes --openbao-url"
-contains "$gcp_hosting" '--mirror-openbao' "gcp/gke/init's hosting sync mirrors into OpenBao"
+# The hosting sync takes its flags from CLIENT_SYNC_ARGS, one multi-line array
+# shared with the recovery the job prints; comment lines inside it dropped.
+gcp_client_args="$(awk '/^[[:space:]]*CLIENT_SYNC_ARGS=\(/ { on = 1 } on && !/^[[:space:]]*#/ { print } on && /^[[:space:]]*\)[[:space:]]*$/ { exit }' "$GCP_WORKFLOWS_SRC")"
+contains "$gcp_hosting" '"$${CLIENT_SYNC_ARGS[@]}"' "gcp/gke/init's hosting sync expands CLIENT_SYNC_ARGS"
+contains "$gcp_client_args" '--openbao-url' "gcp/gke/init's hosting sync passes --openbao-url"
+contains "$gcp_client_args" '--mirror-openbao' "gcp/gke/init's hosting sync mirrors into OpenBao"
 check "gcp/gke/init's consumer sync passes no --openbao-* flag" "" "$(grep -E -- '--openbao-|--mirror-openbao' <<<"$gcp_consumer" || true)"
 
 echo
@@ -210,6 +214,8 @@ check_flags_known() { # workflows file, job name -> "yes", or "no: <first unknow
 stage5_flags_known() { check_flags_known "$1" stage5-verify-openbao-oidc; }
 check "every flag stage5 passes is a case label in openbao-oidc-check.sh" \
     "yes" "$(stage5_flags_known "$AWS_WORKFLOWS_SRC")"
+check "every flag gcp-0's stage5 passes is a case label in openbao-oidc-check.sh" \
+    "yes" "$(stage5_flags_known "$GCP_WORKFLOWS_SRC")"
 MUTANT_FLAG="$WORK/workflows-mutant-unknown-flag.tm.hcl"
 awk -v n='"stage5-verify-openbao-oidc"' '
     !on && $1 == "name" && index($0, n) { on = 1 }
@@ -255,6 +261,8 @@ check_call_last() { # file -> yes/no: the check call is the heredoc's ONLY last 
 }
 check "the committed file: the check call is the heredoc's only last statement" \
     "yes" "$(check_call_last "$AWS_WORKFLOWS_SRC")"
+check "gcp/gke/init: the check call is the heredoc's only last statement" \
+    "yes" "$(check_call_last "$GCP_WORKFLOWS_SRC")"
 
 # Both mutants are built from the COMMITTED file, not a hand-written fixture,
 # so a future reformat of the real heredoc cannot make this proof stale
@@ -1046,6 +1054,8 @@ for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id;
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
 done
+# Tested in test-zitadel-oidc-clients-mirror.sh; stubbed so no kubectl runs.
+force_sync_mirrored() { :; }
 
 # Every OTHER thing cmd_sync calls, stubbed: this section is about the ONE new
 # call, not a restatement of the redirect/convergence suites' own coverage.

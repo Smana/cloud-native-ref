@@ -120,6 +120,7 @@ store_write()  { cat > "$STORE_DIR/$1"; }
 load_function store_write_and_mirror "$SRC"
 load_function publish_project_id "$SRC"   # a no-op here: CLOUD=aws
 mirror_to_openbao() { cat >/dev/null; }
+force_sync_mirrored() { :; }   # its own suite; no kubectl here
 
 # ── globals cmd_sync / converge_secret read ─────────────────────────────────
 CLUSTER="aws-0"
