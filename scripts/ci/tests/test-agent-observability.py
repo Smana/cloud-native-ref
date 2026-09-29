@@ -292,7 +292,16 @@ def check_run_trace_link():
           "a step line links to its trace through the log.trace_id derived field (O22)")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link]
+def check_fleet_dashboard():
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-fleet.yaml", "agent-fleet")
+    check(board.get("uid") == "agent-fleet", "uid agent-fleet")
+    panels = titled(board)
+    check({"Runs", "Runs by phase", "Tokens per run", "Trace pipeline (agent-traces-collector)"} <= set(panels), "the fleet panels")
+    links = json.dumps(panels.get("Runs", {}).get("fieldConfig", {}))
+    check("/d/agent-run/agent-run?var-run=${__value.text}" in links, "one click from a run_id opens its Agent run page (SO-1)")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard]
 
 for run in CHECKS:
     run()

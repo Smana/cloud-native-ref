@@ -7,5 +7,6 @@ resources:
   - grafana-folder.yaml
   - grafana-dashboard.yaml
   - grafana-dashboard-agent-run.yaml
+  - grafana-dashboard-agent-fleet.yaml
   - agent-traces-collector.yaml
   - referencegrant-agent-traces.yaml
