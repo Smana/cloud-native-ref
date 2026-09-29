@@ -36,6 +36,29 @@ run "mounts_policies_and_break_glass_without_oidc" {
     condition     = contains(jsondecode(vault_generic_endpoint.admin_user.data_json).policies, "secrets-admin")
     error_message = "the break-glass login must carry secrets-admin, or it cannot read what it exists to recover"
   }
+  assert {
+    condition     = strcontains(vault_policy.pki_admin.policy, "path \"pki_private_issuer/*\"")
+    error_message = "pki-admin must be templated from pki_mount_path, or it governs a mount that does not exist"
+  }
+}
+
+run "oidc_stays_off_with_a_client_id_but_no_issuer" {
+  command = apply
+
+  variables {
+    oidc_client_id     = "fixture-client"
+    oidc_client_secret = "fixture-value" # pragma: allowlist secret
+    secret_owning_apps = ["app-wizard"]
+  }
+
+  assert {
+    condition     = length(vault_jwt_auth_backend.oidc) == 0 && length(vault_jwt_auth_backend_role.oidc_default) == 0 && length(vault_identity_group.oidc_admin) == 0
+    error_message = "OIDC needs both a client id and an issuer; a client id alone must not enable it"
+  }
+  assert {
+    condition     = length(vault_policy.app_prefix) == 0 && length(vault_identity_group.app) == 0
+    error_message = "per-app personas alias the OIDC mount, so they must not exist without it"
+  }
 }
 
 run "oidc_group_and_personas_when_configured" {

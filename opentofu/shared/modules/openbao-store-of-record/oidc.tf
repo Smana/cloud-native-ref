@@ -47,6 +47,11 @@ resource "vault_jwt_auth_backend" "oidc" {
     # returns the secret on read, and every fresh ZITADEL issues a new client id,
     # so an apply here would replay discovery while the IdP is still down.
     # zitadel-oidc-clients.sh's reconcile_openbao_oidc rotates both fields.
+    #
+    # Caveat: ANY other in-place update to this resource re-sends the whole
+    # config, oidc_client_secret taken from state (the creation-time value).
+    # After one, re-run the sync with --openbao-*. The real fix,
+    # oidc_client_secret_wo, is a follow-up.
     ignore_changes = [oidc_client_id, oidc_client_secret]
   }
 }

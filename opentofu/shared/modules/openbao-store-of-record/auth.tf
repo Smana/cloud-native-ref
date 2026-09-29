@@ -2,13 +2,19 @@
 # own credential lives in platform/zitadel/envvars, so an OIDC-only login would
 # have no way back in when ZITADEL is down. It MUST carry secrets-admin, or it
 # authenticates and then reads nothing it exists to recover.
+#
+# Deliberately no token_bound_cidrs: the only route to this API is the private
+# load balancer, so the network is already constrained, and a CIDR bind on the
+# break-glass credential buys nothing against the risk of locking yourself out.
 resource "vault_auth_backend" "userpass" {
   type = "userpass"
   path = "userpass"
 }
 
 # Lands in state, as the root token already does. The caller publishes it to
-# its own cloud's secret store from the `admin_password` output.
+# its own cloud's secret store from the `admin_password` output. The write-only
+# `password_wo` would keep it out of state, but it needs write-only attribute
+# support, so it is deliberately not used here.
 resource "random_password" "admin" {
   length           = 32
   special          = true
