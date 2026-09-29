@@ -21,9 +21,14 @@ and the operations for no user. ADR-0027 made placement a single switch, `primar
 - **GCP is primary.** gcp-0 hosts ZITADEL and runs against GCP's own OpenBao lineage (`gcpckms`).
 - **AWS keeps four things:** the Route53 zone, the AWS↔GCP federation (`opentofu/shared/aws-gcp-federation`),
   the S3 state bucket, and the OpenBao lineage stacks. No AWS cluster, no AWS OpenBao server.
-- **The directory is fresh on every build.** Its keys are generated in-cluster by ESO `Password` generators,
-  and it is never restored. The deploy re-registers the Google IdP, the groups Action and every OIDC client.
-  The owner logs in once and re-grants.
+- **The directory is fresh on every build.** Its masterkey, database-user and first-human passwords are
+  generated in-cluster by ESO `Password` generators, and it is never restored. The deploy re-registers the
+  Google IdP, the groups Action and every OIDC client. The owner logs in once and re-grants.
+- **One key is not generated in-cluster: the CNPG superuser.** The SQLInstance composition reads
+  `cnpg-xplane-zitadel-superuser` from Secret Manager, and CNPG needs it before the cluster exists. The
+  deploy's seed step (`secret-store.sh seed`, gke/init stage 0) generates it when absent and never overwrites
+  it. ZITADEL reads its database admin from the resulting `xplane-zitadel-cnpg-superuser` Secret, so the two
+  cannot disagree.
 - **The one owner-written exception:** the agents' GitHub App key, the factory App key and the Z.ai key go to
   `agents/` once per GCP lineage. The AWS raft snapshot cannot be restored across KMS seals.
 
@@ -37,6 +42,8 @@ and the operations for no user. ADR-0027 made placement a single switch, `primar
 
 ## Consequences
 
+- An unset `TM_CLOUD` no longer means `aws`: `tm-provisioner.sh` fails every job with exit 3 while
+  `primary_cloud` is not `aws`, so a bare deploy cannot apply the shared stacks and skip every GCP one.
 - `TM_CLOUD=aws` builds a cluster with no identity provider until this is reverted. A revert means: flip
   `primary_cloud` back, swap the two `suspend`s, and re-register aws-0's clients.
 - Every build loses ZITADEL users and IdP links. Grants are re-applied with

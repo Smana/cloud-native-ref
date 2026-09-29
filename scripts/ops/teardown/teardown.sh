@@ -26,7 +26,7 @@
 # finished when the provider says there is nothing left.
 #
 # Usage:
-#   scripts/ops/teardown/teardown.sh                 # aws (the TM_CLOUD default)
+#   scripts/ops/teardown/teardown.sh                 # aws (the TM_CLOUD default; exits 3 while GCP is primary)
 #   TM_CLOUD=gcp     scripts/ops/teardown/teardown.sh
 #   TM_CLOUD=all     scripts/ops/teardown/teardown.sh
 #   scripts/ops/teardown/teardown.sh --verify-only   # skip the destroy, just report what is left
@@ -36,6 +36,9 @@ set -o nounset
 set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# Same refusal as every job (exit 3 while primary_cloud is not aws and TM_CLOUD
+# is unset), made here so the sweeps below never run against the wrong lane.
+bash "${ROOT}/scripts/provision/tm-provisioner.sh" --tm-check shared || exit $?
 CLOUDS="${TM_CLOUD:-aws}"
 VERIFY_ONLY=0
 [ "${1:-}" = "--verify-only" ] && VERIFY_ONLY=1

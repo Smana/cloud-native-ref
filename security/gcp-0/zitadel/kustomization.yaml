@@ -5,10 +5,13 @@ kind: Kustomization
 # (ADR-0052, GCP parity GP-3).
 #
 # It is FRESH on every build and never restored:
-#   - every key is generated in-cluster by an ESO Password generator
-#     (password-generators.yaml), CreatedOnce, so no store holds a masterkey;
+#   - the masterkey and both passwords are generated in-cluster by ESO Password
+#     generators (password-generators.yaml), CreatedOnce, so no store holds a
+#     masterkey;
 #   - the database admin is read from CNPG's own superuser Secret, so ZITADEL
-#     and CNPG cannot disagree on it (helmrelease-env-patch.yaml);
+#     and CNPG cannot disagree on it (helmrelease-env-patch.yaml). That one
+#     comes from Secret Manager: gke/init's seed step generates
+#     cnpg-xplane-zitadel-superuser when absent, before CNPG needs it;
 #   - the SQLInstance runs initdb: no objectStoreRecovery, backups kept.
 # The deploy then re-registers the Google IdP, the groups Action and every OIDC
 # client (gcp/gke/init stage 3). What is lost each build is users and IdP links;
@@ -84,5 +87,16 @@ patches:
       - op: replace
         path: /spec/target/template/data/masterkey
         value: "{{ .password }}"
+      # Why these three: externalsecrets-generated.yaml's header.
+      - op: replace
+        path: /spec/target/creationPolicy
+        value: Orphan
+      - op: add
+        path: /spec/target/immutable
+        value: true
+      - op: add
+        path: /metadata/annotations
+        value:
+          kustomize.toolkit.fluxcd.io/prune: disabled
   - path: helmrelease-env-patch.yaml
     target: {group: helm.toolkit.fluxcd.io, kind: HelmRelease, name: zitadel}

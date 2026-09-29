@@ -19,10 +19,11 @@ Validate with `tofu validate` and
 
 ## Choosing the cloud — `TM_CLOUD`
 
-One variable, a comma list, defaulting to `aws`. A third cloud needs no new keyword.
+One variable, a comma list, defaulting to `aws`, except that it is refused while `primary_cloud` is not
+`aws`. A third cloud needs no new keyword.
 
 ```bash
-terramate script run deploy                    # aws alone (the default)
+terramate script run deploy                    # aws alone; exits 3 while GCP is primary
 TM_CLOUD=gcp     terramate script run deploy   # gcp alone; AWS stacks echo [skip]
 TM_CLOUD=aws,gcp terramate script run deploy
 TM_CLOUD=all     terramate script run deploy
@@ -30,8 +31,9 @@ TM_CLOUD=all     terramate script run deploy
 
 The platform is GCP-primary
 ([ADR-0052](../website/content/docs/decisions/0052-gcp-primary-platform.md)). `TM_CLOUD=gcp` is the
-normal deploy. It still needs AWS credentials, for the two shared stacks' S3 state and the
-federation role. Every AWS stack prints `[skip]`, and `aws/openbao/lineage` is kept.
+normal deploy, and an unset `TM_CLOUD` fails with exit 3 rather than meaning `aws`. The GCP deploy still needs AWS
+credentials, for the two shared stacks' S3 state and the federation role. Every AWS stack prints
+`[skip]`, and `aws/openbao/lineage` is kept.
 
 A stack's lane is its directory. `opentofu/shared/**` is owned by neither cloud and always runs.
 Enforced in `scripts/provision/tm-provisioner.sh`, which `global.provisioner` points at, so it wraps every

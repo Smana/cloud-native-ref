@@ -32,8 +32,23 @@ for name in ("zitadel-masterkey", "zitadel-db-user", "zitadel-first-human"):
     ref = (((es["spec"].get("dataFrom") or [{}])[0].get("sourceRef") or {}).get("generatorRef") or {})
     if ref.get("kind") != "Password" or es["spec"].get("refreshPolicy") != "CreatedOnce":
         fails.append(f"{name} is not a CreatedOnce Password generator")
-    if es["spec"]["target"].get("deletionPolicy") != "Retain":
+    if ref.get("kind") == "Password" and ("Password", ref.get("name")) not in by:
+        fails.append(f"{name} names Password {ref.get('name')}, which is not rendered")
+    target = es["spec"]["target"]
+    if target.get("deletionPolicy") != "Retain":
         fails.append(f"{name} must Retain its Secret")
+    # Owner sets an ownerReference: deleting the ExternalSecret would garbage-
+    # collect the Secret, and CreatedOnce would then generate a different key.
+    if target.get("creationPolicy") != "Orphan":
+        fails.append(f"{name} must be creationPolicy Orphan, so its Secret outlives it")
+    if target.get("immutable") is not True:
+        fails.append(f"{name} must be immutable, so a recreated ExternalSecret cannot overwrite it")
+    if (es["metadata"].get("annotations") or {}).get("kustomize.toolkit.fluxcd.io/prune") != "disabled":
+        fails.append(f"{name} must carry kustomize.toolkit.fluxcd.io/prune: disabled")
+masterkey_tpl = (((by.get(("ExternalSecret", "zitadel-masterkey"), {}).get("spec", {}).get("target") or {})
+                  .get("template") or {}).get("data") or {}).get("masterkey")
+if masterkey_tpl != "{{ .password }}":
+    fails.append(f"zitadel-masterkey must template masterkey from the generator's password, not {masterkey_tpl!r}")
 mk = by.get(("Password", "zitadel-masterkey"), {}).get("spec", {})
 if mk.get("length") != 32 or mk.get("symbols") != 0:
     fails.append("the masterkey generator must make 32 characters without symbols")
