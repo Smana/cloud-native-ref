@@ -73,19 +73,23 @@ any kind.
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/list | grep -o '"name":"[^"]*"'
 ```
 
-Expected (the probe is an `implementer`): Flux's `search_flux_docs`, `get_flux_instance`,
-`get_kubernetes_api_versions`, `get_kubernetes_resources`, `get_kubernetes_metrics` — **no** `get_kubernetes_logs`; plus every
-`mcp-victoriametrics` tool; plus only `mcp-victorialogs`'s
-`documentation` tool (not `query`, `hits`, etc.). Reviewer/tester/triager roles get
-`get_kubernetes_logs` and the full VictoriaLogs tool set too — this probe only carries an
-`implementer` identity, matching a real implementer run.
+Expected (the probe is an `implementer`): Flux's `search_flux_docs`,
+`get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics`: **no**
+`get_kubernetes_logs` and **no** `get_kubernetes_resources`. Thirteen `mcp-victoriametrics` tools,
+none of `tsdb_status`, `active_queries`, `top_queries`. Only `mcp-victorialogs`'s `documentation`.
+Reviewer, tester and triager also get `get_kubernetes_resources`, `get_kubernetes_logs` and the
+VictoriaLogs query tools.
 
 ### Step 5 — SC-12: an implementer is denied the logs tool by the MCPRoute, and the backend SA has no secrets access
 
 ```bash
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"flux-operator-mcp__get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -A
-kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -A
+kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
+kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
+kubectl auth can-i get configmaps --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
+kubectl auth can-i list nodes --as=system:serviceaccount:agent-system:flux-operator-mcp
+kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
 ```
 
 > Corrected 2026-09-27: the tool name must be the namespaced form
@@ -95,12 +99,16 @@ kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-ope
 
 Expected: the call is refused (HTTP 403, or a JSON-RPC error naming authorization — the MCPRoute's
 `defaultAction: Deny` plus per-role rules never grant `implementer` this tool on `internal`); `no`;
-`yes` (the `agent-mcp-flux-read` ClusterRole grants `pods/log` but no `secrets` verb at all, so even a
-role the MCPRoute *does* authorize for this tool could never reach a Kubernetes Secret through it).
+`yes` for `pods/log` in `flux-system`, `no` for `pods/log` in `security`, `no` for `configmaps` in
+`security`, `no` for `list nodes` (cluster-scoped, no namespace), `no` for `secrets` in `flux-system`
+too (the `flux-system` Role grants only `configmaps` and `pods/log`, in that namespace alone; the
+cluster-wide `agent-mcp-flux-read` ClusterRole grants neither `pods/log` nor `configmaps` any more,
+and never granted `secrets`).
 
 **What this proves:** SC-12 — an implementer calling `get_kubernetes_logs` is denied at the MCPRoute
-layer, and the backend's own RBAC is a second, independent floor: `auth can-i get secrets` fails for
-every role, not just implementer.
+layer, and the backend's own RBAC is a second, independent, namespace-scoped floor: `pods/log` and
+`configmaps` are readable only in `flux-system`, nowhere else, and `secrets` fails everywhere for
+every role.
 
 **What Step 3–4 together prove:** SC-17 (MCP half) — cluster-read tools (metrics, resources, logs)
 are `internal`-only; `public` sees documentation tools regardless of role.
