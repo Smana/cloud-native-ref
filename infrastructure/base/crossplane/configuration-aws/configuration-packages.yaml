@@ -12,4 +12,6 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-aws
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.1
+  # CC-H1's pre-release (crossplane-configuration#30): the first that publishes its XRD CRDs,
+  # so the evidence gate runs on it (B2). Phase 7 re-pins to a release tag.
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr30.7e3211e
