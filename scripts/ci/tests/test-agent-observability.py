@@ -213,7 +213,30 @@ def check_router():
           "the data plane may reach the collector's :4317")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router]
+VM_VALUES = "observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml"
+# The AgentRun XRD's status.phase enum (crossplane-configuration apis/agentrun/definition.yaml).
+PHASES = ["Pending", "Running", "Succeeded", "Failed", "BudgetExhausted", "Revoked"]
+
+
+def check_ksm():
+    cm = find(VM_VALUES, "ConfigMap", "vm-common-helm-values")
+    ksm = yaml.safe_load(cm.get("data", {}).get("values.yaml", "{}")).get("kube-state-metrics", {})
+    check(ksm.get("rbac", {}).get("extraRules") == [{"apiGroups": ["cloud.ogenki.io"], "resources": ["agentruns"], "verbs": ["list", "watch"]}],
+          "KSM reads agentruns, list and watch only")
+    crs = ksm.get("customResourceState", {})
+    res = (crs.get("config", {}).get("spec", {}).get("resources") or [{}])[0]
+    check(crs.get("enabled") is True and res.get("groupVersionKind") == {"group": "cloud.ogenki.io", "version": "v1alpha1", "kind": "AgentRun"},
+          "custom-resource state covers AgentRun")
+    check(res.get("metricNamePrefix") == "agentrun", "the series are agentrun_*")
+    check(res.get("labelsFromPath", {}).get("run_id") == ["status", "runId"], "every agentrun_* series carries run_id")
+    metrics = {m["name"]: m["each"] for m in res.get("metrics", [])}
+    want = {"info", "status_phase", "outcome_info", "usage_tokens", "budget_max_tokens",
+            "started_timestamp_seconds", "finished_timestamp_seconds"}
+    check(set(metrics) == want, f"agentrun metrics are {sorted(want)}, got {sorted(metrics)}")
+    check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm]
 
 for run in CHECKS:
     run()
