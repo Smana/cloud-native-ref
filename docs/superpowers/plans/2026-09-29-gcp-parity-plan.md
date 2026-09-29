@@ -8,12 +8,16 @@ the OpenBao lineage stacks.
 
 **Architecture:** Six PRs in this repo, plus a docs PR (Task 0.1).
 - **G-0** widens octo-sts's trust policies on `main`.
-- **G-1 to G-4**, a platform chain off `main`: GCP's OpenBao gets Stage 2, rebuilds become repeatable, a
-  hosted ZITADEL keeps its clients in step, then the GCP-primary flip with a fresh ZITADEL.
+- **G-1 to G-3**, a platform chain off `main`: GCP's OpenBao gets Stage 2, rebuilds become repeatable
+  (private DNS, snapshots, a teardown sweep), and a hosted ZITADEL keeps its clients in step. **Each merges to
+  `main` when green and reviewed** (owner, 2026-09-29; GP-21).
+- **G-4**, the GCP-primary flip with a fresh ZITADEL. **It stays on `integration/agent-factory` and is never
+  merged** (owner, 2026-09-29; GP-16).
 - **G-5**, on the agent-factory stack: the `agents` mount, per-cloud issuer variables, the GKE Sandbox pool,
-  the gcp-0 umbrellas and a GCP render gate.
+  the gcp-0 umbrellas and a GCP render gate. It carries G-1 to G-3, never G-4.
 
-Everything is validated on `integration/agent-factory` by one deploy after tonight's reset.
+Everything is validated on `integration/agent-factory`, which merges G-4 and G-5, by one deploy after tonight's
+reset.
 
 **Tech Stack:**
 - OpenTofu + Terramate. Providers: `hashicorp/vault` v5, `google`/`google-beta` `~> 7.17`.
@@ -38,14 +42,22 @@ secrets table, risks).
   - A `*/openbao/management` deploy from `main` destroys the `agents` mount and every key in it, until G-5
     merges (SP2 P38, moved here by GP-8).
   - A `gke/configure` apply without the ref points Flux at `main` and prunes the agent platform.
-- **Merge classes.**
-  - G-0 merges to `main` ahead of the programme: octo-sts reads `main` only (like #2113).
-  - G-1, G-2 and G-3 are platform fixes that may merge on their own merits, in chain order.
-  - G-4 is a platform decision with an ADR; the owner merges it, or it waits for Phase 7.
+- **Merge classes** (owner, 2026-09-29).
+  - G-0 merges to `main` first: octo-sts reads `main` only (like #2113).
+  - G-1, G-2 and G-3 are platform fixes. **Each merges to `main` as soon as it is green and reviewed**, in chain
+    order. The chain is merge-only: when a parent merges, the child merges `origin/main` and GitHub retargets it.
+  - G-4 **stays on `integration/agent-factory`**: a draft PR marked "do not merge", reviewed but never merged.
+    `main` keeps `primary_cloud = "aws"`.
   - G-5 is programme stack: **nothing merges before the owner's UX sign-off** (SP2 P33). Merge-only, never
-    rebased; each stacked branch merges its parent and `origin/main` before every push.
+    rebased; each stacked branch merges its parent and `origin/main` before every push. It never contains G-4.
+- **Preconditions for Phase 6.** H-1 (`fix/agent-review-hardening`) is committed and pushed as a draft PR
+  (the controller does this). Until `origin/fix/agent-review-hardening` exists, G-5 waits.
 - **Salvage source.** `ac62abf2` (branch `worktree-openbao-stage2-gcp`, verified live 2026-09-11), whose
-  pre-work base is `850ce578`. Both are reachable from `origin/test/gcp-only-live`. Paths moved in the scripts
+  pre-work base is `850ce578`. **`ac62abf2` exists only on the local branch `worktree-openbao-stage2-gcp`:**
+  `origin/test/gcp-only-live` holds a squashed copy, not the commit, and `850ce578` sits on the unmerged
+  access-matrix branch. Every worktree of this repository shares the object store, so the commits resolve
+  locally. Before Phase 2, push the branch as a safety copy:
+  `git push origin worktree-openbao-stage2-gcp:refs/heads/salvage/openbao-stage2-gcp`. Paths moved in the scripts
   restructure:
 
   | Then | Now |
@@ -65,13 +77,21 @@ secrets table, risks).
   | JWT roles on `jwt/gcp-0` | `cert-manager`, `external-secrets`, `openbao-snapshot`, `agents-secrets` (G-5) |
   | GKE Sandbox pool | `agents-gvisor`: `e2-standard-8`, spot, 0–2 nodes. RuntimeClass `gvisor` is GKE's |
   | Custom role suffix | `_v3` (`xplane_dns_editor_v3`, `xplane_storage_admin_v3`, `xplane_role_reader_v3`) |
+  | ZITADEL admin PAT | Secret Manager `zitadel-iam-admin-pat` (`{"pat": …}`); in-cluster `security/iam-admin-pat`, written by the chart on FirstInstance |
+  | Platform VPC | `vpc-europe-west4-dev` (`opentofu/gcp/network/locals.tf`) |
+  | crossplane-configuration pre-release | `v0.7.2-pr31.988146f` (CC-O1; carries the AgentRun XRD). `task push` publishes every package under `packages/`, so `-aws`, `-core` and `-gcp` all exist at that tag; 6.4 Step 4 checks the `-gcp` digest |
   | ConfigMap keys (new) | `oidc_issuer_url` (gcp), `oidc_jwks_uri`, `oidc_jwks_host` (both), `gcp_dns_editor_role` (gcp) |
   | IdP | `https://auth.gcp.cloud.ogenki.io`; the owner's grant is `--grant-admin <email>` (role `admin`) |
 
 - **Secrets.** Every secret is generated in-cluster, copied by `migrate` from Secret Manager, written by the
   deploy, or restored by the raft snapshot. **The one exception** is the three agent keys (`github-app`,
   `factory-app`, `zai`): the owner writes them once per GCP lineage with `bao kv put -mount=agents`, because
-  the AWS snapshot cannot be restored across KMS seals.
+  the AWS snapshot cannot be restored across KMS seals. `factory-app` has no consumer until SP2/SP3; it is
+  written now so their gates find it.
+  - `platform-llm-api-keys` is **not** an exception. On aws-0 it is a hand-made AWS Secrets Manager entry. On
+    gcp-0 the gateway's client keys are generated in-cluster instead (GP-24).
+  - **The ZITADEL admin PAT is never read from a stale store.** The chart's fresh PAT always wins and
+    overwrites the stored copy (GP-20).
 - **Constitution.**
   - Every new pod gets a default-deny CNP, requests and limits, and a restricted securityContext with
     `seccompProfile: RuntimeDefault`.
@@ -109,7 +129,7 @@ Each ruling reads: what · why · cost if wrong.
 | GP-4 | **`zitadel_project_id` comes from Secret Manager `zitadel-project-id`**, which the sync writes. `gke/configure` reads it at plan time; the committed tfvars value is the fallback | A fresh directory gets a new id every build. The standalone `gke/configure` deploy runs after `gke/init` stage 3, and it would re-apply the committed id against the sync's patch: a server-side-apply conflict or a revert | The first build publishes the stale fallback for the minutes before stage 3. Headlamp's token exchange fails until then |
 | GP-5 | **The sync mirrors consumer secrets into OpenBao**, under `--mirror-openbao`, set only by gcp-0's hosting run. It merges into the path `bao_target_for` maps, and the payload wins on shared keys | gcp-0's consumers read `openbao-platform`, while the sync wrote only Secret Manager (09-11 bug 9). A fresh directory rotates every client every build | A value edited in OpenBao under a key the payload also carries is overwritten; admin credentials are not in the payload of the OIDC fields that change. Keys the map does not know (`openbao-oidc`, `headlamp-oauth2-proxy`) stay in Secret Manager only |
 | GP-6 | **`migrate` is an [OWNER] step after the deploy**, with `--keys`, followed by a force-sync. It is not automated in HCL | The owner's approved flow. Automating it puts the root token into Terramate job environments | Some ExternalSecrets fail for minutes, until the migrate and force-sync. On a restored lineage most keys already exist |
-| GP-7 | **Lineage: restore if possible, else start a new one.** Pre-flight P-4 restores the newest `-gcpckms` snapshot (`OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`) when the Secret Manager root token belongs to that lineage. Otherwise it starts a new lineage (`OPENBAO_NEW_LINEAGE=true`, salvaged), and first deletes the stale `openbao-oidc` so the first management apply runs without OIDC | Restoring keeps the 09-11 `platform/` data and the `oidc/` mount. A new lineage cannot create `oidc/` while ZITADEL is down: the discovery check fails | A wrong verdict fails the management apply with 403 (token mismatch). The recovery is to re-run with the other flag |
+| GP-7 | **Lineage: restore the existing one** (owner, 2026-09-29). When a top-level `-gcpckms` snapshot exists, the deploy restores the newest one (`OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, because newer `-awskms` mirror objects sit above it). Before the deploy, P-4 makes the latest Secret Manager versions of `openbao-priv-gcp-root-token` and `openbao-priv-gcp-recovery-keys` those of that lineage, re-adding the older versions when the entries were re-copied for the `awskms` standby. `OPENBAO_NEW_LINEAGE=true` is used **only** when no top-level `-gcpckms` object exists. The salvaged switch refuses it otherwise, by design (`refuse-same-seal`, `refuse-own-seal-exists`). The first management apply cannot import anything before the OpenBao VM exists, so a missing state address is repaired after the first failed apply (8.2 Step 3a) | Restoring keeps the 09-11 lineage's `platform/` data and the `oidc/` mount, and needs no stale-`openbao-oidc` delete | A token version from another lineage fails the management apply with 403. Recovery: re-add the next candidate version and re-run. The node is already restored, so rehydrate is a no-op |
 | GP-8 | **M1 moves here, for both clouds.** The `agents` mount and the `agents-secrets` policy, the SecretStore path and the ExternalSecret keys land in G-5. `merge-gate` stays with SP2 S1 | The owner writes the three agent keys to `agents/` on GCP before S1 exists, and the SecretStore path is shared base | SP2 Task 1.15a shrinks (Cross-plan edits). The management-from-`main` hazard now runs until G-5 merges |
 | GP-9 | **Node selection stays in the RuntimeClass**, with no composition change | The composition sets only `runtimeClassName: gvisor` (`main.k:333`). GKE's `gvisor` RuntimeClass carries the `sandbox.gke.io/runtime` selector and toleration; ours carries `agents.ogenki.io/runtime` | If GKE's RuntimeClass has no `scheduling`, runs land on runc nodes and fail to start. The smoke probe (8.5) checks it first |
 | GP-10 | **The sandbox pool is a standalone `google_container_node_pool` with `provider = google-beta`**: `e2-standard-8` spot, 0–2 nodes, the Cilium taint | Independent of the module's `node_pools` map, whose sandbox support differs between the beta and GA modules. 16 vCPU / 64 GiB matches aws-0's `limits` | If e2 is refused for GKE Sandbox, change `agents_pool_machine_type` to `n2-standard-8` (dearer) |
@@ -118,10 +138,18 @@ Each ruling reads: what · why · cost if wrong.
 | GP-13 | **octo-sts `issuer_pattern` becomes an alternation** of the EKS pattern and `https://container\.googleapis\.com/v1/projects/ogenki-435905/locations/[a-z0-9-]+/clusters/gcp-0`. G-0 merges ahead | octo-sts reads trust policies from `main` only. The agent-router `sts` listener verifies every token against its own cluster's issuer first | Until G-0 merges, runbooks 05 and 07 fail at the exchange on gcp-0 |
 | GP-14 | **The GCP render fixture uses per-cloud overlays.** Each substituted agent base gets `*/aws-0/<name>` and `*/gcp-0/<name>` one-liners, and the new `assert-cloud-shape.py` gates the gcp-0 renders | `render-bundle.py` renders a base with AWS fixtures and a `*/gcp-0/*` overlay with `CLUSTER_FIXTURE_VARS["gcp-0"]`. A base referenced by an overlay stops being a render root, which is why aws-0 needs its twin (as 89a2666b did for envoy-gateway) | Twelve small files. A future gcp-0 child that substitutes into a `base/` path fails the gate, by design |
 | GP-15 | **Custom GKE roles get a `_v3` suffix and survive teardown.** The destroy drops them from state; the deploy adopts them (`adopt-custom-roles.sh`) | GCP reserves a deleted role ID for 37 days and allows undelete for 7 only. The 09-14 teardown deleted `_v2`, and the unsuffixed IDs were deleted before 09-11 (09-11 bug 2) | Three role definitions stay in the project between builds. They grant nothing, because their bindings are destroyed |
-| GP-16 | **The GCP-primary flip is a PR (G-4) with an ADR.** It sets `primary_cloud`, both ZITADEL `suspend`s and the fresh-directory overlay | The owner's intent is durable (AWS reduced), and `validate-idp-topology.sh` must hold on the stack | Merged to `main`, it makes `TM_CLOUD=aws` build a cluster with no IdP until reverted. The ADR records it |
+| GP-16 | **The GCP-primary flip (G-4) stays on `integration/agent-factory`** (owner, 2026-09-29). It is a draft PR, "do not merge", with an ADR in *Proposed* status, the flip of `primary_cloud`, both ZITADEL `suspend`s, the fresh-directory overlay, and the doc-claim and pages that pin the primary cloud. `main` stays AWS-primary | The owner wants GCP-primary proven live before it becomes `main`'s default. `validate-idp-topology.sh` and `task check` must hold on the branch | While unmerged, `main`'s `TM_CLOUD=gcp` deploy builds a *consuming* gcp-0. Deploy gcp-0 only from the integration checkout (Global Constraints) |
 | GP-17 | **gcp-0's Envoy Gateway gets the rate limit through a shared `infrastructure/base/envoy-gateway-ratelimit`.** The Karpenter panel and alert stay in base, inert on gcp-0 | `llm-gateway`'s budget policy needs the rate-limit service (SP4 PR 1). GKE has no Karpenter metrics, and `AgentSandboxPodPending` is gcp-0's capacity signal | The gcp-0 dashboard shows one empty panel |
-| GP-18 | **SP2 on gcp-0: the bridge → broker `:8443` serves TLS on both clouds**, not plain HTTP behind WireGuard (reverses SP2 P2). This is a cross-plan edit | gcp-0's Cilium has no WireGuard ("Do not add WireGuard here without new evidence"), and a run token must not cross nodes in clear | SP2 AP-1, S1 and CC-S2 each grow: a Certificate from the `openbao` issuer, the CA in the sandbox. SP2's live gates on gcp-0 wait for it |
-| GP-19 | **Stacking.** G-5 is based on H-1 (`fix/agent-review-hardening`) and merges G-4 in. O-1 re-bases onto G-5. The first deploy needs only G-1 to G-4; G-5 can follow through Flux and three stack re-applies | H-1's live gate runs on gcp-0, and G-5 edits runbooks H-1 also edits. G-5 before O-1 means O-1 and S1 add their gcp-0 children themselves | G-5's PR diff shows G-1 to G-4 until they reach `main`. Phase 7 order: #2111 → H-1 → G-5 → O-1 → S1 |
+| GP-18 | **SP2 on gcp-0: the bridge → broker `:8443` serves TLS on both clouds**, not plain HTTP behind WireGuard (reverses SP2 P2). The certificate comes from cert-manager's internal issuer, the `openbao` ClusterIssuer that both clusters have. This is a cross-plan edit, with concrete steps in *Cross-plan edits* → SP2: Tasks 1.9, 1.11, 1.14 (CC-S2), 1.18 and 1.20. SP2 itself is not edited here | gcp-0's Cilium has no WireGuard ("Do not add WireGuard here without new evidence"), and a run token must not cross nodes in clear | CC-S2 grows a CA volume, which needs a crossplane-configuration pre-release. SP2's live gates on gcp-0 wait for it |
+| GP-19 | **Stacking.** G-5 is based on H-1 (`fix/agent-review-hardening`) and merges G-3 (`fix/gcp-hosted-idp`, which carries G-1 and G-2), or `origin/main` once G-1 to G-3 have merged. **Never G-4.** O-1 re-bases onto G-5. The integration branch merges G-4 and G-5 separately. The first deploy needs only G-1 to G-4; G-5 can follow through Flux and three stack re-applies | H-1's live gate runs on gcp-0, and G-5 edits runbooks H-1 also edits. G-4 inside G-5 would reach `main` with the programme, against GP-16 | G-5's PR diff shows G-1 to G-3 until they reach `main`. Phase 7 order: #2111 → H-1 → G-5 → O-1 → S1 |
+| GP-20 | **The chart's fresh ZITADEL PAT always wins** (owner, 2026-09-29). `resolve_zitadel_pat` reads the in-cluster `security/iam-admin-pat` first and overwrites Secret Manager's copy when the two differ. The store is read only when the cluster has no such Secret (a directory restored from a seed, as on aws-0). The PAT stored before tonight is deleted once, by the owner (P-11) | The store used to win. A fresh directory every build (GP-3) makes the stored PAT belong to a directory that no longer exists: every stage-3 call then gets a 401, which the stage swallows as `[warn]`. The deploy exits 0 with no clients | aws-0's seed-restored directory is unchanged (no chart Secret, store read). A fresh aws-0 bootstrap now overwrites a stale copy, which is also correct |
+| GP-21 | **G-0 to G-3 merge to `main` each when green and reviewed; G-0 first** (owner, 2026-09-29). They are platform fixes, not agent-factory code: octo-sts trust, Stage 2 on GCP, rebuild hygiene, the hosted-IdP sync | octo-sts reads `main` only, and the platform fixes are wanted regardless of the programme | G-1 on `main` adds the Stage 2 mounts to GCP's management stack. A deploy from `main` is then fine until G-5 adds `agents` |
+| GP-22 | **The teardown sweeps what GKE leaves behind** (owner, 2026-09-29). `scripts/ops/gcp/sweep-lb-orphans.sh` lists, then deletes, the platform VPC's GKE-created forwarding rules, their target pools, and the `k8s-*` firewall rules on `vpc-europe-west4-dev`. `teardown.sh` runs it only with `TM_DESTROY_CONFIRMED=true`, and only once no `gcp-0` cluster exists; then it retries the destroy once, as the AWS lane does | Forwarding rules bill hourly, and the firewall rules block the VPC delete, which fails every GCP teardown (memory `gke_lb_orphans_block_vpc_delete`) | It deletes only objects GKE made (description `kubernetes.io/service-name`, or a `k8s-` firewall on this VPC). A hand-made LB on that VPC with a GKE-shaped description would be swept too |
+| GP-23 | **09-11 bug 7 is fixed in G-2: Crossplane may grant `roles/storage.objectCreator` on `ogenki-` buckets.** `security/gcp-0/openbao-snapshot/workloadidentity.yaml` asks for it, but `crossplane_bucket_grantable_roles` (`gke/init/iam.tf`) lists only objectAdmin, objectViewer and legacyBucketReader. The `hasOnly` condition therefore denies the grant with a bare 403, and gcp-0 has never taken a scheduled snapshot | objectCreator is strictly weaker than objectAdmin, which is already grantable: create only, no read and no delete. The bucket clause still confines it to `ogenki-` buckets. Without it, the agent keys and migrated data survive only through a teardown's pre-destroy snapshot | The cause is read from code (memory `gcp_crossplane_grant_allowlist_contract`), and 8.3 Step 9 proves it live. If the CronJob still fails, the 403's resource names the next missing permission |
+| GP-24 | **`platform-llm-api-keys` is generated on gcp-0, never hand-seeded.** The keys are the AI gateway's own client keys: the gateway issues them, and nothing external does. Its clients (Open WebUI, promptfoo) sit in `llm-platform`, which stays suspended on gcp-0. `infrastructure/gcp-0/envoy-ai-gateway` replaces the ExternalSecret's store read with two `Password` generators (`CreatedOnce`) | aws-0's entry is a one-time hand-made AWS Secrets Manager secret (`clusters/aws-0-ai-gateway/README.md`). Copying it to GCP would be a second hand-seed, and the key is only ever used on the cluster that issues it | When gcp-0's `llm-platform` is unsuspended, its two clients need the same values. That is a follow-up (cross-namespace read), recorded in the spec's *Out of scope* |
+| GP-25 | **G-5 pins crossplane-configuration's pre-release `v0.7.2-pr31.988146f` for `-aws` and `-gcp`** (the coordinator's default). H-1's pin, `v0.7.1`, has no `apis/agentrun`. The integration branch's `c87e364a` pinned only `-aws`, to `pr29`. A pre-release `-gcp` pins its `-core` dependency exactly, so a fresh gcp-0 installs the AgentRun XRD with no core patch | "Lockstep with H-1" would have given gcp-0 `v0.7.1`, and 8.2 Step 4 would time out waiting for `agentruns.cloud.ogenki.io` | Phase 7 swaps both pins to the release tag. Merging G-5 into the integration branch conflicts with `c87e364a`: keep `pr31` |
+| GP-26 | **The agents' `openbao-ca` is per cloud.** `security/base/agent-secrets/externalsecret-openbao-ca.yaml` reads the AWS shape: `certificates/${private_domain_name}/ca-chain`, property `ca`. `security/gcp-0/agent-secrets` patches it to gcp-0's Secret Manager entry, `openbao-priv-gcp-ca-chain`, a raw PEM with no property. `assert-cloud-shape.py` forbids `certificates/` in gcp-0 agent overlays | GCP Secret Manager forbids `/` in names. Without the patch the `agents-secrets` SecretStore has no CA, and no agent secret ever syncs | SP2's CA copy in `agents` (GP-18) follows the same patch |
+| GP-27 | **09-11 bug 6 is salvaged into G-2.** gcp-0's private `external-dns` HelmRelease inherits `dependsOn: aws-load-balancer-controller` from base, and gcp-0 has no such release. The fix, a JSON6902 `remove /spec/dependsOn`, exists only on `origin/test/gcp-only-live` | The release never installs, so no `*.priv.gcp.ogenki.io` record is ever written. Grafana, Headlamp, the Flux UI and Harbor are unreachable by name: the owner's first login (8.4) and every runbook fail. The `infrastructure` Kustomization has no `wait`, so it still reports Ready | None: gcp-0 has no controller to wait for, since GKE's own controller creates its LoadBalancers |
 
 ## Risks → early checks
 
@@ -129,11 +157,16 @@ Verdicts and evidence are in the spec's *Risks* table. This maps each one to the
 
 | Risk | Checked by |
 |---|---|
-| ADC reauth mid-run | 8.1 P-2 (fresh login), 8.2 (exit code logged, idempotent re-run) |
+| ADC reauth mid-run | 8.1 P-2 (fresh CLI **and** ADC logins), 8.2 (exit code logged, idempotent re-run, and the `skipping stage 3` grep) |
 | Let's Encrypt 5/168 h | 8.1 P-3 |
-| GKE LB orphans | 3.3 (teardown reports target pools and `k8s-*` firewall rules), 8.1 P-9 |
+| GKE LB orphans | 3.3 (teardown reports and, with `TM_DESTROY_CONFIRMED=true`, sweeps them: GP-22), 8.1 P-9 |
 | Custom-role IDs reserved | 3.2 (`_v3` + persistence), 8.1 P-6 |
-| Lineage/token mismatch | 8.1 P-4, P-5 |
+| Lineage/token mismatch | 8.1 P-4 (align the token versions with the `-gcpckms` lineage), P-5, 8.2 Step 3a |
+| A stale stored ZITADEL PAT (GP-20) | 4.3a (the fresh PAT wins), 8.1 P-11 (delete the stored copy), 8.2 Step 3 (no `[warn]` from stage 3) |
+| No private DNS on gcp-0 (bug 6, GP-27) | 3.2a, 8.3 Step 8 |
+| No scheduled OpenBao snapshots on gcp-0 (bug 7, GP-23) | 3.2b, 8.3 Step 9 |
+| The agents' CA key AWS-shaped (GP-26) | 6.5, 6.8 (`certificates/` forbidden in gcp-0 agent overlays) |
+| `platform-llm-api-keys` absent on GCP (GP-24) | 6.5 (generated in the gcp-0 overlay), 6.8 |
 | Grant allowlist | not triggered: 6.4 Step 1 greps the pinned compositions for new `roles/` |
 | Hairpin on gcp-0's own Gateway | 8.4 Step 5 (SSO on every consumer); SP2 cross-plan edit |
 | external-dns child filter | 8.3 Step 8 |
@@ -145,15 +178,15 @@ Verdicts and evidence are in the spec's *Risks* table. This maps each one to the
 
 | # | Repo · branch | Base | Class | Carries | Gate |
 |---|---|---|---|---|---|
-| G-0 | this · `chore/octo-sts-gke-issuer` | `main` | **merge ahead** | trust policies accept gcp-0's issuer | CI; owner merges before 8.6 |
-| G-1 | this · `fix/openbao-stage2-gcp` | `main` | **platform fix** | module, GCP stack call, policy-parity gate, `migrate --keys`, new-lineage switch | CI; live in 8.3 |
-| G-2 | this · `fix/gke-rebuild-hygiene` | `fix/openbao-stage2-gcp` | **platform fix** | stage 2: CA, jwt adopt, `deploy_identity_provider`; custom roles `_v3` that survive teardown; teardown sweep | CI; live in 8.2 |
-| G-3 | this · `fix/gcp-hosted-idp` | `fix/gke-rebuild-hygiene` | **platform fix** (inert while AWS is primary) | shared key map, sync `--mirror-openbao`, `zitadel-project-id`, stage 3: IdP sync and OpenBao flags | CI; live in 8.3–8.4 |
-| G-4 | this · `feat/gcp-primary` | `fix/gcp-hosted-idp` | **platform decision** (owner) | ADR-00NN, `primary_cloud = "gcp"`, both suspends, fresh ZITADEL | CI; live in 8.3–8.4 |
-| G-5 | this · `feat/gcp-agent-platform` | `fix/agent-review-hardening` (H-1), merges `feat/gcp-primary` | **programme stack** (Phase 7) | M1 on both clouds, issuer vars, sandbox pool + Cilium, CC pin, Kyverno, overlays, two umbrellas, cloud-shape gate, runbooks | CI; live in 8.5–8.6 |
+| G-0 | this · `chore/octo-sts-gke-issuer` | `main` | **merge first** (owner, 2026-09-29) | trust policies accept gcp-0's issuer | CI; **[OWNER] merges when green and reviewed, before the others** |
+| G-1 | this · `fix/openbao-stage2-gcp` | `main` | **platform fix: merge when green and reviewed** (owner, 2026-09-29) | module, GCP stack call, policy-parity gate, `migrate --keys`, new-lineage switch | CI; live in 8.3 |
+| G-2 | this · `fix/gke-rebuild-hygiene` | `fix/openbao-stage2-gcp` | **platform fix: merge when green and reviewed**, after G-1 | stage 2: CA, jwt adopt, `deploy_identity_provider`; custom roles `_v3` that survive teardown; private external-dns (bug 6); the snapshot grant (bug 7); teardown report and sweep | CI; live in 8.2, 8.3 and at teardown |
+| G-3 | this · `fix/gcp-hosted-idp` | `fix/gke-rebuild-hygiene` | **platform fix: merge when green and reviewed**, after G-2 (inert while AWS is primary, except GP-20) | shared key map, sync `--mirror-openbao`, `zitadel-project-id`, the fresh PAT wins, stage 3: IdP sync and OpenBao flags | CI; live in 8.3–8.4 |
+| G-4 | this · `feat/gcp-primary` | `fix/gcp-hosted-idp` | **integration-only: draft, "do not merge"** (owner, 2026-09-29) | ADR-00NN (Proposed), `primary_cloud = "gcp"`, both suspends, the doc claim and its pages, fresh ZITADEL | CI on the PR; live in 8.3–8.4 |
+| G-5 | this · `feat/gcp-agent-platform` | `fix/agent-review-hardening` (H-1), merges `fix/gcp-hosted-idp` (never G-4) | **programme stack** (Phase 7) | M1 on both clouds, issuer vars, the agents' CA per cloud, sandbox pool + Cilium, CC pre-release pin, Kyverno, overlays, generated gateway keys, two umbrellas, cloud-shape gate, runbooks | CI; live in 8.5–8.6 |
 
-`integration/agent-factory` merges G-5 (which contains H-1 and G-1 to G-4), plus one test-only commit that
-unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1).
+`integration/agent-factory` merges G-4 and G-5 separately (G-5 contains H-1 and G-1 to G-3). It adds one
+test-only commit that unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1).
 
 ## File structure
 
@@ -168,17 +201,22 @@ unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1).
 | `scripts/ci/tests/test-openbao-oidc-lifecycle.sh` | G-1 | #2078's `ignore_changes` on both OIDC definitions |
 | `opentofu/gcp/gke/init/{workflows.tm.hcl,iam.tf,variables.tf,variables.tfvars,outputs.tf}`, `scripts/ops/gcp/adopt-custom-roles.sh`, `scripts/ci/tests/{test-gcp-gke-init-workflow.py,test-adopt-custom-roles.sh,test-gcp-custom-role-refs.sh}` | G-2 | Stage 2 fixes, roles `_v3` that survive teardown |
 | `opentofu/gcp/gke/configure/kubernetes.tf`, `infrastructure/gcp-0/external-dns/workloadidentity.yaml`, `scripts/ci/flux-schema/render-bundle.py` | G-2 | `gcp_dns_editor_role` |
-| `scripts/ops/teardown/teardown.sh`, `scripts/ci/tests/test-teardown-gcp-sweep.sh` | G-2 | Report the LB leftovers that block a VPC delete |
+| `infrastructure/gcp-0/external-dns/kustomization.yaml`, `scripts/ci/tests/test-gcp-external-dns-deps.py` | G-2 | Private DNS on gcp-0 (bug 6, GP-27) |
+| `opentofu/gcp/gke/init/iam.tf`, `scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh` | G-2 | The snapshot identity's bucket grant (bug 7, GP-23) |
+| `scripts/ops/teardown/teardown.sh`, `scripts/ops/gcp/sweep-lb-orphans.sh`, `scripts/ci/tests/test-teardown-gcp-sweep.sh` | G-2 | Report, then (confirmed) sweep, the LB leftovers that block a VPC delete (GP-22) |
+| `scripts/lib/zitadel-pat.sh`, `scripts/ci/tests/test-zitadel-pat.sh` | G-3 | The fresh PAT wins (GP-20) |
+| `scripts/ci/tests/test-zitadel-oidc-clients-openbao.sh` | G-3 | Its "gcp/gke/init passes no `--openbao-*`" guard, inverted for the hosting sync |
 | `scripts/lib/bao-map.sh`, `scripts/ci/tests/test-bao-map.sh` | G-3 | One managed-store → OpenBao map for both scripts |
 | `scripts/provision/zitadel-oidc-clients.sh`, `scripts/ci/tests/{test-zitadel-oidc-clients-mirror.sh,test-gcp-zitadel-project-id.sh}` | G-3 | Mirror, project id |
 | `opentofu/gcp/gke/configure/{data.tf,locals.tf,kubernetes.tf}` | G-3 | Read `zitadel-project-id` |
-| `opentofu/config.tm.hcl`, `clusters/{gcp-0,aws-0}/security/zitadel.yaml`, `website/content/docs/decisions/00NN-gcp-primary-platform.md`, `_index.md`, `opentofu/AGENTS.md` | G-4 | GCP primary |
+| `opentofu/config.tm.hcl`, `clusters/{gcp-0,aws-0}/security/zitadel.yaml`, `website/content/docs/decisions/00NN-gcp-primary-platform.md`, `_index.md`, `opentofu/AGENTS.md`, `.doc-claims.yaml`, `website/content/docs/platform/foundations/cloud-support.md`, `website/content/docs/guides/migrate-the-identity-provider.md` | G-4 | GCP primary |
 | `security/gcp-0/zitadel/{kustomization.yaml,password-generators.yaml,externalsecrets-generated.yaml,helmrelease-env-patch.yaml}`, `scripts/ci/tests/test-zitadel-gcp-fresh.py` | G-4 | Fresh ZITADEL |
 | `opentofu/{aws,gcp}/openbao/management/{mounts.tf,policies.tf,policies/*.hcl}`, module `policies/secrets-admin.hcl`, `opentofu/gcp/gke/configure/openbao.tf`, `security/base/agent-secrets/secretstore.yaml`, `security/base/octo-sts/externalsecret.yaml`, `infrastructure/base/agent-router/externalsecret-zai.yaml`, `scripts/ci/tests/test-openbao-agent-mounts.sh` | G-5 | M1 on both clouds |
 | `opentofu/{aws/eks,gcp/gke}/configure/{kubernetes.tf,locals.tf,openbao.tf}`, `infrastructure/base/agent-router/{securitypolicy-*.yaml,network-policy-data-plane.yaml}`, `infrastructure/base/agent-mcp/mcproutes.yaml`, `security/base/octo-sts/network-policy.yaml`, `scripts/ci/tests/test-oidc-issuer-vars.sh` | G-5 | Per-cloud issuer |
 | `opentofu/gcp/gke/init/{sandbox.tf,variables.tf,helm_values/cilium.yaml}`, the Vector toleration file(s), `scripts/ops/k8s/gvisor-smoke.yaml`, `scripts/ci/tests/test-gcp-agents-pool.sh` | G-5 | Sandbox nodes |
 | `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`, `security/gcp-0/controllers/kustomization.yaml`, `scripts/ci/tests/test-gcp-agent-prereqs.sh` | G-5 | AgentRun XRD and Kyverno on gcp-0 |
-| `{infrastructure,security,observability}/{aws-0,gcp-0}/<agent base>/kustomization.yaml` (12) | G-5 | Per-cloud render roots |
+| `{infrastructure,security,observability}/{aws-0,gcp-0}/<agent base>/kustomization.yaml` (14, incl. `vllm-semantic-router`), `security/gcp-0/agent-secrets/openbao-ca-patch.yaml`, `infrastructure/gcp-0/envoy-ai-gateway/{password-generators.yaml,api-keys-patch.yaml}` | G-5 | Per-cloud render roots; the agents' CA (GP-26); generated gateway keys (GP-24) |
+| `clusters/gcp-0/security/security.yaml` | G-5 | Kyverno health check |
 | `infrastructure/base/envoy-gateway-ratelimit/**`, `infrastructure/{aws-0,gcp-0}/envoy-gateway/kustomization.yaml` | G-5 | Shared rate limit |
 | `clusters/gcp-0/{ai-gateway,agent-platform,llm-platform}.yaml`, `clusters/gcp-0-ai-gateway/*`, `clusters/gcp-0-agent-platform/*`, `clusters/gcp-0-llm-platform/kustomization.yaml`, `clusters/aws-0-{agent-platform,ai-gateway}/*` (paths), `.doc-claims.yaml` | G-5 | Umbrellas |
 | `scripts/ci/flux-schema/assert-cloud-shape.py`, `scripts/ci/tests/flux-schema/test-assert-cloud-shape.py`, `scripts/ci/validate-manifests.sh` | G-5 | GCP render gate |
@@ -188,13 +226,25 @@ unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1).
 
 | Marker | Task | What |
 |---|---|---|
-| [OWNER] | 1.1 | Merge G-0 to `main` (octo-sts reads `main`) before Task 8.6 |
-| [OWNER] | 5.2 | Decide whether G-1 to G-4 merge ahead as platform work, or wait for Phase 7 |
-| [OWNER] | 8.1 | After 21:00: `gcloud auth application-default login`; check the Google OAuth client's redirect list; read the pre-flight verdicts |
-| [OWNER] | 8.2 | The first deploy |
+| [OWNER] | 1.1 | Merge G-0 to `main` first, when green and reviewed (octo-sts reads `main`). Required before 8.6 |
+| [OWNER] | 2.5, 3.3, 4.4 | Merge G-1, then G-2, then G-3 to `main`, each when green and reviewed (GP-21). Not required before tonight's deploy: the integration branch carries them |
+| — | 5.2 | G-4 is never merged: its PR stays a draft (GP-16). No owner merge |
+| [OWNER] | 8.1 | After 21:00: `gcloud auth login` **and** `gcloud auth application-default login` (P-2); check the Google OAuth client's redirect list (P-8); align the OpenBao token versions with the `-gcpckms` lineage (P-4); delete the stale ZITADEL PAT (P-11); read the pre-flight verdicts |
+| [OWNER] | 8.2 | The first deploy; if the management apply fails on an existing mount, the import in Step 3a |
 | [OWNER] | 8.3 | `secret-store.sh migrate --cloud gcp --keys …` as the break-glass admin |
-| [OWNER] | 8.4 | First Google login; `--grant-admin`; a second management apply (new lineage only); SSO checks |
+| [OWNER] | 8.4 | First Google login; `--grant-admin`; SSO checks |
 | [OWNER] | 8.6 | `bao kv put -mount=agents` for `github-app`, `factory-app`, `zai`: the one exception |
+| [OWNER] | teardown | `TM_CLOUD=gcp TM_DESTROY_CONFIRMED=true scripts/ops/teardown/teardown.sh`: confirmed, so it sweeps the LB leftovers (GP-22) |
+
+Removed from tonight's path:
+- **The stale-`openbao-oidc` delete (P-10) and the second management apply** (the old 8.4 Step 3). Both now run
+  only for a NEW lineage, which is not expected, because a restored lineage keeps `oidc/` (GP-7).
+- **The "do G-1 to G-4 merge ahead?" decision.** The owner made it (GP-21, GP-16).
+
+Added:
+- **P-4's version alignment and P-11's PAT delete**, both before the deploy.
+- **8.2 Step 3a's import**, only if the first apply fails on an existing mount.
+- **The confirmed teardown.**
 
 ## Cross-plan edits
 
@@ -203,9 +253,20 @@ Apply these to the plans' canonical copies in Task 0.1.
 **SP2 plan (`2026-09-27-agent-collaboration-rooms-plan.md`):**
 - **Global Constraints.** *Target* becomes gcp-0: the GCP parity plan makes it the platform, and aws-0 is not
   deployed. P2 is reversed; gcp-0 is in scope.
-- **P2.** New text: "The bridge → broker `:8443` serves TLS on both clouds (GCP parity GP-18). The broker's
-  certificate comes from the `openbao` ClusterIssuer, and the bridge trusts `openbao-ca`." AP-1, S1 and CC-S2
-  gain those steps.
+- **P2, and the *Architecture* paragraph (line 16).** New text: "The bridge → broker `:8443` serves TLS on both
+  clouds (GCP parity GP-18). The broker's certificate comes from cert-manager's internal issuer, the `openbao`
+  ClusterIssuer, and the bridge trusts `openbao-ca`." Drop "which Cilium's WireGuard encrypts on aws-0 (TLS on
+  :8443 is gcp-0's, ruling P2)". The SP2 tasks gain these steps:
+
+  | SP2 task (PR) | Amendment |
+  |---|---|
+  | 1.9 (AP-1), the bridge and system API on :8443 | The :8443 listener is `ListenAndServeTLS` on `/etc/room-broker/tls/{tls.crt,tls.key}`. It reloads the pair when cert-manager renews it: a `GetCertificate` that re-reads the files once they change. The unit test serves a self-signed pair and asserts a plain-HTTP request fails. :8080 (humans, behind oauth2-proxy) and the MCP port are unchanged |
+  | 1.11 (AP-1), the `room-bridge` binary | `bridge.NewBroker` builds its `http.Client` with a `tls.Config{RootCAs: …}` loaded from `$BROKER_CA_FILE` (default `/etc/room-broker-ca/ca.crt`). It refuses to start if the file is absent or `BROKER_URL` is not `https://`. Unit test: a `httptest.NewTLSServer` whose CA is and is not in the file |
+  | 1.14 (CC-S2), the room bridge in the `AgentRun` composition | `BROKER_URL` becomes `https://{_BROKER_FQDN}:8443` (the `main_test.k` assertion changes with it). The bridge sidecar mounts the Secret `room-broker-ca` (namespace `agents`, key `ca.crt`) read-only at `/etc/room-broker-ca`, and sets `BROKER_CA_FILE`. New golden renders, then a CC pre-release pinned on the integration branch |
+  | 1.18 (S1), the broker App claim | A `Certificate` `room-broker-tls` in `agent-system`: `issuerRef: {kind: ClusterIssuer, name: openbao}`, `dnsNames: [room-broker.agent-system.svc.cluster.local, room-broker.agent-system.svc]`, `duration: 720h`, `renewBefore: 240h`, mounted at `/etc/room-broker/tls`. The `openbao` ClusterIssuer's egress is already allowed. Plus an ExternalSecret `room-broker-ca` in `agents` that copies the private CA the way `security/base/agent-secrets/externalsecret-openbao-ca.yaml` does, with gcp-0's overlay patch (GCP parity GP-26). The broker CNP is unchanged: the port stays 8443 |
+  | 1.20 (S1), `task agent:run -- --room`, and the live steps that curl :8443 (lines ~9192–9197, ~12207) | `https://` with `--cacert` on the CA from `openbao-ca` |
+
+  Keep P2's scope line, but "gcp-0 needs its own plan" becomes "gcp-0 is in scope (GCP parity)".
 - **P11.** "`oidc.eks.${region}.amazonaws.com:443`" → "`${oidc_jwks_host}:443`", and the JWKS URI →
   `${oidc_jwks_uri}` (GP-12).
 - **P11/§9, the broker's IdP egress.** On gcp-0, `toFQDNs: auth.gcp.cloud.ogenki.io` with `toPorts: 443`
@@ -254,15 +315,17 @@ Apply these to the plans' canonical copies in Task 0.1.
 **Files:**
 - Create: `docs/superpowers/specs/2026-09-29-gcp-parity-design.md`,
   `docs/superpowers/plans/2026-09-29-gcp-parity-plan.md`
-- Modify: `docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md` (on `main`), and
-  `docs/superpowers/plans/2026-09-27-agent-observability-plan.md` (on branch `docs/observability-plan`, where
-  it lives). Also update the scratchpad copies of both.
+- Modify: `docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md` and
+  `docs/superpowers/plans/2026-09-27-agent-observability-plan.md`, both on `main` (the observability plan merged
+  in #2117). Also update the scratchpad copies of both.
 
 **Interfaces:** Produces the reference every later PR body links to.
 
 - [ ] **Step 1: Worktree**
 
-`EnterWorktree` with branch `docs/gcp-parity` (from `origin/main`).
+`origin/docs/gcp-parity` already exists (`f5a1a43e`, an earlier copy of these two documents). `EnterWorktree`
+with branch `docs/gcp-parity`, then `git reset --hard origin/docs/gcp-parity && git merge origin/main`. The
+steps below overwrite both documents with the current versions.
 
 - [ ] **Step 2: Copy the two documents in and apply the SP2 edits**
 
@@ -285,13 +348,14 @@ git commit -m "docs(superpowers): GCP parity slice design and plan, and SP2's gc
 
 Run `create-pr` with base `main`. Title: `docs(superpowers): GCP parity slice`.
 
-- [ ] **Step 5: The observability plan, on its own branch**
+- [ ] **Step 5: The observability plan, in the same PR**
 
-In a worktree of `docs/observability-plan`, apply the observability bullets of *Cross-plan edits*. Then:
+In the same worktree, apply the observability bullets of *Cross-plan edits* to
+`docs/superpowers/plans/2026-09-27-agent-observability-plan.md`. Then re-run Step 3's gate, and:
 
 ```bash
 git commit -am "docs(superpowers): O-1 builds on GCP parity G-5 and runs on gcp-0"
-git push origin HEAD:docs/observability-plan
+git push origin HEAD:docs/gcp-parity
 ```
 
 ---
@@ -388,8 +452,9 @@ git commit -m "chore(agents): octo-sts trusts gcp-0's GKE issuer"
 ```
 
 Run the `create-pr` skill with base `main`. Title: `chore(agents): octo-sts trust policies accept gcp-0's issuer`.
-The body says octo-sts reads `main` only, so this merges ahead of the programme, as #2113 did (GP-13).
-**[OWNER] merges it** before Task 8.6.
+The body says octo-sts reads `main` only, so this merges ahead of the programme, as #2113 did (GP-13). It is a
+platform fix: four trust-policy files already on `main`, and no agent-factory code (GP-21).
+**[OWNER] merges it first, when green and reviewed**, and in any case before Task 8.6.
 
 ---
 
@@ -409,25 +474,31 @@ The body says octo-sts reads `main` only, so this merges ahead of the programme,
 - [ ] **Step 1: Worktree**
 
 `EnterWorktree` with branch `fix/openbao-stage2-gcp` (from `origin/main`). Check the salvage refs exist:
-`git cat-file -t ac62abf2 && git cat-file -t 850ce578` → `commit` twice. If not: `git fetch origin test/gcp-only-live`.
+`git cat-file -t ac62abf2 && git cat-file -t 850ce578` → `commit` twice. If not:
+`git fetch origin salvage/openbao-stage2-gcp` (the safety copy from Global Constraints). `test/gcp-only-live`
+does **not** contain `ac62abf2`.
 
 - [ ] **Step 2: Bring the test first**
 
+The salvaged suite locates its validator and the repo root relative to its own directory
+(`VALIDATOR="${SCRIPT_DIR}/validate-openbao-policies.sh"`, and `"$(cd "${SCRIPT_DIR}/.." && pwd)"` for the
+"repository itself passes" case). From `scripts/ci/tests/`, those become `..` and `../../..`:
+
 ```bash
 git show ac62abf2:scripts/test-validate-openbao-policies.sh \
-  | sed -e 's#scripts/validate-openbao-policies.sh#scripts/ci/validate-openbao-policies.sh#g' \
-        -e 's#/\.\." || exit#/../../.." || exit#' \
+  | sed -e 's#^VALIDATOR="${SCRIPT_DIR}/validate-openbao-policies.sh"#VALIDATOR="${SCRIPT_DIR}/../validate-openbao-policies.sh"#' \
+        -e 's#"$(cd "${SCRIPT_DIR}/.." \&\& pwd)"#"$(cd "${SCRIPT_DIR}/../../.." \&\& pwd)"#' \
   > scripts/ci/tests/test-validate-openbao-policies.sh
-grep -n 'dirname' scripts/ci/tests/test-validate-openbao-policies.sh
+grep -n -E '^VALIDATOR=|repository itself passes' scripts/ci/tests/test-validate-openbao-policies.sh
 ```
 
-Expected: every `dirname` line resolves the repo root three levels up (`../../..`). Fix by hand any that
-still says `..`.
+Expected: `VALIDATOR="${SCRIPT_DIR}/../validate-openbao-policies.sh"`, and the repository case ending in
+`"$(cd "${SCRIPT_DIR}/../../.." && pwd)"`. If either line is unchanged, edit it to that text by hand.
 
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `bash scripts/ci/tests/test-validate-openbao-policies.sh; echo "exit $?"`
-Expected: a non-zero exit that names the missing `scripts/ci/validate-openbao-policies.sh`.
+Expected: a non-zero exit, because `scripts/ci/validate-openbao-policies.sh` does not exist yet.
 
 - [ ] **Step 4: Bring the gate**
 
@@ -436,12 +507,14 @@ git show ac62abf2:scripts/validate-openbao-policies.sh > scripts/ci/validate-ope
 chmod +x scripts/ci/validate-openbao-policies.sh
 ```
 
-- [ ] **Step 5: The test passes, and the gate is red on the tree**
+- [ ] **Step 5: The fixture cases pass, and the gate is red on the tree**
 
 Run: `bash scripts/ci/tests/test-validate-openbao-policies.sh; echo "suite $?"; ./scripts/ci/validate-openbao-policies.sh; echo "gate $?"`
-Expected: `suite 0`. Then the tree fails:
+Expected: every fixture case `ok`, and **one** failure, `the repository itself passes`, so `suite 1`: the real
+tree is still broken. Then the gate itself fails:
 `FAIL: gcp: a JWT role names policy "external-secrets", but opentofu/gcp/openbao/management does not define it (directly or through a module it calls)`, then `gate 1`.
-That is `gcp_only_broken_since_stage2`, caught. Task 2.3 turns it green.
+That is `gcp_only_broken_since_stage2`, caught. Task 2.3 turns both green (its Step 4 runs the suite too). Until
+then, this commit is red in `task ci:test` by design: G-1 is one PR, and CI judges its head.
 
 - [ ] **Step 6: Commit**
 
@@ -572,8 +645,11 @@ git status --short opentofu/gcp/openbao/management
 ```
 
 Expected: `A  …/store-of-record.tf`, and `M` for `auth.tf`, `outputs.tf`, `policies.tf`, `variables.tf`,
-`variables.tfvars`, `versions.tf` and `workflows.tm.hcl`. Resolve a conflict by keeping `main`'s side and
-adding the salvaged lines.
+`variables.tfvars` and `versions.tf`. `workflows.tm.hcl` shows `UU`: its destroy hunk overlaps `main`'s move of
+`tofu-destroy-contained.sh` to `scripts/ops/teardown/`. Resolve every conflict by keeping `main`'s side and adding
+the salvaged lines. Here the result is
+`bash "…/scripts/ops/teardown/tofu-destroy-contained.sh" --contained-prefix vault_ --contained-prefix module.store_of_record.vault_ --`.
+Then `git add` the file.
 
 Then in `store-of-record.tf` set `admin_group_alias = "admin"` in the `module "store_of_record"` block
 (GP-2). Leave the module name `store_of_record` unchanged: the state addresses depend on it (GP-1).
@@ -610,9 +686,9 @@ in `ci.yaml`:
 
 - [ ] **Step 4: Gates**
 
-Run: `./scripts/ci/validate-openbao-policies.sh && tofu -chdir=opentofu/gcp/openbao/management init -backend=false -input=false >/dev/null && tofu -chdir=opentofu/gcp/openbao/management validate && (cd opentofu/gcp/openbao/management && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .)`
-Expected: `==> OpenBao policy parity: every policy a JWT role names is defined (2 cloud(s)).`, then
-`Success! The configuration is valid.`, then trivy exit 0.
+Run: `./scripts/ci/validate-openbao-policies.sh && bash scripts/ci/tests/test-validate-openbao-policies.sh && tofu -chdir=opentofu/gcp/openbao/management init -backend=false -input=false >/dev/null && tofu -chdir=opentofu/gcp/openbao/management validate && (cd opentofu/gcp/openbao/management && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .)`
+Expected: `==> OpenBao policy parity: every policy a JWT role names is defined (2 cloud(s)).`, then the suite's
+`==> all checks passed`, then `Success! The configuration is valid.`, then trivy exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -679,15 +755,19 @@ overrides the moved-aside refusal (`rc=2`). Unset, behaviour is unchanged.
 
 - [ ] **Step 1: Bring the test**
 
+The salvaged suite finds the script beside itself (`SRC="${OPENBAO_CONFIG_SCRIPT:-$HERE/openbao-config.sh}"`).
+From `scripts/ci/tests/`, that is `$HERE/../../provision/openbao-config.sh`:
+
 ```bash
 git show ac62abf2:scripts/test-openbao-new-lineage.sh \
-  | sed -e 's#scripts/openbao-config.sh#scripts/provision/openbao-config.sh#g' \
-        -e 's#/\.\." || exit#/../../.." || exit#' \
+  | sed -e 's#\$HERE/openbao-config\.sh#$HERE/../../provision/openbao-config.sh#g' \
+        -e 's#scripts/openbao-config\.sh#scripts/provision/openbao-config.sh#g' \
   > scripts/ci/tests/test-openbao-new-lineage.sh
-grep -n 'dirname\|openbao-config.sh' scripts/ci/tests/test-openbao-new-lineage.sh
+grep -n 'HERE\|openbao-config.sh' scripts/ci/tests/test-openbao-new-lineage.sh
 ```
 
-Expected: the root resolves `../../..`, and every script path is `scripts/provision/openbao-config.sh`.
+Expected: `SRC="${OPENBAO_CONFIG_SCRIPT:-$HERE/../../provision/openbao-config.sh}"`, and every other script path
+is `scripts/provision/openbao-config.sh`. Fix by hand any line still naming `$HERE/openbao-config.sh`.
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -728,10 +808,11 @@ git commit -m "feat(openbao): an explicit switch lets a new GCP lineage boot bes
 Run `create-pr` with base `main`. Title: `fix(openbao): Stage 2 on GCP's OpenBao`. The body says:
 - it fixes `gcp_only_broken_since_stage2`;
 - it is salvaged from `ac62abf2`, verified live 2026-09-11, with GP-1 and GP-2's deltas;
-- **platform fix: it can merge on its own**;
+- **platform fix: merged when green and reviewed** (owner, 2026-09-29; GP-21);
 - no ADR: module versus copy is code layout, not a technology choice.
 
-It carries a *Live evidence* section that Task 8.3 fills in.
+It carries a *Live evidence* section that Task 8.3 fills in. **[OWNER] merges it when green and reviewed**,
+right after G-0 (GP-21).
 
 ---
 
@@ -1111,14 +1192,181 @@ git add opentofu/gcp/gke infrastructure/gcp-0/external-dns scripts/ops/gcp/adopt
 git commit -m "fix(gcp): custom roles take a generation suffix and survive a teardown"
 ```
 
-### Task 3.3: Teardown reports what blocks a VPC delete; gates and PR G-2
+### Task 3.2a: Private DNS on gcp-0 (09-11 bug 6, GP-27)
+
+**Files:**
+- Modify: `infrastructure/gcp-0/external-dns/kustomization.yaml`
+- Create: `scripts/ci/tests/test-gcp-external-dns-deps.py`
+
+**Interfaces:** Produces a gcp-0 `external-dns` HelmRelease with no `dependsOn`.
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-gcp-external-dns-deps.py`:
+
+```python
+#!/usr/bin/env python3
+# requires: python3 kustomize
+"""GCP parity GP-27 (09-11 bug 6): gcp-0's private external-dns must not wait on
+aws-load-balancer-controller, which gcp-0 never runs. With the edge, the release
+never installs and no *.priv.gcp record is written, while the parent
+Kustomization (no `wait`) still reports Ready."""
+import pathlib
+import subprocess
+import sys
+
+try:
+    import yaml
+except ImportError:
+    print("PyYAML is not installed")
+    sys.exit(77)
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+out = subprocess.run(["kustomize", "build", str(ROOT / "infrastructure/gcp-0/external-dns"),
+                      "--load-restrictor=LoadRestrictionsNone"], capture_output=True, text=True, check=True).stdout
+hrs = [d for d in yaml.safe_load_all(out) if d and d.get("kind") == "HelmRelease" and d["metadata"]["name"] == "external-dns"]
+if len(hrs) != 1:
+    print(f"FAIL expected one external-dns HelmRelease, found {len(hrs)}")
+    sys.exit(1)
+deps = hrs[0]["spec"].get("dependsOn") or []
+if any(d.get("name") == "aws-load-balancer-controller" for d in deps):
+    print("FAIL gcp-0's external-dns depends on aws-load-balancer-controller, which gcp-0 never runs")
+    sys.exit(1)
+print("PASS")
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-gcp-external-dns-deps.py; echo "exit $?"`
+Expected: `FAIL gcp-0's external-dns depends on aws-load-balancer-controller…`, then `exit 1`.
+
+- [ ] **Step 3: Salvage the patch**
+
+Append to `patches` in `infrastructure/gcp-0/external-dns/kustomization.yaml` (the same patch as
+`origin/test/gcp-only-live`):
+
+```yaml
+  # base waits on aws-load-balancer-controller (#1975's webhook race), a release
+  # gcp-0 never runs: GKE's own controller creates its LoadBalancers. Kept, the
+  # edge never resolves and no private record is ever written (09-11 bug 6).
+  - target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: external-dns
+    patch: |-
+      - op: remove
+        path: /spec/dependsOn
+```
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: `python3 scripts/ci/tests/test-gcp-external-dns-deps.py && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`, then `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add infrastructure/gcp-0/external-dns scripts/ci/tests/test-gcp-external-dns-deps.py
+git commit -m "fix(gcp): gcp-0's private external-dns no longer waits on an AWS-only controller"
+```
+
+### Task 3.2b: The snapshot identity's bucket grant (09-11 bug 7, GP-23)
+
+**Files:**
+- Modify: `opentofu/gcp/gke/init/iam.tf`
+- Create: `scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh`
+
+**Interfaces:** Produces a `crossplane_bucket_grantable_roles` that holds every role a gcp-0
+`GCPWorkloadIdentity` names under `bucketRoles`.
+
+- [ ] **Step 1: Write the failing test**
+
+`scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh`:
+
+```bash
+#!/usr/bin/env bash
+# requires: python3
+#
+# GCP parity GP-23 (09-11 bug 7; memory gcp_crossplane_grant_allowlist_contract):
+# every role a GCPWorkloadIdentity grants under bucketRoles must be in gke/init's
+# crossplane_bucket_grantable_roles, or the IAM condition denies the grant with a
+# bare 403. openbao-snapshot's objectCreator was missing, so gcp-0 never took a
+# scheduled snapshot.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+python3 - "$ROOT" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+iam = (root / "opentofu/gcp/gke/init/iam.tf").read_text()
+m = re.search(r"crossplane_bucket_grantable_roles\s*=\s*\[(.*?)\]", iam, re.S)
+if not m:
+    print("FAIL no crossplane_bucket_grantable_roles in iam.tf"); sys.exit(1)
+allowed = set(re.findall(r'"(roles/[^"]+)"', m.group(1)))
+wanted = {}
+for area in ("infrastructure", "security", "observability", "tooling", "apps"):
+    for f in (root / area).glob("gcp-0/**/*.yaml"):
+        text = f.read_text()
+        if "kind: GCPWorkloadIdentity" not in text or "bucketRoles:" not in text:
+            continue
+        for role in re.findall(r"^\s+role:\s*(roles/\S+)", text.split("bucketRoles:", 1)[1], re.M):
+            wanted.setdefault(role, []).append(str(f.relative_to(root)))
+if not wanted:
+    print("FAIL found no bucketRoles grant at all: the scan is broken"); sys.exit(1)
+missing = {r: fs for r, fs in wanted.items() if r not in allowed}
+for r, fs in sorted(missing.items()):
+    print(f"FAIL {r} (asked by {', '.join(fs)}) is not in crossplane_bucket_grantable_roles")
+if missing:
+    sys.exit(1)
+print("PASS")
+PY
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh; echo "exit $?"`
+Expected: `FAIL roles/storage.objectCreator (asked by security/gcp-0/openbao-snapshot/workloadidentity.yaml) …`,
+then `exit 1`.
+
+- [ ] **Step 3: Implement**
+
+In `opentofu/gcp/gke/init/iam.tf`, add to `crossplane_bucket_grantable_roles`, after `"roles/storage.objectViewer",`:
+
+```hcl
+    # openbao-snapshot's bucket grant (security/gcp-0/openbao-snapshot): create
+    # only, strictly weaker than objectAdmin above. Missing, the condition denied
+    # the grant with a bare 403 and gcp-0 never took a scheduled snapshot
+    # (GCP parity GP-23, 09-11 bug 7).
+    "roles/storage.objectCreator",
+```
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: `bash scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh && tofu -chdir=opentofu/gcp/gke/init init -backend=false -input=false >/dev/null && tofu -chdir=opentofu/gcp/gke/init validate`
+Expected: `PASS`, then `Success! The configuration is valid.` The live proof is 8.3 Step 9.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add opentofu/gcp/gke/init/iam.tf scripts/ci/tests/test-gcp-bucket-grant-allowlist.sh
+git commit -m "fix(gcp): Crossplane may grant objectCreator, so gcp-0 takes its OpenBao snapshots"
+```
+
+### Task 3.3: Teardown reports, then sweeps, what blocks a VPC delete; gates and PR G-2
 
 **Files:**
 - Modify: `scripts/ops/teardown/teardown.sh`
-- Create: `scripts/ci/tests/test-teardown-gcp-sweep.sh`
+- Create: `scripts/ops/gcp/sweep-lb-orphans.sh`, `scripts/ci/tests/test-teardown-gcp-sweep.sh`
 
-**Interfaces:** Produces two new rows in `teardown.sh`'s GCP report, `Target pools` and
-`k8s-* firewall rules`, counted like `Forwarding rules`.
+**Interfaces:**
+- Produces two new rows in `teardown.sh`'s GCP report, `Target pools` and `k8s-* firewall rules`, counted like
+  `Forwarding rules`.
+- Produces `sweep-lb-orphans.sh --project P --network N --cluster C [--apply]`:
+  - it refuses (exit 3) while cluster `C` exists;
+  - it lists the GKE-created forwarding rules (description carrying `kubernetes.io/service-name`), the target
+    pools they or such a description name, and the `k8s-*` firewall rules on network `N`;
+  - with `--apply`, it deletes them in that order.
+- `teardown.sh` runs it with `--apply` only under `TM_DESTROY_CONFIRMED=true`, then retries the destroy once
+  (GP-22, owner 2026-09-29).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1134,21 +1382,45 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
-cat >"$T/bin/gcloud" <<'EOF'
+cat >"$T/bin/gcloud" <<EOF
 #!/usr/bin/env bash
-case "$*" in
+case "\$*" in
   "projects describe"*) exit 0 ;;
-  *"target-pools list"*) echo a2c53478 ;;
+  *"print-access-token"*) echo fake-token ;;
+  *"container clusters list"*) printf '%s' "\${CLUSTERS:-}" ;;
+  *" delete "*) echo "\$*" >>"$T/deletes" ;;
+  *"forwarding-rules list"*) echo "a2c53478 europe-west4" ;;
+  *"target-pools list"*) echo "a2c53478 europe-west4" ;;
   *"firewall-rules list"*) printf '%s\n' k8s-fw-a2c53478 k8s-a6e2efd9258d71a1-node-http-hc ;;
   *) exit 0 ;;
 esac
 EOF
 chmod +x "$T/bin/gcloud"
-out="$(TM_CLOUD=gcp PATH="$T/bin:$PATH" bash "$ROOT/scripts/ops/teardown/teardown.sh" --verify-only 2>&1)"; rc=$?
 fails=0
-grep -q 'Target pools' <<<"$out" || { echo "FAIL no Target pools row"; fails=1; }
-grep -q 'k8s-\* firewall rules' <<<"$out" || { echo "FAIL no k8s-* firewall rules row"; fails=1; }
-[ "$rc" -ne 0 ] || { echo "FAIL leftovers must fail the verify"; fails=1; }
+f() { echo "FAIL $*"; fails=1; }
+
+# The report (--verify-only).
+out="$(TM_CLOUD=gcp PATH="$T/bin:$PATH" bash "$ROOT/scripts/ops/teardown/teardown.sh" --verify-only 2>&1)"; rc=$?
+grep -q 'Target pools' <<<"$out" || f "no Target pools row"
+grep -q 'k8s-\* firewall rules' <<<"$out" || f "no k8s-* firewall rules row"
+[ "$rc" -ne 0 ] || f "leftovers must fail the verify"
+
+# The sweep (GP-22): dry-run deletes nothing, --apply deletes the four, a live cluster blocks it.
+S="$ROOT/scripts/ops/gcp/sweep-lb-orphans.sh"
+args=(--project ogenki-435905 --network vpc-europe-west4-dev --cluster gcp-0)
+[ -f "$S" ] || f "no $S"
+: >"$T/deletes"
+PATH="$T/bin:$PATH" bash "$S" "${args[@]}" >/dev/null 2>&1 || f "the dry run failed"
+[ ! -s "$T/deletes" ] || f "the dry run deleted something"
+: >"$T/deletes"
+PATH="$T/bin:$PATH" bash "$S" "${args[@]}" --apply >/dev/null 2>&1 || f "the sweep failed"
+[ "$(wc -l <"$T/deletes")" -eq 4 ] || f "expected 4 deletes (rule, pool, 2 firewalls), got: $(cat "$T/deletes")"
+grep -q 'forwarding-rules delete a2c53478 --region europe-west4' "$T/deletes" || f "the forwarding rule was not deleted in its region"
+: >"$T/deletes"
+CLUSTERS=gcp-0 PATH="$T/bin:$PATH" bash "$S" "${args[@]}" --apply >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 3 ] || f "a live cluster must refuse with exit 3, got $rc"
+[ ! -s "$T/deletes" ] || f "a live cluster's LBs were deleted"
+
 [ "$fails" -eq 0 ] && echo PASS
 exit "$fails"
 ```
@@ -1156,11 +1428,104 @@ exit "$fails"
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `bash scripts/ci/tests/test-teardown-gcp-sweep.sh; echo "exit $?"`
-Expected: `FAIL no Target pools row`, `FAIL no k8s-* firewall rules row` and `FAIL leftovers must fail the verify`, then `exit 1`.
+Expected: the three report failures, then `FAIL no …/sweep-lb-orphans.sh` and the sweep failures that follow
+from it, then `exit 1`.
 
 - [ ] **Step 3: Implement**
 
-In `scripts/ops/teardown/teardown.sh`, right after the `report "Forwarding rules" …` call:
+`scripts/ops/gcp/sweep-lb-orphans.sh` (`chmod +x`):
+
+```bash
+#!/usr/bin/env bash
+#
+# Delete what a deleted GKE cluster leaves in the platform VPC: its
+# LoadBalancers' forwarding rules and target pools, and the k8s-* firewall
+# rules. No tofu state holds them, forwarding rules bill hourly, and the
+# firewall rules block the VPC delete (memory gke_lb_orphans_block_vpc_delete;
+# GCP parity GP-22). Dry-run unless --apply.
+#
+# Usage: sweep-lb-orphans.sh --project P --network N --cluster C [--apply]
+set -euo pipefail
+
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/../../lib/gcloud-adc.sh"
+
+PROJECT="" NETWORK="" CLUSTER="" APPLY=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project) PROJECT="$2"; shift 2 ;;
+    --network) NETWORK="$2"; shift 2 ;;
+    --cluster) CLUSTER="$2"; shift 2 ;;
+    --apply)   APPLY=true; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+{ [ -n "$PROJECT" ] && [ -n "$NETWORK" ] && [ -n "$CLUSTER" ]; } \
+  || { echo "--project, --network and --cluster are required" >&2; exit 2; }
+
+# A live cluster still owns these: its service controller would recreate them,
+# and deleting a live LoadBalancer's rule is an outage, not a sweep.
+if ! clusters="$(gcp_gcloud container clusters list --project "$PROJECT" \
+                   --filter="name=${CLUSTER}" --format='value(name)')"; then
+  echo "cannot list clusters in ${PROJECT}: refusing to sweep blind" >&2; exit 3
+fi
+if [ -n "$clusters" ]; then
+  echo "cluster ${CLUSTER} still exists: nothing is swept while it does" >&2; exit 3
+fi
+
+# GKE's service controller writes {"kubernetes.io/service-name": ...} into the
+# description of every forwarding rule and target pool it creates; that, not a
+# name pattern, is what makes an object GKE's.
+rules="$(gcp_gcloud compute forwarding-rules list --project "$PROJECT" \
+  --filter='description~kubernetes.io/service-name' --format='value(name,region.basename())')"
+pools="$(gcp_gcloud compute target-pools list --project "$PROJECT" \
+  --filter='description~kubernetes.io/service-name' --format='value(name,region.basename())')"
+firewalls="$(gcp_gcloud compute firewall-rules list --project "$PROJECT" \
+  --filter="name~^k8s- AND network~/${NETWORK}\$" --format='value(name)')"
+
+failed=0
+act() { # $1 = what, then the delete command
+  local what="$1"; shift
+  if [ "$APPLY" != true ]; then echo "[dry-run] would delete ${what}"; return 0; fi
+  if "$@" --quiet >/dev/null; then echo "[deleted] ${what}"; else echo "[FAILED ] ${what}" >&2; failed=1; fi
+}
+# Rules before pools (a rule targets a pool), firewalls last.
+while read -r name region; do
+  [ -n "$name" ] || continue
+  scope=(--global); [ -n "$region" ] && scope=(--region "$region")
+  act "forwarding rule ${name}" gcp_gcloud compute forwarding-rules delete "$name" "${scope[@]}" --project "$PROJECT"
+done <<<"$rules"
+while read -r name region; do
+  [ -n "$name" ] || continue
+  act "target pool ${name}" gcp_gcloud compute target-pools delete "$name" --region "$region" --project "$PROJECT"
+done <<<"$pools"
+while read -r name; do
+  [ -n "$name" ] || continue
+  act "firewall rule ${name}" gcp_gcloud compute firewall-rules delete "$name" --project "$PROJECT"
+done <<<"$firewalls"
+exit "$failed"
+```
+
+In `scripts/ops/teardown/teardown.sh`, inside `if [ "$VERIFY_ONLY" -eq 0 ]; then`, after the AWS sweep block and
+before its closing `fi`:
+
+```bash
+  # GKE's LB leftovers (GCP parity GP-22, owner 2026-09-29): swept only on a
+  # confirmed teardown, and only once gcp-0 is gone (the script refuses otherwise).
+  if wants gcp && [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
+    echo "=== sweeping the LoadBalancer leftovers GKE left in the platform VPC ==="
+    if bash "${ROOT}/scripts/ops/gcp/sweep-lb-orphans.sh" --project "${GCP_PROJECT:-ogenki-435905}" \
+         --network "${GCP_NETWORK:-vpc-europe-west4-dev}" --cluster "${GKE_CLUSTER_NAME:-gcp-0}" --apply; then
+      echo
+      echo "=== retrying the destroy after the GCP sweep ==="
+      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+      destroy_rc=$?
+      echo "=== terramate exit after retry: ${destroy_rc} ==="
+    fi
+  fi
+```
+
+Then, in the report, right after the `report "Forwarding rules" …` call:
 
 ```bash
     # A deleted cluster leaves its LoadBalancers' target pools and k8s-* firewall
@@ -1186,13 +1551,16 @@ Expected: trivy exit 0, `Success! The configuration is valid.`, `Invalid: 0, Ski
 - [ ] **Step 6: Commit and open G-2**
 
 ```bash
-git add scripts/ops/teardown/teardown.sh scripts/ci/tests/test-teardown-gcp-sweep.sh
-git commit -m "fix(teardown): report the target pools and k8s-* firewall rules a GKE cluster leaves"
+git add scripts/ops/teardown/teardown.sh scripts/ops/gcp/sweep-lb-orphans.sh scripts/ci/tests/test-teardown-gcp-sweep.sh
+git commit -m "fix(teardown): sweep the forwarding rules, target pools and k8s-* firewall rules a GKE cluster leaves"
 ```
 
-Run `create-pr` with base `fix/openbao-stage2-gcp`. Title: `fix(gcp): GKE rebuilds that can repeat`. The body
-lists 09-11 bugs 2 and 3, the missing `deploy_identity_provider` and the orphan sweep, and says: **platform
-fix, it can merge on its own after G-1**.
+Run `create-pr` with base `fix/openbao-stage2-gcp`. Title: `fix(gcp): GKE rebuilds that can repeat`. The body lists:
+- 09-11 bugs 2, 3, 6 and 7;
+- the missing `deploy_identity_provider`;
+- the confirmed-only orphan sweep.
+
+It says: **platform fix, merged when green and reviewed, after G-1** (owner, 2026-09-29; GP-21).
 
 ---
 
@@ -1315,10 +1683,15 @@ eval "$body"
 
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 openbao_token_config_write() { : >"$1"; }
+GET_BODY='{"data":{"data":{"GF_SECURITY_ADMIN_USER":"admin","GF_AUTH_GENERIC_OAUTH_CLIENT_ID":"old"}}}'
+GET_CODE=200
 openbao_req() {
     printf '%s %s\n' "$1" "$2" >>"$T/calls"
-    case "$1" in
-        GET)  printf '%s' '{"data":{"data":{"GF_SECURITY_ADMIN_USER":"admin","GF_AUTH_GENERIC_OAUTH_CLIENT_ID":"old"}}}' ;;
+    local method="$1" out=/dev/null
+    shift 2
+    while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac; done
+    case "$method" in
+        GET)  printf '%s' "$GET_BODY" >"$out"; printf '%s' "$GET_CODE" ;;
         POST) cat >"$T/body" ;;
     esac
 }
@@ -1331,6 +1704,19 @@ grep -qx 'POST platform/data/victoria-metrics/grafana-envvars' "$T/calls" \
   && ok "grafana-envvars is written to its mapped path" || bad "grafana-envvars path: $(cat "$T/calls")"
 [ "$(jq -c '.data' "$T/body")" = '{"GF_SECURITY_ADMIN_USER":"admin","GF_AUTH_GENERIC_OAUTH_CLIENT_ID":"new"}' ] \
   && ok "merged: the admin user kept, the client id replaced" || bad "merge: $(cat "$T/body")"
+
+: >"$T/calls"; rm -f "$T/body"
+GET_CODE=404 GET_BODY='{"errors":[]}'
+printf '%s' '{"client_id":"new"}' | mirror_to_openbao harbor-oidc >/dev/null
+[ "$(jq -c '.data' "$T/body" 2>/dev/null)" = '{"client_id":"new"}' ] \
+  && ok "absent path (404): written fresh" || bad "404 case: $(cat "$T/body" 2>/dev/null)"
+
+: >"$T/calls"; rm -f "$T/body"
+GET_CODE=403
+printf '%s' '{"client_id":"new"}' | mirror_to_openbao harbor-oidc >/dev/null 2>&1; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$T/body" ] \
+  && ok "unreadable path (403): fails and overwrites nothing" || bad "403 case: rc=$rc, wrote $(cat "$T/body" 2>/dev/null)"
+GET_CODE=200
 
 : >"$T/calls"
 printf '%s' '{"client_id":"x"}' | mirror_to_openbao openbao-oidc
@@ -1405,13 +1791,23 @@ mirror_to_openbao() (
     path="${target#*/}"
     payload="$(cat)"
     OPENBAO_TOKEN_CONFIG="$(umask 077 && mktemp -t openbao-mirror-curl.XXXXXX)" || exit 1
-    trap 'rm -f "$OPENBAO_TOKEN_CONFIG"' EXIT
+    body="$(umask 077 && mktemp -t openbao-mirror-read.XXXXXX)" || exit 1
+    trap 'rm -f "$OPENBAO_TOKEN_CONFIG" "$body"' EXIT
     if ! openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}"; then
         echo "[FAILED ] ${key} -- no OpenBao root token readable from ${OPENBAO_ROOT_TOKEN_SECRET:-<unset>}" >&2
         exit 1
     fi
-    current="$(openbao_req GET "${mount}/data/${path}" 2>/dev/null | jq -c '.data.data // {}' 2>/dev/null)" || current=""
-    [ -n "$current" ] || current='{}'
+    # Only a 404 means "nothing there yet". Any other failure (403, timeout)
+    # must not become an empty merge base, or the POST below would drop every
+    # key the payload does not carry.
+    code="$(openbao_req GET "${mount}/data/${path}" -o "$body" -w '%{http_code}' 2>/dev/null)" || true
+    case "$code" in
+        200) current="$(jq -c '.data.data // {}' "$body")" \
+                 || { echo "[FAILED ] ${key} -- ${target} is not readable JSON; not overwriting it" >&2; exit 1; } ;;
+        404) current='{}' ;;
+        *)   echo "[FAILED ] ${key} -- reading ${target} returned HTTP ${code:-none}; not overwriting it" >&2
+             exit 1 ;;
+    esac
     if ! printf '%s\n%s\n' "$current" "$payload" \
         | jq -c -s '{data: (.[0] * .[1])}' \
         | openbao_req POST "${mount}/data/${path}" --data-binary @- >/dev/null; then
@@ -1563,11 +1959,126 @@ git add opentofu/gcp/gke/configure scripts/provision/zitadel-oidc-clients.sh scr
 git commit -m "fix(gcp): a hosted ZITADEL's project id reaches gke/configure through Secret Manager"
 ```
 
+### Task 4.3a: The chart's fresh PAT always wins (GP-20, owner 2026-09-29)
+
+**Files:**
+- Modify: `scripts/lib/zitadel-pat.sh` (`resolve_zitadel_pat` and its header), `scripts/ci/tests/test-zitadel-pat.sh`
+
+**Interfaces:** `resolve_zitadel_pat` keeps its contract: the token on stdout, return 1 with a diagnosis. The order
+changes:
+1. The in-cluster `security/iam-admin-pat`, when present. It overwrites the stored copy when that differs, unless
+   `ZITADEL_PAT_DRY_RUN=true`.
+2. The stored copy, only when the cluster has none (a directory restored from a seed).
+
+- [ ] **Step 1: Write the failing test**
+
+In `scripts/ci/tests/test-zitadel-pat.sh`, replace case `# 1.` (from its comment through
+`check "store wins" …`) with:
+
+```bash
+# 1. GCP parity GP-20 (owner, 2026-09-29): the cluster's PAT wins over a stored
+#    one. A fresh directory every build makes a stored PAT belong to a directory
+#    that no longer exists, and every call made with it gets a 401.
+persisted=""
+store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"stale-token"}'; }
+store_write()  { persisted="$(cat)"; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+check "cluster wins over a stale store" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
+resolve_zitadel_pat >/dev/null 2>&1
+check "the stale store is overwritten" "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
+
+# 1a. Same token in both: no rewrite (one Secret Manager version per change).
+store_write_called=0
+store_read()   { printf '%s' '{"pat":"token-from-cluster"}'; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+resolve_zitadel_pat >/dev/null 2>&1
+check "an equal store is not rewritten" "0" "$store_write_called"
+
+# 1b. No cluster Secret (a directory restored from a seed): the store is used.
+store_read()   { printf '%s' '{"pat":"token-from-store"}'; }
+kubectl()      { return 1; }
+check "the store serves a restored directory" "token-from-store" "$(resolve_zitadel_pat 2>/dev/null)"
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `bash scripts/ci/tests/test-zitadel-pat.sh; echo "exit $?"`
+Expected: `FAIL cluster wins over a stale store: expected 'token-from-cluster' got 'stale-token'` and the overwrite
+failure, then `exit 1`.
+
+- [ ] **Step 3: Implement**
+
+Replace `resolve_zitadel_pat() { … }` in `scripts/lib/zitadel-pat.sh` with the function below. Rewrite the header's
+*THE FIX* paragraph to match: "the chart's Secret when it exists, overwriting the stored copy; the store only
+when the cluster has none (a restore). GCP parity GP-20, owner 2026-09-29."
+
+```bash
+resolve_zitadel_pat() {
+    local name stored="" current="" token b64
+    local dry_run="${ZITADEL_PAT_DRY_RUN:-false}"
+    name="$(zitadel_pat_secret_name)"
+    # 1. The cluster. The chart writes this Secret on FirstInstance, so when it
+    #    exists it belongs to the directory that is running. A stored copy may
+    #    belong to one a fresh build replaced (GCP parity GP-20), so it never
+    #    wins over this.
+    b64="$(kubectl get secret "$ZITADEL_PAT_K8S_SECRET" \
+             -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
+    token=""
+    [ -n "$b64" ] && token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
+    if [ -n "$token" ]; then
+        if store_exists "$name" && stored="$(store_read "$name")"; then
+            current="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null || true)"
+        fi
+        if [ "$current" != "$token" ]; then
+            if [ "$dry_run" = "true" ]; then
+                echo "[dry-run] would write the cluster's admin PAT to ${name}" >&2
+            else
+                echo "[persist] writing the cluster's admin PAT to ${name}" >&2
+                # Own our provenance: a caller's STORE_WRITE_* globals are for its own secrets.
+                local STORE_WRITE_DESCRIPTION="ZITADEL iam-admin PAT for ${CLUSTER:-this cluster}. Captured by zitadel-pat.sh."
+                local STORE_WRITE_LABEL="zitadel-pat"
+                # jq -Rs: the token reaches jq on stdin, never in argv.
+                store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
+            fi
+        fi
+        printf '%s' "$token"
+        return 0
+    fi
+    # 2. The store: the only source after a restore from a seed, where
+    #    FirstInstance never ran and the chart wrote no Secret. Stored as
+    #    {"pat": ...}, the one shape store_write's AWS branch accepts.
+    if store_exists "$name" && stored="$(store_read "$name")" \
+        && token="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null)" \
+        && [ -n "$token" ]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    # Unchanged from here: the ERROR block naming both places and FIRSTINSTANCE.
+```
+
+Keep the existing `echo "ERROR: no ZITADEL admin PAT available." …` lines and the final `return 1`, unchanged,
+after the last comment.
+
+- [ ] **Step 4: Run it to see it pass, with the suites that source it**
+
+Run: `bash scripts/ci/tests/test-zitadel-pat.sh && task ci:test`
+Expected: every line `ok` (the dry-run, provenance and awkward-token cases unchanged), then `… 0 failed`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/zitadel-pat.sh scripts/ci/tests/test-zitadel-pat.sh
+git commit -m "fix(zitadel): the chart's fresh admin PAT wins over a stored one"
+```
+
 ### Task 4.4: Stage 3 configures the IdP, then the clients with OpenBao; gates and PR G-3
 
 **Files:**
 - Modify: `opentofu/gcp/gke/init/workflows.tm.hcl` (job `stage3-secrets-and-oidc`, the hosting branch),
-  `scripts/ci/tests/test-gcp-gke-init-workflow.py`
+  `scripts/ci/tests/test-gcp-gke-init-workflow.py`, `scripts/ci/tests/test-zitadel-oidc-clients-openbao.sh`
+  (#2078's `gcp/gke/init passes no --openbao-* flag` guard), and the comment above `OPENBAO_URL=""` in
+  `scripts/provision/zitadel-oidc-clients.sh`
 
 **Interfaces:** Consumes `--mirror-openbao` (4.2) and `zitadel-idp.sh sync`. Produces a hosting stage 3 that
 leaves a fresh ZITADEL with its Google IdP, the groups Action and every client, mirrored into OpenBao, with
@@ -1617,10 +2128,29 @@ In the clients sync call right below it, add before `--apply`:
 
 The CA file is the one stage 2 wrote in this same run (Task 3.1).
 
+#2078's contract suite asserts the opposite of this change: `test-zitadel-oidc-clients-openbao.sh:157-161`
+fails with `gcp/gke/init passes no --openbao-* flag` as soon as the flags above exist. Replace its line 160–161
+pair with a split that still guards the consumer path:
+
+```bash
+# GCP parity GP-5: gcp-0's HOSTING sync reconciles its own OpenBao and mirrors
+# into it; the CONSUMER sync (registering in another cloud's directory) must not.
+gcp_hosting="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -vF -- '--idp-cloud' || true)"
+gcp_consumer="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -F -- '--idp-cloud' || true)"
+contains "$gcp_hosting" '--openbao-url' "gcp/gke/init's hosting sync passes --openbao-url"
+contains "$gcp_hosting" '--mirror-openbao' "gcp/gke/init's hosting sync mirrors into OpenBao"
+check "gcp/gke/init's consumer sync passes no --openbao-* flag" "" "$(grep -E -- '--openbao-|--mirror-openbao' <<<"$gcp_consumer" || true)"
+```
+
+`logical_lines` joins a command's continuation lines (the suite already relies on it), so each sync call is one
+line. In `zitadel-oidc-clients.sh`, the comment above `OPENBAO_URL=""` becomes: "Empty means
+reconcile_openbao_oidc is a no-op: the consumer call on a secondary cluster. A cluster hosting its own directory
+(aws-0's stage 4, gcp-0's hosting stage 3) passes all three."
+
 - [ ] **Step 4: Run it to see it pass**
 
-Run: `python3 scripts/ci/tests/test-gcp-gke-init-workflow.py && (cd opentofu && terramate list >/dev/null && echo TM-OK)`
-Expected: `PASS`, then `TM-OK`.
+Run: `python3 scripts/ci/tests/test-gcp-gke-init-workflow.py && bash scripts/ci/tests/test-zitadel-oidc-clients-openbao.sh && (cd opentofu && terramate list >/dev/null && echo TM-OK)`
+Expected: `PASS`, then the openbao suite's summary with no `FAIL`, then `TM-OK`.
 
 - [ ] **Step 5: Every gate**
 
@@ -1630,18 +2160,24 @@ Expected: `Invalid: 0, Skipped: 0`, parity passes, the topology is `aws hosts`, 
 - [ ] **Step 6: Commit and open G-3**
 
 ```bash
-git add opentofu/gcp/gke/init/workflows.tm.hcl scripts/ci/tests/test-gcp-gke-init-workflow.py
+git add opentofu/gcp/gke/init/workflows.tm.hcl scripts/ci/tests/test-gcp-gke-init-workflow.py \
+  scripts/ci/tests/test-zitadel-oidc-clients-openbao.sh scripts/provision/zitadel-oidc-clients.sh
 git commit -m "fix(gcp): a hosting stage 3 registers the IdP, then mirrors every client into OpenBao"
 ```
 
 Run `create-pr` with base `fix/gke-rebuild-hygiene`. Title: `fix(gcp): a GCP-hosted ZITADEL keeps its consumers in step`.
-The body names 09-11 bug 9 (the sync wrote Secret Manager only) and bug 8 (`zitadel_project_id` committed per
-directory). It says the change is **inert while AWS is primary** (the hosting branch does not run) and is a
-**platform fix that can merge on its own after G-2**.
+The body names:
+- 09-11 bug 9 (the sync wrote Secret Manager only);
+- bug 8 (`zitadel_project_id` committed per directory);
+- GP-20 (the fresh PAT wins).
+
+It says the stage-3 change is **inert while AWS is primary**, because the hosting branch does not run. GP-20 is
+live on both clouds, and for a seed-restored aws-0 it is a no-op. It is a **platform fix, merged when green and
+reviewed, after G-2** (owner, 2026-09-29; GP-21).
 
 ---
 
-## Phase 5 — G-4: GCP is primary, with a fresh ZITADEL (platform decision)
+## Phase 5 — G-4: GCP is primary, with a fresh ZITADEL (integration-only, never merged: GP-16)
 
 ### Task 5.1: ADR and the topology flip
 
@@ -1672,8 +2208,15 @@ Expected:
   - The `── INACTIVE ──` header block becomes one paragraph: "ACTIVE: GCP is primary (ADR-00NN). This is the
     platform's only directory, fresh every build; see security/gcp-0/zitadel/kustomization.yaml."
   - The `# SUSPENDED:` comment above `suspend` goes.
-- `clusters/aws-0/security/zitadel.yaml`: add `suspend: true` under `spec:`, with
-  `# GCP is primary (ADR-00NN): aws-0 does not host, and a GCP-only platform has no aws-0 at all.`
+- `clusters/aws-0/security/zitadel.yaml`: the file already carries an explicit `suspend: false` under an
+  "ACTIVE: this cluster is the primary cloud" header. **Flip that line** to `suspend: true`; never add a second
+  `suspend` key. Replace the header paragraph with
+  `# SUSPENDED: GCP is primary (ADR-00NN); aws-0 does not host, and a GCP-only platform has no aws-0 at all.`
+- `.doc-claims.yaml`, entry `idp-primary-cloud-singleton`: `must_contain: 'primary_cloud\s*=\s*"aws"'` becomes
+  `'primary_cloud\s*=\s*"gcp"'`. Its two pages must then agree. In
+  `website/content/docs/platform/foundations/cloud-support.md` and
+  `website/content/docs/guides/migrate-the-identity-provider.md`, rewrite each sentence that names AWS as the
+  primary or hosting cloud to name GCP, and link ADR-00NN. `./scripts/ci/validate-doc-claims.sh` is the check.
 - `opentofu/config.tm.hcl`, above `primary_cloud`, one line:
   `# "gcp" since 2026-09-29 (ADR-00NN): AWS keeps Route53, the federation, the state bucket and the lineage stacks.`
 - `opentofu/AGENTS.md`, under *Choosing the cloud — `TM_CLOUD`*, one paragraph: "The platform is GCP-primary
@@ -1685,7 +2228,8 @@ The ADR, `website/content/docs/decisions/00NN-gcp-primary-platform.md`, uses `te
 ```markdown
 # ADR-00NN: GCP is the primary cloud; AWS keeps the essentials
 
-**Status:** Accepted (2026-09-29) · **Supersedes in part:** ADR-0027's "relocation carries the directory's data"
+**Status:** Proposed (2026-09-29): validated on `integration/agent-factory`, not merged to `main` (owner,
+2026-09-29) · **Supersedes in part, once accepted:** ADR-0027's "relocation carries the directory's data"
 
 ## Context
 The agent factory and the platform run on one cluster. Running aws-0 and gcp-0 side by side doubles the cost
@@ -1711,7 +2255,10 @@ and the operations for no user. ADR-0027 made placement a single switch, `primar
 - `TM_CLOUD=aws` builds a cluster with no identity provider until this is reverted. A revert means: flip
   `primary_cloud` back, swap the two `suspend`s, and re-register aws-0's clients.
 - Every build loses ZITADEL users and IdP links. Grants are re-applied with
-  `zitadel-oidc-clients.sh --grant-admin`.
+  `zitadel-oidc-clients.sh --grant-admin`. The chart's fresh admin PAT replaces the stored one on every build
+  (GP-20).
+- Until this is accepted and merged, `main` stays AWS-primary, and gcp-0 is deployed as primary only from
+  `integration/agent-factory`.
 - Each build uses one Let's Encrypt issuance for `auth.gcp.cloud.ogenki.io`; five a week is the ceiling.
 
 ## Alternatives rejected
@@ -1725,13 +2272,15 @@ Add its row to `website/content/docs/decisions/_index.md` the way the other rows
 
 - [ ] **Step 4: Run it to see it pass**
 
-Run: `./scripts/ci/validate-idp-topology.sh`
-Expected: `==> identity provider topology is consistent: gcp hosts, all other clouds suspended.`
+Run: `./scripts/ci/validate-idp-topology.sh && ./scripts/ci/validate-doc-claims.sh && ./scripts/ci/validate-links.sh`
+Expected: `==> identity provider topology is consistent: gcp hosts, all other clouds suspended.`, then doc-claims
+and links exit 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add opentofu/config.tm.hcl opentofu/AGENTS.md clusters/gcp-0/security/zitadel.yaml clusters/aws-0/security/zitadel.yaml website/content/docs/decisions
+git add opentofu/config.tm.hcl opentofu/AGENTS.md clusters/gcp-0/security/zitadel.yaml clusters/aws-0/security/zitadel.yaml website/content/docs/decisions \
+  .doc-claims.yaml website/content/docs/platform/foundations/cloud-support.md website/content/docs/guides/migrate-the-identity-provider.md
 git commit -m "feat(platform): GCP is the primary cloud (ADR-00NN)"
 ```
 
@@ -2021,9 +2570,10 @@ git add security/gcp-0/zitadel scripts/ci/tests/test-zitadel-gcp-fresh.py
 git commit -m "feat(zitadel): gcp-0's directory is fresh every build, its keys generated in-cluster"
 ```
 
-Run `create-pr` with base `fix/gcp-hosted-idp`. Title: `feat(platform): GCP is the primary cloud, with a fresh ZITADEL`.
-The body carries ADR-00NN's decision and its first consequence (`TM_CLOUD=aws` has no IdP while this is
-merged). It says: **platform decision, the owner merges it or it waits for Phase 7** ([OWNER]).
+Run `create-pr` as a **draft** with base `fix/gcp-hosted-idp`. Title:
+`feat(platform): GCP is the primary cloud, with a fresh ZITADEL (integration-only, do not merge)`. The body carries
+ADR-00NN's decision, and says: **integration-only: reviewed, never merged; `integration/agent-factory` carries it**
+(owner, 2026-09-29; GP-16). Once G-3 merges, GitHub retargets it to `main`; it stays a draft.
 
 ---
 
@@ -2049,16 +2599,21 @@ merged). It says: **platform decision, the owner merges it or it waits for Phase
 
 - [ ] **Step 1: Worktree and stack**
 
+Precondition: `git ls-remote --exit-code origin refs/heads/fix/agent-review-hardening` succeeds. Until the
+controller has pushed H-1, stop here (Global Constraints).
+
 `EnterWorktree` with branch `feat/gcp-agent-platform`, then:
 
 ```bash
 git reset --hard origin/fix/agent-review-hardening
-git merge --no-ff origin/feat/gcp-primary -m "merge: GCP primary (G-4) into the gcp-0 agent platform"
+git merge --no-ff origin/fix/gcp-hosted-idp -m "merge: GCP parity G-1..G-3 into the gcp-0 agent platform"
 git merge origin/main
+git log --oneline HEAD | grep -c 'GCP is the primary cloud' || true
 ```
 
-Expected: both merges clean. On a conflict in `docs/runbooks/` or `opentofu/`, keep H-1's side and re-apply
-G-4's lines. PR base: `fix/agent-review-hardening`, merge-only (GP-19).
+Expected: both merges clean, and the last count `0`: **G-4 is never merged into G-5** (GP-16, GP-19). If G-1 to
+G-3 are already on `main`, the first merge is a no-op. On a conflict in `docs/runbooks/` or `opentofu/`, keep
+H-1's side and re-apply G-3's lines. PR base: `fix/agent-review-hardening`, merge-only (GP-19).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -2422,7 +2977,8 @@ then `exit 1`.
 ```hcl
 # The agents' GKE Sandbox pool (GCP parity GP-10). 2 x e2-standard-8 = 16 vCPU /
 # 64 GiB, aws-0's agents-gvisor limits. The NAP ceiling
-# (autoscaling_max_cpu_cores = 32) counts these nodes too.
+# (autoscaling_max_cpu_cores = 32) counts these nodes too: with the static pool
+# (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the ceiling if one starves.
 variable "agents_pool_machine_type" {
   description = "Machine type of the agents-gvisor GKE Sandbox pool"
   type        = string
@@ -2638,21 +3194,23 @@ git commit -m "feat(gcp): a GKE Sandbox pool for agent runs, and per-packet LB f
 ### Task 6.4: The AgentRun XRD and Kyverno reach gcp-0
 
 **Files:**
-- Modify: `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`,
-  `security/gcp-0/controllers/kustomization.yaml`
+- Modify: `infrastructure/base/crossplane/configuration-{aws,gcp}/configuration-packages.yaml`,
+  `security/gcp-0/controllers/kustomization.yaml`, `clusters/gcp-0/security/security.yaml`
 - Create: `scripts/ci/tests/test-gcp-agent-prereqs.sh`
 
 **Interfaces:**
-- Produces `crossplane-configuration-gcp` pinned to the same tag as `-aws`, so its `core` dependency carries
-  AgentRun.
-- Produces Kyverno in gcp-0's `security` Kustomization, which `agent-policies` depends on.
+- Produces `crossplane-configuration-aws` and `-gcp` both pinned to the pre-release `v0.7.2-pr31.988146f` (GP-25).
+  H-1's `v0.7.1` has no `apis/agentrun`, and a pre-release pins its `-core` exactly, so a fresh gcp-0 gets the
+  AgentRun XRD.
+- Produces Kyverno in gcp-0's `security` Kustomization, health-checked there as on aws-0, which `agent-policies`
+  depends on.
 
 - [ ] **Step 1: The grant allowlist is not triggered**
 
-Run: `git -C /home/smana/Sources/crossplane-configuration fetch origin && git -C /home/smana/Sources/crossplane-configuration diff origin/main "origin/$(grep -o 'pr[0-9]*' infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml | head -1 | sed 's/pr/pull\//')/head" -- 'apis/*/kcl/*.k' 2>/dev/null | grep -E '^\+.*roles/' || echo "no new GCP role"`
-Expected: `no new GCP role`. If the ref cannot be resolved, run the same `diff` against `origin/feat/agentrun-harness`
-and expect the same line. A new `roles/…` needs its allowlist entry in `opentofu/gcp/gke/init/iam.tf`
-(memory `gcp_crossplane_grant_allowlist_contract`).
+Run: `git -C /home/smana/Sources/crossplane-configuration fetch origin && git -C /home/smana/Sources/crossplane-configuration diff origin/main origin/feat/agentrun-observability -- 'apis/*/kcl/*.k' | grep -E '^\+.*roles/' || echo "no new GCP role"`
+Expected: `no new GCP role`. `feat/agentrun-observability` is CC-O1, the PR behind the `pr31` pre-release (GP-25).
+A new `roles/…` needs its allowlist entry in `opentofu/gcp/gke/init/iam.tf` (memory
+`gcp_crossplane_grant_allowlist_contract`; Task 3.2b's test covers `bucketRoles`).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -2670,6 +3228,9 @@ fails=0; f() { echo "FAIL $*"; fails=$((fails + 1)); }
 tag() { sed -n "s#.*crossplane-configuration-$1:\(v[^[:space:]\"']*\).*#\1#p" "$ROOT/infrastructure/base/crossplane/configuration-$1/configuration-packages.yaml" | head -1; }
 aws="$(tag aws)"; gcp="$(tag gcp)"
 [ -n "$aws" ] && [ "$aws" = "$gcp" ] || f "crossplane-configuration pins differ: aws=$aws gcp=$gcp"
+# The AgentRun XRD first shipped in the agentrun pre-releases; v0.7.1 and older carry none (GP-25).
+case "$gcp" in v0.7.[01]|v0.[0-6].*) f "the gcp pin $gcp predates the AgentRun XRD" ;; esac
+grep -q 'name: kyverno$' "$ROOT/clusters/gcp-0/security/security.yaml" || f "gcp-0's security Kustomization does not health-check kyverno"
 if [ -e "$ROOT/clusters/gcp-0-agent-platform/security-agent-policies.yaml" ] || [ ! -d "$ROOT/clusters/gcp-0-agent-platform" ]; then
   grep -q '\.\./\.\./base/kyverno' "$ROOT/security/gcp-0/controllers/kustomization.yaml" || f "gcp-0's security Kustomization has no Kyverno"
 fi
@@ -2680,22 +3241,46 @@ echo PASS
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `bash scripts/ci/tests/test-gcp-agent-prereqs.sh; echo "exit $?"`
-Expected: `FAIL crossplane-configuration pins differ: aws=v0.7.2-pr… gcp=v0.7.0` and
-`FAIL gcp-0's security Kustomization has no Kyverno`, then `exit 1`.
+Expected, on H-1's tree:
+- `FAIL crossplane-configuration pins differ: aws=v0.7.1 gcp=v0.7.0`;
+- `FAIL the gcp pin v0.7.0 predates the AgentRun XRD`;
+- `FAIL gcp-0's security Kustomization has no Kyverno`;
+- the health-check failure;
+- then `exit 1`.
 
 - [ ] **Step 4: Implement**
 
-In `configuration-gcp/configuration-packages.yaml`, set `package:` to
-`ghcr.io/smana/crossplane-configuration-gcp:<the tag in configuration-aws>`, with the line comment
-`# lockstep with configuration-aws (GCP parity): core's AgentRun XRD`. Check the pre-release exists:
-`skopeo inspect --format '{{.Digest}}' docker://ghcr.io/smana/crossplane-configuration-gcp:<tag>` → a
-`sha256:` digest. No digest is a **blocker**: the CC pre-release job publishes only some packages. Ask for
-the gcp package to be published with the same version (CC-H1's owner) before Task 7.1.
+Check that the pre-release exists for all three packages first:
+
+```bash
+for p in aws core gcp; do
+  printf '%s %s\n' "$p" "$(skopeo inspect --format '{{.Digest}}' docker://ghcr.io/smana/crossplane-configuration-$p:v0.7.2-pr31.988146f 2>&1 | tail -1)"
+done
+```
+
+Expected: three `sha256:` digests. crossplane-configuration's pre-release job runs `task push`, whose `PKGS` is
+`ls packages`, so `-gcp` is published with every pre-release. A missing `-gcp` digest means that push failed.
+Ask CC-O1's owner to re-run the job; no CC change is needed. A missing tag altogether means CC-O1 moved on:
+take the newest `v0.7.2-pr31.*` tag from that PR's checks and use it everywhere below.
+
+Set `package:` in **both** `configuration-aws/configuration-packages.yaml` and
+`configuration-gcp/configuration-packages.yaml` to `ghcr.io/smana/crossplane-configuration-<cloud>:v0.7.2-pr31.988146f`,
+each with the line comment `# pre-release carrying the AgentRun XRD (GCP parity GP-25); Phase 7 swaps in the release`.
 
 In `security/gcp-0/controllers/kustomization.yaml`, add `- ../../base/kyverno` first in `resources`, and extend
 the header's resource commentary with:
 "kyverno: agent-policies' admission and GC need it (GCP parity), as aws-0's security does; its chart admits
 nothing in ../openbao."
+
+In `clusters/gcp-0/security/security.yaml`, add to `healthChecks`, as `clusters/aws-0/security/security.yaml`
+has it:
+
+```yaml
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kyverno
+      namespace: security
+```
 
 - [ ] **Step 5: Run it to see it pass**
 
@@ -2705,34 +3290,40 @@ Expected: `PASS`, then `Invalid: 0, Skipped: 0`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add infrastructure/base/crossplane/configuration-gcp security/gcp-0/controllers scripts/ci/tests/test-gcp-agent-prereqs.sh
-git commit -m "feat(gcp): AgentRun's package and Kyverno on gcp-0"
+git add infrastructure/base/crossplane/configuration-aws infrastructure/base/crossplane/configuration-gcp \
+  security/gcp-0/controllers clusters/gcp-0/security/security.yaml scripts/ci/tests/test-gcp-agent-prereqs.sh
+git commit -m "feat(gcp): AgentRun's pre-release package and Kyverno on gcp-0"
 ```
 
 ### Task 6.5: A render root per cloud for every substituted agent base (GP-14)
 
 **Files:**
-- Create: 12 one-line kustomizations:
+- Create: 14 kustomizations, one-line except the two gcp-0 patches below:
 
   | Base | aws-0 overlay | gcp-0 overlay |
   |---|---|---|
   | `infrastructure/base/agent-router` | `infrastructure/aws-0/agent-router` | `infrastructure/gcp-0/agent-router` |
   | `infrastructure/base/agent-mcp` | `infrastructure/aws-0/agent-mcp` | `infrastructure/gcp-0/agent-mcp` |
-  | `infrastructure/base/envoy-ai-gateway` | `infrastructure/aws-0/envoy-ai-gateway` | `infrastructure/gcp-0/envoy-ai-gateway` |
+  | `infrastructure/base/envoy-ai-gateway` | `infrastructure/aws-0/envoy-ai-gateway` | `infrastructure/gcp-0/envoy-ai-gateway` (+ generated keys, GP-24) |
+  | `infrastructure/base/vllm-semantic-router` | `infrastructure/aws-0/vllm-semantic-router` | `infrastructure/gcp-0/vllm-semantic-router` |
   | `security/base/octo-sts` | `security/aws-0/octo-sts` | `security/gcp-0/octo-sts` |
-  | `security/base/agent-secrets` | `security/aws-0/agent-secrets` | `security/gcp-0/agent-secrets` |
+  | `security/base/agent-secrets` | `security/aws-0/agent-secrets` | `security/gcp-0/agent-secrets` (+ the CA key patch, GP-26) |
   | `observability/base/agent-platform` | `observability/aws-0/agent-platform` | `observability/gcp-0/agent-platform` |
 
+- Create: `security/gcp-0/agent-secrets/openbao-ca-patch.yaml`,
+  `infrastructure/gcp-0/envoy-ai-gateway/{password-generators.yaml,api-keys-patch.yaml}`
 - Modify: the aws-0 children's `path:` in `clusters/aws-0-agent-platform/{infrastructure-agent-router,infrastructure-agent-mcp,security-octo-sts,security-agent-secrets,observability-agent-platform}.yaml`,
-  `clusters/aws-0-ai-gateway/infrastructure-envoy-ai-gateway.yaml`, and
-  `clusters/gcp-0-llm-platform/infrastructure-envoy-ai-gateway.yaml` (moved by 6.6)
+  `clusters/aws-0-ai-gateway/{infrastructure-envoy-ai-gateway,infrastructure-vllm-semantic-router}.yaml`, and
+  `clusters/gcp-0-llm-platform/{infrastructure-envoy-ai-gateway,infrastructure-vllm-semantic-router}.yaml` (moved
+  by 6.6). `vllm-semantic-router` is included because its gcp-0 child substitutes `gke-gcp-0-vars` into
+  `./infrastructure/base/vllm-semantic-router`, which 6.8's `check_umbrellas` rejects.
 
 **Interfaces:** Produces the bundle files `overlay-<area>-{aws-0,gcp-0}-<name>.yaml`, each substituted with
-its own cloud's fixture. The base render roots for these six disappear.
+its own cloud's fixture. The base render roots for these seven disappear.
 
 - [ ] **Step 1: The failing check**
 
-Run: `./scripts/ci/validate-manifests.sh >/dev/null && ls .bundle | grep -cE '^overlay-(infrastructure|security|observability)-(aws|gcp)-0-(agent-router|agent-mcp|envoy-ai-gateway|octo-sts|agent-secrets|agent-platform)\.yaml$'`
+Run: `./scripts/ci/validate-manifests.sh >/dev/null && ls .bundle | grep -cE '^overlay-(infrastructure|security|observability)-(aws|gcp)-0-(agent-router|agent-mcp|envoy-ai-gateway|vllm-semantic-router|octo-sts|agent-secrets|agent-platform)\.yaml$'`
 Expected: `0`.
 
 - [ ] **Step 2: Create the overlays**
@@ -2751,6 +3342,73 @@ resources:
 
 Use `aws-0` or `gcp-0` for `<cloud>`, and the base directory's name for `<name>`.
 
+**`security/gcp-0/agent-secrets` (GP-26).** Add `patches: [{path: openbao-ca-patch.yaml, target: {group: external-secrets.io, kind: ExternalSecret, name: openbao-ca}}]`,
+and `openbao-ca-patch.yaml`:
+
+```yaml
+# gcp-0's private CA sits in Secret Manager as openbao-priv-gcp-ca-chain, a raw
+# PEM (no `property`), where base reads AWS's JSON certificates/<domain>/ca-chain.
+# The same entry security/gcp-0/openbao/openbao-ca-externalsecret.yaml reads.
+- op: replace
+  path: /spec/data/0/remoteRef/key
+  value: openbao-priv-gcp-ca-chain
+- op: remove
+  path: /spec/data/0/remoteRef/property
+```
+
+**`infrastructure/gcp-0/envoy-ai-gateway` (GP-24).** Add `password-generators.yaml` to `resources`, and
+`patches: [{path: api-keys-patch.yaml, target: {group: external-secrets.io, kind: ExternalSecret, name: ai-gateway-api-keys}}]`.
+`password-generators.yaml`:
+
+```yaml
+# The AI gateway's own client keys, generated on gcp-0 rather than hand-seeded
+# (GCP parity GP-24). aws-0 reads a hand-made AWS SM entry; gcp-0's clients
+# (Open WebUI, promptfoo) sit in the suspended llm-platform.
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: ai-gateway-openwebui-key
+  namespace: envoy-ai-gateway-system
+spec:
+  length: 48
+  symbols: 0
+  noUpper: false
+  allowRepeat: true
+  secretKeys: [openwebui_apikey]
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: ai-gateway-promptfoo-key
+  namespace: envoy-ai-gateway-system
+spec:
+  length: 48
+  symbols: 0
+  noUpper: false
+  allowRepeat: true
+  secretKeys: [promptfoo_apikey]
+```
+
+`api-keys-patch.yaml` (the template's `.openwebui_apikey` and `.promptfoo_apikey` keep their names):
+
+```yaml
+- op: remove
+  path: /spec/data
+- op: remove
+  path: /spec/secretStoreRef
+- op: add
+  path: /spec/refreshPolicy
+  value: CreatedOnce
+- op: add
+  path: /spec/dataFrom
+  value:
+    - sourceRef:
+        generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: ai-gateway-openwebui-key}
+    - sourceRef:
+        generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: ai-gateway-promptfoo-key}
+```
+
 - [ ] **Step 3: Repoint the children**
 
 In each child listed under *Modify*, `path: ./<area>/base/<name>` becomes `path: ./<area>/<cloud>/<name>`,
@@ -2758,16 +3416,21 @@ with its own cluster.
 
 - [ ] **Step 4: Run the check to see it pass**
 
-Run: `./scripts/ci/validate-manifests.sh && ls .bundle | grep -cE '^overlay-(infrastructure|security|observability)-(aws|gcp)-0-(agent-router|agent-mcp|envoy-ai-gateway|octo-sts|agent-secrets|agent-platform)\.yaml$' && grep -c 'container.googleapis.com' .bundle/overlay-infrastructure-gcp-0-agent-router.yaml`
-Expected: `Invalid: 0, Skipped: 0`, then `12`, then a count ≥ 4: three issuers, three JWKS URIs and the
-data-plane CNP host. `assert-ai-gateway.py` also passes inside `validate-manifests.sh`, now with an aws-0 and a
-gcp-0 agent-router.
+Run: `./scripts/ci/validate-manifests.sh && ls .bundle | grep -cE '^overlay-(infrastructure|security|observability)-(aws|gcp)-0-(agent-router|agent-mcp|envoy-ai-gateway|vllm-semantic-router|octo-sts|agent-secrets|agent-platform)\.yaml$' && grep -c 'container.googleapis.com' .bundle/overlay-infrastructure-gcp-0-agent-router.yaml && grep -c 'openbao-priv-gcp-ca-chain' .bundle/overlay-security-gcp-0-agent-secrets.yaml && ! grep -q 'platform-llm-api-keys' .bundle/overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml && echo GATEWAY-KEYS-GENERATED`
+Expected, in order:
+- `Invalid: 0, Skipped: 0`;
+- `14`;
+- a count ≥ 4: three issuers, three JWKS URIs and the data-plane CNP host;
+- `1`;
+- `GATEWAY-KEYS-GENERATED`.
+
+`assert-ai-gateway.py` also passes inside `validate-manifests.sh`, now with an aws-0 and a gcp-0 agent-router.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add infrastructure/aws-0 infrastructure/gcp-0 security/aws-0 security/gcp-0 observability/aws-0 observability/gcp-0 clusters
-git commit -m "feat(ci): one render root per cloud for every substituted agent base"
+git commit -m "feat(ci): one render root per cloud for every substituted agent base; gcp-0's CA key and gateway keys"
 ```
 
 ### Task 6.6: The gcp-0 `ai-gateway` umbrella and the shared rate limit (GP-17)
@@ -3109,6 +3772,10 @@ if not acs.check_bundle(bundle({"overlay-infrastructure-aws-0-agent-router.yaml"
     fails.append("a bundle with no gcp-0 agent overlay is vacuous and must fail")
 if acs.check_bundle(bundle({"overlay-infrastructure-gcp-0-agent-router.yaml": GOOD, "overlay-security-gcp-0-cert-manager-public.yaml": "region: eu-west-3\nrole: arn:aws:iam::1:role/x\nsts.amazonaws.com\n"})):
     fails.append("an out-of-scope gcp-0 overlay (Route53 federation) must not be judged")
+if not acs.check_bundle(bundle({"overlay-infrastructure-gcp-0-agent-router.yaml": GOOD, "overlay-security-gcp-0-agent-secrets.yaml": "remoteRef:\n  key: certificates/priv.gcp.cluster.local/ca-chain\n  property: ca\n"})):
+    fails.append("an AWS-shaped CA key in gcp-0's agent-secrets must fail")
+if not acs.check_bundle(bundle({"overlay-infrastructure-gcp-0-agent-router.yaml": GOOD, "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml": "remoteRef:\n  key: platform-llm-api-keys\n"})):
+    fails.append("the hand-made gateway-keys entry on gcp-0 must fail")
 
 tree = pathlib.Path(tempfile.mkdtemp())
 (tree / "clusters/gcp-0-agent-platform").mkdir(parents=True)
@@ -3165,10 +3832,17 @@ import sys
 
 import yaml
 
-SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|octo-sts|envoy-ai-gateway|envoy-gateway)\.yaml$")
+SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
 RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp)\.yaml$")
-FORBIDDEN = [(re.compile(r"amazonaws\.com"), "an amazonaws.com host"), (re.compile(r"oidc\.eks\."), "an EKS issuer host")]
+FORBIDDEN = [
+    (re.compile(r"amazonaws\.com"), "an amazonaws.com host"),
+    (re.compile(r"oidc\.eks\."), "an EKS issuer host"),
+    # AWS Secrets Manager key shapes: GCP forbids `/` in names (GP-26), and the
+    # gateway's keys are generated on gcp-0 (GP-24).
+    (re.compile(r"key:\s*certificates/"), "an AWS-shaped CA secret key"),
+    (re.compile(r"platform-llm-api-keys"), "the hand-made AWS gateway-keys entry"),
+]
 GKE_ISSUER = "https://container.googleapis.com/"
 UMBRELLAS = ("clusters/gcp-0-agent-platform", "clusters/gcp-0-ai-gateway")
 
@@ -3250,9 +3924,9 @@ python3 scripts/ci/flux-schema/assert-cloud-shape.py "${BUNDLE_DIR}"
 - [ ] **Step 4: Run it to see it pass, then on the real bundle**
 
 Run: `python3 scripts/ci/tests/flux-schema/test-assert-cloud-shape.py && ./scripts/ci/validate-manifests.sh 2>&1 | grep -E 'cloud shape|Invalid:'`
-Expected: `PASS`. Then `==> cloud shape: 7 gcp-0 overlay(s), 12 umbrella child(ren), 0 problem(s)`:
-- the 7 overlays are `agent-router`, `agent-mcp`, `envoy-ai-gateway`, `envoy-gateway`, `octo-sts`,
-  `agent-secrets` and `agent-platform`;
+Expected: `PASS`. Then `==> cloud shape: 8 gcp-0 overlay(s), 12 umbrella child(ren), 0 problem(s)`:
+- the 8 overlays are `agent-router`, `agent-mcp`, `envoy-ai-gateway`, `vllm-semantic-router`, `envoy-gateway`,
+  `octo-sts`, `agent-secrets` and `agent-platform`;
 - the 12 children are 8 plus 4.
 
 Then `Invalid: 0, Skipped: 0`.
@@ -3380,7 +4054,8 @@ git push -u origin feat/gcp-agent-platform
 Run `create-pr` as a **draft**, base `fix/agent-review-hardening`. Title:
 `feat(agents): the agent platform on gcp-0 (GCP parity)`. The body:
 - links the spec and plan;
-- names G-1 to G-4 as merged-in prerequisites (the diff narrows once they reach `main`);
+- names G-1 to G-3 as merged-in prerequisites (the diff narrows once they reach `main`), and says G-4 is
+  deliberately absent (GP-16);
 - names M1's move from SP2 S1 (GP-8);
 - gives the Phase 7 position `#2111 → H-1 → G-5 → O-1 → S1`;
 - says **programme stack: nothing merges before the owner's UX sign-off** (P33);
@@ -3405,15 +4080,24 @@ Expected: every check green, `Kubernetes validation ☸` included.
 `EnterWorktree` with branch `integration/agent-factory`, then `git reset --hard origin/integration/agent-factory`.
 
 ```bash
-git merge --no-ff origin/feat/gcp-agent-platform -m "merge: GCP parity G-5 (with H-1 and G-1..G-4) into the integration branch"
+git merge --no-ff origin/feat/gcp-primary -m "merge: GCP parity G-1..G-4 (G-4 integration-only) into the integration branch"
+git merge --no-ff origin/feat/gcp-agent-platform -m "merge: GCP parity G-5 (with H-1) into the integration branch"
 ```
 
-If G-5 is not pushed by then, merge `origin/feat/gcp-primary` alone (G-1 to G-4). The platform deploys without
-the agent platform, and G-5 lands later through Flux and three stack re-applies (GP-19).
+G-4 and G-5 are merged separately, because G-5 never contains G-4 (GP-16, GP-19). The second merge conflicts on
+`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`: the integration-only `c87e364a`
+pinned `pr29`. Keep G-5's `v0.7.2-pr31.988146f` (GP-25), then check both clouds agree:
+`grep -h 'package:' infrastructure/base/crossplane/configuration-{aws,gcp}/configuration-packages.yaml` → two
+lines ending in the same tag.
+
+If G-5 is not pushed by then (it waits on H-1: Global Constraints), merge `origin/feat/gcp-primary` alone. The
+platform deploys without the agent platform, and G-5 lands later through Flux and three stack re-applies
+(GP-19). Task 8.2 Step 4 is then skipped.
 
 - [ ] **Step 2: The test-only commit**
 
-In both files, set `suspend: false  # integration branch only: the gcp-0 live test (never merged)`.
+In both files, set `suspend: false  # integration branch only: the gcp-0 live test (never merged)`. Without
+G-5, the files do not exist: skip this step.
 
 ```bash
 git add clusters/gcp-0/ai-gateway.yaml clusters/gcp-0/agent-platform.yaml
@@ -3446,11 +4130,15 @@ one) and `LE_OK`.
 Run: `aws sts get-caller-identity --query Account --output text`
 Expected: `396740644681`.
 
-- [ ] **Step 2 (P-2): [OWNER] fresh ADC** (memory `gcp_reauth_expires_adc_mid_run`)
+- [ ] **Step 2 (P-2): [OWNER] fresh CLI and ADC logins** (memory `gcp_reauth_expires_adc_mid_run`)
 
-Run (owner, interactive): `! gcloud auth application-default login`, then
-`gcloud auth application-default print-access-token >/dev/null && echo ADC-OK`.
-Expected: `ADC-OK`.
+Both credentials die together, and the deploy uses both: tofu's GCS backend and `gcp_gcloud` use ADC, while
+stage 3's `gcloud container clusters get-credentials` and kubectl's GKE plugin use the CLI account. A stale CLI
+token makes stage 3 print `skipping stage 3` and exit 0.
+
+Run (owner, interactive), in this order: `! gcloud auth login`, `! gcloud auth application-default login`, then
+`gcloud auth print-access-token >/dev/null && gcloud auth application-default print-access-token >/dev/null && echo AUTH-OK`.
+Expected: `AUTH-OK`.
 
 - [ ] **Step 3 (P-3): Let's Encrypt budget**
 
@@ -3458,27 +4146,52 @@ Run: `curl -s 'https://crt.sh/?q=auth.gcp.cloud.ogenki.io&output=json' | jq --ar
 Expected: a number `< 5`. 5 or more: **stop.** The deploy would sit in `FailedMount` on
 `zitadel-certificate` (memory `letsencrypt_rate_limit_blocks_rebuilds`).
 
-- [ ] **Step 4 (P-4): Lineage inventory → RESTORE or NEW**
+- [ ] **Step 4 (P-4): [OWNER] The lineage: restore the existing one** (GP-7, owner 2026-09-29)
+
+Inventory:
 
 ```bash
 B=gs://ogenki-435905-ogenki-openbao-snapshot
-gcloud storage ls "$B/" | sort | tail -3
-gcloud storage ls "$B/*-gcpckms.snap" 2>/dev/null | sort | tail -1
-gcloud secrets versions list openbao-priv-gcp-root-token --project ogenki-435905 --limit 1 --format='value(name,createTime)'
+gcloud storage ls "$B/" | sed 's#.*/##' | sort | tail -3
+SNAP="$(gcloud storage ls "$B/*-gcpckms.snap" 2>/dev/null | sed 's#.*/##' | sort | tail -1)"; echo "newest gcpckms: ${SNAP:-none}"
+for s in openbao-priv-gcp-root-token openbao-priv-gcp-recovery-keys; do
+  echo "== $s"; gcloud secrets versions list "$s" --project ogenki-435905 --limit 6 --format='table(name,createTime,state)'
+done
 ```
 
-The verdict is **RESTORE** when a `-gcpckms` object exists and the root token's latest version was created
-between 2026-09-11 and that object's timestamp. It is **NEW** otherwise, including when the token was re-copied
-for the `awskms` standby after that snapshot (GP-7).
+- **`SNAP` empty** (no `-gcpckms` object): the verdict is **NEW**. Only then does Task 8.2 use
+  `OPENBAO_NEW_LINEAGE=true`. The salvaged switch refuses it whenever a `-gcpckms` object exists, by design.
+  Also run Step 10.
+- **`SNAP` set**: the verdict is **RESTORE**. `SNAP`'s name starts with its UTC timestamp (`2026-09-14T…Z`). The
+  lineage's keys are the version pair that its first boot wrote: the NEW init on 2026-09-11 replaced both
+  entries (09-11 record: version 14). The candidate is the newest version of each entry created **at or after
+  2026-09-11 and at or before `SNAP`'s timestamp**.
+  - **The latest version is the candidate:** nothing to do.
+  - **A later version exists** (re-copied for the `awskms` standby): make the candidate the latest again. Old
+    versions stay, so this is reversible:
 
-- [ ] **Step 5 (P-5): Management state addresses**
+    ```bash
+    V=<candidate version number>   # same rule, applied to each entry separately
+    gcloud secrets versions access "$V" --secret=openbao-priv-gcp-root-token --project ogenki-435905 \
+      | gcloud secrets versions add openbao-priv-gcp-root-token --project ogenki-435905 --data-file=-
+    V=<candidate version number of the recovery keys>
+    gcloud secrets versions access "$V" --secret=openbao-priv-gcp-recovery-keys --project ogenki-435905 \
+      | gcloud secrets versions add openbao-priv-gcp-recovery-keys --project ogenki-435905 --data-file=-
+    ```
 
-Run: `cd opentofu/gcp/openbao/management && tofu init -input=false >/dev/null && tofu state list | grep -c '^module.store_of_record'; cd -`
-Expected: RESTORE: a count > 0 (the 09-11 addresses). NEW: any count; the new lineage is empty, and resources
-in state that OpenBao no longer holds are re-created by the apply. RESTORE with 0: the apply's create of
-`module.store_of_record.vault_mount.platform` collides with the restored mount. Before Task 8.2, import:
-`tofu import 'module.store_of_record.vault_mount.platform' platform` and the same for `apps`. Terramate
-cannot, so run it by hand from this directory with `-var-file=variables.tfvars`.
+  The proof comes in 8.2: the management apply authenticates with that token. A 403 there means the pair
+  belongs to another lineage. Re-add the next older candidate the same way and re-run 8.2. The node is already
+  restored, so rehydrate is a no-op.
+
+- [ ] **Step 5 (P-5): Management state addresses** (read-only; nothing is imported yet)
+
+Run: `cd opentofu/gcp/openbao/management && tofu init -input=false >/dev/null && tofu state list | grep -cE '^module\.store_of_record\.vault_mount\.(platform|apps)$'; cd -`
+Expected, for RESTORE: `2`, the 09-11 addresses that the restored mounts match. For NEW: any count, since the
+new lineage is empty and the apply re-creates what OpenBao no longer holds.
+
+RESTORE with fewer than `2` means the apply's create of the missing mount will collide with the restored one.
+Nothing can be imported now: the OpenBao VM does not exist until `gcp/openbao/cluster` runs inside the deploy,
+and `.tls/ca.pem` is written there too. The repair is 8.2 Step 3a, after the first apply fails.
 
 - [ ] **Step 6 (P-6): Custom role IDs**
 
@@ -3494,10 +4207,13 @@ for k in flux-github-app zitadel-google-idp openbao-priv-gcp-ca-chain openbao-pr
          harbor-admin-password tailscale-k8s-operator-oauth headlamp-oauth2-proxy; do
   printf '%-58s %s\n' "$k" "$(gcloud secrets describe "$k" --project ogenki-435905 --format='value(name)' >/dev/null 2>&1 && echo present || echo MISSING)"
 done
+gcloud secrets versions access latest --secret=cnpg-xplane-zitadel-superuser --project ogenki-435905 | jq -c 'keys'
 ```
 
-Expected: `present` ten times. `MISSING` on `cnpg-xplane-zitadel-superuser` is recoverable: stage 0's `seed`
-derives it only from `zitadel-envvars`, so check that key too. Any other `MISSING`: stop and ask the owner.
+Expected: `present` ten times, then `["password","username"]`, the two keys the ZITADEL env patch reads
+(Task 5.2). `MISSING` on `cnpg-xplane-zitadel-superuser` is recoverable: stage 0's `seed` derives it only from
+`zitadel-envvars`, so check that key too. Any other `MISSING`: stop and ask the owner. `platform-llm-api-keys`
+is deliberately absent from this list: gcp-0 generates it (GP-24).
 
 - [ ] **Step 8 (P-8): [OWNER] The Google OAuth client**
 
@@ -3509,11 +4225,29 @@ The owner confirms, in the Google Cloud console, that the OAuth client `zitadel-
 Run: `bash scripts/ops/teardown/teardown.sh --verify-only; echo "exit $?"` with `TM_CLOUD=gcp`.
 Expected: every GCP row empty. A leftover is cost, not a blocker; note it for the next teardown.
 
-- [ ] **Step 10 (P-10): Stale `openbao-oidc`, only if NEW**
+- [ ] **Step 10 (P-10): Stale `openbao-oidc`, only if P-4 said NEW** (not expected tonight)
+
+A new lineage cannot create `oidc/` while ZITADEL is down, so its first management apply must run without OIDC.
 
 Run (owner, NEW only): `gcloud secrets delete openbao-oidc --project ogenki-435905 --quiet`
-Expected: `Deleted secret [openbao-oidc]`. The first management apply then runs without OIDC, and Task 8.4
-Step 3 enables it (GP-7).
+Expected: `Deleted secret [openbao-oidc]`. Stage 3 registers the client again. One management apply after stage 3
+then creates `oidc/`:
+`TM_CLOUD=gcp terramate -C opentofu/gcp/openbao/management script run deploy`, whose plan shows only additions.
+RESTORE skips all of this: the restored lineage keeps `oidc/`, and stage 3's reconcile rotates its client.
+
+- [ ] **Step 11 (P-11): [OWNER] Delete the stale ZITADEL admin PAT** (GP-20, owner 2026-09-29)
+
+The copy in Secret Manager belongs to a directory that tonight's fresh ZITADEL replaces. From G-3 on, the sync
+prefers the chart's fresh PAT and overwrites the store anyway. Deleting the old secret once also covers a
+checkout without G-3:
+
+```bash
+gcloud secrets describe zitadel-iam-admin-pat --project ogenki-435905 --format='value(name)' \
+  && gcloud secrets delete zitadel-iam-admin-pat --project ogenki-435905 --quiet
+```
+
+Expected: the secret's full name, then `Deleted secret [zitadel-iam-admin-pat].`; or `NOT_FOUND` from `describe`,
+and nothing to do. Stage 3 recreates it from the chart's Secret (`[persist] writing the cluster's admin PAT …`).
 
 ### Task 8.2: [OWNER] The first deploy
 
@@ -3534,7 +4268,9 @@ Expected: `0`, and the head is Task 7.1's test-only commit or later.
 ```bash
 cd opentofu
 export TM_CLOUD=gcp TF_VAR_flux_git_ref=refs/heads/integration/agent-factory
-export OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true   # P-4 RESTORE. For NEW: unset it and export OPENBAO_NEW_LINEAGE=true
+# P-4 RESTORE (expected): the newest -gcpckms object sits below newer -awskms mirror objects.
+export OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true
+# P-4 NEW only (no -gcpckms object at all): unset the line above and export OPENBAO_NEW_LINEAGE=true instead.
 LOG="$HOME/gcp-deploy-$(date +%Y%m%dT%H%M).log"
 terramate script run deploy >"$LOG" 2>&1; echo "TERRAMATE_EXIT=$?" >>"$LOG"
 tail -1 "$LOG"
@@ -3542,8 +4278,11 @@ tail -1 "$LOG"
 
 Expected: `TERRAMATE_EXIT=0` (memory `terramate_destroy_false_success`: the exit code is Terramate's, recorded
 explicitly).
-- An `invalid_rapt` in the log means the ADC expired mid-run. Re-login (P-2) and re-run the same command; it
-  is idempotent.
+- An `invalid_rapt` in the log means a login expired mid-run. Re-run both logins (P-2) and re-run the same
+  command; it is idempotent. Two cautions:
+  - A killed tofu can leave its GCS state lock. `Error acquiring the state lock` names the lock ID: run
+    `tofu force-unlock -force <ID>` in that stack's directory.
+  - If OpenBao already initialised, drop `OPENBAO_NEW_LINEAGE` on the re-run, as the 09-11 run did.
 - A `git-out-of-sync` refusal means Step 1 was not current. Re-run Step 1; never pass `-X`.
 
 - [ ] **Step 3: Read the log**
@@ -3552,27 +4291,63 @@ explicitly).
 grep -E 'STARTING A NEW|gcpckms.snap' "$LOG" | head -3
 grep -nE 'Resources: [0-9]+ added, [0-9]+ changed, [1-9][0-9]* destroyed' "$LOG"
 grep -cE '^\[skip\] aws stack' "$LOG"
-grep -E '^\[(adopted|ok     |absent |deleted)\] (google_project_iam_custom_role|projects/ogenki-435905/roles/xplane_)|\[mirrored\]|zitadel-project-id ->' "$LOG"
+grep -E '^\[(adopted|ok     |absent |deleted)\] (google_project_iam_custom_role|projects/ogenki-435905/roles/xplane_)|\[mirrored\]|zitadel-project-id ->|\[persist\] writing the cluster' "$LOG"
+grep -nE 'skipping stage 3|\[warn\] (OIDC registration|IdP registration|grant|could not)|\[FAILED \]|returned error: 401' "$LOG"
 ```
 
 Expected:
-- the rehydrate names the `-gcpckms` object it restored (RESTORE), or prints `STARTING A NEW 'gcpckms' LINEAGE` (NEW);
+- the rehydrate names the `-gcpckms` object it restored (RESTORE), or prints `STARTING A NEW 'gcpckms' LINEAGE`
+  (NEW);
 - **no line** for the `destroyed` grep: a management apply that destroys anything means a stale checkout or
   wrong addresses, so stop;
 - a positive `[skip]` count (the AWS lane);
-- three role lines, four `[mirrored]` lines (grafana-envvars, headlamp-envvars, security-flux-ui-oidc,
-  harbor-oidc) and one `zitadel-project-id ->`.
+- from the next grep:
+  - three role lines;
+  - one `[persist] writing the cluster's admin PAT` (GP-20);
+  - four `[mirrored]` lines (grafana-envvars, headlamp-envvars, security-flux-ui-oidc, harbor-oidc);
+  - one `zitadel-project-id ->`;
+- **no line** for the last grep. Stage 3 swallows its failures as `[warn]` and still exits 0, so this grep is the
+  only signal:
+  - `skipping stage 3`: the CLI login (P-2);
+  - `returned error: 401` (curl's text): a stale PAT (P-11);
+  - `[FAILED ]`: the named step.
+
+  Fix the cause, then re-run only stage 3's work: `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`
+  is idempotent.
+
+- [ ] **Step 3a: Only if the management apply failed on an existing mount** (RESTORE with P-5 < 2)
+
+The log shows `path is already in use at platform/` (or `apps/`) from `gcp/openbao/management`. The VM now
+exists, OpenBao is restored and `.tls/ca.pem` is on disk, so import and re-run:
+
+```bash
+cd opentofu/gcp/openbao/management
+tofu import -var-file=variables.tfvars 'module.store_of_record.vault_mount.platform' platform
+tofu import -var-file=variables.tfvars 'module.store_of_record.vault_mount.apps' apps
+cd - && terramate script run deploy >"$LOG.2" 2>&1; echo "TERRAMATE_EXIT=$?" >>"$LOG.2"; tail -1 "$LOG.2"
+```
+
+Expected: two `Import successful!`, then `TERRAMATE_EXIT=0`. Import only the mount the error named: the other
+may already be in state. Repeat Step 3 on `$LOG.2`.
 
 - [ ] **Step 4: Kube context and the core package** (Crossplane never upgrades an installed dependency)
 
+Skip this step when the integration branch has no G-5 (Task 7.1's fallback).
+
 ```bash
 gcloud container clusters get-credentials gcp-0 --location europe-west4-a --project ogenki-435905
-TAG="$(sed -n 's#.*crossplane-configuration-gcp:\(v[^[:space:]]*\).*#\1#p' ../infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml)"
+cd "$(git rev-parse --show-toplevel)"
+AWS_TAG="$(sed -n 's#.*crossplane-configuration-aws:\(v[^[:space:]]*\).*#\1#p' infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml)"
+TAG="$(sed -n 's#.*crossplane-configuration-gcp:\(v[^[:space:]]*\).*#\1#p' infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml)"
+echo "aws=$AWS_TAG gcp=$TAG"; [ "$AWS_TAG" = "$TAG" ] || { echo "pins differ: fix Task 7.1's merge first"; false; }
+kubectl get configuration.pkg.crossplane.io smana-crossplane-configuration-core -o jsonpath='{.spec.package}{"\n"}'
 kubectl patch configuration.pkg.crossplane.io smana-crossplane-configuration-core --type merge -p "{\"spec\":{\"package\":\"ghcr.io/smana/crossplane-configuration-core:${TAG}\"}}"
 kubectl wait --for=condition=Established crd/agentruns.cloud.ogenki.io --timeout=10m
 ```
 
-Expected: `configuration… patched`, then `condition met`.
+Expected: `aws=v0.7.2-pr31.988146f gcp=v0.7.2-pr31.988146f`. The core package is already at that tag, because on a
+fresh cluster the pre-release's exact `-core` pin installs it (GP-25), so the patch is `(no change)`. Then
+`condition met`.
 
 ### Task 8.3: [LIVE] Platform gates and the migration
 
@@ -3580,9 +4355,10 @@ Expected: `configuration… patched`, then `condition met`.
 
 **Interfaces:** Consumes the verdicts and the running gcp-0.
 
-- [ ] **Step 1: The break-glass login**
+- [ ] **Step 1: The break-glass login** (every step of 8.3 and 8.4 runs from the repository root)
 
 ```bash
+cd "$(git rev-parse --show-toplevel)"
 export VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200 VAULT_CACERT="$PWD/opentofu/gcp/openbao/management/.tls/ca.pem"
 gcloud secrets versions access latest --secret=openbao-priv-gcp-admin-credentials --project ogenki-435905 \
   | jq -r .password | bao login -method=userpass username=admin password=- >/dev/null
@@ -3594,8 +4370,9 @@ Expected: `["admin","default","pki-admin","secrets-admin"]`.
 - [ ] **Step 2: Mounts and policies**
 
 Run: `bao secrets list -format=json | jq -r 'keys[]' | sort | tr '\n' ' '; echo; bao policy list | tr '\n' ' '`
-Expected: the mounts include `agents/ apps/ lineage/ pki_private_issuer/ platform/`. The policies include
-`admin agents-secrets cert-manager default external-secrets pki-admin secrets-admin snapshot`.
+Expected: the mounts include `apps/ lineage/ pki_private_issuer/ platform/`, plus `agents/` when G-5 is merged. The policies include
+`admin cert-manager default external-secrets pki-admin secrets-admin snapshot`, plus `agents-secrets` with G-5.
+Confirm `bao auth list | grep -c '^oidc/'` → `1` (the restored lineage keeps it: GP-7).
 
 - [ ] **Step 3: [OWNER] Migrate the platform keys (GP-6)**
 
@@ -3654,8 +4431,24 @@ Expected:
 
 - [ ] **Step 8: Public DNS for the IdP** (memory `external_dns_child_domain_filter`)
 
-Run: `dig +short auth.gcp.cloud.ogenki.io; kubectl get deploy -A -o json | jq -r '.items[] | select(.metadata.name | test("external-dns-public")) | .spec.template.spec.containers[0].args[]' | grep -c -- '--aws-zone-match-parent'`
-Expected: an IP address, then `1`.
+Run: `dig +short auth.gcp.cloud.ogenki.io; kubectl get deploy -A -o json | jq -r '.items[] | select(.metadata.name | test("external-dns-public")) | .spec.template.spec.containers[0].args[]' | grep -c -- '--aws-zone-match-parent'; kubectl get helmrelease -n kube-system external-dns -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}'; dig +short grafana.priv.gcp.ogenki.io`
+Expected: an IP address, then `1`, then `True`, then a private IP. The last two prove bug 6's fix (GP-27): the
+private external-dns installed and wrote records. If the last `dig` returns nothing, resolve through the VPC:
+`dig +short @<the Tailscale router's DNS> grafana.priv.gcp.ogenki.io`.
+
+- [ ] **Step 9: A scheduled snapshot works** (bug 7, GP-23)
+
+```bash
+kubectl get gcpworkloadidentity -n security xplane-openbao-snapshot -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}'
+kubectl create job -n security --from=cronjob/openbao-snapshot openbao-snapshot-probe
+kubectl wait -n security job/openbao-snapshot-probe --for=condition=Complete --timeout=10m
+gcloud storage ls gs://ogenki-435905-ogenki-openbao-snapshot/ | sed 's#.*/##' | sort | tail -1
+kubectl delete job -n security openbao-snapshot-probe
+```
+
+Expected: `True`, `condition met`, and a newest object `<now>-gcpckms.snap`. A `Ready=False` identity whose
+message is a 403 means the allowlist still lacks a role (GP-23's cost). Read the provider-gcp log for the role
+it names.
 
 ### Task 8.4: [OWNER] Identity: login, grant, OpenBao OIDC, SSO
 
@@ -3678,14 +4471,15 @@ IDP_URL=https://auth.gcp.cloud.ogenki.io PRIVATE_DOMAIN=priv.gcp.ogenki.io \
 Expected: a grant line for `admin` on the owner's user, and `[ok     ] openbao -- auth/oidc already uses client …`
 or `[reconciled] …`. Nothing `[FAILED ]`.
 
-- [ ] **Step 3: NEW lineage only: the second management apply creates OIDC**
+- [ ] **Step 3: The OIDC mount** (RESTORE, the expected case: nothing to apply)
 
-Run: `TM_CLOUD=gcp terramate -C opentofu/gcp/openbao/management script run deploy 2>&1 | grep -E 'Plan:|Apply complete'`
-Expected: `0 to change, 0 to destroy`, and only additions:
-- the OIDC backend, its role, `openbao-admin` and its alias;
-- one policy, group and alias per `secret_owning_apps` entry in `variables.tfvars`.
+With RESTORE (GP-7), the lineage keeps `oidc/`, and stage 3's `reconcile_openbao_oidc` rotated its client to
+tonight's ZITADEL app. Confirm: `bao read -field=oidc_client_id auth/oidc/config` equals
+`gcloud secrets versions access latest --secret=openbao-oidc --project ogenki-435905 | jq -r .client_id`.
 
-Then `Apply complete! … 0 destroyed.`
+For a NEW lineage only, run P-10's single management apply now: its plan shows only additions (the OIDC backend,
+its role, `openbao-admin` and its alias, one policy, group and alias per `secret_owning_apps` entry), then
+`Apply complete! … 0 destroyed.`
 
 - [ ] **Step 4: [OWNER] OpenBao OIDC login**
 
@@ -3789,8 +4583,10 @@ The programme gates now run on gcp-0 through their own plans, as amended in *Cro
 - O-1's Phase 3, with CC-O1 through O-1;
 - SP2's `[LIVE]` tasks, once GP-18's TLS lands.
 
-Teardown, when the owner asks: `TM_CLOUD=gcp scripts/ops/teardown/teardown.sh`, then `--verify-only` until
-every row is empty.
+Teardown, when the owner asks: `TM_CLOUD=gcp TM_DESTROY_CONFIRMED=true scripts/ops/teardown/teardown.sh`.
+Confirmed, it sweeps GKE's LB leftovers once gcp-0 is gone and retries the destroy (GP-22). Then run
+`TM_CLOUD=gcp scripts/ops/teardown/teardown.sh --verify-only` until every row is empty. Kept on purpose, and not
+reported: the `_v3` custom roles (free), the lineage's KMS key and GCS buckets, and Secret Manager.
 
 ---
 
@@ -3844,9 +4640,9 @@ No gap found.
 | `job_body()` | 3.1 | 3.2, 4.4 |
 | `check_bundle`, `check_umbrellas` | 6.8 | its test |
 
-The expected counts agree: 12 overlays (6.5), 4 ai-gateway and 8 agent-platform children (6.6, 6.7), and
-`7 gcp-0 overlay(s), 12 umbrella child(ren)` (6.8). 6.8 counts 7 of the 12 overlays: the six gcp-0 ones
-from 6.5, plus `envoy-gateway` from 6.6.
+The expected counts agree: 14 overlays (6.5), 4 ai-gateway and 8 agent-platform children (6.6, 6.7), and
+`8 gcp-0 overlay(s), 12 umbrella child(ren)` (6.8). 6.8 counts 8: the seven gcp-0 overlays from 6.5, plus
+`envoy-gateway` from 6.6.
 
 Fixed during review:
 - 6.8's counts: `kustomization.yaml` is no longer counted as a child, and the overlay total is 7, not 8.
@@ -3854,4 +4650,50 @@ Fixed during review:
   misjudged.
 - 8.2's role grep matched no `[absent ]` line.
 - 8.4's plan count no longer assumes an empty `secret_owning_apps`.
-- 0.1 targets `main`, where the SP2 plan lives, plus the observability plan's own branch.
+- 0.1 targets `main`, where both the SP2 and the observability plans live.
+
+---
+
+## Review fixes applied (2026-09-29)
+
+The independent review (`gcp-parity-plan-review.md`) found 4 Critical, 11 Important and 12 Minor issues. The
+owner ruled on four points on 2026-09-29; the coordinator's defaults cover the rest.
+
+| # | Finding | Fix | Where |
+|---|---|---|---|
+| C1 | A stale stored ZITADEL PAT won over the chart's fresh one: every stage-3 call got a 401, swallowed as `[warn]` | **Owner:** the fresh PAT always wins and overwrites the store. The stale secret is deleted once | GP-20, Task 4.3a, 8.1 P-11, 8.2 Step 3 grep |
+| C2 | gcp-0's private external-dns waited on an AWS-only release (bug 6): no `*.priv.gcp` records | The test branch's patch salvaged into G-2 | GP-27, Task 3.2a, 8.3 Step 8 |
+| C3 | "Lockstep" pinned gcp to H-1's `v0.7.1`, which has no AgentRun XRD | Both packages pinned to the `v0.7.2-pr31.988146f` pre-release. `-gcp` is published by `task push` (PKGS = `ls packages`) | GP-25, Task 6.4, 7.1, 8.2 Step 4 |
+| C4 | The agents' `openbao-ca` ExternalSecret read the AWS key shape | A gcp-0 patch, and the gate forbids `certificates/` | GP-26, Task 6.5, 6.8 |
+| I1 | Only ADC was refreshed; a stale CLI token skipped stage 3 silently | Both logins, plus a `skipping stage 3` grep | 8.1 P-2, 8.2 Step 3 |
+| I2 | NEW was refused whenever a `-gcpckms` object existed; the import could not run before the VM existed | **Owner:** restore the old lineage, re-adding the matching Secret Manager versions. NEW only when no `-gcpckms` object exists. The import moves after the first failed apply | GP-7, 8.1 P-4, P-5, P-10, 8.2 Step 3a, 8.4 Step 3 |
+| I3 | `.doc-claims.yaml` pinned `primary_cloud = "aws"` | G-4 flips the claim and its two pages | Task 5.1 |
+| I4 | #2078's guard "gcp/gke/init passes no `--openbao-*`" | Inverted for the hosting sync; the consumer sync still guarded | Task 4.4 |
+| I5 | The salvaged tests' path rewrites did not match; 2.1 expected an impossible `suite 0` | Exact rewrites, checked offline against `ac62abf2`; 2.1 expects the repository case red | Tasks 2.1, 2.3, 2.5 |
+| I6 | The moved `vllm-semantic-router` child failed `check_umbrellas` | A seventh overlay pair; the counts become 14 / 8 | Tasks 6.5, 6.8 |
+| I7 | Teardown only reported GKE's LB leftovers | **Owner:** a guarded sweep, run only with `TM_DESTROY_CONFIRMED=true` and once gcp-0 is gone, then one destroy retry | GP-22, Task 3.3, 8.6 Step 5 |
+| I8 | GP-18's SP2 edit had no steps | Concrete amendments to SP2 Tasks 1.9, 1.11, 1.14 (CC-S2), 1.18 and 1.20, with a TLS cert from the `openbao` ClusterIssuer. SP2 itself is not edited | GP-18, *Cross-plan edits* |
+| I9 | H-1 was not on origin | Phase 6 precondition: the controller pushes H-1 as a draft PR; G-5 waits | Global Constraints, Task 6.1 Step 1 |
+| I10 | `platform-llm-api-keys` was an unlisted hand-seed on GCP | Not an exception: the gateway issues these keys, so gcp-0 generates them | GP-24, Task 6.5, 6.8, 8.1 P-7 |
+| I11 | Bug 7: gcp-0 never took a scheduled snapshot | Cause read from code: `objectCreator` missing from Crossplane's bucket allowlist. Fixed in G-2, proven live | GP-23, Task 3.2b, 8.3 Step 9 |
+| Owner | Merge classes | G-0 first, then G-1 to G-3 each when green and reviewed. G-4 is integration-only and never merged, so G-5 no longer contains G-4 | GP-16, GP-19, GP-21, PR map, Tasks 1.1, 2.5, 3.3, 4.4, 5.2, 6.1, 7.1 |
+| M1 | `ac62abf2` is not on origin | Stated; a safety push to `salvage/openbao-stage2-gcp` | Global Constraints, Task 2.1 |
+| M2 | aws-0's `suspend` key would be duplicated | Flip the existing line | Task 5.1 |
+| M3 | 0.1's branches are stale | The observability plan is on `main`; reuse `docs/gcp-parity` | Task 0.1 |
+| M4 | Phase 8 working directory | `cd "$(git rev-parse --show-toplevel)"` | 8.2 Step 4, 8.3 Step 1 |
+| M5 | No Kyverno health check on gcp-0 | Added, and tested | Task 6.4 |
+| M6 | NAP ceiling | Noted in the variable's comment | Task 6.3 |
+| M7 | The mirror overwrote on a failed read | Only a 404 is empty; any other code fails without writing. Tested | Task 4.2 |
+| M8 | Re-runs after `invalid_rapt` | `force-unlock`, and drop the NEW flag | 8.2 Step 2 |
+| M9 | 8.2 Step 4 without G-5 | Skipped, and checks that both pins agree | 8.2 Step 4, 7.1 |
+| M10 | Salvage conflict status | Expect `UU` on `workflows.tm.hcl`, with the resolved line | Task 2.3 |
+| M11 | `factory-app` has no consumer yet | Stated | Global Constraints |
+| M12 | GCP management drift lacks #2085's OIDC check | Not fixed: recorded as a follow-up in the spec's *Out of scope* | spec |
+
+Checked offline while applying these fixes, against the real sources:
+- the Task 2.1 and 2.5 path rewrites, against `ac62abf2`;
+- Task 3.2b's allowlist test (red on H-1's tree);
+- Task 3.3's sweep half;
+- Task 4.2's mirror (the 404 and 403 cases);
+- Task 4.3a's PAT resolver against every existing `test-zitadel-pat.sh` case;
+- Task 6.8's gate and its test.

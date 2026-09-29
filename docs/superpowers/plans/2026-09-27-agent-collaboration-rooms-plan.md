@@ -243,7 +243,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
 | P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
 | P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
-| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
+| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. They also keep `get_kubernetes_resources` cluster-wide, which still reaches pod specs (including inline `env`), workload specs (Deployment/StatefulSet/DaemonSet/ReplicaSet), and `agentruns`' task text — none namespace-scoped. A tenant or a per-run filter is backlog |
 | P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
 
 ## Interfaces with other sub-projects
@@ -1497,6 +1497,13 @@ triager: logs by role is the design, and the unscoped residual is named in P39.
 
 - [ ] **Step 1: Write the failing test**
 
+> **Superseded (final-review fix wave, 2026-09-29):** the denylist snippet below (three
+> introspection tool names, plus a spot-check on the implementer's `get_kubernetes_resources`) was
+> replaced on H-1 by the allowlist version in `774e022b` — an exact expected-set comparison per
+> backend and per role, which also catches an addition the denylist never could. Task 3.8 must
+> extend *that* version (with the `room-broker` backend and `room_*` grants), not reintroduce this
+> one.
+
 `scripts/ci/tests/test-agent-mcp-scope.sh`:
 
 ```bash
@@ -1665,6 +1672,22 @@ Merge H-1 into `integration/agent-factory` (live-check routine step 1) and hand-
 package to CC-H1's pre-release (Global Constraints). The owner's next rebuild of aws-0, deployed from
 the `integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
 evidence".
+
+> **Amendments (final-review fix wave, 2026-09-29):**
+> - CC-2's pre-release `v0.7.2-pr29.3ad168a` has no `xrd-crds` artifact (it predates CC-H1). When
+>   H-1 merges into `integration/agent-factory`, move the crossplane-configuration git pin to a
+>   pre-release that does publish one — CC-O1's `v0.7.2-pr31.988146f` or later — and hand-patch the
+>   core package to the same pre-release (I3). The ghcr package `crossplane-configuration-xrd-crds`
+>   must be public first, or run `docker login ghcr.io` before the fetch.
+> - Add a live check for M4's residual (I4/M4): after a run completes, grep the harness container's
+>   logs for `gh[posu]_[A-Za-z0-9_]{20,}` and expect 0 matches (the token pattern from runbook 07,
+>   applied to `agent-server`'s inherited stdout rather than the harness's own log stream).
+> - **Ruling B: the live gates for this fix wave run on gcp-0, not aws-0.** Step 2's hard-coded
+>   `grafana\.priv\.aws\.ogenki\.io` regex will not match on that cluster — substitute the gcp
+>   Grafana host before running the check, or the step reports a false failure.
+> - Runbook 06's Results row 130 (`4 — internal tools`) records a pre-fix observation — the
+>   implementer's tool list still shows `get_kubernetes_resources`, which M2/M3 (H-1) removed. This
+>   task's Step 3 below must re-run Step 4 and overwrite that row, not only the runbook 08 table.
 
 - [ ] **Step 1: Runbook 08, a real PASS**
 
@@ -14344,6 +14367,10 @@ gh pr create --repo Smana/crossplane-configuration --base feat/agentrun-room-bri
 - Create: `infrastructure/base/room-broker/externalsecret-mcp-key.yaml`
 - Modify: `infrastructure/base/agent-mcp/mcproutes.yaml`
 - Modify: `infrastructure/base/room-broker/app.yaml`, `network-policy.yaml`, `kustomization.yaml`
+- Modify: `scripts/ci/tests/test-agent-mcp-scope.sh` — the allowlist test (H-1, `774e022b`) fails
+  closed on any backend it does not already know, so this task must add `room-broker`'s expected
+  tool set and the `room_*` grants per role to `EXPECTED_BACKEND_TOOLS` / `EXPECTED_ROLE_TOOLS`
+  (I4), not just extend the MCPRoutes.
 
 **Interfaces:**
 - Produces: the MCPRoute backend `room-broker` (port 8090, path `/mcp`), which injects the header
@@ -18818,6 +18845,13 @@ check is green on every S PR from here on.
 - [ ] **Step 3: Merge** S1 (after H-1 and O-1, Task 7.2a), then S2, S3, S4, S5 and S6, in order. Retarget each
   one to `main` with `gh api -X PATCH`, merge `origin/main` in, and wait for CI green. H-S3 already
   merged in Task 7.3. [OWNER] merges each one (a ruleset bypass).
+- [ ] **Step 4: Re-point the agent-platform runbook links (Ruling G)** — H-1 pointed every
+  `runbook_url` in `observability/base/agent-platform/vmrule.yaml` and `vmrule-logs.yaml` at
+  `blob/integration/agent-factory/docs/runbooks/agent-factory/...` because that is where the
+  runbooks lived pre-merge. Once S6 lands on `main`, repoint each `runbook_url` at
+  `blob/main/docs/runbooks/agent-factory/...` if the runbook files merged to that path unchanged,
+  or at the design's relevant section on `main` if they did not (e.g. were folded into design docs
+  instead). Re-run `bash scripts/ci/tests/test-agent-alert-annotations.sh` after.
 
 ### Task 7.6: integration on tags, then delete the branches
 
