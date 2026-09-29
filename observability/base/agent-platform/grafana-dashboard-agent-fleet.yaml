@@ -3,6 +3,7 @@
 # opens its "Agent run" page. "Agent platform" stays the capacity view the alerts link to
 # (O9). The collector's panel is how a stalled trace pipeline is noticed (O16). Tokens read
 # the gateway counter, keyed back to run_id by label_replace ($1 passes Flux untouched).
+# Tier vs spend (O23): one tier per run, never re-routed within it (O24, SP3 R47).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -22,7 +23,8 @@ spec:
       "time": {"from": "now-7d", "to": "now"},
       "links": [{"title": "Agent platform", "type": "link", "url": "/d/agent-platform/agent-platform", "keepTime": true}],
       "templating": {"list": [
-        {"name": "datasource", "type": "datasource", "query": "prometheus"}
+        {"name": "datasource", "type": "datasource", "query": "prometheus"},
+        {"name": "logs_datasource", "type": "datasource", "query": "victoriametrics-logs-datasource"}
       ]},
       "panels": [
         {"id": 1, "type": "table", "title": "Runs",
@@ -62,6 +64,24 @@ spec:
            {"refId": "B", "legendFormat": "refused", "expr": "sum(rate(otelcol_receiver_refused_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"},
            {"refId": "C", "legendFormat": "exported", "expr": "sum(rate(otelcol_exporter_sent_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"},
            {"refId": "D", "legendFormat": "export failed", "expr": "sum(rate(otelcol_exporter_send_failed_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"}
-         ]}
+         ]},
+        {"id": 5, "type": "table", "title": "Tier vs tokens and steps per run",
+         "gridPos": {"x": 0, "y": 26, "w": 16, "h": 10},
+         "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+         "targets": [
+           {"refId": "A", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range]))"},
+           {"refId": "B", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\")"},
+           {"refId": "C", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"}, "queryType": "stats", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run step \" | extract \"xplane-run-<run_id>\" from kubernetes.pod_name | stats by (run_id) count() as steps"}
+         ],
+         "transformations": [
+           {"id": "merge", "options": {}},
+           {"id": "organize", "options": {"renameByName": {"Value #B": "tokens"}}},
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "tier", "tokens", "steps"]}}},
+           {"id": "sortBy", "options": {"sort": [{"field": "tokens", "desc": true}]}}
+         ]},
+        {"id": 6, "type": "bargauge", "title": "Tokens by tier",
+         "gridPos": {"x": 16, "y": 26, "w": 8, "h": 10},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "instant": true, "legendFormat": "{{tier}}", "expr": "sum by (tier) (label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\") * on (run_id) group_left (tier) max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range])))"}]}
       ]
     }

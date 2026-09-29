@@ -301,7 +301,15 @@ def check_fleet_dashboard():
     check("/d/agent-run/agent-run?var-run=${__value.text}" in links, "one click from a run_id opens its Agent run page (SO-1)")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard]
+def check_fleet_tier():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-fleet.yaml", "agent-fleet"))
+    check({"Tier vs tokens and steps per run", "Tokens by tier"} <= set(panels), "tier vs spend panels (O23)")
+    targets = json.dumps(panels.get("Tier vs tokens and steps per run", {}).get("targets", []))
+    check("stats by (run_id) count() as steps" in targets and "agentrun_info" in targets,
+          "tier, tokens and steps joined on run_id")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier]
 
 for run in CHECKS:
     run()
