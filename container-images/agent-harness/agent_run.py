@@ -57,7 +57,7 @@ def redact(text: str) -> str:
 
 
 # A W3C traceparent from the factory's task span (SP3 R46), handed over by the composition.
-TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
+TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 # agent-server exports on a 5 s batch and nothing at exit, and its root span ends only when
 # the conversation closes (observability plan, Task 0.5): a 1 s batch, a close, then a wait.
 BSP_DELAY_MS = "1000"
@@ -90,8 +90,11 @@ def start_run_span(env: dict, exporter=None):
         parent = None
         m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
         if m:
+            # Always sampled, whatever the trigger's flags (ruling AK9): lmnr's span context has
+            # no flags field, so agent-server's spans export regardless, and an unsampled trigger
+            # would leave them under a harness span that never lands. The factory samples 100%.
             remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
-                                       trace_flags=trace.TraceFlags(int(m[3], 16)))
+                                       trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED))
             parent = trace.set_span_in_context(trace.NonRecordingSpan(remote))
         span = provider.get_tracer("agent-run").start_span("agent-run", context=parent)
     except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run

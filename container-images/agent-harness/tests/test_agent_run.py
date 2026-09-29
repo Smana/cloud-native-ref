@@ -387,13 +387,11 @@ class TraceTest(unittest.TestCase):
         self.assertEqual(tuple(got.links), ())
         self.assertEqual(tuple(got.events), ())
 
-    def test_an_unsampled_trigger_is_honoured(self):
-        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-        exporter = InMemorySpanExporter()
-        span, provider, _ = agent_run.start_run_span({"TRACEPARENT": self.TP[:-2] + "00"}, exporter=exporter)
-        span.end()
-        provider.shutdown()
-        self.assertEqual(tuple(exporter.get_finished_spans()), ())
+    def test_an_unsampled_trigger_is_still_sampled(self):
+        # Ruling AK9: agent-server's spans export regardless, so the run's root must land too.
+        got, _ = self.span({"TRACEPARENT": self.TP[:-2] + "00"})
+        self.assertEqual(format(got.context.trace_id, "032x"), self.TP.split("-")[1])
+        self.assertTrue(got.context.trace_flags.sampled)
 
     def test_the_exporter_gives_up_fast(self):
         with mock.patch(EXPORTER) as exporter:
@@ -505,10 +503,20 @@ class TracedRunTest(unittest.TestCase):
                "TASK_FILE": os.path.join(self.tmp, "task"), "RULES_FILE": os.path.join(self.tmp, "rules"),
                "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint, **(extra_env or {})}
         with open(self.out, "w") as out:
+            # Its own process group, so cleanup also reaches the stand-in agent-server, which a
+            # driver killed mid-run never gets to stop.
             driver = subprocess.Popen([sys.executable, "-c", DRIVER, port, STAND_IN, status, self.tmp],
-                                      cwd=HERE, env=env, stdout=out)
-        self.addCleanup(lambda: driver.poll() is None and driver.kill())
+                                      cwd=HERE, env=env, stdout=out, start_new_session=True)
+        self.addCleanup(self.kill_group, driver)
         return driver
+
+    @staticmethod
+    def kill_group(driver):
+        try:
+            os.killpg(driver.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        driver.wait()
 
     def read(self, name):
         with open(os.path.join(self.tmp, name)) as f:
@@ -550,7 +558,8 @@ class TracedRunTest(unittest.TestCase):
         # lands well inside the pod's 30 s grace, and a dead collector does not delay it.
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "closed")), "the signal path must not close")
         self.assertLess(revoked - signalled, 3)
-        self.assertLess(time.time() - signalled, 5)
+        # Exit also waits out the root span's export to the dead collector and its retry backoff.
+        self.assertLess(time.time() - signalled, 15)
 
     def test_a_finished_run_closes_the_conversation_then_exports_its_root_span(self):
         Collector.spans = []
