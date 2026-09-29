@@ -21,6 +21,8 @@ spec:
           annotations:
             summary: "agent-router rejected {{ $value }} requests in 5 minutes"
             description: "Unauthorized tokens (401) or wrong audience (403). T8: replayed/foreign tokens; R2: identity-proxy rotation broken."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/02-identity-tokens.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         - alert: OctoStsExchangeFailures
           expr: 'kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
           labels:
@@ -28,3 +30,5 @@ spec:
           annotations:
             summary: "octo-sts logged {{ $value }} failed exchanges in 5 minutes"
             description: "A run is asking for a repository or role its trust policy does not grant, or the App key is wrong."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/05-github-octo-sts.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
