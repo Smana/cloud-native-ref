@@ -787,7 +787,7 @@ store_create() {
 cmd_seed() {
     [ -n "$CLOUD" ] || { echo "--cloud is required" >&2; exit 2; }
 
-    local created=0 skipped=0
+    local created=0 skipped=0 failed=0
     for name in "${GENERATABLE[@]}"; do
         if store_has "$name"; then
             echo "[skip   ] $name -- already exists, left untouched"
@@ -799,13 +799,35 @@ cmd_seed() {
             created=$((created + 1))
             continue
         fi
-        seed_body "$name" | store_create "$name"
+
+        # Capture the body BEFORE calling store_create, and check it. The old
+        # `seed_body "$name" | store_create "$name"` let store_create run
+        # unconditionally: GCP's arm creates the secret, then adds a version
+        # from stdin -- two calls -- and AWS's arm buffers stdin into a temp
+        # file before its one create-secret call. Either way, a failing or
+        # empty seed_body still left a secret behind: version-less on GCP, or
+        # holding an empty string on AWS. `set -o pipefail` does not catch
+        # this either -- pipefail reports the pipeline's RIGHTMOST failing
+        # command, so a failing seed_body piped into a succeeding
+        # store_create reports success. And once the secret exists, every
+        # later run's store_has sees it and skips it forever, so the run
+        # aborting here never even self-heals on retry.
+        #
+        # Never on argv: the body stays in a shell variable and reaches
+        # store_create only on stdin, same as before.
+        local body
+        if ! body=$(seed_body "$name") || [ -z "$body" ]; then
+            echo "[FAILED ] $name -- seed_body produced no value, not created" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+        printf '%s' "$body" | store_create "$name"
         echo "[created] $name"
         created=$((created + 1))
     done
 
     echo
-    echo "created: ${created}, skipped (already present): ${skipped}"
+    echo "created: ${created}, skipped (already present): ${skipped}, failed: ${failed}"
     echo
     echo "Generated secrets only. Everything else the cluster needs is issued by"
     echo "another system -- run 'check' to see what is still missing."
@@ -813,6 +835,10 @@ cmd_seed() {
         echo
         echo "This was a DRY RUN. Re-run with --apply to create them."
     fi
+    # Matches cmd_grant's convention: one bad key is reported and skipped, not
+    # fatal to the rest of the run, but the command's own exit status still
+    # says so.
+    [ "$failed" -eq 0 ]
 }
 
 # Grant External Secrets read access to every key the cluster actually asks for.
