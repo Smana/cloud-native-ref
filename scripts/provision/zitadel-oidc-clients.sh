@@ -1366,6 +1366,16 @@ cmd_sync() {
     # is an app client id rather than the project id.
     reconcile_workforce_audience "$project_id"
 
+    # GCP hosting: publish this directory's project id for gke/configure, which
+    # reads it at plan time (GCP parity GP-4). A fresh directory gets a new id
+    # every build, and the committed one would otherwise come back on the next
+    # configure apply.
+    if [ "$CLOUD" = "gcp" ] && [ "$IDP_CLOUD" = "$CLOUD" ] && [ "$APPLY" = "true" ] \
+       && [ "$project_id" != "DRYRUN-PROJECT" ]; then
+        printf '%s' "$project_id" | jq -Rc '{project_id: .}' | store_write zitadel-project-id
+        echo "project: published to zitadel-project-id"
+    fi
+
     # Same reasoning as the workforce provider above: OpenBao's client id is
     # only known once the "openbao" consumer's app has been found or created.
     # `|| openbao_failed=1` rather than exit here so the summary below still

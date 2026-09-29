@@ -39,3 +39,20 @@ data "google_secret_manager_secret_version" "openbao_root_token" {
   secret  = var.openbao_root_token_secret_name
   project = var.project_id
 }
+
+# This directory's ZITADEL project id when the cluster HOSTS it (GCP parity GP-4).
+# A fresh directory gets a new id every build; zitadel-oidc-clients.sh publishes
+# it here in stage 3. Read at plan time so this stack's later apply agrees with
+# the value the sync patched into the ConfigMap. Listed before it is read: absent
+# is "first build", and var.zitadel_project_id stands in until stage 3.
+data "google_secret_manager_secrets" "zitadel_project" {
+  count   = var.deploy_identity_provider ? 1 : 0
+  project = var.project_id
+  filter  = "name:zitadel-project-id"
+}
+
+data "google_secret_manager_secret_version" "zitadel_project" {
+  count   = local.zitadel_project_secret_present ? 1 : 0
+  secret  = "zitadel-project-id" # pragma: allowlist secret
+  project = var.project_id
+}
