@@ -207,8 +207,10 @@ def check_router():
     check(provider.get("backendRefs") == [{"name": "agent-traces-collector", "namespace": "observability", "port": 4317}],
           "agent-router's spans go to the collector's gRPC port (EG 1.9 exports gRPC only)")
     check(tracing.get("tags", {}).get("agent.principal") == "%REQ(X-AR-AGENT)%", "every span names the run's verified principal")
+    check(tracing.get("samplingRate") == 100, "every request is sampled")
     egress = find(f"{ROUTER}/network-policy-data-plane.yaml", "CiliumNetworkPolicy", "agent-router-data-plane").get("spec", {}).get("egress", [])
     check(any((r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("app.kubernetes.io/name") == "agent-traces-collector"
+              and (r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("io.kubernetes.pod.namespace") == "observability"
               and r["toPorts"][0]["ports"] == [{"port": "4317", "protocol": "TCP"}] for r in egress),
           "the data plane may reach the collector's :4317")
 
