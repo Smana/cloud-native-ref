@@ -164,3 +164,19 @@ variable "custom_role_suffix" {
   description = "Generation suffix on the three custom role IDs; bump only if a generation is lost"
   type        = string
 }
+
+# The agents' GKE Sandbox pool (GCP parity GP-10). 2 x e2-standard-8 = 16 vCPU /
+# 64 GiB, aws-0's agents-gvisor limits. The NAP ceiling
+# (autoscaling_max_cpu_cores = 32) counts these nodes too: with the static pool
+# (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the ceiling if one starves.
+variable "agents_pool_machine_type" {
+  description = "Machine type of the agents-gvisor GKE Sandbox pool"
+  type        = string
+  default     = "e2-standard-8"
+}
+
+variable "agents_pool_max_nodes" {
+  description = "Upper bound of the agents-gvisor pool; it scales from zero"
+  type        = number
+  default     = 2
+}

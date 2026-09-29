@@ -84,11 +84,7 @@
 # Still absent, and each needs its own validation before returning:
 #   bandwidthManager, bpf.preallocateMaps, bpf.masquerade, devices,
 #   egressMasqueradeInterfaces, installNoConntrackIptablesRules,
-#   loadBalancer.mode: hybrid, socketLB.hostNamespaceOnly
-#
-# socketLB.hostNamespaceOnly is the one with a known functional reason (Tailscale
-# operator pods break without it, tailscale#15478). It is not needed until the
-# Tailscale operator runs on GCP, and must be validated when it is.
+#   loadBalancer.mode: hybrid
 
 cni:
   # /opt/cni/bin is read-only on Container-Optimized OS. See the note above.
@@ -163,3 +159,11 @@ hubble:
 
 gatewayAPI:
   enabled: true
+
+# gVisor's netstack sends packets from the Sentry and never calls connect() in
+# the host kernel, so socket-LB cannot translate a ClusterIP for a GKE Sandbox
+# pod; per-packet LB in the pod namespace does (GCP parity GP-11). aws-0 runs the
+# same value, for Tailscale (tailscale#15478). Proved on gcp-0 by the gVisor
+# smoke probe (scripts/ops/k8s/gvisor-smoke.yaml) and the gateway checks.
+socketLB:
+  hostNamespaceOnly: true

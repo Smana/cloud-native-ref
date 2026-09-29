@@ -1,0 +1,84 @@
+# gVisor smoke probe for gcp-0 (GCP parity Task 8.5). Proves in one pod:
+#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass;
+#   - threads start under RuntimeDefault seccomp (the AWS spike's clone3 trap);
+#   - DNS through kube-dns's ClusterIP and a TCP connection to a ClusterIP work,
+#     i.e. per-packet LB (socketLB.hostNamespaceOnly).
+# Prints: threads=4 dns=ok tcp=ok release=4.4.0 (gVisor's reported kernel).
+# Apply, read, delete: kubectl delete -f scripts/ops/k8s/gvisor-smoke.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gvisor-smoke
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gvisor-smoke
+  namespace: gvisor-smoke
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: gvisor-smoke
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gvisor-smoke
+  namespace: gvisor-smoke
+  labels:
+    app.kubernetes.io/name: gvisor-smoke
+spec:
+  runtimeClassName: gvisor
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: python:3.13-slim
+      command:
+        - python3
+        - -c
+        - |
+          import os, socket, threading
+          ts = [threading.Thread(target=lambda: None) for _ in range(4)]
+          [t.start() for t in ts]; [t.join() for t in ts]
+          ip = socket.getaddrinfo("kubernetes.default.svc.cluster.local.", 443, proto=socket.IPPROTO_TCP)[0][4][0]
+          socket.create_connection((ip, 443), timeout=5).close()
+          print(f"threads={len(ts)} dns=ok tcp=ok release={os.uname().release}")
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
