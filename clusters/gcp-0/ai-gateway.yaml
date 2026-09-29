@@ -9,8 +9,10 @@
 # deletionPolicy Orphan: removing this object must not uninstall Envoy Gateway
 # and every Gateway on the cluster.
 #
-# gcp-0 has no README of its own for this umbrella: see
-# clusters/aws-0-ai-gateway/README.md for what it reads and the teardown procedure.
+# gcp-0 has no README of its own for this umbrella: see the Teardown section of
+# clusters/aws-0-ai-gateway/README.md, substituting gcp-0 paths. Its "Secrets
+# this layer reads" section is an AWS Secrets Manager bootstrap and does not
+# apply here.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

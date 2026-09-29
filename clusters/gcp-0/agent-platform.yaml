@@ -13,6 +13,8 @@ spec:
   prune: true
   interval: 1m0s
   timeout: 5m0s
+  # A sibling of clusters/gcp-0/, never a sub-path: flux-system syncs that tree
+  # recursively and would apply the children around this suspend.
   path: ./clusters/gcp-0-agent-platform
   sourceRef:
     kind: GitRepository
