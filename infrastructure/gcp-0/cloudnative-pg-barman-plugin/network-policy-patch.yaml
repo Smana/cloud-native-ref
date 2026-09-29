@@ -62,12 +62,12 @@ spec:
     # `googleCredentials.gkeEnvironment: true`, so there is no static key and
     # this is the whole credential path.
     #
-    # Same shape as base's rule for the EKS Pod Identity Agent and for the same
-    # underlying reason: the metadata server runs on the node's host network, so
-    # Cilium classifies the destination as the `host` entity and `toCIDR` alone
-    # would silently fail (CNP rule #3).
-    - toEntities:
-        - host
+    # toCIDR, NOT base's `host` rule for the EKS Pod Identity Agent: on GKE the
+    # address is never node-local. iptables DNATs it to gke-metadata-server
+    # after Cilium has classified it as `world`, so `host` never matches (CNP
+    # rule #3). The same rule runlore and image-gallery run live on gcp-0.
+    - toCIDR:
+        - 169.254.169.254/32
       toPorts:
         - ports:
             - port: "80"
