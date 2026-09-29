@@ -17,6 +17,7 @@
 #      CRD itself and publishes no chart to render it from.)
 #   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
 #      (the chart and its CRDs exist only in the git repository, SP1 S2)
+#   6. Room CRD -> agents.ogenki.io/* (vendored, SP2)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #
@@ -212,6 +213,8 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 # installs this CRD itself and publishes no chart to render it from. See the
 # header of the file for how it was captured and when to refresh it.
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
+# The Room CRD (SP2), vendored beside the broker that serves it (ruling P16).
+"${FLUX_BIN}" schema extract crd "${REPO_ROOT}/infrastructure/base/room-broker/crd-rooms.yaml" -d "${build_dir}"
 
 echo "==> Verifying the catalog is complete"
 for kind in app sqlinstance inferenceservice epi; do
@@ -244,6 +247,11 @@ fi
 
 if [[ ! -s "${build_dir}/agents.x-k8s.io/sandbox_v1beta1.json" ]]; then
   echo "error: catalog build produced no agents.x-k8s.io/sandbox_v1beta1.json (agent-sandbox ${AGENT_SANDBOX_VERSION} shipped no Sandbox CRD in helm/crds?)" >&2
+  exit 1
+fi
+
+if [[ ! -s "${build_dir}/agents.ogenki.io/room_v1alpha1.json" ]]; then
+  echo "error: catalog build produced no agents.ogenki.io/room_v1alpha1.json (infrastructure/base/room-broker/crd-rooms.yaml)" >&2
   exit 1
 fi
 
