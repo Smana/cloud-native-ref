@@ -66,6 +66,12 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # so claims read the name rather than spelling it.
       gcp_dns_editor_role = local.init.dns_editor_role
 
+      # The agents' token issuer (GCP parity GP-12). Same keys as eks-aws-0-vars,
+      # GKE-shaped values: agent-router, agent-mcp and octo-sts read these.
+      oidc_issuer_url = local.oidc_issuer_url
+      oidc_jwks_uri   = "${local.oidc_issuer_url}/jwks"
+      oidc_jwks_host  = "container.googleapis.com"
+
       project_id     = var.project_id
       project_number = local.init.project_number
       zone           = local.init.cluster_location

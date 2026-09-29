@@ -7,8 +7,8 @@ resource "vault_jwt_auth_backend" "cluster" {
   path               = "jwt/${var.cluster_name}"
   type               = "jwt"
   description        = "Kubernetes ServiceAccount tokens from cluster ${var.cluster_name}"
-  oidc_discovery_url = "https://container.googleapis.com/v1/projects/${var.project_id}/locations/${local.init.cluster_location}/clusters/${var.cluster_name}"
-  bound_issuer       = "https://container.googleapis.com/v1/projects/${var.project_id}/locations/${local.init.cluster_location}/clusters/${var.cluster_name}"
+  oidc_discovery_url = local.oidc_issuer_url
+  bound_issuer       = local.oidc_issuer_url
 
   # No mount `tune` -- see the note in opentofu/aws/eks/configure/openbao.tf:
   # in provider v5 it is a list(object) attribute with eight non-optional
