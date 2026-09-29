@@ -263,6 +263,8 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R43 | External review G2: "no untrusted-content pipeline" | **The intake sanitises the snapshot and the brief marks it as data (Task 1.10a); four canaries prove the controls behind it (Task 8.5a).** Removed: U+200B–U+200F, U+202A–U+202E, U+2066–U+2069, U+FEFF, C0 and C1 controls but `\n` and `\t`, and also U+2060–U+2064 and the Tags block U+E0000–U+E007F (invisible ASCII, the "ASCII smuggling" vector). Markdown and HTML images become `[image: <alt>]`: the URL goes. The first line inside the fence says the text is untrusted data. The hash stays the raw issue's. RunLore's text (Task 9.1) goes through the same function | Images and invisible text are how the Jules and Cursor incidents exfiltrated; an agent reads no image anyway. The hash must still match what the maintainer labelled | An issue's screenshot link is lost to the agent; a maintainer who wants it followed pastes the URL as text. The sanitiser is a filter: an instruction in plain text still reaches the model, and egress policy and the gate paths stay the controls |
 | R44 | External review M1 (SP2 P38): policy-bot's App key sat at `platform/merge-gate/policy-bot`, which `openbao-platform` reads for any namespace | **policy-bot's key moves to its own kv-v2 mount, `merge-gate` (`merge-gate/policy-bot`)**, created with `agents` by SP2's Task 1.15a. `merge-gate-secrets` reads that mount only; `agents-secrets` never can. The merger App's key is `agents/merger-app` | Whoever reads policy-bot's key posts `policy-bot: main` `success` on any PR. The `agents` mount will not do: agent-system must never read the gate's key | SP2's S1 must be live before Task 6.1 writes the key; FR-6 stacks on it anyway |
 | R45 | R18: the RunLore intake token is "one value, read by the factory from `platform/agents/*` and by RunLore from its own store" | **Written twice from one value (Task 9.3): `agents/runlore-intake` for the factory, `platform/runlore/factory-intake` for RunLore's `openbao-platform`** | After M1 no store reads both mounts, and C1 keeps agent-system off the ClusterSecretStore | RunLore's copy stays readable from any namespace through `openbao-platform` (T14), as before M1: a thief can post at most `runlore.dailyCap` (5) findings a day, each a triager-only task ending on a proposal a maintainer reads (R38). A rotation writes both paths |
+| R46 | Further review (2026-09-29): "a trigger-rooted trace per task" | **One root span per accepted task (Task 1.10b).** When `received` admits a task, it mints a trace id and a span id into `status.trace`. It passes W3C `traceparent` `00-<trace>-<span>-01` to every run it creates, as the claim annotation `agents.ogenki.io/traceparent` (Task 1.5a). The composition hands that to the harness as `TRACEPARENT`, and the harness's `agent-run` span parents on it (observability plan Tasks 1.3a, 2.8a, O21). When `end()` reaches a terminal phase, the factory exports the task span once, to the collector's platform port :4317 (observability plan O20). The span runs from the Task's creation, when the label was accepted, to now. Its only attributes are `agent.task_id`, `agent.tier`, `agent.task.phase` and `agent.task.reason`, never issue text. Export is best effort, and an empty `tracing.otlpEndpoint` turns tracing off | A span held in memory would not survive a restart or a leader change over a task's hours; recorded ids and a span built at the end do. The annotation is set at CREATE, and the patch-limit policy (Task 5.5) governs UPDATEs only. It clashes with no SP1 annotation (`revoked`, `usage-tokens`, `pull-request`, `finished-phase`, `principal`) and no SP3 one (`stop`, `revert`). The trace id is correlation only (observability plan O22) | The task span arrives only when the task ends, so Grafana shows a live task's runs under a missing parent until then. An escalated task that never closes has no task span. An export that succeeds before a lost status write is repeated once, with the same ids |
+| R47 | Further review (2026-09-29): "routing tier vs spend"; triage already decides the tier (§2, tier fit) | **A run's tier is recorded, and fixed.** `runs.Build` writes the label `agents.ogenki.io/tier` (Task 1.5a): an implementer carries the task's triaged tier, a reviewer the other tier it runs on (Task 4.2a). **Agents are never re-routed per request within a run.** The tier becomes `spec.model` (R11), which the XRD's CEL makes immutable, and agent-router routes on the model name only. The observability plan exposes the label as `agentrun_info{tier}` and draws tier against tokens and steps (its O23, O24) | A mid-run switch would split one conversation across models and discard the provider's prompt cache, and it would make tier fit (SC-10) unmeasurable. It is a label, not `spec.model`, because every tier maps to `agent-default` until SP4 PR 2 (R11) | An under-tiered run cannot be rescued mid-flight: it ends at its budget, and the task's next run can take another tier. The label is set at CREATE and never patched (Task 5.5's patch-limit forbids label changes). Runs requested through `POST /v1/runs` (Task 5.2) belong to no task, so they carry no tier and start their own trace |
 
 ## Interfaces with other sub-projects
 
@@ -319,13 +321,14 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | `Task` CRD | chart `crds/` | Headlamp, `kubectl` |
 | `.policy.yml`, `agent-merge-gate` and `agent-merge` rulesets (applied in Task 10.7) | this repo | every PR to `main` |
 | The merger App `ogenki-agent-merger`, key at `agents/merger-app` | GitHub, OpenBao | the factory only (R16) |
-| Label `agents.ogenki.io/principal` on every `AgentRun` (the principal, `:` written `.`) | `runs.Build` | `kubectl get agentrun -l`, CC-F1's printer columns (SD13) |
+| Label `agents.ogenki.io/principal` on every `AgentRun` (the principal, `:` written `.`) | `runs.Build` | `kubectl get agentrun -l`, the observability plan's printer columns |
+| Label `agents.ogenki.io/tier` on every factory `AgentRun` (R47) | `runs.Build` | the observability plan's `agentrun_info{tier}` and fleet panels |
+| Annotation `agents.ogenki.io/traceparent` on every factory `AgentRun`, and the task span on the collector's :4317 (R46) | `runs.Build`, `tracing` | the composition's `TRACEPARENT` (observability plan Task 1.3a); VictoriaTraces |
 
 ## PR map
 
-`FA-*` is `Smana/agent-platform`, `FR-*` is this repo, `CC-F1` is `Smana/crossplane-configuration`.
-Every field and annotation SP3 relies on exists in SP1's XRD; CC-F1 only adds printer columns
-(SD13). **Nothing below merges before phase 10**, and FR-11 not before the wave has landed;
+`FA-*` is `Smana/agent-platform` and `FR-*` is this repo. Every field and annotation SP3 relies on
+exists in SP1's XRD; the printer columns (SD13) moved to the observability plan's CC-O1. **Nothing below merges before phase 10**, and FR-11 not before the wave has landed;
 "stacks on" is the branch a PR is cut from, "needs" is what must exist (built, pushed, running on
 the branch cluster), never what must be merged.
 
@@ -346,7 +349,6 @@ the branch cluster), never what must be merged.
 | FR-7 | this · `feat/factory-automerge` | 7 | FR-5, with FR-6 merged in (merge commit) | FA-6 pre-release; the week of statuses; [OWNER] the merger App and its key | Config (`shadow` classes, merge with its breaker and secret scan, schedules), `.policy.yml`'s CI requirement (G6), the merger key's ExternalSecret, the `agent-merge` ruleset source and the split `agent-branches` source (applied in 10.7), pins | SC-2, SC-3 and SC-14 in shadow: "would auto-merge", `error`, `foreign_trailer`; nothing armed |
 | FA-7 | agent-platform · `feat/factory-safety` | 8 | FA-6 | — | Stuck detection, control issue, interventions, tier fit, `task.final` | via FR-8 |
 | FR-8 | this · `feat/factory-observability` | 8 | FR-7 | FA-7 pre-release | VMRules, dashboard, the App key-compromise runbook (SD14), the injection canaries (G2), pins, verification | SC-5 (every run, human-requested included), SC-7, SC-8, SC-10, the four canaries PASS, `/verify-spec` |
-| CC-F1 | crossplane-configuration · `feat/agentrun-printer-columns` | 8 | the CC stack tip, `chore/room-bridge-v0.5.0` (SP2 CC-S5) | — | `AgentRun` printer columns PRINCIPAL, PR, TOKENS, REASON (SD13) | `kubectl get agentrun -n agents` shows them, on its pre-release (Task 8.7) |
 | FA-8 | agent-platform · `feat/factory-runlore` | 9 | FA-7 | — | RunLore intake, `investigate` = the triager alone, ending on a proposal (R38) | via FR-9 |
 | FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with SP4 PR 2's branch merged in | FA-8 pre-release; Bedrock behind the `internal` listener on the cluster | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
 | FR-10 | this · `docs/agent-factory-journey` | 10 | FR-9 | the walkthrough's transcript | The walkthrough script and journey renderer; the user-facing pages and diagram built from its transcript | The owner's UX verdict |
@@ -411,7 +413,6 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | `.github/rulesets/{agent-merge.json,agent-branches.json}`, `scripts/ops/github/{agent-merge-ruleset.sh,agent-branch-ruleset.sh}`, `scripts/ci/tests/test-agent-merge-ruleset.sh` | 7 (applied in 10.7) | The ruleset split: `main` and `revert-*` for the merger App only (R16) |
 | `tooling/base/agent-factory/externalsecret-merger.yaml` | 7 | The merger App's key, for the factory alone |
 | `docs/runbooks/agent-factory/09-app-key-compromise.md` | 8 | What to do when any of the four Apps' keys leaks (SD14) |
-| crossplane-configuration `apis/agentrun/definition.yaml` (CC-F1) | 8 | `AgentRun` printer columns (SD13) |
 | `scripts/ci/check-policy-gate-coverage.sh`, `scripts/ci/check-workflow-secrets.sh`, their tests, `scripts/tasks.yaml`, `.github/workflows/ci.yaml` | 6 | SC-12 and the T8 lint |
 | `.github/renovate.json` | 1, 4, 6 | No automerge for the factory chart, Kueue, policy-bot |
 | `infrastructure/base/room-broker/config.yaml` | 1 | The factory's `systemPrincipals` entry, on (SP2 ships it commented) |
@@ -461,7 +462,7 @@ after it, FR-11.
 | [OWNER] | 9.3 | Only if the session's OpenBao token cannot write both mounts: Task 9.3 Step 1's two writes of one value, once (R18, R45) |
 | [OWNER] | 9.4 | Read the triager's proposal in the room; if it holds no cluster detail, open a public issue with the text you approve and label it `factory/ready` (R38) |
 | [OWNER] | 10.2 | Drive the walkthrough's human steps and give the written UX sign-off, in one session with SP2's Task 7.1 |
-| [OWNER] | 10.4, 10.5 | The wave, after SP2's 7.2 and 7.5 (CC-F1 merged inside SP2's 7.4, after CC-S5 and before its tag): merge FA-1…FA-8 and tag `v0.7.0`; merge FR-1 … FR-10. Then delete `Smana/.github/policy.yml` and uninstall `ogenki-merge-gate` from `Smana/.github` (10.5 Step 5) |
+| [OWNER] | 10.4, 10.5 | The wave, after SP2's 7.2 and 7.5: merge FA-1…FA-8 and tag `v0.7.0`; merge FR-1 … FR-10. Then delete `Smana/.github/policy.yml` and uninstall `ogenki-merge-gate` from `Smana/.github` (10.5 Step 5) |
 | [OWNER] | 10.7 | After the wave: apply the rulesets, `agent-merge` first, then the split `agent-branches`, then `agent-merge-gate`; merge FR-11 (the classes go live); label the live-proof issues; apply `factory/revert` once; scale policy-bot to 0 for SC-4's bypass leg |
 
 
@@ -2373,6 +2374,83 @@ Expected: `ok`.
 ```bash
 git add internal/factory/runs
 git commit -m "feat(factory): AgentRun claims, the port of agent-run.sh"
+```
+
+### Task 1.5a: The claim carries the task's traceparent and the run's tier (further review, 2026-09-29; R46, R47)
+
+**Files:**
+- Modify: `internal/factory/runs/runs.go` (constants, `Spec`, `Build`)
+- Test: `internal/factory/runs/runs_test.go`
+
+**Interfaces:**
+- Produces:
+  - `runs.AnnTraceparent = "agents.ogenki.io/traceparent"`, a W3C traceparent set at CREATE. The
+    observability plan's composition projects it as the harness's `TRACEPARENT` (its Task 1.3a).
+  - `runs.LabelTier = "agents.ogenki.io/tier"` (`light`, `standard` or `frontier`).
+  - `runs.Spec` gains `Traceparent, Tier string`. Each is written only when set.
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+// R46, R47: the task's trace and the run's tier ride on the claim, and only when there is one.
+func TestBuildCarriesTraceparentAndTier(t *testing.T) {
+	s := spec()
+	s.Traceparent, s.Tier = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "standard"
+	u := Build(s)
+	if u.GetAnnotations()[AnnTraceparent] != s.Traceparent || u.GetLabels()[LabelTier] != "standard" {
+		t.Fatalf("%v %v", u.GetAnnotations(), u.GetLabels())
+	}
+	u = Build(spec())
+	if _, ok := u.GetAnnotations()[AnnTraceparent]; ok {
+		t.Error("no task trace, no annotation: the harness starts its own")
+	}
+	if _, ok := u.GetLabels()[LabelTier]; ok {
+		t.Error("no tier, no label")
+	}
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `go test ./internal/factory/runs/`
+Expected: FAIL to build, `s.Traceparent undefined (type Spec has no field or method Traceparent)`.
+
+- [ ] **Step 3: Implement**
+
+In the `const` block:
+
+```go
+	AnnTraceparent   = "agents.ogenki.io/traceparent" // W3C, set at CREATE; the composition hands it to the harness (R46)
+	LabelTier        = "agents.ogenki.io/tier"        // fixed per run, never re-routed within it (R47)
+```
+
+The first line of `Spec`'s string fields ends `…, RoomRef, Queue, Traceparent, Tier string`. In `Build`,
+before `u.SetLabels(labels)`:
+
+```go
+	if s.Tier != "" {
+		labels[LabelTier] = s.Tier
+	}
+```
+
+and after it:
+
+```go
+	if s.Traceparent != "" {
+		u.SetAnnotations(map[string]string{AnnTraceparent: s.Traceparent})
+	}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `gofmt -l internal/factory/runs && go test -race ./internal/factory/runs/`
+Expected: no file listed; `ok`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add internal/factory/runs
+git commit -m "feat(factory): the claim carries the task's traceparent and the run's tier"
 ```
 
 ### Task 1.6: Rooms — the task's `Room` and the broker's system API
@@ -5230,6 +5308,351 @@ git add internal/factory/sanitize internal/factory/intake internal/factory/recon
 git commit -m "feat(factory): sanitise issue text at intake and mark it as untrusted data"
 ```
 
+### Task 1.10b: One root span per task, from the label to the end reason (further review, 2026-09-29; R46)
+
+**Files:**
+- Create: `internal/factory/tracing/tracing.go`
+- Test: `internal/factory/tracing/tracing_test.go`, `internal/factory/reconciler/trace_test.go`
+- Modify:
+  - `api/v1alpha1/task_types.go` (`TaskStatus.Trace`, `TraceRef`) and its generated files (`task crd:gen`);
+  - `internal/factory/config/config.go` (`Tracing`), `internal/factory/config/config_test.go`;
+  - `internal/factory/reconciler/reconciler.go` (the `Trace` field, `received`, `end`, `endTrace`);
+  - `internal/factory/reconciler/implement.go` (`implementerSpec`, `traceparent`);
+  - `go.mod`, `go.sum`.
+
+**Interfaces:**
+- Consumes: `runs.Spec.Traceparent`, `runs.Spec.Tier` (Task 1.5a).
+- Produces:
+  - `tracing.Mint() (traceID, spanID string)` and `tracing.Traceparent(traceID, spanID string) string`,
+    which returns `00-<trace>-<span>-01`.
+  - `tracing.Task{TraceID, SpanID, TaskID, Tier, Phase, Reason string; Start, End time.Time}`.
+  - `tracing.Sink` (`Export(ctx, Task) error`).
+  - `tracing.Exporter`: `New(sdktrace.SpanExporter)`, `NewOTLP(ctx, endpoint)`, `Export`, `Shutdown(ctx)`.
+  - `v1alpha1.TraceRef{TraceID, SpanID string; Exported bool}` and `TaskStatus.Trace *TraceRef`.
+  - `config.Tracing{OTLPEndpoint string}` (`tracing.otlpEndpoint`, host:port; empty turns tracing off).
+  - `Reconciler.Trace tracing.Sink`, whose nil turns tracing off.
+  - The task span: `service.name=agent-factory`, name `task`, attributes `agent.task_id`,
+    `agent.tier`, `agent.task.phase`, `agent.task.reason`.
+
+- [ ] **Step 1: Add the dependencies**
+
+Run: `go get go.opentelemetry.io/otel@latest go.opentelemetry.io/otel/sdk@latest go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@latest`
+Expected: `go.mod` pins them. v1.46.0 on 2026-09-29, the version this task's code was compiled and
+tested against.
+
+- [ ] **Step 2: Write the failing tests**
+
+`internal/factory/tracing/tracing_test.go`:
+
+```go
+package tracing
+
+import (
+	"context"
+	"regexp"
+	"testing"
+	"time"
+
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+)
+
+// R46: the task span is built from the ids minted at acceptance, and carries metadata only.
+func TestTheTaskSpanKeepsItsMintedIds(t *testing.T) {
+	tr, sp := Mint()
+	if !regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`).MatchString(Traceparent(tr, sp)) {
+		t.Fatalf("traceparent %q", Traceparent(tr, sp))
+	}
+	if again, _ := Mint(); again == tr {
+		t.Fatal("every task gets its own trace")
+	}
+	mem := tracetest.NewInMemoryExporter()
+	start := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
+	task := Task{TraceID: tr, SpanID: sp, TaskID: "3buqdlot", Tier: "standard", Phase: "Done", Start: start, End: start.Add(time.Hour)}
+	if err := New(mem).Export(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	got := mem.GetSpans()
+	if len(got) != 1 || got[0].Name != "task" || got[0].SpanContext.TraceID().String() != tr ||
+		got[0].SpanContext.SpanID().String() != sp || got[0].Parent.IsValid() || !got[0].StartTime.Equal(start) {
+		t.Fatalf("%+v", got)
+	}
+	attrs := map[string]string{}
+	for _, kv := range got[0].Attributes {
+		attrs[string(kv.Key)] = kv.Value.AsString()
+	}
+	if attrs["agent.task_id"] != "3buqdlot" || attrs["agent.tier"] != "standard" || attrs["agent.task.phase"] != "Done" || len(attrs) != 4 {
+		t.Fatalf("metadata only: %v", attrs)
+	}
+	if err := New(mem).Export(context.Background(), Task{TraceID: "nothex", SpanID: sp}); err == nil {
+		t.Fatal("a malformed id is refused")
+	}
+}
+```
+
+`internal/factory/reconciler/trace_test.go`:
+
+```go
+package reconciler
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/Smana/agent-platform/api/v1alpha1"
+	"github.com/Smana/agent-platform/internal/factory/tracing"
+)
+
+type fakeSink struct{ got []tracing.Task }
+
+func (f *fakeSink) Export(_ context.Context, t tracing.Task) error { f.got = append(f.got, t); return nil }
+
+// R46: one root span per accepted task, its traceparent on every run, exported once at the end.
+func TestEveryRunOfATaskSharesItsTrace(t *testing.T) {
+	g := newRig(t, issueTask("3buqdlot", 7, "fix"))
+	sink := &fakeSink{}
+	g.r.Trace = sink
+	tk := g.reconcile(t, "3buqdlot", 3)
+	tr := tk.Status.Trace
+	if tr == nil || len(tr.TraceID) != 32 || len(tr.SpanID) != 16 || tr.Exported {
+		t.Fatalf("minted at acceptance: %+v", tr)
+	}
+	s := g.runs.specs["7f3cq2xz"]
+	if s.Traceparent != tracing.Traceparent(tr.TraceID, tr.SpanID) || s.Tier != "standard" {
+		t.Fatalf("the run carries the task's trace and tier: %q %q", s.Traceparent, s.Tier)
+	}
+	if len(sink.got) != 0 {
+		t.Fatal("nothing is exported before the task ends")
+	}
+	tk.Annotations = map[string]string{v1alpha1.AnnotationStop: "true"}
+	if err := g.c.Update(context.Background(), tk); err != nil {
+		t.Fatal(err)
+	}
+	tk = g.reconcile(t, "3buqdlot", 2)
+	if tk.Status.Phase != v1alpha1.PhaseStopped || len(sink.got) != 1 || !tk.Status.Trace.Exported {
+		t.Fatalf("%s: exported %d", tk.Status.Phase, len(sink.got))
+	}
+	got := sink.got[0]
+	if got.TraceID != tr.TraceID || got.SpanID != tr.SpanID || got.Reason != "stopped_by_annotation" || got.Tier != "standard" ||
+		!got.Start.Equal(now.Add(-time.Minute)) || !got.End.Equal(now) {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestNoSinkNoTaskTrace(t *testing.T) {
+	g := newRig(t, issueTask("3buqdlot", 7, "fix"))
+	tk := g.reconcile(t, "3buqdlot", 3)
+	if tk.Status.Trace != nil || g.runs.specs["7f3cq2xz"].Traceparent != "" {
+		t.Fatal("tracing off: no trace minted; each run starts its own, as task agent:run's do")
+	}
+}
+```
+
+In `config_test.go`:
+
+```go
+func TestTracingEndpoint(t *testing.T) {
+	c, err := Parse([]byte(good + "tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}\n"))
+	if err != nil || c.Tracing.OTLPEndpoint != "agent-traces-collector.observability.svc.cluster.local:4317" {
+		t.Fatalf("%v %+v", err, c)
+	}
+	if _, err := Parse([]byte(good + "tracing: {otlpEndpoint: \"http://collector:4317\"}\n")); err == nil {
+		t.Fatal("a URL is not host:port")
+	}
+	if c, err := Parse([]byte(good)); err != nil || c.Tracing.OTLPEndpoint != "" {
+		t.Fatal("no tracing block: tracing off")
+	}
+}
+```
+
+- [ ] **Step 3: Run them to see them fail**
+
+Run: `go test ./internal/factory/tracing/ ./internal/factory/reconciler/ ./internal/factory/config/`
+Expected: FAIL to build, `undefined: Mint`, `g.r.Trace undefined`, `c.Tracing undefined`.
+
+- [ ] **Step 4: Implement**
+
+`internal/factory/tracing/tracing.go` (compiled and tested on 2026-09-29 against OTel Go v1.46.0,
+`ok`):
+
+```go
+// Package tracing gives each factory task one root span (SP3 ruling R46). Its ids are minted
+// when the task is accepted and kept in the Task's status; the span is built from them and
+// exported once, when the task ends. A restart or a new leader loses nothing, and the span
+// carries ids and an end reason only, never issue text.
+package tracing
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// Mint returns a fresh W3C trace id and span id, hex-encoded.
+func Mint() (traceID, spanID string) {
+	var t [16]byte
+	var s [8]byte
+	_, _ = rand.Read(t[:])
+	_, _ = rand.Read(s[:])
+	return hex.EncodeToString(t[:]), hex.EncodeToString(s[:])
+}
+
+// Traceparent is the W3C header a run's harness parents its root span on (sampled).
+func Traceparent(traceID, spanID string) string { return "00-" + traceID + "-" + spanID + "-01" }
+
+// Task is one task's root span as the factory recorded it.
+type Task struct {
+	TraceID, SpanID, TaskID, Tier, Phase, Reason string
+	Start, End                                  time.Time
+}
+
+// Sink exports finished task spans; the reconciler holds nil when tracing is off.
+type Sink interface {
+	Export(ctx context.Context, t Task) error
+}
+
+// Exporter turns a recorded Task into its span and exports it.
+type Exporter struct{ exp sdktrace.SpanExporter }
+
+func New(exp sdktrace.SpanExporter) *Exporter { return &Exporter{exp: exp} }
+
+// NewOTLP exports over OTLP/gRPC to endpoint (host:port), plaintext: the collector's platform
+// port is in-cluster, and aws-0's WireGuard encrypts pod traffic (observability plan O20).
+func NewOTLP(ctx context.Context, endpoint string) (*Exporter, error) {
+	exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(endpoint), otlptracegrpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	return New(exp), nil
+}
+
+func (e *Exporter) Export(ctx context.Context, t Task) error {
+	tid, err := trace.TraceIDFromHex(t.TraceID)
+	if err != nil {
+		return err
+	}
+	sid, err := trace.SpanIDFromHex(t.SpanID)
+	if err != nil {
+		return err
+	}
+	stub := tracetest.SpanStub{
+		Name:        "task",
+		SpanContext: trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, TraceFlags: trace.FlagsSampled}),
+		SpanKind:    trace.SpanKindInternal,
+		StartTime:   t.Start,
+		EndTime:     t.End,
+		Attributes: []attribute.KeyValue{attribute.String("agent.task_id", t.TaskID), attribute.String("agent.tier", t.Tier),
+			attribute.String("agent.task.phase", t.Phase), attribute.String("agent.task.reason", t.Reason)},
+		Resource:             resource.NewSchemaless(attribute.String("service.name", "agent-factory")),
+		InstrumentationScope: instrumentation.Scope{Name: "agent-factory"},
+	}
+	return e.exp.ExportSpans(ctx, tracetest.SpanStubs{stub}.Snapshots())
+}
+
+func (e *Exporter) Shutdown(ctx context.Context) error { return e.exp.Shutdown(ctx) }
+```
+
+In `api/v1alpha1/task_types.go`, `TaskStatus` gains, after `LastActivity`:
+
+```go
+	// The task's root span (R46): minted at acceptance, exported once when the task ends.
+	// +optional
+	Trace *TraceRef `json:"trace,omitempty"`
+```
+
+and the file gains:
+
+```go
+// TraceRef names the task's root span; the factory exports it from these ids at the end (R46).
+type TraceRef struct {
+	// +kubebuilder:validation:Pattern=`^[0-9a-f]{32}$`
+	TraceID string `json:"traceID"`
+	// +kubebuilder:validation:Pattern=`^[0-9a-f]{16}$`
+	SpanID string `json:"spanID"`
+	// +optional
+	Exported bool `json:"exported,omitempty"`
+}
+```
+
+In `config.go`:
+- `Config` gains `Tracing Tracing \`json:"tracing"\`` after `Meter`;
+- the file gains `type Tracing struct { OTLPEndpoint string \`json:"otlpEndpoint"\` }`, with the comment
+  `// Where task spans go (R46): the trace collector's platform port. Empty: tracing off.`;
+- `Validate` gains, beside its other checks,
+  `if c.Tracing.OTLPEndpoint != "" && !hostPortRE.MatchString(c.Tracing.OTLPEndpoint) { bad("tracing.otlpEndpoint %q is not host:port", c.Tracing.OTLPEndpoint) }`,
+  with `var hostPortRE = regexp.MustCompile(\`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?:[0-9]{1,5}$\`)`.
+
+In `reconciler.go`:
+
+1. `Reconciler` gains `Trace tracing.Sink // nil: tracing off (R46)` after `Log`.
+2. In `received`, after the `if reason != "" { … }` rejection and before `r.Triage.Triage`:
+
+   ```go
+   	if r.Trace != nil && t.Status.Trace == nil { // R46: the task's root span, minted once at acceptance
+   		tr, sp := tracing.Mint()
+   		t.Status.Trace = &v1alpha1.TraceRef{TraceID: tr, SpanID: sp}
+   	}
+   ```
+
+3. In `end`, inside `if v1alpha1.TerminalPhase(phase) { … }`, after the `TaskTokens` observation, add
+   `r.endTrace(ctx, t)`, and add:
+
+   ```go
+   // endTrace exports the task's root span once (R46), from the label's acceptance (the Task's
+   // creation) to now. Best effort: a lost span never holds a task.
+   func (r *Reconciler) endTrace(ctx context.Context, t *v1alpha1.Task) {
+   	tr := t.Status.Trace
+   	if r.Trace == nil || tr == nil || tr.Exported {
+   		return
+   	}
+   	err := r.Trace.Export(ctx, tracing.Task{TraceID: tr.TraceID, SpanID: tr.SpanID, TaskID: t.Name, Tier: t.Spec.Budget.Tier,
+   		Phase: t.Status.Phase, Reason: t.Status.Reason, Start: t.CreationTimestamp.Time, End: r.Now()})
+   	if err != nil {
+   		r.Log.Warn("task span not exported", "task", t.Name, "err", err)
+   		return
+   	}
+   	tr.Exported = true
+   }
+   ```
+
+In `implement.go`, `implementerSpec`'s literal gains `Traceparent: traceparent(t), Tier:
+t.Spec.Budget.Tier`, and the file gains:
+
+```go
+// traceparent is the task span's W3C header for its runs (R46); empty when tracing is off.
+func traceparent(t *v1alpha1.Task) string {
+	if t.Status.Trace == nil {
+		return ""
+	}
+	return tracing.Traceparent(t.Status.Trace.TraceID, t.Status.Trace.SpanID)
+}
+```
+
+- [ ] **Step 5: Run the tests and the gate**
+
+Run: `task crd:gen && go test -race ./api/... ./internal/factory/... && task check`
+Expected:
+- `ok` for every package, `TestLabelToNarratedRun` and the envtest included (a nil `Trace` changes
+  nothing);
+- the CRD gains `status.trace`;
+- `task check` exit 0.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add go.mod go.sum api config internal/factory/tracing internal/factory/config internal/factory/reconciler
+git commit -m "feat(factory): one root span per task, from its label to its end reason"
+```
+
 ### Task 1.11: The binary, the image, the signed chart; push FA-1
 
 **Files:**
@@ -5887,6 +6310,49 @@ to public (`https://github.com/users/Smana/packages/container/<name>/settings`).
 Run: `skopeo inspect --no-creds docker://ghcr.io/smana/agent-factory:<pre-release> | jq -r .Architecture && helm show chart oci://ghcr.io/smana/charts/agent-factory --version <chart pre-release> | grep -c '^name: agent-factory'`
 Expected: `amd64` and `1`, no `unauthorized`.
 
+### Task 1.11a: The binary exports task spans (further review, 2026-09-29; R46)
+
+**Files:**
+- Modify: `cmd/agent-factory/main.go` (before the `reconciler.Reconciler` literal, and its `Trace` field)
+
+**Interfaces:**
+- Consumes: `config.Tracing.OTLPEndpoint`, `tracing.NewOTLP` (Task 1.10b).
+- Produces: a factory that exports task spans when `tracing.otlpEndpoint` is set. FR-1 sets it (Task 1.12a).
+
+- [ ] **Step 1: Wire it**
+
+Before `rec := &reconciler.Reconciler{…}`:
+
+```go
+	var sink tracing.Sink // a nil interface when tracing is off, never a typed nil (R46)
+	if cfg.Tracing.OTLPEndpoint != "" {
+		exp, err := tracing.NewOTLP(context.Background(), cfg.Tracing.OTLPEndpoint)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = exp.Shutdown(context.Background()) }()
+		sink = exp
+	}
+```
+
+and `Trace: sink` in the literal, after `Log: log`.
+
+- [ ] **Step 2: Gate, push, record the pre-release**
+
+Run: `go build ./... && go test -race ./... && task check`
+Expected: `ok` everywhere; exit 0. With no `tracing` block, Task 1.11 Step 6's container still exits 1
+on the missing config, as before.
+
+```bash
+git add cmd/agent-factory/main.go
+git commit -m "feat(factory): export task spans when tracing is configured"
+git push
+gh pr checks --repo Smana/agent-platform --watch
+```
+
+Expected: CI green. Record the new image and chart pre-releases from the job summaries: Task 1.12a
+pins them.
+
 ### Task 1.12: FR-1 — ADR-0048, the chart source and the factory's manifests
 
 **Files:**
@@ -6362,6 +6828,57 @@ gh pr create --draft --title "feat(agent-factory): an issue label becomes a narr
   --body "SP3 phase 1. Stacks on feat/rooms-fork (SP2 S6). Draft until the programme's merge wave (owner rule)."
 ```
 
+### Task 1.12a: FR-1 — the factory sends its task spans to the collector (further review, 2026-09-29; R46)
+
+**Files:**
+- Modify: `tooling/base/agent-factory/helm-values-configmap.yaml` (`config.tracing`, the image and chart pins)
+- Modify: `tooling/base/agent-factory/network-policy.yaml` (`egress`)
+
+**Interfaces:**
+- Consumes: the collector's platform port, which admits `agent-system`/`agent-factory` on :4317
+  (observability plan Task 2.2a, O20; FR-1 contains O-1 through SP2's stack); Task 1.11a's
+  pre-releases.
+
+- [ ] **Step 1: The check that fails today**
+
+Run: `python3 -c "import yaml; v=yaml.safe_load(yaml.safe_load(open('tooling/base/agent-factory/helm-values-configmap.yaml'))['data']['values.yaml']); print(v['config'].get('tracing'))"`
+Expected: `None`.
+
+- [ ] **Step 2: Implement**
+
+In the values' `config`, after `meter`:
+
+```yaml
+      # Task spans (R46) to the trace collector's platform port (observability plan O20).
+      tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}
+```
+
+Pin Task 1.11a's image and chart pre-releases in place of Task 1.11's. In the CNP's `egress`, after the
+vmsingle rule:
+
+```yaml
+    - toEndpoints:  # task spans (R46): the trace collector's platform port, OTLP/gRPC
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports: [{port: "4317", protocol: TCP}]
+```
+
+- [ ] **Step 3: Re-run the check, then the gates**
+
+Run: the Step 1 command, then `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh && task check`
+Expected: `{'otlpEndpoint': 'agent-traces-collector.observability.svc.cluster.local:4317'}`;
+`Invalid: 0, Skipped: 0`; exit 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tooling/base/agent-factory
+git commit -m "feat(agent-factory): send task spans to the trace collector"
+git push
+```
+
 ### Task 1.13: [LIVE] Slice 1 on aws-0: SC-1's first half, SC-6's run leg, the stop object
 
 **Files:** none new (the live-check routine).
@@ -6462,6 +6979,32 @@ Close the test issues and PRs unmerged, delete their `agent/*` branches
 (`gh api --method DELETE repos/Smana/cloud-native-ref/git/refs/heads/agent/<id>`), and confirm
 `kubectl get configmap -n agent-system agent-factory-stop` → `NotFound`. Record the evidence (times,
 comment URLs, counter values) in the FR-1 PR body. FR-1 stays a draft.
+
+### Task 1.13a: [LIVE] A task's trace, rooted at its label (further review, 2026-09-29; R46, R47)
+
+**Files:** none new. Run it on Task 1.13's first task once its PR was closed and the task ended.
+`$TASK` and `$RUN` are its task id and first run id.
+
+- [ ] **Step 1: The claim carries the trace and the tier**
+
+Run: `kubectl get task -n agent-system $TASK -o jsonpath='{.status.trace.traceID} {.status.trace.spanID} {.status.trace.exported}{"\n"}'; kubectl get agentrun -n agents xplane-run-$RUN -o jsonpath='{.metadata.annotations.agents\.ogenki\.io/traceparent} {.metadata.labels.agents\.ogenki\.io/tier}{"\n"}'`
+Expected: `<trace> <span> true`, then `00-<trace>-<span>-01 standard`. Run this while the run exists:
+Kyverno's GC deletes it a day after it ends.
+
+- [ ] **Step 2: VictoriaTraces holds one trace, rooted at the task span**
+
+```bash
+CA=opentofu/aws/openbao/management/.tls/ca.pem; VT=https://vt.priv.aws.ogenki.io; now=$(date +%s)
+q() { curl -s --cacert $CA "$VT/select/jaeger/api/traces?service=$1&tags=$(jq -rn --arg k "$2" --arg v "$3" '{($k):$v}|tojson|@uri')&limit=50&start=$(( (now-86400)*1000000 ))&end=$(( now*1000000 ))"; }
+q agent-factory agent.task_id $TASK | jq -r '.data[].spans[] | [.operationName, .traceID, .spanID, ((.references // []) | length)] | @tsv'
+q agent-harness agent.run_id $RUN | jq -r '.data[].spans[] | select(.operationName == "agent-run") | [.traceID, .references[0].spanID] | @tsv'
+```
+
+Expected:
+- `task <trace> <span> 0`: the root, with no parent;
+- `<trace> <span>`: the run's `agent-run` span is the task span's child.
+
+Record both in the FR-1 PR body.
 
 ---
 
@@ -8713,6 +9256,74 @@ In `cmd/agent-factory/main.go`, replace `triage.Static{Cfg: cfg}` with
 ```bash
 git add internal/factory cmd/agent-factory
 git commit -m "feat(factory): trio, reviewer tier, Kueue queue, WIP and task caps"
+```
+
+### Task 4.2a: A reviewer's run carries the tier it runs on (further review, 2026-09-29; R47)
+
+**Files:**
+- Modify: `internal/factory/reconciler/team.go` (`verifierSpec`)
+- Test: `internal/factory/reconciler/tier_test.go`
+
+**Interfaces:**
+- Consumes: `runs.Spec.Tier` (Task 1.5a), set by `implementerSpec` from the task's tier (Task 1.10b).
+- Produces: a reviewer's claim labelled `agents.ogenki.io/tier` with the other tier, the one whose
+  model it runs. A tester keeps the task's tier. The observability plan's `agentrun_info{tier}`
+  reads the label.
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+package reconciler
+
+import (
+	"testing"
+
+	"github.com/Smana/agent-platform/api/v1alpha1"
+	"github.com/Smana/agent-platform/internal/factory/config"
+)
+
+// R47: the tier on the claim is the tier the run runs on, fixed for the run.
+func TestAReviewerCarriesTheTierItRunsOn(t *testing.T) {
+	g := newRig(t)
+	g.r.Cfg.Tiers["frontier"] = config.Tier{Model: "agent-default", RunTokens: 4_000_000, TaskTokens: 8_000_000, RunMinutes: 90}
+	tk := issueTask("3buqdlot", 7, "fix")
+	tk.Spec.Budget = v1alpha1.Budget{Tier: "standard", Model: "agent-default", RunTokens: 1_500_000, RunMinutes: 45}
+	tk.Status.PullRequest = &v1alpha1.PullRequestRef{Number: 12, URL: "https://github.com/Smana/cloud-native-ref/pull/12"}
+	if s := g.r.verifierSpec(tk, "reviewer"); s.Tier != "frontier" {
+		t.Fatalf("reviewer tier %q, want frontier", s.Tier)
+	}
+	if s := g.r.verifierSpec(tk, "tester"); s.Tier != "standard" {
+		t.Fatalf("tester tier %q, want standard", s.Tier)
+	}
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `go test ./internal/factory/reconciler/ -run TestAReviewerCarriesTheTierItRunsOn`
+Expected: FAIL, `reviewer tier "standard", want frontier`.
+
+- [ ] **Step 3: Implement**
+
+In `verifierSpec`, the reviewer branch sets both:
+
+```go
+	if role == "reviewer" { // "on a different tier from the implementer where possible" (§3); R47
+		s.Tier = otherTier(t.Spec.Budget.Tier)
+		s.Model = r.Cfg.Tiers[s.Tier].Model
+	}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `go test -race ./internal/factory/... && task check`
+Expected: `ok`; exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add internal/factory/reconciler
+git commit -m "feat(factory): a reviewer's run carries the tier it runs on"
 ```
 
 ### Task 4.3: Push FA-4
@@ -14597,8 +15208,8 @@ global stop like the stop object. The factory counts how dark it really is (stee
 approve, request changes, stop, retry), scores every classifier's tier against the task's outcome
 (SC-10), and ends each task with one `task.final` log line that links the audit chain (SC-7). The
 dashboard and the rest of the VMRules ship inside the umbrella. The kill-switch drill proves all
-five layers (SC-5), human-started runs included (R35). The App key-compromise runbook (SD14) and
-CC-F1's `AgentRun` printer columns (SD13) ride along.
+five layers (SC-5), human-started runs included (R35). The App key-compromise runbook (SD14) rides
+along.
 
 Gate: SC-5, SC-7, SC-8 on aws-0; SC-1's p50 and SC-10 over 20 tasks; `/verify-spec`.
 
@@ -15602,43 +16213,7 @@ The procedure, for any row:
 - [ ] **Step 2: Gates; commit.** `./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
   exit 0; commit `docs(runbooks): the App key-compromise procedure (SD14)` on FR-8.
 
-### Task 8.7: CC-F1 — `AgentRun` printer columns (SD13)
-
-Accepted by the owner, 2026-09-27, as a small follow-up to SP1's CC-2 (the `AgentRun` XRD). SP3
-already writes the `agents.ogenki.io/principal` label (Task 1.5); this only shows it.
-
-**Worktree.** `Smana/crossplane-configuration`, branch `feat/agentrun-printer-columns` from
-`origin/chore/room-bridge-v0.5.0` (SP2 CC-S5, the CC stack tip; PR base that branch, merge-only).
-
-**Files:**
-- Modify: `apis/agentrun/definition.yaml`
-
-- [ ] **Step 1: Add the columns** after `Branch` in `additionalPrinterColumns`:
-
-```yaml
-        - name: Principal
-          type: string
-          jsonPath: .metadata.labels.agents\.ogenki\.io/principal
-        - name: PR
-          type: string
-          jsonPath: .status.pullRequest
-        - name: Tokens
-          type: integer
-          jsonPath: .status.usage.tokens
-        - name: Reason
-          type: string
-          jsonPath: .status.reason
-```
-
-- [ ] **Step 2: Gate; PR.** `task check` exit 0 (regenerate `build/xrd-crds.yaml` if the task
-  asks); open the draft PR "feat(agentrun): principal, PR, tokens and reason columns (SD13)" and
-  record its package pre-release.
-- [ ] **Step 3: [LIVE]** Pin that pre-release on `integration/agent-factory` only (the next deploy):
-  `kubectl get agentrun -n agents` shows `PRINCIPAL` (`system.factory` or `human.<sub>`), `PR`,
-  `TOKENS` and `REASON` for a factory run.
-- **Merge order.** CC-F1 merges inside SP2's Task 7.4 Step 2, right after CC-S5 and before the
-  release tag, so the wave's release carries it (Task 10.4 Step 0). SP2's step lists CC-1…CC-S5
-  only, so this is a cross-plan dependency to raise before SP2's phase 7.
+### Task 8.7: moved to the observability plan (CC-O1 ships the `AgentRun` printer columns, ruling O8)
 
 ---
 
@@ -16802,11 +17377,6 @@ gh pr create --draft --base feat/factory-runlore --title "docs(agent-factory): t
 Runs after SP2's Task 7.2 (AP-0…AP-6 merged, `v0.6.0` tagged). "Automatically delete head
 branches" stays off (SP2 Task 7.1 Step 2) until Task 10.6 ends; SP2's Task 7.6 Step 2 waits for it.
 
-- [ ] **Step 0: CC-F1 rides SP2's crossplane-configuration release.** In SP2's Task 7.4 Step 2, right
-  after CC-S5 merges and before Step 3's tag: retarget CC-F1 (Task 8.7) to `main`, merge `origin/main`
-  into it, wait for `task check` green; [OWNER] merges. The release then carries the printer columns
-  (SD13).
-
 - [ ] **Step 1: Merge in order** FA-1, FA-2, …, FA-8, squash. Before each: retarget its base to `main`
   (`gh api -X PATCH repos/Smana/agent-platform/pulls/<n> -f base=main`), merge `origin/main` into its
   branch (never rebase), push, wait for CI green. [OWNER] merges.
@@ -16885,8 +17455,7 @@ Expected: `Ready True` twice; `True 0.7.0` (the release signature verified).
   `verify-spec` skill: it updates `docs/superpowers/specs/2026-09-23-agent-dark-factory-verification.md`
   with the release-pin evidence. Commit it on FR-10, then merge FR-10 as in Task 10.5 Step 4.
 - [ ] **Step 3: Delete SP3's branches**, once nothing tracks them: agent-platform `feat/factory-*`;
-  this repo `feat/factory-*`, `feat/merge-gate`, `docs/agent-factory-journey`; crossplane-configuration
-  `feat/agentrun-printer-columns`. Then SP2's Task 7.6
+  this repo `feat/factory-*`, `feat/merge-gate`, `docs/agent-factory-journey`. Then SP2's Task 7.6
   Step 2 runs ([OWNER] turns "Automatically delete head branches" back on). Retiring
   `integration/agent-factory` is the programme's step, once SP4's wave has landed too.
 
@@ -16995,7 +17564,7 @@ This plan does not edit the spec; "Built" says whether the plan already works th
 | SD10 | **The merge gate runs in shadow until the wave**: before it nothing auto-merges, seeded or not; the factory narrates "would auto-merge". SC-2's and SC-14's live halves, the revert and SC-11's count start after the wave (owner, 2026-09-27) | R32 | §5.1, §9 lines 472, 481; implementation outline | Yes (Task 10.7) |
 | SD11 | **`PolicyBotUnavailable`** keeps its no-ready-pod half; the webhook-5xx half has no metric on the Cilium Gateway route, so webhook failures are read from the App's delivery log | T9 | §7 | No-pod half only |
 | SD12 | **A second approver**: the policy names the owner three times (`users: [Smana]`). A user-owned repo has no teams, so name one YAML anchor `maintainers` listing users, used by the human rule, the approval requirement and the labeller check | Developer M7 | §5 lines 275, 305 | **Declined** (owner, 2026-09-27: a single-owner repository) |
-| SD13 | **`AgentRun` printer columns** PRINCIPAL, PR, TOKENS, REASON and a principal label | Developer L1, vision L1, operator "who did what" | SP1 §2 (crossplane-configuration) | Yes: accepted (owner, 2026-09-27) as CC-F1, a small follow-up to SP1's CC-2 (Task 8.7); the label from Task 1.5 |
+| SD13 | **`AgentRun` printer columns** PRINCIPAL, PR, TOKENS, REASON and a principal label | Developer L1, vision L1, operator "who did what" | SP1 §2 (crossplane-configuration) | Yes: accepted (owner, 2026-09-27); moved to the observability plan (CC-O1); the label from Task 1.5 |
 | SD14 | **App key compromise, all four Apps** (agents, factory, merger, merge gate): §6.1 gains "suspend the App installation, rotate its key in OpenBao" as a layer with its own procedure | Operator "compromised token" (High) | §6.1, §8 | Yes: accepted (owner, 2026-09-27) as runbook 09 (Task 8.6); the drill suspends the agents' App only (8.4) |
 | SD15 | **GitHub reviews only**: §3's "A **human's** `review_verdict` in the room supersedes the agent reviewer's" becomes "Humans steer through GitHub reviews: *Request changes* starts a revision (Δ5), *Approve* is the merge gate's. The factory reads only its own reviewer's verdict." No SP2 amendment | R36 (owner, 2026-09-27) | §3 line 166 | Yes |
 | SD16 | **`investigate` is the triager alone**: `roles: [triager]`; it ends `Done` (`proposal_ready`) on a proposed public issue text, which a maintainer publishes as a new issue and labels `factory/ready`. An internal-origin task never feeds a public implementer | R38 (owner default, 2026-09-27) | §2 line 144, §3 line 157 | Yes |
@@ -17046,7 +17615,7 @@ One line per finding of the independent review (`sp3-plan-review.md`). The owner
 | I4: GitHub reviews only | R36 | `rooms.LastVerdict` reads the run's own verdict; `HumanVerdictsAfter`, the room revision in `awaitingHuman` and the room interventions removed (Tasks 3.1, 3.2); SD15 |
 | I10, data class (default) | R37 | `403 admin_only` (Task 5.2, tests) |
 | M12 (default) | R38 | `investigate: {roles: [triager]}` (phase 1 config), `proposal_ready` and `narrate.ProposalReady` (Task 9.2), Task 9.4 Step 3, SD16 |
-| Spec deltas | — | SD12 declined; SD13 accepted as CC-F1 (Task 8.7, a CC-2 follow-up); SD14 accepted as runbook 09 over four Apps (Task 8.6); SD15–SD19 new |
+| Spec deltas | — | SD12 declined; SD13 moved to the observability plan (CC-O1); SD14 accepted as runbook 09 over four Apps (Task 8.6); SD15–SD19 new |
 
 ## External review findings applied (2026-09-27)
 
@@ -17064,3 +17633,14 @@ share is SP2's Phase 0.5 (H-1) and its Task 1.15a.
 | G8 | R40 | Residual: the gateway budgets fail open while Valkey is down; the run meter and the deadline still bound a run |
 | M2, M3 (SP2 P39) | Global Constraints | FR-9's `internal` runs come after H-1: no internal model route before its live gate |
 | M9 (SP2) | Global Constraints | This plan's alerts carry `runbook_url` and `dashboard`, held by H-1's suite |
+
+## Further review (2026-09-29)
+
+The owner accepted three additions from a further external review. The composition, harness,
+collector and dashboard share is in the observability plan's own "Further review (2026-09-29)" table.
+
+| # | Addition | Where | What |
+|---|---|---|---|
+| F1 | A trigger-rooted trace per task | R46; Tasks 1.5a, 1.10b, 1.11a, 1.12a, 1.13a | Accepting a `factory/ready` task mints its root span into `status.trace`, and every run gets its `traceparent` as `agents.ogenki.io/traceparent`. When the task ends, the span is exported once to the collector's :4317, carrying ids, tier and end reason |
+| F2 | The step log carries `trace_id` | observability plan O22 | Nothing here: the harness prints it. Correlation only: the factory attributes and meters nothing by trace id |
+| F3 | Routing tier vs spend | R47; Tasks 1.5a, 1.10b, 4.2a | Every factory run is labelled `agents.ogenki.io/tier`, the tier it runs on, fixed for the run. Agents are never re-routed per request within a run |

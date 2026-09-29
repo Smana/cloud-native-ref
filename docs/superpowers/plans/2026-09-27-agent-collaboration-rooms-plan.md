@@ -293,13 +293,13 @@ merge-only, never rebased.
 | CC-H1 | crossplane-configuration · `ci/prerelease-xrd-crds` | `feat/agentrun-harness` (SP1 CC-2, head `c304bbf`) | 0.5 | CC-2 (#29) open | The pre-release job also publishes `xrd-crds.yaml` as `oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<version>` (B2, P40) | via H-1: its `Kubernetes validation ☸` green |
 | H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | The next aws-0 rebuild: runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
 | AP-1 | agent-platform · `feat/room-log` | `chore/bootstrap` | 1 | AP-0 | Envelope, redaction, store + migrations, Room CRD, authn, run watch, Room controller, :8443, bridge | via S1 |
-| CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `ci/prerelease-xrd-crds` (CC-H1, on SP1's CC-2) | 1 | CC-1 (#27), CC-2 (#29) and CC-H1, open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
+| CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `feat/agentrun-observability` (the observability plan's CC-O1, on CC-H1; O12) | 1 | CC-1 (#27), CC-2 (#29), CC-H1 and CC-O1, open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
 | CC-S2 | crossplane-configuration · `feat/agentrun-room-bridge` | `feat/sqlinstance-generated-credentials` | 1 | CC-S1; AP-1's bridge pre-release | `room-bridge` native sidecar, room token, bridge health ingress | via S1 |
-| S1 | this · `feat/rooms-log` | `fix/agent-review-hardening` (H-1, on SP1 PR 6 #2111) | 1 | H-1 and #2111 open; AP-1 and CC-S2 pre-releases | The `agents` and `merge-gate` OpenBao mounts (M1, P38), ADR-0044, CRD + catalog, `xplane-rooms`, CNPG CNP, broker App + RBAC + CNP, retention, VMRule, `agent:run --room`, ESO generator RBAC | M1's migration; SC-1, SC-8, SC-10; the transcript and end reason outlive the pod; P17 |
+| S1 | this · `feat/rooms-log` | `feat/agent-observability` (the observability plan's O-1, on H-1; O12) | 1 | O-1, H-1 and #2111 open; AP-1 and CC-S2 pre-releases | The `agents` and `merge-gate` OpenBao mounts (M1, P38), ADR-0044, CRD + catalog, `xplane-rooms`, CNPG CNP, broker App + RBAC + CNP, retention, VMRule, `agent:run --room`, ESO generator RBAC | M1's migration; SC-1, SC-8, SC-10; the transcript and end reason outlive the pod; P17 |
 | AP-2 | agent-platform · `feat/room-viewers` | `feat/room-log` | 2 | AP-1 | Policy matrix, human auth, fan-out hub, WebSocket replay, read-only UI | via S2 |
 | S2 | this · `feat/rooms-viewers` | `feat/rooms-log` | 2 | S1; AP-2 pre-release | ADR-0049, ZITADEL roles + `rooms-proxy`, oauth2-proxy, route, `KVStore`, 2 replicas, recovery seed | SC-2, SC-9, SC-11, SC-12; P17 across two replicas |
 | AP-3 | agent-platform · `feat/room-tools` | `feat/room-viewers` | 3 | AP-2 | MCP server :8090 with `room_*`; GitHub App client; verdict poster (Δ1) | via S3 |
-| H-S3 | this · `feat/agent-harness-pr-footer` | `fix/agent-review-hardening` (H-1, P37), **beside** the S stack | 3 | H-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
+| H-S3 | this · `feat/agent-harness-pr-footer` | `feat/agent-observability` (O-1, which stacks on H-1; P37, observability plan O13), **beside** the S stack | 3 | H-1 and O-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
 | CC-S3 | crossplane-configuration · `feat/agentrun-room-rules` | `feat/agentrun-room-bridge` | 3 | CC-S2; H-S3's pre-release | Room rules in `rules.md`; `ROOM_ID` and `TASK_URL` for the harness; the H-S3 harness pin | via S3 |
 | S3 | this · `feat/rooms-tools` | `feat/rooms-viewers` | 3 | S2; AP-3 and CC-S3 pre-releases; [OWNER] factory App (Task 3.9) | `room-broker` MCP backend on both MCPRoutes, MCP key, CNP; factory App key, `api.github.com` egress, `RoomVerdictsNotReachingGitHub` | SC-4 (owner-sequenced), tool lists per role, SC-14, SC-15 |
 | AP-4 | agent-platform · `feat/room-driver` | `feat/room-tools` | 4 | AP-3 | Driver token, queue, steering, interrupt, brief, hand to role, new room | via S4 |
@@ -7236,8 +7236,8 @@ append-only role cannot be declared. The default (`store`) keeps every existing 
 byte-identical.
 
 **Files** (in `Smana/crossplane-configuration`, branch `feat/sqlinstance-generated-credentials`,
-from `origin/ci/prerelease-xrd-crds` (CC-H1, Task 0.5.2), which stacks on SP1's CC-2 at head
-`c304bbf`: one stack per repo, merge-only, ruling P33):
+from `origin/feat/agentrun-observability` (the observability plan's CC-O1, O12), which stacks on
+CC-H1 (Task 0.5.2) and SP1's CC-2: one stack per repo, merge-only, ruling P33):
 - Modify: `apis/sqlinstance/definition.yaml` (`spec.credentials`)
 - Modify: `apis/sqlinstance/kcl/main.k`, `apis/sqlinstance/kcl/main_test.k`,
   `apis/sqlinstance/kcl/README.md`
@@ -7559,7 +7559,7 @@ names, and the note that `generated` needs `generators.external-secrets.io` RBAC
 git add apis/sqlinstance examples/sqlinstance-generated.yaml tests/golden/sqlinstance-generated.yaml taskfile.yaml
 git commit -m "feat(sqlinstance): generated credentials and roles that own no database"
 git push -u origin feat/sqlinstance-generated-credentials
-gh pr create --repo Smana/crossplane-configuration --base ci/prerelease-xrd-crds --title "feat(sqlinstance): generated credentials and roles that own no database" \
+gh pr create --repo Smana/crossplane-configuration --base feat/agentrun-observability --title "feat(sqlinstance): generated credentials and roles that own no database" \
   --body "SP2 ruling P7 (cloud-native-ref docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md). Default store mode is byte-identical."
 gh pr checks --repo Smana/crossplane-configuration --watch
 ```
@@ -7730,10 +7730,10 @@ the release, merges the stack and tags the release that publishes `xrd-crds.yaml
 
 - [ ] **Step 1: Worktree**
 
-`EnterWorktree` with branch `feat/rooms-log`, stacked on H-1 `fix/agent-review-hardening` (Phase
-0.5, itself on SP1's `feat/agent-e2e`, #2111; both open until Phase 7, ruling P37): merge
-`origin/fix/agent-review-hardening` in, then `origin/main` (the pre-push hook requires it). PR base
-`fix/agent-review-hardening`, merge-only (ruling P33).
+`EnterWorktree` with branch `feat/rooms-log`, stacked on the observability plan's O-1
+`feat/agent-observability` (O12), itself on H-1 (Phase 0.5) and SP1's `feat/agent-e2e`, #2111; all
+open until Phase 7, rulings P37 and P33: merge `origin/feat/agent-observability` in, then
+`origin/main` (the pre-push hook requires it). PR base `feat/agent-observability`, merge-only.
 
 - [ ] **Step 2: Write the ADR**
 
@@ -9064,7 +9064,7 @@ Run: `(cd <crossplane-configuration checkout of feat/agentrun-room-bridge> && ta
 Expected: all exit 0; `validate-manifests.sh` prints `Invalid: 0, Skipped: 0`, and its resource
 count grows by the new objects (App, SQLInstance, CNPs, CronJob, VMServiceScrape, CRD, RBAC).
 
-- [ ] **Step 4: Open S1 as a draft with `create-pr`**, base `fix/agent-review-hardening`
+- [ ] **Step 4: Open S1 as a draft with `create-pr`**, base `feat/agent-observability` (O-1, O12)
 
 Title: `feat(rooms): the room log, SP2 phase 1`. The body links the design and this plan, lists the
 rulings this PR carries (P3, P7, P8, P10, P11, P15, P16, P17, P33, P38), and keeps a "Live evidence"
@@ -14031,7 +14031,7 @@ It stays open until Phase 7):
     `pr_footer.main(argv, env) -> int`.
   - `ghcr.io/smana/agent-harness:v0.2.0-pr<N>.<sha8>`, pushed by hand (Step 5). `v0.2.0` itself is
     published when H-S3 merges in Phase 7.
-  - The image also carries H-1's M4 redaction (Task 0.5.6): H-S3 stacks on H-1 (ruling P37).
+  - The image also carries H-1's M4 redaction (Task 0.5.6): H-S3 stacks on O-1, which carries H-1 and the harness `v0.1.2` root-span fix (P37, observability plan O13).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -18722,11 +18722,11 @@ Gate: SC-13 on `main`, and `integration/agent-factory` reconciling on release ta
 ```mermaid
 flowchart LR
   UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: AP-0…AP-6, one release"]
-  UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1"]
+  UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1; then O-1"]
   H1 --> H["7.3 H-S3 after H-1: harness v0.2.0"]
-  AP --> CC["7.4 crossplane-configuration: CC-1, CC-2, CC-H1, CC-S1…CC-S5, one release"]
+  AP --> CC["7.4 crossplane-configuration: CC-1, CC-2, CC-H1, CC-O1, CC-S1…CC-S5, one release"]
   H --> CC
-  CC --> S["7.5 this repo: S1…S6 after H-1"]
+  CC --> S["7.5 this repo: S1…S6 after H-1 and O-1"]
   S --> DEL["7.6 integration on tags, then delete branches"]
 ```
 
@@ -18762,6 +18762,10 @@ Expected: `crd-rooms.yaml`, the four `roomctl-<os>-<arch>` binaries and `roomctl
   first release the composition uses, and it carries M4 (P37).
 - [ ] **Step 2:** The management stack's restriction (P38) holds until S1 merges in Task 7.5: H-1
   carries no mount.
+- [ ] **Step 3:** Once H-1 has merged, the observability plan's O-1 (`feat/agent-observability`, O12)
+  the same way: retarget it to `main` with `gh api -X PATCH`, merge `origin/main` in (`main`'s
+  crossplane-configuration pin wins over CC-O1's pre-release; traces flow once Task 7.5 pins the
+  release that carries CC-O1), wait for CI green; [OWNER] merges it. S1 stacks on it.
 
 ### Task 7.3: the harness: H-S3 after H-1
 
@@ -18782,10 +18786,10 @@ Expected: a digest, which Task 7.4 pins.
   - `examples/sqlinstance-generated.yaml`'s `atlasSchema.ref` to `v0.6.0`.
 
   Re-capture the goldens and run `task check` (exit 0).
-- [ ] **Step 2:** Merge in order CC-1 and CC-2 (SP1's, unless its wave already did), then CC-H1, CC-S1,
-  CC-S2, CC-S3, CC-S4 and CC-S5, then SP3's CC-F1 (the `AgentRun` printer columns, SP3 Task 8.7),
-  which stacks on CC-S5 and must be in the same release. After each merge, retarget the next PR to
-  `main`, merge `origin/main` into it and wait for CI green. [OWNER] merges each one.
+- [ ] **Step 2:** Merge in order CC-1 and CC-2 (SP1's, unless its wave already did), then CC-H1, the
+  observability plan's CC-O1 (trace egress, harness OTEL env and the `AgentRun` printer columns it took
+  over from SP3's Task 8.7; O12), CC-S1, CC-S2, CC-S3, CC-S4 and CC-S5. After each merge, retarget the
+  next PR to `main`, merge `origin/main` into it and wait for CI green. [OWNER] merges each one.
 - [ ] **Step 3:** [OWNER] tags the next minor release (for example `v0.8.0`), which publishes the
   packages and `xrd-crds.yaml`.
 
@@ -18811,7 +18815,7 @@ Run: `./scripts/ci/validate-manifests.sh && ./scripts/ci/validate-vmrules.sh && 
 Expected: all exit 0; `Invalid: 0, Skipped: 0` (SC-13 on release pins). The `Kubernetes validation`
 check is green on every S PR from here on.
 
-- [ ] **Step 3: Merge** S1 (after H-1, Task 7.2a), then S2, S3, S4, S5 and S6, in order. Retarget each
+- [ ] **Step 3: Merge** S1 (after H-1 and O-1, Task 7.2a), then S2, S3, S4, S5 and S6, in order. Retarget each
   one to `main` with `gh api -X PATCH`, merge `origin/main` in, and wait for CI green. H-S3 already
   merged in Task 7.3. [OWNER] merges each one (a ruleset bypass).
 
@@ -18826,9 +18830,11 @@ Expected: `Ready True` throughout; the Atlas GitRepository tracks the tag `v0.6.
 
 - [ ] **Step 2:** Delete the branches, once nothing tracks them:
   - agent-platform: `chore/bootstrap` and `feat/room-*`;
-  - crossplane-configuration: `ci/prerelease-xrd-crds`, `feat/sqlinstance-generated-credentials`, `feat/agentrun-room-bridge`,
-    `feat/agentrun-room-rules`, `chore/room-bridge-v0.4.0` and `chore/room-bridge-v0.5.0`;
-  - this repo: `fix/agent-review-hardening`, `feat/rooms-*` and `feat/agent-harness-pr-footer`.
+  - crossplane-configuration: `ci/prerelease-xrd-crds`, `feat/agentrun-observability`,
+    `feat/sqlinstance-generated-credentials`, `feat/agentrun-room-bridge`, `feat/agentrun-room-rules`,
+    `chore/room-bridge-v0.4.0` and `chore/room-bridge-v0.5.0`;
+  - this repo: `fix/agent-review-hardening`, `feat/agent-observability`, `feat/rooms-*` and
+    `feat/agent-harness-pr-footer`.
 
   [OWNER] then turns "Automatically delete head branches" back on in all three repos. Retiring
   `integration/agent-factory` itself is the programme's step, not SP2's.
@@ -18972,3 +18978,4 @@ SP3's share (G2, G3, G5, G6, G8, and M1 for its keys) is in the SP3 plan.
 | N3 | Task 0.5.10 | The probe's CNP allows DNS over TCP |
 | N8 | Task 0.5.11 | Crossplane's verbs on sandboxes enumerated |
 | — | PR map; Tasks 1.13, 1.15, 3.6, 7.2a–7.6 | The new stack order: CC-2 ← CC-H1 ← CC-S1, and #2111 ← H-1 ← S1 and H-S3 |
+| — | PR map; Tasks 1.13, 1.15, 7.2a, 7.4, 7.5 | Stacking updated for the observability plan (O12): CC-H1 ← CC-O1 ← CC-S1, and H-1 ← O-1 ← S1; H-S3 stays on H-1 |
