@@ -26,7 +26,7 @@ the sandbox dies at the **run's deadline**, `max(600, maxMinutes × 60)` s (C3, 
 | S6 | A dedicated **`agent-router` Gateway** in `agent-system` (`agent-platform` umbrella, on the `ai-gateway` umbrella's controllers, C1). It has **one listener per data class**, `public` (:8080) and `internal` (:8081). Each listener's `SecurityPolicy` accepts exactly its class's four audiences | A listener on the human `ai-gateway`; one listener with per-route `SecurityPolicy`s | No semantic router, so pinning is structural (C5). The same logical name maps to different backends per class. Two routes on one listener would both match `x-ai-eg-model`, and a route-level policy runs only after the route is chosen. A listener per class makes "`internal` never reaches Z.ai" structural |
 | S7 | The harness is **OpenHands agent-server** (MIT) in a repo-built image, selected by a platform **profile**. The claim never carries an image | Headless Claude Code (not OSS); kagent v1 (alpha); OpenHands `AgentSandboxWorkspace` (built on warm pools) | OSS, non-root, OpenAI-compatible, and it satisfies SP2's four-operation bridge interface. An image field would make every claim a supply-chain input |
 | S8 | **Self-hosted octo-sts**, with the App key as a PEM | PATs; ESO GitHub generator; OpenBao GitHub plugin; a git proxy (programme non-goal) | Trust policies live in the repository's default branch. Installations are resolved by account login, so the user-owned `Smana` account works ([ghinstall.go](https://github.com/octo-sts/app/blob/main/pkg/ghinstall/ghinstall.go)) |
-| S9 | A **namespaced `SecretStore` in `agent-system`**, backed by its own OpenBao JWT role that reads only `platform/agents/*` | The `openbao-platform` ClusterSecretStore | That store has no namespace `conditions`, so any namespace could use it (T14). `agents` must never be able to reach `platform/` |
+| S9 | A **namespaced `SecretStore` in `agent-system`**, backed by its own OpenBao JWT role that reads only the dedicated `agents` mount (`agents/*`, SP2 plan P38) | The `openbao-platform` ClusterSecretStore | That store has no namespace `conditions`, so any namespace could use it (T14). `agents` must never be able to reach `platform/` |
 | S10 | Egress is default-deny: `toFQDNs` **profiles**, plus a DNS L7 rule that **answers only allowlisted names** | `world:443`; the agent-sandbox managed NetworkPolicy | A run can last hours, so it is not the one-shot case `security/AGENTS.md` trap 4 allows. The managed policy opens the whole Internet |
 | S11 | The composition lives in the **core** package and is cloud-neutral | A per-cloud pair | Every rendered name is the same on both clouds |
 | S12 | GC is a daily Kyverno **`DeletingPolicy`** on terminal phases, a backstop behind SP3 deleting runs after harvest | TTL labels (their family is deprecated in 1.19); a CronJob | The current API of a tool already installed |
@@ -82,7 +82,7 @@ flowchart LR
     GW[agent-router Gateway<br/>listeners public · internal · sts<br/>JWT · MCPRoute · key injection]
     STS[octo-sts]
     MCP[flux / VM / VL MCP · read-only]
-    SS[SecretStore → platform/agents/*]
+    SS[SecretStore → agents/*]
     BR[room broker · SP2]
     F[factory · SP3]
   end
@@ -381,7 +381,7 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 |---|---|
 | `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name and namespace** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
-| `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `platform/agents/zai`, the agents' own key (SP4 S12) |
+| `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `agents/zai`, the agents' own key (SP4 S12) |
 | `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
 | `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new policy in `opentofu/aws/openbao/management` grants read on `platform/data/agents/*` only; its JWT role sits with the per-cluster mount in `opentofu/aws/eks/configure/openbao.tf`. A namespaced store reads its CA from its own namespace, so the public OpenBao chain (certificates only) is copied into `agent-system` from the cloud store |
 
@@ -487,7 +487,7 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
 | T12 | MCP data exposure | Read-only, no `secrets`, per-role tools | Logs and ConfigMaps may hold secrets. Cluster-wide `get pods` also exposes pod specs (env `value`, args) and, under `FallbackToLogsOnError`, `status...terminated.message` (log tail) — reachable by every `internal` run, not only reviewer/tester/triager (review M3) |
 | T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | A modified script runs with its job's own scope: `contents: read` everywhere, plus `security-events: write` (`ci.yaml`'s SARIF upload) or `pull-requests: write` (`render-diff`, same-repo PRs only) on some jobs — never repository content, secrets or deploy credentials |
-| T14 | **Pre-existing:** the `openbao-platform` ClusterSecretStore has no namespace `conditions`, so any namespace can read any `platform/` path | SP1 never uses it (S9). `agents-no-secret-import` blocks ESO objects in `agents` | Any *other* namespace with ExternalSecret rights can read `platform/agents/*`. Fixing the cluster store is out of scope (O1) |
+| T14 | **Pre-existing:** the `openbao-platform` ClusterSecretStore has no namespace `conditions`, so any namespace can read any `platform/` path | SP1 never uses it (S9). `agents-no-secret-import` blocks ESO objects in `agents` | Any *other* namespace with ExternalSecret rights can read `platform/agents/*`. Fixing the cluster store is out of scope (O1) | **Addressed by SP2 plan P38 (2026-09-27):** agent credentials move to a dedicated `agents` mount that the `external-secrets` policy does not cover.
 | T15 | `internal` data reaching a SaaS model | `dataClass` is required at creation. The audience binds the class. Z.ai routes only on `public`. Cluster-read MCP tools only on `internal` | A human creating a run can misclassify internal content as `public`. Once SP3 ships it sets the class from the task source |
 | T16 | Reserved-audience minting from an excluded namespace | Kyverno's global config excludes `kube-system` and `security` (its own namespace) from admission, so a pod there (ESO, cert-manager) can still mint the reserved audiences with a live `TokenRequest` call; `agent-audience-token-request` covers every other namespace | **Accepted:** needs a compromised platform controller in `kube-system` or `security` |
 
@@ -554,7 +554,7 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 | SC-07 | After deleting a running claim: the pod is gone ≤ 60 s later; its GitHub token returns 401 ≤ 60 s later; a copied gateway token is rejected once `exp` passes, ≤ 600 s after issue for a 10-minute run (R2) | timestamps |
 | SC-08 | `/var/run/secrets/kubernetes.io` is absent from the harness, and `curl -m5 https://kubernetes.default.svc` fails | `kubectl exec` |
 | SC-09 | `curl https://example.com` fails, `git ls-remote` on the target repo works, and `dig <random>.example.org` is denied at L7 | `kubectl exec`; `hubble observe --type l7` |
-| SC-10 | No Secret in `agents` holds a provider key. An `ExternalSecret` there is denied. The `agents-secrets` store cannot read outside `platform/agents/*` | `kubectl get`; dry-run; `bao token capabilities` |
+| SC-10 | No Secret in `agents` holds a provider key. An `ExternalSecret` there is denied. The `agents-secrets` store cannot read outside the dedicated `agents` mount (`agents/*`, SP2 plan P38) | `kubectl get`; dry-run; `bao token capabilities` |
 | SC-11 | An implementer token pushes `spec.branch`, not `main`. A reviewer token cannot push. Minting for another repo returns `PermissionDenied` | git and octo-sts output |
 | SC-12 | An implementer calling `get_kubernetes_logs` is denied, and the Flux MCP SA fails `auth can-i get secrets` | MCP error; `kubectl auth can-i` |
 | SC-13 | Setting `agents.ogenki.io/revoked=budget-run` (by the run meter, or by hand before SP3) turns the run `BudgetExhausted` with its pod gone within 60 s. A malformed `usage-tokens` or `pull-request` value is not projected | `kubectl annotate`; `kubectl get agentrun,pod` |
@@ -599,7 +599,7 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 
 **Owner actions, in order:** (1) apply the branch ruleset (run the ruleset script); (2) merge;
 (3) create and install the agents' App, write its key, and create a dedicated Z.ai key at
-`platform/agents/zai` (OD-6); (4) resume `ai-gateway` (OD-3).
+`agents/zai` (OD-6); (4) resume `ai-gateway` (OD-3).
 
 **ADRs** (reserved numbers): **0041** agent-sandbox + gVisor on AL2023, plus the OpenHands harness
 profile. **0042** Agent Router, audience-encoded role and class, and the in-pod identity proxy.
