@@ -203,6 +203,11 @@ else
   [ "$unverified" -gt 0 ] && \
     echo "  cloud:      ${unverified} cloud(s) COULD NOT BE CHECKED — status unknown, assume not torn down"
 fi
+# Not auto-skipped: if the first pass never reached openbao/cluster, skipping
+# its pre-destroy snapshot would destroy a node without one.
+if [ "$retry" -eq 1 ] && [ "$destroy_rc" -ne 0 ] && [ "$leftovers" -eq 0 ] && [ "$unverified" -eq 0 ]; then
+  echo "  note:       the non-zero exit came from the retry against already-destroyed stacks (e.g. openbao/cluster's snapshot of a gone node); re-run with TM_OPENBAO_SKIP_SNAPSHOT=true ONLY if the first pass's snapshot succeeded"
+fi
 
 # Exit non-zero if the destroy failed, OR anything is still standing, OR a cloud
 # could not be checked. A green exit here means the provider itself reports

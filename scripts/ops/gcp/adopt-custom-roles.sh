@@ -58,7 +58,9 @@ for entry in "${ROLES[@]}"; do
     exit 1
   fi
   if [ "$deleted" = "True" ]; then
-    echo "[deleted] ${name} is soft-deleted: the provider undeletes it within 7 days; after that, bump custom_role_suffix" >&2
+    # describe still answers only inside the 7-day undelete window; past it the
+    # role reads NOT_FOUND and takes the [absent ] branch above.
+    echo "[deleted] ${name} is soft-deleted: the apply's create undeletes it (GCP allows that for 7 days)" >&2
     continue
   fi
   if [ "$APPLY" = true ]; then

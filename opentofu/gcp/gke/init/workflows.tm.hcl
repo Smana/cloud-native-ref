@@ -394,9 +394,10 @@ script "destroy" {
         # dir as stage1-destroy-cluster, so that job inherits this init.
         ${global.provisioner} init -lock-timeout=5m
         # Keep the custom roles (GCP parity GP-15): a deleted role ID stays
-        # reserved for 37 days, so the next rebuild could not recreate it. They
-        # grant nothing on their own; the bindings using them are destroyed as
-        # usual, and the next deploy adopts them (adopt-custom-roles.sh).
+        # reserved for 37 days, so the next rebuild could not recreate it. The
+        # next deploy adopts them (adopt-custom-roles.sh). Kept roles are not
+        # inert: Crossplane's ProjectIAMMember for ns/kube-system/sa/external-dns
+        # outlives the cluster, so that grant stays live until gcp-0 returns.
         # Never `|| true` here: a state rm lost to a lock, backend or auth error
         # would let the cluster destroy delete the roles and burn their IDs.
         in_state="$(${global.provisioner} state list)"
