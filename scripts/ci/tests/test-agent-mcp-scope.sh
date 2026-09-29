@@ -9,7 +9,8 @@
 # catches an addition denylisting three tool names never could -- `flags`/`export` sneaking
 # onto a backend's toolSelector, `get_kubernetes_logs` sneaking onto the implementer's grant,
 # `secrets` or `resources: ["*"]` sneaking onto a Role or ClusterRole bound to the MCP
-# server's ServiceAccount, or a second RoleBinding to that ServiceAccount anywhere else.
+# server's ServiceAccount, or a second RoleBinding to that ServiceAccount within
+# flux-operator-mcp-rbac.yaml (the only file this suite parses for RBAC).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 python3 -c 'import yaml' 2>/dev/null || { echo "SKIP: pyyaml not installed"; exit 77; }
@@ -31,7 +32,7 @@ VM_TOOLS = {"documentation", "query", "query_range", "metrics", "metrics_metadat
             "metric_statistics"}
 VL_TOOLS = {"documentation", "query", "hits", "facets", "field_names", "field_values",
             "stats_query", "stats_query_range", "streams", "stream_ids", "stream_field_names",
-            "stream_field_values", "flags"}
+            "stream_field_values"}
 
 EXPECTED_BACKEND_TOOLS = {
     "agent-mcp-public": {

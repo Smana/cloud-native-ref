@@ -34,10 +34,9 @@ rules:
     verbs: [get, list, watch]
   # This platform's own claims (`get_kubernetes_resources` takes any kind and
   # namespace, like `kubectl get`, so this ClusterRole, not the tool, is the
-  # boundary). `agentruns` carries
-  # a run's task text and principal annotation -- already reachable before
-  # this change, now the only cloud.ogenki.io Kind that is, rather than every
-  # future one a Configuration bump adds (review M1).
+  # boundary). `agentruns` carries a run's task text and principal annotation
+  # -- already reachable before this change, now the only cloud.ogenki.io Kind
+  # that is, rather than every future one a Configuration bump adds (review M1).
   - apiGroups: [cloud.ogenki.io]
     resources: [apps, sqlinstances, inferenceservices, kvstores, epis, gcpworkloadidentities, agentruns]
     verbs: [get, list, watch]

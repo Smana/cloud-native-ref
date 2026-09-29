@@ -248,7 +248,6 @@ spec:
           - stream_ids
           - stream_field_names
           - stream_field_values
-          - flags
   securityPolicy:
     oauth:
       issuer: ${oidc_issuer_url}
@@ -370,7 +369,6 @@ spec:
               - {backend: mcp-victorialogs, tool: stream_ids}
               - {backend: mcp-victorialogs, tool: stream_field_names}
               - {backend: mcp-victorialogs, tool: stream_field_values}
-              - {backend: mcp-victorialogs, tool: flags}
         - action: Allow
           source:
             jwt:
@@ -429,7 +427,6 @@ spec:
               - {backend: mcp-victorialogs, tool: stream_ids}
               - {backend: mcp-victorialogs, tool: stream_field_names}
               - {backend: mcp-victorialogs, tool: stream_field_values}
-              - {backend: mcp-victorialogs, tool: flags}
         - action: Allow
           source:
             jwt:
@@ -488,4 +485,3 @@ spec:
               - {backend: mcp-victorialogs, tool: stream_ids}
               - {backend: mcp-victorialogs, tool: stream_field_names}
               - {backend: mcp-victorialogs, tool: stream_field_values}
-              - {backend: mcp-victorialogs, tool: flags}
