@@ -37,6 +37,13 @@ apply_line = next((l for l in s2.splitlines() if "apply -auto-approve" in l), ""
 if "deploy_identity_provider=${global.deploy_identity_provider_gcp}" not in apply_line:
     fails.append("stage 2's apply passes deploy_identity_provider")
 
+s1 = job_body(TEXT, "stage1-cluster")
+before(s1, "adopt-custom-roles.sh", "apply -auto-approve", "stage 1 adopts the kept custom roles before its apply")
+confirm = job_body(TEXT, "confirm")
+for addr in ("crossplane_dns", "crossplane_storage", "crossplane_role_reader"):
+    if f"google_project_iam_custom_role.{addr}" not in confirm or "state rm" not in confirm:
+        fails.append(f"the destroy keeps google_project_iam_custom_role.{addr} out of the teardown")
+
 for f in fails:
     print("FAIL", f)
 if fails:

@@ -62,6 +62,10 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       storage_class = local.storage_class
 
       # GCP-specific.
+      # Custom role names carry a generation suffix (gke/init var.custom_role_suffix),
+      # so claims read the name rather than spelling it.
+      gcp_dns_editor_role = local.init.dns_editor_role
+
       project_id     = var.project_id
       project_number = local.init.project_number
       zone           = local.init.cluster_location

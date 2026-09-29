@@ -90,6 +90,9 @@ script "deploy" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -326,6 +329,9 @@ script "deploy-stage1" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -385,6 +391,13 @@ script "destroy" {
         # must fail here, not after resources have started disappearing. Same stack
         # dir as stage1-destroy-cluster, so that job inherits this init.
         ${global.provisioner} init -lock-timeout=5m
+        # Keep the custom roles (GCP parity GP-15): a deleted role ID stays
+        # reserved for 37 days, so the next rebuild could not recreate it. They
+        # grant nothing on their own; the bindings using them are destroyed as
+        # usual, and the next deploy adopts them (adopt-custom-roles.sh).
+        for addr in google_project_iam_custom_role.crossplane_dns google_project_iam_custom_role.crossplane_storage google_project_iam_custom_role.crossplane_role_reader; do
+          ${global.provisioner} state rm "$addr" 2>/dev/null || true
+        done
       BASH
       ],
     ]

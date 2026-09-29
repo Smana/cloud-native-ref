@@ -152,3 +152,14 @@ variable "tailscale_oauth_secret_name" {
   type        = string
   default     = "tailscale-k8s-operator-oauth"
 }
+
+# GCP reserves a deleted custom role's ID for 37 days and allows undelete for 7
+# only, so a rebuild inside that window cannot recreate it (09-11 bug 2). The
+# destroy now keeps the roles (they grant nothing without the bindings it does
+# destroy) and the deploy adopts them; this suffix moved past the IDs already
+# burned (unsuffixed before 2026-09-11, `_v2` on 2026-09-14).
+variable "custom_role_suffix" {
+  description = "Generation suffix on the three custom role IDs; bump only if a generation is lost"
+  type        = string
+  default     = ""
+}
