@@ -40,7 +40,8 @@ The broker assigns a gapless `seq` per room. Events use the frozen C4 envelope. 
 bridge sidecar. Agents never talk to each other: a run records `room_handoff` or `room_verdict`, and
 the orchestrator starts the next run with a brief built from the log. Each append also issues a
 `pg_notify` in its transaction, and every broker replica holds one `LISTEN` connection that wakes its
-viewers; a replica that loses it catches each room up from its last `seq` (Ruling AT).
+viewers; a replica that loses it catches each room up from its last `seq`, so a notification is only
+ever a wake-up, never data.
 
 **Pros**: authorisation and identity are ours; replay is a range read; append-only is enforced by
 grants and triggers, testable; fan-out rides the database that already holds the log, so no
@@ -66,12 +67,12 @@ infrastructure beyond the platform's own claims.
 **Cons**: KVStore is cache semantics by its XRD; JetStream is new infrastructure; one replica makes a
 spot interruption an outage for every open approval.
 
-### Option 6: Valkey pub/sub hints beside the CNPG log (design S8)
+### Option 6: Valkey pub/sub hints beside the CNPG log ([design S8](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#decisions))
 
 A `KVStore` carries "room X reached seq N" hints between broker replicas; the log stays in CNPG.
 
 **Pros**: the design's original choice; decouples fan-out load from the database.
-**Cons**: rejected by Ruling AJ. One more dependency and one more CNP, and the KVStore's CNP admits
+**Cons**: one more dependency and one more CNP, and the KVStore's CNP admits
 the whole namespace; the log is already in Postgres, which can carry the same hint with
 `LISTEN/NOTIFY`. Reversible until phase 2's fan-out code lands.
 
@@ -91,7 +92,7 @@ the child (against C2).
 
 **Rationale**: the decision drivers are identity, order and durability. Only a log we own gives all
 three without delegating authorisation to a pre-1.0 protocol or a runtime we rejected. Fan-out
-uses the database that already holds the log rather than adding Valkey (Ruling AJ).
+uses the database that already holds the log rather than adding Valkey: one dependency fewer.
 
 ---
 
@@ -101,8 +102,8 @@ uses the database that already holds the log rather than adding Valkey (Ruling A
 
 - The transcript and the end reason of every run survive the pod (UX finding H3).
 - Reviewers, testers and triagers have a destination for their output.
-- `UPDATE events` as the broker's role fails: history is append-only by grant and trigger (Ruling Y),
-  not by convention.
+- `UPDATE events` as the broker's role fails: history is append-only by grant and trigger (the
+  schema also refuses `UPDATE` and `TRUNCATE` from its owner), not by convention.
 
 ### Negative
 
@@ -124,10 +125,11 @@ Code: `Smana/agent-platform` (OD-4). Manifests: `infrastructure/base/room-broker
 `docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md`.
 
 - **Seams only.** The core packages (envelope, redaction, store, wire) hold no platform constants:
-  platform facts enter through config or a consumer-side interface (agent-platform `AGENTS.md`,
-  Ruling AJ).
+  platform facts enter through config or a consumer-side interface
+  ([agent-platform `AGENTS.md`](https://github.com/Smana/agent-platform/blob/main/AGENTS.md)). It keeps
+  the core reusable outside this platform.
 - **Spin-out deferred.** Whether agent-platform becomes a standalone project is decided at the
-  Phase 7 UX sign-off, not before (Ruling AJ).
+  [plan](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md)'s Phase 7 UX sign-off, not before: the choice needs the finished UX to judge.
 
 ---
 

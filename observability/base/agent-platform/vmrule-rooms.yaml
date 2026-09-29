@@ -62,7 +62,7 @@ spec:
             description: "The run is Running but silent, and the room shows AwaitingHuman. Find its run: kubectl get agentrun -n agents -o custom-columns=RUN:.metadata.name,ROOM:.spec.roomRef | grep {{ $labels.room }}, then check the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id=<RUN without xplane-run-> -c room-bridge"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
-        # Ruling AN: a stall or a 400 is a bridge/harness contract break, not load.
+        # A stall or a 400 is a bridge/harness contract break, not load: alert on any.
         - alert: RoomBridgeHarnessStalled
           expr: sum by (reason) (increase(rooms_bridge_harness_stalls_total[10m])) > 0
           labels:
@@ -82,7 +82,7 @@ spec:
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         # Harness content the log cannot hold as sent: a value PostgreSQL rejects (a NUL in
-        # tool output) or keys that collide once redacted (Ruling AI). Expected now and then,
+        # tool output) or keys that collide once redacted. Expected now and then,
         # so info: a steady rate means a harness pattern worth a look, not a contract break.
         - alert: RoomBridgeItemsUnstorable
           expr: sum by (reason) (increase(rooms_bridge_items_stubbed_total{reason=~"invalid_value|key_collision"}[1h])) > 0
@@ -93,7 +93,7 @@ spec:
             description: "invalid_value: the store rejected a value; key_collision: keys collide once redacted. Neither loses the slot. Read the broker: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep -E 'payload refused by the database|keys collide once redacted'"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
-        # Held keys stop verifying 24h after the last fetch (Ruling AF): 6h leaves time to act.
+        # The broker's held keys stop verifying 24h after the last fetch: 6h leaves time to act.
         - alert: RoomAuthnJWKSStale
           expr: time() - max by (issuer) (rooms_authn_jwks_last_refresh_timestamp_seconds) > 6 * 3600
           for: 5m
