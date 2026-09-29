@@ -30,4 +30,5 @@ tasks:
       - {task: "ci:links"}
       - {task: "ci:doc-claims"}
       - {task: "ci:idp-topology"}
+      - {task: "ci:openbao-policies"}
       - {task: "ci:doc-paths"}

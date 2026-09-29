@@ -144,6 +144,12 @@ gcloud compute disks list --project <project>
 gcloud compute addresses list --project <project>
 ```
 
+`scripts/ops/teardown/teardown.sh` does both, sweeps GKE's LoadBalancer
+leftovers, and retries once while the VPC stands. A non-zero terramate exit
+beside `cloud: clean` comes from that retry failing on already-destroyed stacks
+(typically `opentofu/gcp/openbao/cluster`'s snapshot of a gone node): re-run
+with `TM_OPENBAO_SKIP_SNAPSHOT=true` only if the first pass's snapshot succeeded.
+
 ## Opt-in stacks
 
 `opentofu/aws/llm-platform/` is tagged `opt-in` (see `opentofu/aws/llm-platform/workflows.tm.hcl`):

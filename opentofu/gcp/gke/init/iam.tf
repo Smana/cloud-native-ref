@@ -75,7 +75,7 @@
 # spelled `xplane_` here.
 resource "google_project_iam_custom_role" "crossplane_dns" {
   project     = var.project_id
-  role_id     = "xplane_dns_editor"
+  role_id     = "xplane_dns_editor${var.custom_role_suffix}"
   title       = "Crossplane DNS editor"
   description = "Record-set management for external-dns and cert-manager DNS-01. Deliberately excludes zone deletion and response policies; see opentofu/gcp/gke/init/iam.tf."
 
@@ -131,7 +131,7 @@ resource "google_project_iam_custom_role" "crossplane_dns" {
 # pattern as crossplane_dns.
 resource "google_project_iam_custom_role" "crossplane_storage" {
   project     = var.project_id
-  role_id     = "xplane_storage_admin"
+  role_id     = "xplane_storage_admin${var.custom_role_suffix}"
   title       = "Crossplane storage bucket admin"
   description = "Bucket lifecycle + IAM for the App Composition's per-app buckets. See opentofu/gcp/gke/init/iam.tf."
 
@@ -234,6 +234,11 @@ locals {
   crossplane_bucket_grantable_roles = [
     "roles/storage.objectAdmin",
     "roles/storage.objectViewer",
+    # openbao-snapshot's bucket grant (security/gcp-0/openbao-snapshot): create
+    # only, strictly weaker than objectAdmin above. Missing, the condition denied
+    # the grant with a bare 403 and gcp-0 never took a scheduled snapshot
+    # (GCP parity GP-23, 09-11 bug 7).
+    "roles/storage.objectCreator",
     "roles/storage.legacyBucketReader",
   ]
 
@@ -365,7 +370,7 @@ resource "google_project_iam_member" "crossplane_storage" {
 # read requests, so a condition here would be vacuous anyway (see gap 1 below).
 resource "google_project_iam_custom_role" "crossplane_role_reader" {
   project     = var.project_id
-  role_id     = "xplane_role_reader"
+  role_id     = "xplane_role_reader${var.custom_role_suffix}"
   title       = "Crossplane role reader"
   description = "Read-only on IAM role definitions, so ProjectIAMMember can reference the custom DNS role. Confers no grant capability."
 
