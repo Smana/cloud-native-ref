@@ -115,6 +115,17 @@ resource "vault_jwt_auth_backend_role" "r" {
 EOF
 expect "a literal token_policies list on a role is a reference too" 1 "$r" 'policy "undefined-x"'
 
+r="$t/policy-diverge"; role_policies "$r" aws '"default"'
+mkdir -p "$r/opentofu/aws/openbao/management/policies" "$r/opentofu/shared/modules/openbao-store-of-record/policies"
+for name in admin app-prefix external-secrets pki-admin secrets-admin; do
+  echo "path \"x\" { capabilities = [\"read\"] }" >"$r/opentofu/aws/openbao/management/policies/${name}.hcl"
+  cp "$r/opentofu/aws/openbao/management/policies/${name}.hcl" "$r/opentofu/shared/modules/openbao-store-of-record/policies/${name}.hcl"
+done
+expect "identical shared policy copies pass" 0 "$r"
+echo "path \"y\" { capabilities = [\"read\"] }" >"$r/opentofu/shared/modules/openbao-store-of-record/policies/admin.hcl"
+expect "a diverged shared policy copy fails, naming the file" 1 "$r" \
+  'opentofu/aws/openbao/management/policies/admin.hcl and opentofu/shared/modules/openbao-store-of-record/policies/admin.hcl have diverged'
+
 expect "the repository itself passes" 0 "$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 if [ "$failures" -ne 0 ]; then echo "==> ${failures} failure(s)"; exit 1; fi

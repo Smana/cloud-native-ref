@@ -410,6 +410,23 @@ recovery-keys pre-flight: on a project where `openbao-priv-gcp-recovery-keys`
 has no readable version, the switch is unreachable and `rehydrate` refuses
 before it ever reads `OPENBAO_NEW_LINEAGE`.
 
+**Immediately after the proceed arm prints its warning, force-replace the
+break-glass user:**
+
+```bash
+tofu -chdir=opentofu/gcp/openbao/management apply \
+  -replace=module.store_of_record.vault_generic_endpoint.admin_user
+```
+
+`vault_generic_endpoint.admin_user` sets `disable_read = true` (the password is
+never readable back, so a read would always look like drift). That also means a
+plain apply against the new, empty OpenBao sees no drift on this resource and
+never recreates `auth/userpass/users/admin` — the tofu state still has it
+recorded from the lineage that just got discarded. Without the `-replace`,
+`openbao-priv-gcp-admin-credentials` keeps publishing a password for a
+break-glass user that no longer exists, and there is no way back in once OIDC
+is also unconfigured.
+
 The switch has five limits:
 
 - It is honoured only when no top-level object carries the node's own seal, and

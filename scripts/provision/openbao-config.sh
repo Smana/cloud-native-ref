@@ -1168,7 +1168,7 @@ rehydrate_openbao() {
     snap_seal=$(snapshot_seal_segment "$latest")
     log_message "INFO" "This node's seal is '${node_seal}'; ${latest} carries '${snap_seal:-none}'."
 
-    # THE NEW-LINEAGE SWITCH (docs/superpowers/specs/2026-09-11-openbao-stage2-gcp-design.md).
+    # THE NEW-LINEAGE SWITCH (salvaged from ac62abf2).
     # A GCP-sealed node whose bucket holds only AWS-mirrored objects has no path
     # in: the gate below refuses the foreign seal, and with the skip it refuses a
     # plain init -- correctly, since that overwrites a lineage's stored keys on a
@@ -1198,6 +1198,8 @@ rehydrate_openbao() {
                 log_message "WARN" "  ${ROOT_TOKEN_SECRET_NAME} and ${RECOVERY_KEYS_SECRET_NAME} are REPLACED with this node's new keys."
                 if [ "$CLOUD" = "gcp" ]; then
                     log_message "WARN" "  those two entries are also where the awskms standby reads its pre-copied AWS keys -- re-copy them before relying on that standby. The previous versions remain in Secret Manager."
+                    log_message "WARN" "  NEXT STEP: the new OpenBao has no break-glass user yet. vault_generic_endpoint.admin_user has disable_read=true, so a plain apply sees no drift and never recreates it. Run:"
+                    log_message "WARN" "    tofu apply -replace=module.store_of_record.vault_generic_endpoint.admin_user   (on the GCP management stack)"
                 fi
                 init_openbao
                 return 0 ;;

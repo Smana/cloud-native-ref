@@ -86,6 +86,8 @@ absent "latest_snapshot_sealed \"\" no longer appears (N2: it only caught the le
 arm="$(printf '%s\n' "$fn" | sed -n '/^[[:space:]]*proceed)/,/;;/p')"
 contains "the proceed arm initialises" "$arm" 'init_openbao'
 contains "the proceed arm returns before falling into the seal gate" "$arm" 'return 0'
+contains "the proceed arm names the break-glass replace address (disable_read hides the missing user otherwise)" "$arm" \
+    'tofu apply -replace=module.store_of_record.vault_generic_endpoint.admin_user'
 for v in refuse-named-key refuse-same-seal refuse-own-seal-exists refuse-unsealed-object; do
     varm="$(printf '%s\n' "$fn" | sed -n "/^[[:space:]]*${v})/,/;;/p")"
     contains "the ${v} arm exits non-zero" "$varm" 'exit 1'

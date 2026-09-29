@@ -1,6 +1,6 @@
-# Stage 2 on GCP (docs/superpowers/specs/2026-09-11-openbao-stage2-gcp-design.md,
-# ADR-0037): the same mounts, policies and logins AWS defines, from the shared
-# module. Until this existed, jwt/gcp-0's external-secrets role named a policy
+# Stage 2 on GCP (salvaged from ac62abf2): the same mounts, policies and logins
+# AWS defines, from the shared module. Until this existed, jwt/gcp-0's
+# external-secrets role named a policy
 # no GCP OpenBao ever had, and the 14 OpenBao-backed ExternalSecrets on gcp-0
 # authenticated and then read nothing.
 

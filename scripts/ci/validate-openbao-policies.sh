@@ -23,14 +23,28 @@
 # opentofu/<cloud>/*/configure/openbao.tf, so a role moved to a sibling file
 # goes unchecked; a `vault_policy` gated to `count = 0` still counts as
 # defined; and a policy name built from a variable, not a literal string, is
-# not resolved either way.
+# not resolved either way. `called_module_dirs()` resolves only a one-level
+# `./`/`../` local module source -- a nested module (one local module calling
+# another) or a registry source is read as "not defined" and the run fails
+# loudly on a policy that in fact exists. That is a false failure, never a
+# false pass, so it is safe by construction; widen it if a real layout needs it.
+#
+# A second, unrelated check runs after policy parity: the five policy files
+# AWS's management stack and the shared openbao-store-of-record module both
+# ship (admin, app-prefix, external-secrets, pki-admin, secrets-admin) must stay
+# byte-identical. The module is GCP's copy of AWS's policies, kept as a second
+# file rather than a shared source (D1, 2026-09-29 GCP parity design) so the AWS
+# stack never depends on GCP's directory; nothing else enforces that the two
+# copies do not quietly drift apart. A DELIBERATE divergence (for example G-5's
+# agents/ grant) must land in both copies in the same change, not just one.
 #
 # Usage: validate-openbao-policies.sh [ROOT_DIR]
 set -euo pipefail
 
 ROOT="${1:-$(git rev-parse --show-toplevel)}"
 
-exec python3 - "$ROOT" <<'PY'
+python_rc=0
+python3 - "$ROOT" <<'PY' || python_rc=$?
 import pathlib
 import re
 import sys
@@ -94,3 +108,32 @@ if fails:
     sys.exit(1)
 print(f"==> OpenBao policy parity: every policy a JWT role names is defined ({checked} cloud(s)).")
 PY
+
+# The five policy files the shared module copies from AWS's management stack
+# (see SCOPE EDGES above) must stay byte-identical -- only checked when BOTH
+# fixed directories exist, so fixtures that do not model this layout are unaffected.
+AWS_POLICIES="$ROOT/opentofu/aws/openbao/management/policies"
+SHARED_POLICIES="$ROOT/opentofu/shared/modules/openbao-store-of-record/policies"
+policy_rc=0
+if [ -d "$AWS_POLICIES" ] && [ -d "$SHARED_POLICIES" ]; then
+    diverged=0
+    for name in admin app-prefix external-secrets pki-admin secrets-admin; do
+        aws_file="$AWS_POLICIES/$name.hcl"
+        shared_file="$SHARED_POLICIES/$name.hcl"
+        if [ -f "$aws_file" ] && [ -f "$shared_file" ] && ! cmp -s "$aws_file" "$shared_file"; then
+            echo "FAIL: opentofu/aws/openbao/management/policies/${name}.hcl and opentofu/shared/modules/openbao-store-of-record/policies/${name}.hcl have diverged -- a deliberate divergence (e.g. G-5's agents/ grant) must land in both copies"
+            diverged=1
+        fi
+    done
+    if [ "$diverged" -ne 0 ]; then
+        echo "==> shared policy parity: the copies diverged."
+        policy_rc=1
+    else
+        echo "==> shared policy parity: AWS and the shared module's copies are byte-identical (5 file(s))."
+    fi
+fi
+
+if [ "$python_rc" -ne 0 ] || [ "$policy_rc" -ne 0 ]; then
+    exit 1
+fi
+exit 0
