@@ -202,6 +202,14 @@ jobs:
       # validate-manifests.sh -- it quietly shrinks what that script checks.
       # Kept as their own step rather than folded into validate-manifests.sh,
       # whose contract is manifest validation.
+      # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
+      # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
+      # nothing, and gen-catalog.sh fetches the release asset as before.
+      - name: Fetch the pinned pre-release's XRD CRDs
+        run: |
+          f="$(./scripts/ci/fetch-xrd-crds.sh)"
+          [ -z "$f" ] || echo "XRD_CRDS_FILE=$f" >> "$GITHUB_ENV"
+
       - name: Test suites
         run: task ci:test
 
