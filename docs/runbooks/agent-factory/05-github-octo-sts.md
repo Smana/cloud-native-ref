@@ -14,8 +14,8 @@ repository or role. See [README.md](README.md) for prerequisites; run
   Smana/cloud-native-ref`. If the App was installed before the ruleset exists, nothing stops it
   merging its own PR — this order is load-bearing, not a convenience.
 - **Owner action 4, done**: the `ogenki-agents` GitHub App created on `Smana`, installed on
-  `Smana/cloud-native-ref` only, and its `app_id`/`private_key` written to
-  `platform/agents/github-app`.
+  `Smana/cloud-native-ref` only, and its `app_id`/`private_key` written to `github-app` on gcp-0's
+  `agents` mount.
 
 ## Steps
 
@@ -138,11 +138,12 @@ listener (`http://octo-sts.agent-system.svc.cluster.local:8080` is not in the al
 >   the symmetric message. Exactly the audience-mismatch case the original text describes, not the
 >   subject-mismatch the probe was masked by in round 3.
 
-**What this proves:** SC-11 (the rest) and the `sts`-listener-only path — octo-sts's trust policies
-match the EKS issuer by *pattern* (`OD-5`), which alone would accept a token minted by any EKS
-cluster in the region; it is safe only because every token that reaches octo-sts has already been
-verified against *this* cluster's exact issuer and JWKS by the `sts` listener, and nothing in `agents`
-can route around it.
+**What this proves:** SC-11 (the rest) and the `sts`-listener-only path — the trust policy accepts
+gcp-0's GKE issuer (G-0), fixed by project, location and cluster name, alongside aws-0's EKS issuer
+matched by *pattern* (`OD-5`, needed because that ID changes on every rebuild); on its own either
+alternative would accept a token minted by any cluster matching it, and it is safe only because every
+token that reaches octo-sts has already been verified against *this* cluster's exact issuer and JWKS
+by the `sts` listener, and nothing in `agents` can route around it.
 
 ### Step 6 — clean up and record
 

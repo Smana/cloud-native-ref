@@ -72,7 +72,7 @@ Then confirm the forged `x-ar-agent` header never survives (it is stripped befor
 re-set from the verified `sub`):
 
 ```bash
-curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
+curl -s https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode \
   'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.path:"/v1/chat/completions" | fields log.x_ar_agent, log.response_code, log.upstream_cluster'
 ```
 

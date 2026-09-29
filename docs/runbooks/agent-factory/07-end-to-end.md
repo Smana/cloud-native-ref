@@ -76,7 +76,7 @@ way):
 Q="rate(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:$LONG\"}[5m])"
 ENC=$(python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$Q")
 kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=$ENC" | jq .
-curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
+curl -s https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode \
   "query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.response_code) count() n"
 ```
 

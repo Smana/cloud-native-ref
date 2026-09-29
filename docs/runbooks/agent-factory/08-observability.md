@@ -25,29 +25,32 @@ Expected: both objects present; `agent-platform` groups list `agent-platform`;
 skipped (visibly, not silently) by `promtool`-based validation — its evidence is querying the
 expression directly, which the next two steps do.
 
-### Step 2 — the two metrics-based alert expressions evaluate
+### Step 2 — the pod-pending alert expression evaluates, and the gVisor pool has room
 
 ```bash
 kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=max%20by%20(pod)%20(kube_pod_status_phase%7Bnamespace%3D%22agents%22%2C%20phase%3D%22Pending%22%7D)" | jq '.data.result'
-kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=sum%20by%20(resource_type)%20(karpenter_nodepools_usage%7Bnodepool%3D%22agents-gvisor%22%7D)%20%2F%20sum%20by%20(resource_type)%20(karpenter_nodepools_limit%7Bnodepool%3D%22agents-gvisor%22%7D)%20*%20100" | jq '.data.result'
+kubectl get nodes -l sandbox.gke.io/runtime=gvisor --no-headers | wc -l
+gcloud container node-pools describe agents-gvisor --cluster gcp-0 --location europe-west4-a \
+  --project ogenki-435905 --format='value(autoscaling.maxNodeCount)'
 ```
 
-Expected: both queries return `success`. The first may be `[]` when no pod is Pending. The second
-must not be: `karpenter_nodepools_limit` exists for every NodePool with a limit, idle or busy. If
-the ratio is `[]`, run `sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"})`
-alone: a series there means the pool has no usage series yet, while `[]` means the metric name is
-wrong, and that is a FAIL.
+Expected: the first query returns `success` (`[]` when no pod is Pending is a pass, not a FAIL);
+`1` while a run is live and `2` for the pool's max node count.
 
-**What this proves:** `AgentSandboxPodPending` and `AgentGvisorPoolNearLimit` are wired to real
-metric names (`kube_pod_status_phase`, `karpenter_nodepools_usage`/`limit`) that exist on this
-cluster.
+**What this proves:** `AgentSandboxPodPending` is wired to a real metric name (`kube_pod_status_phase`)
+on this cluster, and the `agents-gvisor` node pool (GKE-managed, GP-9) has room to scale.
+**`AgentGvisorPoolNearLimit` never fires on gcp-0.** Per `observability/base/agent-platform/vmrule.yaml`,
+that alert reads `karpenter_nodepools_usage`/`karpenter_nodepools_limit` — Karpenter-only metrics
+that have no series here, because gcp-0's `agents-gvisor` pool is a GKE node pool, not a Karpenter
+NodePool. On aws-0 the same alert is the pool's real near-limit signal. On gcp-0 a full pool instead
+surfaces as `AgentSandboxPodPending` — the check above is the direct substitute.
 
 ### Step 3 — the two log-based alert expressions evaluate
 
 ```bash
-curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
+curl -s https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode \
   'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:~"(401|403)" | stats count() as rejected | filter rejected:>20'
-curl -s https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode \
+curl -s https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode \
   'query=kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
 ```
 
@@ -59,7 +62,7 @@ against this cluster's actual log fields.
 
 ### Step 4 — the dashboard renders
 
-Open Grafana at [https://grafana.priv.aws.ogenki.io](https://grafana.priv.aws.ogenki.io), folder **agents**,
+Open Grafana at [https://grafana.priv.gcp.ogenki.io](https://grafana.priv.gcp.ogenki.io), folder **agents**,
 dashboard **Agent platform** (`uid: agent-platform`). Confirm all four panels render without a query
 error:
 
@@ -73,7 +76,7 @@ error:
 |---|---|---|
 | Sandbox pods by phase | `sum by (phase) (kube_pod_status_phase{namespace="agents"})` | A line per phase seen during this session |
 | Tokens per run through agent-router | `sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*"}[5m]))` | Non-empty only while/after a run made model calls (runbooks 01, 02, 07) |
-| agents-gvisor usage / limit | `karpenter_nodepools_usage / karpenter_nodepools_limit` for `agents-gvisor` | A percentage series, may be near-zero if the pool scaled to zero |
+| agents-gvisor usage / limit | `karpenter_nodepools_usage / karpenter_nodepools_limit` for `agents-gvisor` | Empty on gcp-0 (GP-17): Karpenter-only metric, no series on a GKE node pool. Non-empty on aws-0, may be near-zero if the pool scaled to zero |
 | agent-router 4xx | LogsQL, `log.response_code:4*` | Entries corresponding to the 401/403 checks in runbooks 02 and 04 |
 
 The "Tokens per run" panel legitimately shows nothing until SP4 PR 1's
