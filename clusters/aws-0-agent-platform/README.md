@@ -14,6 +14,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 | `agent-mcp` | `infrastructure/base/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
+| `agent-observability` | `observability/base/agent-platform` | VMRules and the Grafana dashboard |
 
 ## Resume
 
@@ -32,6 +33,9 @@ key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
 
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
+
+`--class internal` runs have no model route until SP4 PR 2, so such a run 404s on every model call;
+`agent-run.sh` still accepts it because the runbooks use it to test the internal listener.
 
 ## Teardown
 

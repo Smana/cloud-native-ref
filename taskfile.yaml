@@ -32,3 +32,9 @@ tasks:
       - {task: "ci:idp-topology"}
       - {task: "ci:openbao-policies"}
       - {task: "ci:doc-paths"}
+
+  # The design names this `task agent:run` (SP1 §Implementation outline): the
+  # owner's way to start a run until SP3's factory is the only creator (C3).
+  agent:run:
+    desc: Create one AgentRun on the current cluster (owner only until SP3)
+    cmds: ["{{.ROOT_DIR}}/scripts/ops/k8s/agent-run.sh {{.CLI_ARGS}}"]
