@@ -90,6 +90,9 @@ script "deploy" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -105,13 +108,28 @@ script "deploy" {
         ${global.cloud_gate}
         set -euo pipefail
         cd ../configure
+        # ../configure's vault provider needs the CA chain before init, and a
+        # fresh checkout has no .tls/ (gitignored). gke/configure's own deploy
+        # writes it; this inline apply bypasses that script (09-11 bug 3).
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # A restored lineage already holds jwt/gcp-0, and creating it again 400s
+        # with "path is already in use". Same call as gke/configure's deploy.
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # deploy_identity_provider here too: without it this apply publishes the
+        # consumed (AWS) identity_provider_url until the standalone configure run.
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
         # Forget flux-operator here, in the job that just created it -- NOT only
         # in gke/configure's own `deploy`, which this job bypasses. Left in state,
         # the standalone gke/configure stack plans count=0 against a resource that
-        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS lane
-        # had the identical gap and hit it on 2026-09-16.
+        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS
+        # lane had the identical gap and hit it on 2026-09-16.
         ${global.provisioner} state rm helm_release.flux_operator 2>/dev/null || true
       BASH
       ],
@@ -312,6 +330,9 @@ script "deploy-stage1" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -332,6 +353,7 @@ script "preview" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
+        # After a teardown the three custom roles plan as creates; deploy imports them (adopt-custom-roles.sh).
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
       BASH
       ],
@@ -371,6 +393,21 @@ script "destroy" {
         # must fail here, not after resources have started disappearing. Same stack
         # dir as stage1-destroy-cluster, so that job inherits this init.
         ${global.provisioner} init -lock-timeout=5m
+        # Keep the custom roles (GCP parity GP-15): a deleted role ID stays
+        # reserved for 37 days, so the next rebuild could not recreate it. The
+        # next deploy adopts them (adopt-custom-roles.sh). Kept roles are not
+        # inert: Crossplane's ProjectIAMMember for ns/kube-system/sa/external-dns
+        # outlives the cluster, so that grant stays live until gcp-0 returns.
+        # Never `|| true` here: a state rm lost to a lock, backend or auth error
+        # would let the cluster destroy delete the roles and burn their IDs.
+        in_state="$(${global.provisioner} state list)"
+        keep=()
+        for addr in google_project_iam_custom_role.crossplane_dns google_project_iam_custom_role.crossplane_storage google_project_iam_custom_role.crossplane_role_reader; do
+          if grep -qxF "$addr" <<<"$in_state"; then keep+=("$addr"); fi
+        done
+        if [ "$${#keep[@]}" -gt 0 ]; then
+          ${global.provisioner} state rm -lock-timeout=5m "$${keep[@]}"
+        fi
       BASH
       ],
     ]
@@ -570,6 +607,7 @@ script "drift" "reconcile" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # After a teardown the three custom roles plan as creates that fail here; run deploy, which imports them (adopt-custom-roles.sh).
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
       ],
