@@ -7,6 +7,7 @@ section 4): every rule it passes to the agent is enforced outside the sandbox.
 """
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -36,6 +37,23 @@ DEFAULT_OUTPUT_USD_PER_MTOK = "4.40"
 # A blip in the loopback connection to agent-server shouldn't fail the run;
 # a run that's actually gone stays gone, so this still fails fast.
 MAX_POLL_ERRORS = 5
+# The run's installation token as git-credential-agent caches it (T3), and every GitHub
+# token shape. An injected agent can print its token into a command or its final message,
+# and these lines reach VictoriaLogs (review M4), so both are redacted before any print.
+TOKEN_CACHE = os.environ.get("GIT_TOKEN_CACHE", "/run/agent/git/token.json")
+GITHUB_TOKEN = re.compile(r"gh[posu]_[A-Za-z0-9_]{20,}")
+REDACTED = "[REDACTED:github-token]"
+
+
+def redact(text: str) -> str:
+    try:
+        with open(TOKEN_CACHE) as f:
+            cached = json.load(f).get("token")
+    except (OSError, ValueError, AttributeError):
+        cached = None
+    if cached:
+        text = text.replace(cached, REDACTED)
+    return GITHUB_TOKEN.sub(REDACTED, text)
 
 
 def build_request(env: dict, task: str, rules: str) -> dict:
@@ -138,7 +156,8 @@ def _text(message: dict | None) -> str:
 
 
 def _short(value, limit: int) -> str:
-    text = " ".join(str(value or "").split())
+    # Redact before truncating, so a token cut at the limit is still whole when matched.
+    text = " ".join(redact(str(value or "")).split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
@@ -147,7 +166,8 @@ class StepLog:
     harness` shows what the agent is doing, and VictoriaLogs keeps it after the
     pod is gone. The final agent message is printed in full: for a read-only
     role it is the report. Actions are printed, their outputs never are. Best
-    effort: a failure here is logged and never fails the run."""
+    effort: a failure here is logged and never fails the run. Agent-written
+    text is redacted first (M4)."""
 
     def __init__(self, cid: str):
         self.cid = cid
@@ -186,7 +206,7 @@ class StepLog:
             tool = event.get("tool_name") or action.get("kind")
             return "agent-run step %d: %s | %s | %s" % (self.steps, tool, _short(event.get("summary"), 120), _short(target, 200))
         if kind == "MessageEvent" and event.get("source") == "agent":
-            self.last_message = _text(event.get("llm_message"))
+            self.last_message = redact(_text(event.get("llm_message")))
             return "agent-run message: " + _short(self.last_message, 400)
         if kind in ("ConversationErrorEvent", "AgentErrorEvent"):
             return "agent-run error: %s %s" % (event.get("code") or kind, _short(event.get("detail") or event.get("error"), 400))

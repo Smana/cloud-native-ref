@@ -554,3 +554,17 @@ claims:
       - path: website/data/repo-tree.yaml
         must_not_contain:
           - 'always-on'
+
+  - id: agent-platform-umbrella-suspended
+    why: >-
+      The agent-platform umbrella ships `spec.suspend: true` (programme C1): a
+      default deploy runs no sandbox controller, gVisor pool, agent-router or
+      octo-sts. integration/agent-factory flips it in a test-only commit, and a
+      branch cut from there would deploy the agent platform with no opt-in
+      (review B1). Pinning the source makes that flip fail a gate.
+    source:
+      file: clusters/aws-0/agent-platform.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: clusters/aws-0-agent-platform/README.md
+        must_contain: 'suspended by default'

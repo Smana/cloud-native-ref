@@ -210,6 +210,15 @@ jobs:
       - name: Test suites
         run: task ci:test
 
+      # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
+      # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
+      # nothing, and gen-catalog.sh fetches the release asset as before.
+      - name: Fetch the pinned pre-release's XRD CRDs
+        if: ${{ !cancelled() }}
+        run: |
+          f="$(./scripts/ci/fetch-xrd-crds.sh)"
+          [ -z "$f" ] || echo "XRD_CRDS_FILE=$f" >> "$GITHUB_ENV"
+
       # Runs even when a suite failed, so the manifest verdict is never hidden
       # behind it. The job still fails.
       - name: Validate manifests (flux schema + polaris)

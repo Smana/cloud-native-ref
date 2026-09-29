@@ -5,7 +5,8 @@
 FROM ghcr.io/openhands/agent-server:1.49.6-python@sha256:02ef66fdf0b22a40b0b55c5cca8d1790cfd260c5069f7c0b99edc1b505d5ab37 AS harness
 
 # `.github/workflows/build-container-images.yml` tags the image with this.
-ARG AGENT_HARNESS_VERSION=v0.1.0
+# H-1 (SP2 ruling P37): a new source version, so its merge never republishes SP1's v0.1.0 tag.
+ARG AGENT_HARNESS_VERSION=v0.1.1
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.101.0
 ARG GH_SHA256_AMD64=9bca2d1c16825f109907a23307628a2f0698fbf99662b73a5cf0b020293072b8

@@ -10,9 +10,14 @@ metadata:
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
 rules:
+  # The lifecycle the AgentRun composition drives, and nothing else (review N8): no
+  # deletecollection, no escalate or bind through a future verb.
   - apiGroups: ["agents.x-k8s.io"]
-    resources: ["sandboxes", "sandboxes/status"]
-    verbs: ["*"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes/status"]
+    verbs: ["get"]
 ---
 # A run's Usage holds its CNP until the run's pod is gone, so the GitHub token
 # revoke in preStop and SIGTERM still reaches api.github.com. Crossplane reads that
