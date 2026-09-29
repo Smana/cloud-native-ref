@@ -6,3 +6,5 @@ resources:
   - vmrule-logs.yaml
   - grafana-folder.yaml
   - grafana-dashboard.yaml
+  - agent-traces-collector.yaml
+  - referencegrant-agent-traces.yaml

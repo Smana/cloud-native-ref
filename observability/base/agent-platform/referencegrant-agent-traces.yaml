@@ -1,0 +1,16 @@
+# agent-router's EnvoyProxy (agent-system) sends its spans to the collector here. The EnvoyProxy
+# CRD requires a grant in the referent namespace for a cross-namespace tracing backendRef.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: agent-router-traces
+  namespace: observability
+spec:
+  from:
+    - group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      namespace: agent-system
+  to:
+    - group: ""
+      kind: Service
+      name: agent-traces-collector

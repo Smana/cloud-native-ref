@@ -1,0 +1,344 @@
+---
+# The agents' trace gate (ADR-0051, observability plan O1-O5, O18). A run's spans reach
+# VictoriaTraces only through here. The run id comes from the sending pod's label, never
+# from the span, and an allowlist drops every attribute that is not metadata.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agent-traces-collector
+  namespace: observability
+spec:
+  releaseName: agent-traces
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: "0.173.1"
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+        namespace: observability
+  interval: 30m
+  timeout: 5m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    mode: deployment
+    nameOverride: agent-traces-collector
+    fullnameOverride: agent-traces-collector
+    image:
+      repository: otel/opentelemetry-collector-k8s
+      # 0.160.0. With a digest set the chart ignores the tag.
+      digest: sha256:76d7a04f2291da1d8b7ce259468d09f0f9f44f71f67a5737539f64ca82b5bdb1
+    command:
+      name: otelcol-k8s
+    replicaCount: 1
+    serviceAccount:
+      create: true
+      name: agent-traces-collector
+    # Its only API read is pods in `agents`, granted by the Role below (O3).
+    clusterRole:
+      create: false
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    ports:
+      jaeger-compact:
+        enabled: false
+      jaeger-thrift:
+        enabled: false
+      jaeger-grpc:
+        enabled: false
+      zipkin:
+        enabled: false
+      metrics:
+        enabled: true
+    startupProbe:
+      httpGet:
+        port: 13133
+        path: /
+      periodSeconds: 5
+      failureThreshold: 24
+    # The whole config: no chart default (jaeger, zipkin, prometheus receivers) and no
+    # preset, whose k8s_attributes would run first and trust k8s.pod.ip on the span.
+    alternateConfig:
+      extensions:
+        health_check:
+          endpoint: $${env:MY_POD_IP}:13133
+      receivers:
+        # Run pods, through their CNP's POST /v1/traces rule (SO-4).
+        otlp/agents:
+          protocols:
+            http:
+              endpoint: $${env:MY_POD_IP}:4318
+        # agent-router: Envoy Gateway 1.9 exports OTLP/gRPC only.
+        otlp/router:
+          protocols:
+            grpc:
+              endpoint: $${env:MY_POD_IP}:4317
+      processors:
+        memory_limiter:
+          check_interval: 5s
+          limit_percentage: 80
+          spike_limit_percentage: 25
+        # k8s_attributes never overwrites a key a span already carries (O4).
+        transform/untrusted:
+          error_mode: ignore
+          trace_statements:
+            - statements:
+                - delete_key(resource.attributes, "agent.run_id")
+                - delete_key(resource.attributes, "agent.role")
+                - delete_key(resource.attributes, "k8s.pod.name")
+                - delete_key(resource.attributes, "k8s.namespace.name")
+            - statements:
+                - delete_key(span.attributes, "agent.run_id")
+        # By source IP only: a run cannot claim another run's id.
+        k8s_attributes:
+          auth_type: serviceAccount
+          passthrough: false
+          wait_for_metadata: true
+          filter:
+            namespace: agents
+          pod_association:
+            - sources:
+                - from: connection
+          extract:
+            metadata:
+              - k8s.namespace.name
+              - k8s.pod.name
+            labels:
+              - tag_name: agent.run_id
+                key: agents.ogenki.io/run-id
+                from: pod
+              - tag_name: agent.role
+                key: agents.ogenki.io/role
+                from: pod
+        filter/unattributed:
+          error_mode: ignore
+          trace_conditions:
+            - resource.attributes["agent.run_id"] == nil
+        transform/attribute:
+          error_mode: ignore
+          trace_statements:
+            - statements:
+                - set(resource.attributes["service.name"], "agent-harness")
+            - statements:
+                - set(span.attributes["agent.run_id"], resource.attributes["agent.run_id"])
+        # Metadata only (owner, 2026-09-27). Fails closed: a key not listed here is
+        # dropped from resources, scopes, spans and span events (O2, O18).
+        redaction:
+          allow_all_keys: false
+          summary: info
+          allowed_keys:
+            - service.name
+            - agent.run_id
+            - agent.role
+            - k8s.namespace.name
+            - k8s.pod.name
+            - telemetry.sdk.language
+            - telemetry.sdk.name
+            - telemetry.sdk.version
+            - gen_ai.system
+            - gen_ai.provider.name
+            - gen_ai.operation.name
+            - gen_ai.request.model
+            - gen_ai.response.model
+            - gen_ai.response.id
+            - gen_ai.response.finish_reasons
+            - gen_ai.usage.input_tokens
+            - gen_ai.usage.output_tokens
+            - gen_ai.usage.prompt_tokens
+            - gen_ai.usage.completion_tokens
+            - gen_ai.usage.cache_read_input_tokens
+            - gen_ai.usage.cache_creation_input_tokens
+            - gen_ai.usage.reasoning_tokens
+            - gen_ai.usage.cost
+            - gen_ai.usage.input_cost
+            - gen_ai.usage.output_cost
+            - llm.usage.total_tokens
+            - llm.request.type
+            - llm.is_streaming
+            - lmnr.span.type
+            - lmnr.span.path
+            - lmnr.span.instrumentation_source
+            - lmnr.association.properties.session_id
+            - lmnr.association.properties.metadata.tool_call_id
+            - error.type
+            - exception.type
+            - exception.escaped
+        # Names and versions are free text a run controls, and redaction only sees attributes.
+        transform/cap:
+          error_mode: ignore
+          trace_statements:
+            - statements:
+                - truncate_all(resource.attributes, 256)
+            - statements:
+                - set(scope.name, Substring(scope.name, 0, 256)) where Len(scope.name) > 256
+                - set(scope.version, Substring(scope.version, 0, 256)) where Len(scope.version) > 256
+            - statements:
+                - truncate_all(span.attributes, 256)
+                - set(span.name, Substring(span.name, 0, 128)) where Len(span.name) > 128
+                - set(span.status.message, Substring(span.status.message, 0, 128)) where Len(span.status.message) > 128
+            - statements:
+                - truncate_all(spanevent.attributes, 256)
+                - set(spanevent.name, Substring(spanevent.name, 0, 256)) where Len(spanevent.name) > 256
+        batch: {}
+      exporters:
+        otlp_http/victoriatraces:
+          traces_endpoint: http://victoria-traces-vt-single-server.observability.svc:10428/insert/opentelemetry/v1/traces
+      service:
+        extensions: [health_check]
+        telemetry:
+          metrics:
+            readers:
+              - pull:
+                  exporter:
+                    prometheus:
+                      host: $${env:MY_POD_IP}
+                      port: 8888
+        pipelines:
+          traces/agents:
+            receivers: [otlp/agents]
+            processors: [memory_limiter, transform/untrusted, k8s_attributes, filter/unattributed, transform/attribute, redaction, transform/cap, batch]
+            exporters: [otlp_http/victoriatraces]
+          # Every attribute here is set by agent-router's EnvoyProxy manifest, not by a run.
+          traces/router:
+            receivers: [otlp/router]
+            processors: [memory_limiter, batch]
+            exporters: [otlp_http/victoriatraces]
+---
+# k8s_attributes reads run pods' labels, in `agents` only: filter.namespace scopes its
+# informer there, and it extracts no namespace or node metadata (v0.160.0).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-traces-collector
+  namespace: agents
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-traces-collector
+  namespace: agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-traces-collector
+subjects:
+  - kind: ServiceAccount
+    name: agent-traces-collector
+    namespace: observability
+---
+# Default deny both ways (constitution 3.1). Run pods send OTLP/HTTP, agent-router
+# OTLP/gRPC; the collector reads pods from the API server and writes VictoriaTraces.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-traces-collector
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-traces-collector
+      app.kubernetes.io/instance: agent-traces
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agents
+          matchExpressions:
+            - key: agents.ogenki.io/run-id
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "4318"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "8888"
+              protocol: TCP
+    # kubelet's probes of the health_check extension.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "13133"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vt-single
+      toPorts:
+        - ports:
+            - port: "10428"
+              protocol: TCP
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: agent-traces-collector
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-traces-collector
+      app.kubernetes.io/instance: agent-traces
+  endpoints:
+    - port: metrics
