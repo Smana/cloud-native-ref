@@ -13,9 +13,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 TEXT = (ROOT / "opentofu/gcp/gke/init/workflows.tm.hcl").read_text()
 
 
+def job_bodies(text, name):
+    return re.findall(r'name\s*=\s*"%s"(.*?)(?=\n  job \{|\nscript "|\Z)' % re.escape(name), text, re.S)
+
+
 def job_body(text, name):
-    m = re.search(r'name\s*=\s*"%s"(.*?)(?=\n  job \{|\nscript "|\Z)' % re.escape(name), text, re.S)
-    return m.group(1) if m else ""
+    return next(iter(job_bodies(text, name)), "")
 
 
 fails = []
@@ -37,12 +40,25 @@ apply_line = next((l for l in s2.splitlines() if "apply -auto-approve" in l), ""
 if "deploy_identity_provider=${global.deploy_identity_provider_gcp}" not in apply_line:
     fails.append("stage 2's apply passes deploy_identity_provider")
 
-s1 = job_body(TEXT, "stage1-cluster")
-before(s1, "adopt-custom-roles.sh", "apply -auto-approve", "stage 1 adopts the kept custom roles before its apply")
+# Two stage1-cluster jobs: `deploy` and `deploy-stage1`.
+s1_jobs = job_bodies(TEXT, "stage1-cluster")
+if len(s1_jobs) != 2:
+    fails.append(f"expected 2 stage1-cluster jobs, found {len(s1_jobs)}")
+for n, s1 in enumerate(s1_jobs, 1):
+    before(s1, "adopt-custom-roles.sh", "apply -auto-approve",
+           f"stage1-cluster job {n} adopts the kept custom roles before its apply")
 confirm = job_body(TEXT, "confirm")
 for addr in ("crossplane_dns", "crossplane_storage", "crossplane_role_reader"):
     if f"google_project_iam_custom_role.{addr}" not in confirm or "state rm" not in confirm:
         fails.append(f"the destroy keeps google_project_iam_custom_role.{addr} out of the teardown")
+# A swallowed state rm (lock, backend, auth) lets the cluster destroy delete the
+# roles and burn their IDs for 37 days.
+state_lines = [l for l in confirm.splitlines()
+               if ("state rm" in l or "state list" in l) and not l.lstrip().startswith("#")]
+if any("|| true" in l or "2>/dev/null" in l for l in state_lines):
+    fails.append("the destroy's custom-role state rm swallows its failures")
+if not any("state rm -lock-timeout=" in l for l in state_lines):
+    fails.append("the destroy's custom-role state rm waits for the state lock")
 
 for f in fails:
     print("FAIL", f)

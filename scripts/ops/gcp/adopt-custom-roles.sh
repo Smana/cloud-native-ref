@@ -32,6 +32,9 @@ ROLES=(
   "google_project_iam_custom_role.crossplane_role_reader=xplane_role_reader"
 )
 
+err="$(mktemp)"
+trap 'rm -f "$err"' EXIT
+
 in_state="$(tofu state list 2>/dev/null || true)"
 for entry in "${ROLES[@]}"; do
   addr="${entry%%=*}"
@@ -41,9 +44,18 @@ for entry in "${ROLES[@]}"; do
     echo "[ok     ] ${addr} is in state"
     continue
   fi
-  if ! deleted="$(gcp_gcloud iam roles describe "$id" --project "$PROJECT" --format='value(deleted)' 2>/dev/null)"; then
-    echo "[absent ] ${name}: the apply creates it"
-    continue
+  if ! deleted="$(gcp_gcloud iam roles describe "$id" --project "$PROJECT" --format='value(deleted)' 2>"$err")"; then
+    # A role deleted more than 7 days ago is NOT_FOUND too, yet its ID stays
+    # reserved for 37 days, so the create can still fail.
+    if grep -q 'NOT_FOUND' "$err"; then
+      echo "[absent ] ${name}: the apply creates it; if that create fails because the ID was recently deleted, bump custom_role_suffix in variables.tfvars"
+      continue
+    fi
+    # Anything else (auth, invalid_rapt) must not pass for "absent": the apply
+    # would then try to create a role that exists.
+    echo "[error  ] cannot describe ${name}; gcloud credentials may have expired (gcloud auth application-default login):" >&2
+    grep '^ERROR:' "$err" >&2 || true
+    exit 1
   fi
   if [ "$deleted" = "True" ]; then
     echo "[deleted] ${name} is soft-deleted: the provider undeletes it within 7 days; after that, bump custom_role_suffix" >&2

@@ -353,6 +353,7 @@ script "preview" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
+        # After a teardown the three custom roles plan as creates; deploy imports them (adopt-custom-roles.sh).
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
       BASH
       ],
@@ -396,9 +397,16 @@ script "destroy" {
         # reserved for 37 days, so the next rebuild could not recreate it. They
         # grant nothing on their own; the bindings using them are destroyed as
         # usual, and the next deploy adopts them (adopt-custom-roles.sh).
+        # Never `|| true` here: a state rm lost to a lock, backend or auth error
+        # would let the cluster destroy delete the roles and burn their IDs.
+        in_state="$(${global.provisioner} state list)"
+        keep=()
         for addr in google_project_iam_custom_role.crossplane_dns google_project_iam_custom_role.crossplane_storage google_project_iam_custom_role.crossplane_role_reader; do
-          ${global.provisioner} state rm "$addr" 2>/dev/null || true
+          if grep -qxF "$addr" <<<"$in_state"; then keep+=("$addr"); fi
         done
+        if [ "$${#keep[@]}" -gt 0 ]; then
+          ${global.provisioner} state rm -lock-timeout=5m "$${keep[@]}"
+        fi
       BASH
       ],
     ]
@@ -598,6 +606,7 @@ script "drift" "reconcile" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # After a teardown the three custom roles plan as creates that fail here; run deploy, which imports them (adopt-custom-roles.sh).
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
       ],
