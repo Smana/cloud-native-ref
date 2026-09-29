@@ -110,7 +110,7 @@ Four kinds of caller reach these mounts, and each gets a different answer.
 
 ### Machines read, humans write
 
-That last row is the one that makes the second row mean anything.
+The External Secrets row is the one that makes the second row mean anything.
 
 External Secrets resolves a store with the **controller's** identity, not the
 requester's. The controller reads on behalf of whatever `ExternalSecret` asks. If
