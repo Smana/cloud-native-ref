@@ -49,6 +49,7 @@ wants() { # $1 = lane
 }
 
 destroy_rc=0
+retry=0
 if [ "$VERIFY_ONLY" -eq 0 ]; then
   echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
   # --continue-on-error is the point: one stack whose target is already gone must
@@ -93,14 +94,33 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
       bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
-
-      echo
-      echo "=== retrying the destroy after the sweep ==="
-      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
-      destroy_rc=$?
-      echo "=== terramate exit after retry: ${destroy_rc} ==="
-      echo
+      retry=1
     fi
+  fi
+
+  # GKE's LB leftovers (GCP parity GP-22, owner 2026-09-29): swept only on a
+  # confirmed teardown, and only once no GKE cluster is left in the project (the
+  # script refuses otherwise). Retried only while the network stands, like the
+  # AWS VPC check above: a clean teardown must not re-run the whole destroy.
+  if wants gcp && [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
+    _project="${GCP_PROJECT:-ogenki-435905}"
+    _network="${GCP_NETWORK:-vpc-europe-west4-dev}"
+    echo "=== sweeping the LoadBalancer leftovers GKE left in ${_project} ==="
+    bash "${ROOT}/scripts/ops/gcp/sweep-lb-orphans.sh" --project "$_project" \
+      --network "$_network" --cluster "${GKE_CLUSTER_NAME:-gcp-0}" --apply || true
+    if gcloud compute networks describe "$_network" --project "$_project" >/dev/null 2>&1; then
+      retry=1
+    fi
+  fi
+
+  # One retry for every lane, so TM_CLOUD=all never destroys three times.
+  if [ "$retry" -eq 1 ]; then
+    echo
+    echo "=== retrying the destroy after the sweep ==="
+    ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+    destroy_rc=$?
+    echo "=== terramate exit after retry: ${destroy_rc} ==="
+    echo
   fi
 fi
 
@@ -159,6 +179,14 @@ if wants gcp; then
       --format='value(name)' 2>/dev/null)"
     report "Forwarding rules" "$(gcloud compute forwarding-rules list --project "$project" \
       --format='value(name)' 2>/dev/null)"
+    # A deleted cluster leaves its LoadBalancers' target pools and k8s-* firewall
+    # rules behind, in no tofu state, and the firewall rules block the VPC delete
+    # (memory gke_lb_orphans_block_vpc_delete). The health-check rule is named
+    # after the node pool, not the LB, hence the prefix filter.
+    report "Target pools" "$(gcloud compute target-pools list --project "$project" \
+      --format='value(name)' 2>/dev/null)"
+    report "k8s-* firewall rules" "$(gcloud compute firewall-rules list --project "$project" \
+      --filter='name~^k8s-' --format='value(name)' 2>/dev/null)"
     report "Disks" "$(gcloud compute disks list --project "$project" \
       --format='value(name)' 2>/dev/null)"
   fi
@@ -174,6 +202,11 @@ else
     echo "  cloud:      ${leftovers} category(ies) still populated — NOT torn down"
   [ "$unverified" -gt 0 ] && \
     echo "  cloud:      ${unverified} cloud(s) COULD NOT BE CHECKED — status unknown, assume not torn down"
+fi
+# Not auto-skipped: if the first pass never reached openbao/cluster, skipping
+# its pre-destroy snapshot would destroy a node without one.
+if [ "$retry" -eq 1 ] && [ "$destroy_rc" -ne 0 ] && [ "$leftovers" -eq 0 ] && [ "$unverified" -eq 0 ]; then
+  echo "  note:       the non-zero exit came from the retry against already-destroyed stacks (e.g. openbao/cluster's snapshot of a gone node); re-run with TM_OPENBAO_SKIP_SNAPSHOT=true ONLY if the first pass's snapshot succeeded"
 fi
 
 # Exit non-zero if the destroy failed, OR anything is still standing, OR a cloud

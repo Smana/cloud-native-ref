@@ -29,4 +29,4 @@ spec:
   serviceAccount:
     name: external-dns
   roles:
-    - "projects/${project_id}/roles/xplane_dns_editor"
+    - "${gcp_dns_editor_role}"
