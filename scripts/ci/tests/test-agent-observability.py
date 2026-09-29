@@ -195,7 +195,25 @@ def check_reference_grant():
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
 
 
-CHECKS = [check_collector, check_reference_grant]
+ROUTER = "infrastructure/base/agent-router"
+
+
+def check_router():
+    spec = find(f"{ROUTER}/envoyproxy.yaml", "EnvoyProxy", "agent-router-proxy").get("spec", {})
+    tracing = spec.get("telemetry", {}).get("tracing", {})
+    provider = tracing.get("provider", {})
+    check(provider.get("type") == "OpenTelemetry" and provider.get("serviceName") == "agent-router",
+          "agent-router exports OpenTelemetry spans as service agent-router")
+    check(provider.get("backendRefs") == [{"name": "agent-traces-collector", "namespace": "observability", "port": 4317}],
+          "agent-router's spans go to the collector's gRPC port (EG 1.9 exports gRPC only)")
+    check(tracing.get("tags", {}).get("agent.principal") == "%REQ(X-AR-AGENT)%", "every span names the run's verified principal")
+    egress = find(f"{ROUTER}/network-policy-data-plane.yaml", "CiliumNetworkPolicy", "agent-router-data-plane").get("spec", {}).get("egress", [])
+    check(any((r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("app.kubernetes.io/name") == "agent-traces-collector"
+              and r["toPorts"][0]["ports"] == [{"port": "4317", "protocol": "TCP"}] for r in egress),
+          "the data plane may reach the collector's :4317")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router]
 
 for run in CHECKS:
     run()
