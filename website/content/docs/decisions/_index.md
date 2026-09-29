@@ -89,5 +89,6 @@ single-file fixes never need one.
 | [0044]({{< relref "/docs/decisions/0044-room-session-protocol.md" >}}) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
 | [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
+| [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate: run id from the pod, metadata allowlist | Accepted | 2026-09-27 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

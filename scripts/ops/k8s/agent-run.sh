@@ -11,7 +11,8 @@
 # AGENT_PRINCIPAL overrides the principal (default: human:<git user.email>) and must match
 # the design's principal CEL: human:<id> or system:<name> (lowercase, plan Task 1.1).
 # Only the run's name goes to stdout (callers capture it with `| tail -1`); the
-# applied claim's key fields (principal, role, class, repo, branch, minutes) go to stderr.
+# applied claim's key fields and the run's dashboard link go to stderr (SO-5).
+# AGENT_GRAFANA_URL overrides the Grafana host, read otherwise from the grafana HTTPRoute.
 set -euo pipefail
 
 repo=Smana/cloud-native-ref role="" class="" task="" url="" branch="" size=small minutes=120 profiles="" dry=""
@@ -79,6 +80,9 @@ fi
 
 run_id="$(python3 -c 'import secrets; print("".join(secrets.choice("abcdefghijklmnopqrstuvwxyz234567") for _ in range(8)))')"
 
+# The run's page opens a minute before the run exists (epoch ms).
+from_ms="$(( $(date +%s) - 60 ))000"
+
 # JSON, not YAML: task text passes through unescaped by the shell.
 claim="$(RUN_ID="$run_id" REPO="$repo" ROLE="$role" CLASS="$class" TASK="$task" URL="$url" \
   BRANCH="$branch" SIZE="$size" MINUTES="$minutes" PROFILES="$profiles" PRINCIPAL="$principal" python3 -c '
@@ -101,4 +105,13 @@ print(json.dumps({"apiVersion": "cloud.ogenki.io/v1alpha1", "kind": "AgentRun",
 printf '%s\n' "$claim" | kubectl create $dry -f -
 printf 'agent-run: principal=%s role=%s dataClass=%s repository=%s branch=%s maxMinutes=%s\n' \
   "$principal" "$role" "$class" "$repo" "${branch:--}" "$minutes" >&2
+# The run's page (observability plan O17). No host, no link; a dry run creates no run.
+if [ -z "$dry" ]; then
+  grafana="${AGENT_GRAFANA_URL:-}"
+  if [ -z "$grafana" ]; then
+    host="$(kubectl get httproute grafana -n observability -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || true)"
+    [ -z "$host" ] || grafana="https://$host"
+  fi
+  [ -z "$grafana" ] || printf 'agent-run: dashboard %s/d/agent-run/agent-run?var-run=%s&from=%s&to=now\n' "${grafana%/}" "$run_id" "$from_ms" >&2
+fi
 echo "xplane-run-$run_id"

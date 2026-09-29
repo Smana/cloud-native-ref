@@ -195,7 +195,121 @@ def check_reference_grant():
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
 
 
-CHECKS = [check_collector, check_reference_grant]
+ROUTER = "infrastructure/base/agent-router"
+
+
+def check_router():
+    spec = find(f"{ROUTER}/envoyproxy.yaml", "EnvoyProxy", "agent-router-proxy").get("spec", {})
+    tracing = spec.get("telemetry", {}).get("tracing", {})
+    provider = tracing.get("provider", {})
+    check(provider.get("type") == "OpenTelemetry" and provider.get("serviceName") == "agent-router",
+          "agent-router exports OpenTelemetry spans as service agent-router")
+    check(provider.get("backendRefs") == [{"name": "agent-traces-collector", "namespace": "observability", "port": 4317}],
+          "agent-router's spans go to the collector's gRPC port (EG 1.9 exports gRPC only)")
+    check(tracing.get("tags", {}).get("agent.principal") == "%REQ(X-AR-AGENT)%", "every span names the run's verified principal")
+    check(tracing.get("samplingRate") == 100, "every request is sampled")
+    egress = find(f"{ROUTER}/network-policy-data-plane.yaml", "CiliumNetworkPolicy", "agent-router-data-plane").get("spec", {}).get("egress", [])
+    check(any((r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("app.kubernetes.io/name") == "agent-traces-collector"
+              and (r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("io.kubernetes.pod.namespace") == "observability"
+              and r["toPorts"][0]["ports"] == [{"port": "4317", "protocol": "TCP"}] for r in egress),
+          "the data plane may reach the collector's :4317")
+
+
+VM_VALUES = "observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml"
+# The AgentRun XRD's status.phase enum (crossplane-configuration apis/agentrun/definition.yaml).
+PHASES = ["Pending", "Running", "Succeeded", "Failed", "BudgetExhausted", "Revoked"]
+
+
+def check_ksm():
+    cm = find(VM_VALUES, "ConfigMap", "vm-common-helm-values")
+    ksm = yaml.safe_load(cm.get("data", {}).get("values.yaml", "{}")).get("kube-state-metrics", {})
+    check(ksm.get("rbac", {}).get("extraRules") == [{"apiGroups": ["cloud.ogenki.io"], "resources": ["agentruns"], "verbs": ["list", "watch"]}],
+          "KSM reads agentruns, list and watch only")
+    crs = ksm.get("customResourceState", {})
+    res = (crs.get("config", {}).get("spec", {}).get("resources") or [{}])[0]
+    check(crs.get("enabled") is True and res.get("groupVersionKind") == {"group": "cloud.ogenki.io", "version": "v1alpha1", "kind": "AgentRun"},
+          "custom-resource state covers AgentRun")
+    check(res.get("metricNamePrefix") == "agentrun", "the series are agentrun_*")
+    check(res.get("labelsFromPath", {}).get("run_id") == ["status", "runId"], "every agentrun_* series carries run_id")
+    metrics = {m["name"]: m["each"] for m in res.get("metrics", [])}
+    want = {"info", "status_phase", "outcome_info", "usage_tokens", "budget_max_tokens",
+            "started_timestamp_seconds", "finished_timestamp_seconds"}
+    check(set(metrics) == want, f"agentrun metrics are {sorted(want)}, got {sorted(metrics)}")
+    check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
+    info = metrics.get("info", {}).get("info", {}).get("labelsFromPath", {})
+    check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
+    check(metrics.get("outcome_info", {}).get("info", {}).get("labelsFromPath") == {"reason": ["status", "reason"], "pull_request": ["status", "pullRequest"]},
+          "outcome_info reads status.reason and status.pullRequest")
+    check(metrics.get("usage_tokens", {}).get("gauge", {}).get("path") == ["status", "usage", "tokens"], "usage_tokens reads status.usage.tokens")
+    check(metrics.get("budget_max_tokens", {}).get("gauge", {}).get("path") == ["spec", "budget", "maxTokens"], "budget_max_tokens reads spec.budget.maxTokens")
+    check(metrics.get("started_timestamp_seconds", {}).get("gauge", {}).get("path") == ["status", "startedAt"], "started_timestamp_seconds reads status.startedAt")
+    check(metrics.get("finished_timestamp_seconds", {}).get("gauge", {}).get("path") == ["status", "finishedAt"], "finished_timestamp_seconds reads status.finishedAt")
+
+
+DASHBOARDS = "observability/base/agent-platform"
+
+
+def dashboard(rel, name):
+    d = find(rel, "GrafanaDashboard", name)
+    check(not re.search(r"(?<!\$)\$\{", (ROOT / rel).read_text()), f"{rel}: every ${{…}} is written $${{…}} for Flux")
+    check(d.get("spec", {}).get("folderRef") == "agents", f"{rel}: in the agents folder (O10)")
+    try:
+        return json.loads(d.get("spec", {}).get("json", "{}").replace("$${", "${"))
+    except json.JSONDecodeError as exc:
+        errors.append(f"{rel}: invalid JSON: {exc}")
+        return {}
+
+
+def titled(board):
+    return {p["title"]: p for p in board.get("panels", [])}
+
+
+def check_run_dashboard():
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run")
+    check(board.get("uid") == "agent-run", "uid agent-run: task agent:run, SP2 and SP3 link to it")
+    check("run" in [v["name"] for v in board.get("templating", {}).get("list", [])], "a `run` variable")
+    panels = titled(board)
+    want = {"Run", "Duration", "Tokens vs budget", "Phase", "Step log", "Model calls through agent-router",
+            "MCP calls", "Errors", "Tokens in / out", "Cost (USD)", "Model latency p50 / p95", "Error rate",
+            "Steps", "Trace (agent-harness)", "agent-router spans"}
+    check(want <= set(panels), f"missing panels: {sorted(want - set(panels))}")
+    for title in ("Trace (agent-harness)", "agent-router spans"):
+        check(panels.get(title, {}).get("datasource") == {"type": "jaeger", "uid": "VictoriaTraces"}, f"{title} reads VictoriaTraces")
+    for title in ("Step log", "Model calls through agent-router", "MCP calls", "Errors", "Steps"):
+        check(panels.get(title, {}).get("datasource", {}).get("type") == "victoriametrics-logs-datasource", f"{title} reads VictoriaLogs")
+    targets = json.dumps([t for p in board.get("panels", []) for t in p.get("targets", [])])
+    check('run_id=\\"${run}\\"' in targets and "xplane-run-${run}" in targets and "agent.run_id=${run}" in targets,
+          "the panels filter on the run: KSM run_id, the pod and principal, the span tag")
+
+
+def check_run_trace_link():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run"))
+    names = [n for tr in panels.get("Run", {}).get("transformations", []) if tr["id"] == "filterFieldsByName"
+             for n in tr["options"]["include"]["names"]]
+    check("tier" in names, "the run page shows the run's tier (O23)")
+    step = json.dumps(panels.get("Step log", {}).get("targets", []))
+    check("extract_regexp" in step and "rename trace_id as log.trace_id" in step,
+          "a step line links to its trace through the log.trace_id derived field (O22)")
+
+
+def check_fleet_dashboard():
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-fleet.yaml", "agent-fleet")
+    check(board.get("uid") == "agent-fleet", "uid agent-fleet")
+    panels = titled(board)
+    check({"Runs", "Runs by phase", "Tokens per run", "Trace pipeline (agent-traces-collector)"} <= set(panels), "the fleet panels")
+    links = json.dumps(panels.get("Runs", {}).get("fieldConfig", {}))
+    check("/d/agent-run/agent-run?var-run=${__value.text}" in links, "one click from a run_id opens its Agent run page (SO-1)")
+
+
+def check_fleet_tier():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-fleet.yaml", "agent-fleet"))
+    check({"Tier vs tokens and steps per run", "Tokens by tier"} <= set(panels), "tier vs spend panels (O23)")
+    targets = json.dumps(panels.get("Tier vs tokens and steps per run", {}).get("targets", []))
+    check("stats by (run_id) count() as steps" in targets and "agentrun_info" in targets,
+          "tier, tokens and steps joined on run_id")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier]
 
 for run in CHECKS:
     run()

@@ -80,3 +80,17 @@ spec:
             - type: File
               file:
                 path: /dev/stdout
+    # Spans to the agent trace collector over OTLP/gRPC, the one protocol Envoy Gateway
+    # 1.9 exports. Its pipeline has no content filter: every attribute here is set by this
+    # file. A run's traceparent survives identity-proxy, so these join the run's trace.
+    tracing:
+      samplingRate: 100
+      provider:
+        type: OpenTelemetry
+        serviceName: agent-router
+        backendRefs:
+          - name: agent-traces-collector
+            namespace: observability
+            port: 4317
+      tags:
+        agent.principal: "%REQ(X-AR-AGENT)%"
