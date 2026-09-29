@@ -16,3 +16,13 @@ patches:
       group: helm.toolkit.fluxcd.io
       kind: HelmRelease
       name: external-dns
+  # base waits on aws-load-balancer-controller (#1975's webhook race), a release
+  # gcp-0 never runs: GKE's own controller creates its LoadBalancers. Kept, the
+  # edge never resolves and no private record is ever written (09-11 bug 6).
+  - target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: external-dns
+    patch: |-
+      - op: remove
+        path: /spec/dependsOn

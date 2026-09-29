@@ -152,3 +152,15 @@ variable "tailscale_oauth_secret_name" {
   type        = string
   default     = "tailscale-k8s-operator-oauth"
 }
+
+# GCP reserves a deleted custom role's ID for 37 days and allows undelete for 7
+# only, so a rebuild inside that window cannot recreate it (09-11 bug 2). The
+# destroy now keeps the roles (not inert: Crossplane's external-dns
+# ProjectIAMMember outlives the cluster and keeps its grant live until gcp-0
+# returns) and the deploy adopts them; this suffix moved past the IDs already
+# burned (unsuffixed before 2026-09-11, `_v2` on 2026-09-14). No default: a run
+# without variables.tfvars must fail, not plan the live roles' replacement.
+variable "custom_role_suffix" {
+  description = "Generation suffix on the three custom role IDs; bump only if a generation is lost"
+  type        = string
+}

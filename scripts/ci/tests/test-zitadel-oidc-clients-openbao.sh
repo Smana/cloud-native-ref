@@ -17,8 +17,9 @@
 #     registers in ZITADEL.
 #   * the reconcile is only as good as its invocation: the unit tests below
 #     pass whether or not any deploy ever hands the script --openbao-url. The
-#     Terramate guards pin who passes it (aws-0's own sync, nobody else) and
-#     that stage5 runs the check without swallowing its exit code.
+#     Terramate guards pin who passes it (each cloud's hosting sync, never a
+#     consumer's) and that stage5 runs the check without swallowing its exit
+#     code.
 #
 # WHY PATH STUBS. curl, jq and sleep are executables on a stub PATH, not shell
 # functions: a function is bypassed by `command curl` or `env curl`, and a jq
@@ -135,7 +136,7 @@ in_job() { # body, needle, label
 }
 
 echo
-echo "== contract: only aws-0's own sync passes the --openbao-* flags (design §2) =="
+echo "== contract: only a hosting sync passes the --openbao-* flags (design §2, GP-5) =="
 aws_syncs="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' || true)"
 own_sync="$(grep -F -- '--cluster "${global.eks_cluster_name}"' <<< "$aws_syncs" || true)"
 consumer_sync="$(grep -F -- '--idp-cloud aws' <<< "$aws_syncs" || true)"
@@ -157,8 +158,18 @@ contains "$openbao_args" '--openbao-ca-file ' "OPENBAO_ARGS carries the CA file"
 check "gcp/gke/init's workflows file exists" "yes" "$([ -f "$GCP_WORKFLOWS_SRC" ] && echo yes || echo no)"
 gcp_syncs="$(logical_lines "$GCP_WORKFLOWS_SRC" 2>/dev/null | grep -cF 'zitadel-oidc-clients.sh" sync')"
 check "gcp/gke/init runs at least one sync" "yes" "$([ "${gcp_syncs:-0}" -ge 1 ] && echo yes || echo no)"
-gcp_openbao="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -E -- '--openbao-|OPENBAO_ARGS' || true)"
-check "gcp/gke/init passes no --openbao-* flag" "" "$gcp_openbao"
+# GCP parity GP-5: gcp-0's HOSTING sync reconciles its own OpenBao and mirrors
+# into it; the CONSUMER sync (registering in another cloud's directory) must not.
+gcp_hosting="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -vF -- '--idp-cloud' || true)"
+gcp_consumer="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -F -- '--idp-cloud' || true)"
+contains "$gcp_consumer" '--idp-cloud' "gcp/gke/init's consumer sync is found"
+# The hosting sync takes its flags from CLIENT_SYNC_ARGS, one multi-line array
+# shared with the recovery the job prints; comment lines inside it dropped.
+gcp_client_args="$(awk '/^[[:space:]]*CLIENT_SYNC_ARGS=\(/ { on = 1 } on && !/^[[:space:]]*#/ { print } on && /^[[:space:]]*\)[[:space:]]*$/ { exit }' "$GCP_WORKFLOWS_SRC")"
+contains "$gcp_hosting" '"$${CLIENT_SYNC_ARGS[@]}"' "gcp/gke/init's hosting sync expands CLIENT_SYNC_ARGS"
+contains "$gcp_client_args" '--openbao-url' "gcp/gke/init's hosting sync passes --openbao-url"
+contains "$gcp_client_args" '--mirror-openbao' "gcp/gke/init's hosting sync mirrors into OpenBao"
+check "gcp/gke/init's consumer sync passes no --openbao-* flag" "" "$(grep -E -- '--openbao-|--mirror-openbao' <<<"$gcp_consumer" || true)"
 
 echo
 echo "== contract: stage5 runs the check after stage4, and its failure halts the deploy =="
@@ -203,6 +214,8 @@ check_flags_known() { # workflows file, job name -> "yes", or "no: <first unknow
 stage5_flags_known() { check_flags_known "$1" stage5-verify-openbao-oidc; }
 check "every flag stage5 passes is a case label in openbao-oidc-check.sh" \
     "yes" "$(stage5_flags_known "$AWS_WORKFLOWS_SRC")"
+check "every flag gcp-0's stage5 passes is a case label in openbao-oidc-check.sh" \
+    "yes" "$(stage5_flags_known "$GCP_WORKFLOWS_SRC")"
 MUTANT_FLAG="$WORK/workflows-mutant-unknown-flag.tm.hcl"
 awk -v n='"stage5-verify-openbao-oidc"' '
     !on && $1 == "name" && index($0, n) { on = 1 }
@@ -248,6 +261,8 @@ check_call_last() { # file -> yes/no: the check call is the heredoc's ONLY last 
 }
 check "the committed file: the check call is the heredoc's only last statement" \
     "yes" "$(check_call_last "$AWS_WORKFLOWS_SRC")"
+check "gcp/gke/init: the check call is the heredoc's only last statement" \
+    "yes" "$(check_call_last "$GCP_WORKFLOWS_SRC")"
 
 # Both mutants are built from the COMMITTED file, not a hand-written fixture,
 # so a future reformat of the real heredoc cannot make this proof stale
@@ -1034,11 +1049,13 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
 done
+# Tested in test-zitadel-oidc-clients-mirror.sh; stubbed so no kubectl runs.
+force_sync_mirrored() { :; }
 
 # Every OTHER thing cmd_sync calls, stubbed: this section is about the ONE new
 # call, not a restatement of the redirect/convergence suites' own coverage.
@@ -1053,7 +1070,17 @@ converge_secret() { echo '{}'; }
 store_exists() { return 0; }
 store_probe()  { return 0; }
 store_read()   { echo '{}'; }
-store_write()  { cat >/dev/null; }
+STORE_WRITE_RC=0
+store_write()  { cat >/dev/null; return "$STORE_WRITE_RC"; }
+# The mirror's own behaviour is test-zitadel-oidc-clients-mirror.sh; here only
+# whether cmd_sync calls it, and what it does with a failure.
+MIRROR_LOG="$WORK/mirror-calls.log"
+MIRROR_RC=0
+mirror_to_openbao() {
+    cat >/dev/null
+    printf 'MIRROR %s\n' "$1" >> "$MIRROR_LOG"
+    return "$MIRROR_RC"
+}
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0
@@ -1075,7 +1102,7 @@ run_cmd_sync() {
 }
 
 echo "-- the existing-app path --"
-: > "$RECONCILE_LOG"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
 CONSUMERS=("openbao|${WIRE_CB}|openbao-oidc")
 app_id_by_name() { echo "app-1"; }
 app_get() { jq -n --arg r "$WIRE_CB" --arg cid "existing-openbao-id" \
@@ -1086,10 +1113,20 @@ check "existing-app path: cmd_sync succeeds"     "0" "$rc"
 check "existing-app path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
 check "existing-app path: called with (key, id)" "CALL openbao-oidc existing-openbao-id" \
     "$(cat "$RECONCILE_LOG")"
+# The store is already converged (converge_secret == store_read), so only the
+# retry in that branch can repair a mirror an earlier run failed.
+check "already converged, --apply: the mirror is retried" "MIRROR openbao-oidc" "$(cat "$MIRROR_LOG")"
+
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+APPLY=false
+run_cmd_sync
+check "already converged, dry run: cmd_sync succeeds"      "0" "$rc"
+check "already converged, dry run: OpenBao is never written" "" "$(cat "$MIRROR_LOG")"
+APPLY=true
 
 echo
 echo "-- the create path --"
-: > "$RECONCILE_LOG"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
 app_id_by_name() { echo ""; }
 api_or_fail() { printf '{"clientId":"created-openbao-id","clientSecret":"created-secret"}'; }  # pragma: allowlist secret
 APPLY=true
@@ -1098,6 +1135,31 @@ check "create path: cmd_sync succeeds"     "0" "$rc"
 check "create path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
 check "create path: called with (key, id)" "CALL openbao-oidc created-openbao-id" \
     "$(cat "$RECONCILE_LOG")"
+check "create path: the new secret is mirrored" "MIRROR openbao-oidc" "$(cat "$MIRROR_LOG")"
+
+echo
+echo "-- a failed mirror: the loop, both reconciles and the summary still run, then exit 1 --"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+CONSUMERS=("harbor|https://harbor.priv.aws.ogenki.io/c/oidc/callback|harbor-oidc"
+           "openbao|${WIRE_CB}|openbao-oidc")
+MIRROR_RC=1
+run_cmd_sync
+check "mirror fails: cmd_sync exits 1"                     "1" "$rc"
+check "mirror fails: the next consumer is still processed" "2" "$(wc -l < "$MIRROR_LOG")"
+check "mirror fails: reconcile still called once"          "1" "$(wc -l < "$RECONCILE_LOG")"
+contains "$out" "created: 2"                               "mirror fails: the summary line still prints"
+contains "$out" "not mirrored to OpenBao: harbor-oidc openbao-oidc" "mirror fails: the summary names each failed mirror"
+MIRROR_RC=0
+
+echo
+echo "-- a failed store write: stops at once, OpenBao untouched --"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+STORE_WRITE_RC=1
+run_cmd_sync
+check "store write fails: cmd_sync exits 1"       "1" "$rc"
+check "store write fails: no mirror is attempted" "" "$(cat "$MIRROR_LOG")"
+STORE_WRITE_RC=0
+CONSUMERS=("openbao|${WIRE_CB}|openbao-oidc")
 
 echo
 echo "-- a reconcile failure exits 1, after the summary --"
@@ -1108,6 +1170,17 @@ run_cmd_sync
 check "reconcile fails: cmd_sync exits 1"        "1" "$rc"
 contains "$out" "created: "                      "reconcile fails: the summary line still prints"
 RECONCILE_RC=0
+
+echo
+echo "-- a failed project-id publish: the reconcile and the summary still run, then exit 1 --"
+: > "$RECONCILE_LOG"
+publish_project_id() { return 1; }
+run_cmd_sync
+check "publish fails: cmd_sync exits 1"             "1" "$rc"
+check "publish fails: reconcile still called once"  "1" "$(wc -l < "$RECONCILE_LOG")"
+contains "$out" "created: "                         "publish fails: the summary line still prints"
+contains "$out" "zitadel-project-id not published"  "publish fails: the summary names it"
+eval "$(sed -n '/^publish_project_id() {/,/^}/p' "$CONSUMERS_SRC")"
 
 echo
 echo "== flags: --openbao-url requires --openbao-root-token-secret and --openbao-ca-file =="

@@ -6,10 +6,15 @@
 #   Stage 1 (this stack):  GKE Standard cluster, static spot node pool, Workload
 #                          Identity, Crossplane WIF bootstrap
 #   Stage 2 (configure):   Gateway API CRDs -> Cilium -> Flux Operator -> Flux Instance
+#   Stage 3:               External Secrets grants, then the OIDC clients; when
+#                          gcp-0 hosts the IdP, first the Google IdP and groups
+#                          Action, and the clients mirrored into OpenBao
+#   Stage 5:               a hosting gcp-0's OpenBao OIDC check, which halts the
+#                          deploy on drift
 #
-# There is no stage 3. The EKS equivalent recycles bootstrap nodes whose ENIs
-# predate Cilium, which is specific to ENI prefix delegation and has no GCP
-# counterpart -- ipam.mode=kubernetes takes pod CIDRs from the node object.
+# Stage 5 keeps aws-0's job name, so one contract suite guards both. EKS's node
+# recycle has no GCP counterpart: it exists for ENI prefix delegation, while
+# ipam.mode=kubernetes takes pod CIDRs from the node object.
 #
 # The control-plane endpoint is PRIVATE, so stage 2 must run from a machine on the
 # tailnet.
@@ -90,6 +95,9 @@ script "deploy" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -105,13 +113,28 @@ script "deploy" {
         ${global.cloud_gate}
         set -euo pipefail
         cd ../configure
+        # ../configure's vault provider needs the CA chain before init, and a
+        # fresh checkout has no .tls/ (gitignored). gke/configure's own deploy
+        # writes it; this inline apply bypasses that script (09-11 bug 3).
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # A restored lineage already holds jwt/gcp-0, and creating it again 400s
+        # with "path is already in use". Same call as gke/configure's deploy.
+        bash "${terramate.root.path.fs.absolute}/scripts/provision/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
+        # deploy_identity_provider here too: without it this apply publishes the
+        # consumed (AWS) identity_provider_url until the standalone configure run.
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
         # Forget flux-operator here, in the job that just created it -- NOT only
         # in gke/configure's own `deploy`, which this job bypasses. Left in state,
         # the standalone gke/configure stack plans count=0 against a resource that
-        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS lane
-        # had the identical gap and hit it on 2026-09-16.
+        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS
+        # lane had the identical gap and hit it on 2026-09-16.
         ${global.provisioner} state rm helm_release.flux_operator 2>/dev/null || true
       BASH
       ],
@@ -242,6 +265,25 @@ script "deploy" {
           exit 0
         fi
 
+        # The workforce provider's audience is the ZITADEL PROJECT id, which does
+        # not exist until the sync below creates the project. Passing the pool
+        # lets the script reconcile it; without this, per-user RBAC on this
+        # cluster fails as a bare `invalid_grant` with everything looking healthy.
+        # Empty (no such stack / no such key) simply skips that reconciliation.
+        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+        # One flag list per sync, expanded by the real call AND the recovery
+        # printed when ZITADEL is late: a hand re-run missing the OpenBao flags
+        # leaves every ExternalSecret on the dead directory's clients.
+        IDP_SYNC_ARGS=(--cluster "$${NAME}" --cloud gcp --project "$${PROJECT}")
+        CLIENT_SYNC_ARGS=(
+          --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
+          --workforce-pool "$${WORKFORCE_POOL}"
+          --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200"
+          --openbao-root-token-secret openbao-priv-gcp-root-token
+          --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem"
+          --mirror-openbao
+        )
+
         # A BUDGET FOR A COLD BUILD, NOT A REBUILD.
         #
         # ZITADEL is last in a long chain on a fresh cluster --
@@ -272,27 +314,59 @@ script "deploy" {
 
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
           echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
-          echo "       Re-run by hand once it is up:"
-          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
-          echo "         scripts/provision/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
+          echo "       Re-run by hand once it is up, kubectl pointed at $${NAME}:"
+          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} scripts/provision/zitadel-idp.sh sync$(printf ' %q' "$${IDP_SYNC_ARGS[@]}") --apply"
+          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} scripts/provision/zitadel-oidc-clients.sh sync$(printf ' %q' "$${CLIENT_SYNC_ARGS[@]}") --apply"
           exit 0
         fi
 
-        # The workforce provider's audience is the ZITADEL PROJECT id, which does
-        # not exist until the sync below creates the project. Passing the pool
-        # lets the script reconcile it; without this, per-user RBAC on this
-        # cluster fails as a bare `invalid_grant` with everything looking healthy.
-        # Empty (no such stack / no such key) simply skips that reconciliation.
-        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+        # A fresh directory (GCP parity GP-3) has neither the Google IdP nor the
+        # groups Action; both must exist before the clients, or no token carries
+        # a groups claim.
+        echo "== registering the Google IdP and the groups Action"
+        IDP_URL="https://auth.$${PUBLIC_DOMAIN}" \
+          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync "$${IDP_SYNC_ARGS[@]}" --apply || \
+          echo "[warn] IdP registration failed; re-run it by hand"
+
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
-          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
-            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
-            --workforce-pool "$${WORKFORCE_POOL}" --apply || \
+          bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync "$${CLIENT_SYNC_ARGS[@]}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"
         bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
+      BASH
+      ],
+    ]
+  }
+
+  job {
+    name        = "stage5-verify-openbao-oidc"
+    description = "Fail the deploy when a hosting gcp-0's OpenBao OIDC client disagrees with the store or ZITADEL no longer knows it"
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        set -euo pipefail
+        ROOT="${terramate.root.path.fs.absolute}"
+
+        # Stage 3's warn-and-continue lets a failed rotation through; this is
+        # what stops it. The check is the last statement, so exit 1 (drift) and
+        # exit 2 (cannot tell) both halt, as on aws-0.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
+        if [ "$${DEPLOY_IDP}" != "true" ]; then
+          echo "== skipping: this cluster consumes ${global.primary_cloud}'s directory, whose own deploy verifies OpenBao's OIDC client"
+          exit 0
+        fi
+
+        PROJECT="$(${global.provisioner} output -raw project_id)"
+        OPENBAO_URL="https://bao.$(${global.provisioner} output -raw private_domain_name):8200"
+        echo "== verifying OpenBao's OIDC client"
+        bash "$${ROOT}/scripts/provision/openbao-oidc-check.sh" \
+          --url "$${OPENBAO_URL}" \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem" \
+          --cloud gcp --project "$${PROJECT}" \
+          --redirect-uri "$${OPENBAO_URL}/ui/vault/auth/oidc/oidc/callback"
       BASH
       ],
     ]
@@ -312,6 +386,9 @@ script "deploy-stage1" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
+        bash "${terramate.root.path.fs.absolute}/scripts/ops/gcp/adopt-custom-roles.sh" \
+          --project ogenki-435905 \
+          --suffix "$(awk -F'"' '/^custom_role_suffix/{print $2}' variables.tfvars)" --apply
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
       BASH
@@ -332,6 +409,7 @@ script "preview" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
+        # After a teardown the three custom roles plan as creates; deploy imports them (adopt-custom-roles.sh).
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
       BASH
       ],
@@ -371,6 +449,21 @@ script "destroy" {
         # must fail here, not after resources have started disappearing. Same stack
         # dir as stage1-destroy-cluster, so that job inherits this init.
         ${global.provisioner} init -lock-timeout=5m
+        # Keep the custom roles (GCP parity GP-15): a deleted role ID stays
+        # reserved for 37 days, so the next rebuild could not recreate it. The
+        # next deploy adopts them (adopt-custom-roles.sh). Kept roles are not
+        # inert: Crossplane's ProjectIAMMember for ns/kube-system/sa/external-dns
+        # outlives the cluster, so that grant stays live until gcp-0 returns.
+        # Never `|| true` here: a state rm lost to a lock, backend or auth error
+        # would let the cluster destroy delete the roles and burn their IDs.
+        in_state="$(${global.provisioner} state list)"
+        keep=()
+        for addr in google_project_iam_custom_role.crossplane_dns google_project_iam_custom_role.crossplane_storage google_project_iam_custom_role.crossplane_role_reader; do
+          if grep -qxF "$addr" <<<"$in_state"; then keep+=("$addr"); fi
+        done
+        if [ "$${#keep[@]}" -gt 0 ]; then
+          ${global.provisioner} state rm -lock-timeout=5m "$${keep[@]}"
+        fi
       BASH
       ],
     ]
@@ -570,6 +663,7 @@ script "drift" "reconcile" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # After a teardown the three custom roles plan as creates that fail here; run deploy, which imports them (adopt-custom-roles.sh).
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
       ],

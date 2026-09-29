@@ -30,6 +30,7 @@ tasks:
       - {task: "ci:links"}
       - {task: "ci:doc-claims"}
       - {task: "ci:idp-topology"}
+      - {task: "ci:openbao-policies"}
       - {task: "ci:doc-paths"}
 
   # The design names this `task agent:run` (SP1 §Implementation outline): the
