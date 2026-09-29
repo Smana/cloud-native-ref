@@ -28,6 +28,11 @@ TM_CLOUD=aws,gcp terramate script run deploy
 TM_CLOUD=all     terramate script run deploy
 ```
 
+The platform is GCP-primary
+([ADR-0052](../website/content/docs/decisions/0052-gcp-primary-platform.md)). `TM_CLOUD=gcp` is the
+normal deploy. It still needs AWS credentials, for the two shared stacks' S3 state and the
+federation role. Every AWS stack prints `[skip]`, and `aws/openbao/lineage` is kept.
+
 A stack's lane is its directory. `opentofu/shared/**` is owned by neither cloud and always runs.
 Enforced in `scripts/provision/tm-provisioner.sh`, which `global.provisioner` points at, so it wraps every
 `tofu` call in the shared scripts *and* every per-stack override at once. Jobs that run something

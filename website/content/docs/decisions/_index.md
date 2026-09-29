@@ -83,5 +83,6 @@ single-file fixes never need one.
 | [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
+| [0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}}) | GCP is the primary cloud; AWS keeps the essentials | Proposed | 2026-09-29 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

@@ -52,7 +52,8 @@ globals {
   # never derived from TM_CLOUD, whose value changes per invocation.
   #
   # Enforced by ./scripts/ci/validate-idp-topology.sh.
-  primary_cloud = "aws"
+  # "gcp" since 2026-09-29 (ADR-0052): AWS keeps Route53, the federation, the state bucket and the lineage stacks.
+  primary_cloud = "gcp"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy
