@@ -40,8 +40,9 @@ spec:
   dependsOn:
     - name: infrastructure
     # Two edges, for two different prerequisites this path renders:
-    #   - security-openbao creates the `clustersecretstore` the two
-    #     ExternalSecrets in ../../base/zitadel read through.
+    #   - security-openbao: nothing here reads its store since ADR-0052 (every
+    #     key is generated in-cluster); the edge stays until a live build
+    #     shows it can go.
     #   - security-public-certs creates the `letsencrypt-prod` ClusterIssuer
     #     that base's certificate.yaml names.
     # Both already dependOn `security`, so cert-manager and External Secrets
