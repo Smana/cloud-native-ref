@@ -24,7 +24,8 @@ Hubble afterwards.
    - **GKE:** `169.254.169.254` is never node-local. iptables DNATs it to gke-metadata-server
      *after* Cilium has classified it as `world`, so `host` never matches. Use
      `toCIDR: 169.254.169.254/32` on TCP 80 (runlore, image-gallery).
-     `scripts/ci/tests/test-gcp-metadata-server-cidr.py` fails on a gcp-0 `host`:80 rule.
+     `scripts/ci/tests/test-gcp-metadata-server-cidr.py` fails on a gcp-0 `host`:80 rule in source;
+     `scripts/ci/flux-schema/assert-cloud-shape.py` fails on one a gcp-0 chart renders.
 
 4. **Escaping to `toEntities: world` on TCP 443** is acceptable only for a bounded one-shot job
    (preload/build/init with a TTL) under restricted PSS with scoped IAM and HTTPS-only egress.

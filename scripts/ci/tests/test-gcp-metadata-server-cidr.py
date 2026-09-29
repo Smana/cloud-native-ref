@@ -9,7 +9,8 @@ times out. The rule that works, live-proven by runlore (#1862) and image-gallery
 Builds every path a gcp-0 Flux Kustomization applies and fails on any
 CiliumNetworkPolicy that reaches host:80 there; nothing else on gcp-0 listens
 on the node's port 80. Charts rendered by a HelmRelease are out of reach here
-(runlore's comes from its chart's gcpWorkloadIdentity option)."""
+(runlore's comes from its chart's gcpWorkloadIdentity option); assert-cloud-shape.py
+checks those in the rendered bundle."""
 import pathlib
 import subprocess
 import sys

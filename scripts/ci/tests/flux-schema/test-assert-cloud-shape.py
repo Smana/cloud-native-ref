@@ -76,6 +76,92 @@ if acs.check_umbrellas(tree):
 if not acs.check_umbrellas(tree):
     fails.append("a substituted child on a base/ path must fail")
 
+# GP-24 and GP-26: the gcp-0 patches must apply, not just leave no AWS string behind.
+KEYS = """apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata: {name: ai-gateway-api-keys, namespace: envoy-gateway-system}
+spec:
+  refreshPolicy: CreatedOnce
+  dataFrom:
+    - sourceRef: {generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: k1}}
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata: {name: k1, namespace: envoy-gateway-system}
+spec: {length: 48}
+"""
+CA = """apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata: {name: openbao-ca, namespace: agent-system}
+spec:
+  secretStoreRef: {kind: ClusterSecretStore, name: clustersecretstore}
+  data:
+    - secretKey: ca.crt
+      remoteRef: {key: openbao-priv-gcp-ca-chain}
+"""
+
+
+def secrets(keys=KEYS, ca=CA):
+    return acs.check_gcp0_secrets(bundle({"overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml": keys,
+                                          "overlay-security-gcp-0-agent-secrets.yaml": ca}))
+
+
+if secrets():
+    fails.append("generated gateway keys and the GCP CA key must pass")
+if not secrets(keys=KEYS.replace("  refreshPolicy: CreatedOnce\n", "")):
+    fails.append("gateway keys regenerated on every refresh must fail")
+if not secrets(keys=KEYS.replace("spec:\n  refreshPolicy", "spec:\n  secretStoreRef: {kind: ClusterSecretStore, name: clustersecretstore}\n  refreshPolicy")):
+    fails.append("gateway keys still bound to a store must fail")
+if not secrets(keys=KEYS.replace("kind: Password, name: k1", "kind: Fake, name: k1")):
+    fails.append("gateway keys from a non-Password generator must fail")
+if not secrets(keys=KEYS.replace("metadata: {name: k1,", "metadata: {name: k2,")):
+    fails.append("gateway keys from a generator the render lacks must fail")
+if not secrets(ca=CA.replace("openbao-priv-gcp-ca-chain", "openbao-priv-gcp-root-token")):
+    fails.append("an openbao-ca reading any other entry must fail")
+if not secrets(keys="", ca=""):
+    fails.append("a render with neither ExternalSecret is vacuous and must fail")
+
+# The ai-gateway umbrella's llm-gateway child carries the budgets; without a
+# KVStore the rate-limit service has no backend.
+LLM_CHILD = """apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: llm-gateway, namespace: flux-system}
+spec: {path: ./infrastructure/base/llm-gateway}
+"""
+KV = "apiVersion: cloud.ogenki.io/v1alpha1\nkind: KVStore\nmetadata: {name: xplane-ai-gateway-ratelimit, namespace: envoy-gateway-system}\n"
+rl = pathlib.Path(tempfile.mkdtemp())
+(rl / "clusters/gcp-0-ai-gateway").mkdir(parents=True)
+# kustomize's own Kustomization has no metadata; it sits beside every child.
+(rl / "clusters/gcp-0-ai-gateway/kustomization.yaml").write_text("apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: []\n")
+if acs.check_ratelimit(bundle({"overlay-infrastructure-gcp-0-envoy-gateway.yaml": ""}), rl):
+    fails.append("no llm-gateway child needs no KVStore")
+(rl / "clusters/gcp-0-ai-gateway/infrastructure-llm-gateway.yaml").write_text(LLM_CHILD)
+if acs.check_ratelimit(bundle({"overlay-infrastructure-gcp-0-envoy-gateway.yaml": KV}), rl):
+    fails.append("llm-gateway with a KVStore in gcp-0's envoy-gateway must pass")
+if not acs.check_ratelimit(bundle({"overlay-infrastructure-gcp-0-envoy-gateway.yaml": ""}), rl):
+    fails.append("llm-gateway without a KVStore in gcp-0's envoy-gateway must fail")
+
+# test-gcp-metadata-server-cidr.py builds kustomize paths; charts are the part
+# only the rendered bundle shows.
+CNP = """apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {{name: runlore, namespace: observability}}
+spec:
+  egress:
+    - {rule}
+      toPorts: [{{ports: [{{port: "80", protocol: TCP}}]}}]
+"""
+METADATA = CNP.format(rule="toCIDR: [169.254.169.254/32]")
+HOST = CNP.format(rule="toEntities: [host]")
+if acs.check_metadata_egress(bundle({"chart-observability-gcp-0-runlore-runlore.yaml": METADATA})):
+    fails.append("a gcp-0 chart CNP reaching the metadata server by CIDR must pass")
+if not acs.check_metadata_egress(bundle({"chart-observability-gcp-0-runlore-runlore.yaml": METADATA + "---\n" + HOST})):
+    fails.append("a gcp-0 chart CNP reaching host:80 must fail")
+if acs.check_metadata_egress(bundle({"chart-observability-gcp-0-runlore-runlore.yaml": METADATA, "chart-observability-aws-0-runlore-runlore.yaml": HOST})):
+    fails.append("aws-0's host:80 rule is correct on EKS and must not be judged")
+if not acs.check_metadata_egress(bundle({"chart-observability-aws-0-runlore-runlore.yaml": METADATA})):
+    fails.append("no gcp-0 chart CNP reaching the metadata server is vacuous and must fail")
+
 for f in fails:
     print("FAIL", f)
 if fails:

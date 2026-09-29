@@ -10,7 +10,10 @@ MISSING key; this catches a wrong-shaped one, and a child that bypasses the
 gcp-0 overlay so the render never sees gcp-0's values at all.
 
 Scope is the agent platform and the AI gateway. Other gcp-0 overlays legitimately
-name AWS (the Route53 federation) and are not judged here.
+name AWS (the Route53 federation) and are not judged here. Two checks reach past
+that scope because they are GKE-shape too: gcp-0's envoy-gateway must carry the
+rate-limit KVStore once llm-gateway's budgets are deployed, and no gcp-0 chart CNP
+may reach the metadata server through `toEntities: host`.
 """
 import pathlib
 import re
@@ -84,10 +87,87 @@ def check_umbrellas(root):
     return problems
 
 
+def _docs(path):
+    if not path.is_file():
+        return []
+    return [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
+
+
+def _named(docs, kind, name):
+    return next((d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name), None)
+
+
+def check_gcp0_secrets(bundle_dir):
+    """The GP-24 and GP-26 patches applied: FORBIDDEN proves the AWS entry is gone, not what replaced it."""
+    problems = []
+    f = pathlib.Path(bundle_dir) / "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml"
+    docs = _docs(f)
+    es = _named(docs, "ExternalSecret", "ai-gateway-api-keys")
+    if es is None:
+        problems.append(f"{f.name}: no ExternalSecret ai-gateway-api-keys rendered")
+    else:
+        spec = es.get("spec") or {}
+        if "secretStoreRef" in spec or spec.get("data"):
+            problems.append(f"{f.name}: ai-gateway-api-keys still reads a secret store; gcp-0 generates its keys (GP-24)")
+        # Any other policy regenerates the keys on refresh and locks every client out.
+        if spec.get("refreshPolicy") != "CreatedOnce":
+            problems.append(f"{f.name}: ai-gateway-api-keys refreshPolicy is {spec.get('refreshPolicy')}, not CreatedOnce")
+        refs = [((s.get("sourceRef") or {}).get("generatorRef") or {}) for s in spec.get("dataFrom") or []]
+        passwords = {d["metadata"]["name"] for d in docs if d.get("kind") == "Password"}
+        if not refs:
+            problems.append(f"{f.name}: ai-gateway-api-keys has no generator")
+        for r in refs:
+            if r.get("kind") != "Password" or r.get("name") not in passwords:
+                problems.append(f"{f.name}: ai-gateway-api-keys generator {r.get('kind')}/{r.get('name')} "
+                                "is not a Password rendered beside it")
+    f = pathlib.Path(bundle_dir) / "overlay-security-gcp-0-agent-secrets.yaml"
+    es = _named(_docs(f), "ExternalSecret", "openbao-ca")
+    keys = [((d.get("remoteRef") or {}).get("key")) for d in ((es or {}).get("spec") or {}).get("data") or []]
+    if keys != ["openbao-priv-gcp-ca-chain"]:
+        problems.append(f"{f.name}: openbao-ca reads {keys or 'nothing'}, not Secret Manager's openbao-priv-gcp-ca-chain (GP-26)")
+    return problems
+
+
+def check_ratelimit(bundle_dir, root):
+    """llm-gateway's token budgets need the rate-limit service, whose backend is the KVStore."""
+    children = [d for f in sorted((pathlib.Path(root) / "clusters/gcp-0-ai-gateway").glob("*.yaml"))
+                for d in _docs(f) if d.get("kind") == "Kustomization" and (d.get("metadata") or {}).get("name") == "llm-gateway"]
+    f = pathlib.Path(bundle_dir) / "overlay-infrastructure-gcp-0-envoy-gateway.yaml"
+    if children and not any(d.get("kind") == "KVStore" for d in _docs(f)):
+        return [f"{f.name}: llm-gateway is an ai-gateway child but gcp-0's envoy-gateway renders no KVStore; "
+                "point infrastructure/gcp-0/envoy-gateway at base/envoy-gateway-ratelimit"]
+    return []
+
+
+def check_metadata_egress(bundle_dir):
+    """test-gcp-metadata-server-cidr.py covers kustomize paths; a chart's CNP exists only in the render.
+
+    On GKE `toEntities: host` never matches 169.254.169.254. Base-slug charts
+    have no cluster in their name and are left to that test's source view.
+    """
+    problems, seen = [], False
+    for f in sorted(pathlib.Path(bundle_dir).glob("chart-*-gcp-0-*.yaml")):
+        for doc in _docs(f):
+            if doc.get("kind") not in ("CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy"):
+                continue
+            for i, rule in enumerate((doc.get("spec") or {}).get("egress") or []):
+                seen |= "169.254.169.254/32" in (rule.get("toCIDR") or [])
+                if "host" not in (rule.get("toEntities") or []):
+                    continue
+                ports = [p.get("port") for tp in rule.get("toPorts") or [] for p in tp.get("ports") or []]
+                if not ports or "80" in ports:
+                    problems.append(f"{f.name}: CNP {doc['metadata']['name']} egress[{i}] reaches the metadata "
+                                    "server via `host`; use toCIDR 169.254.169.254/32 on TCP 80")
+    if not seen:
+        problems.append("no gcp-0 chart CNP reaches 169.254.169.254/32: the metadata check would be vacuous")
+    return problems
+
+
 def main():
     bundle_dir = sys.argv[1] if len(sys.argv) > 1 else ".bundle"
     root = sys.argv[2] if len(sys.argv) > 2 else pathlib.Path(__file__).resolve().parents[3]
-    problems = check_bundle(bundle_dir) + check_umbrellas(root)
+    problems = (check_bundle(bundle_dir) + check_umbrellas(root) + check_gcp0_secrets(bundle_dir)
+                + check_ratelimit(bundle_dir, root) + check_metadata_egress(bundle_dir))
     for p in problems:
         print(f"FAIL: {p}")
     scoped = sum(1 for f in pathlib.Path(bundle_dir).glob("overlay-*.yaml") if SCOPED.match(f.name))
