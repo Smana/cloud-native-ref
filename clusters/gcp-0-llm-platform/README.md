@@ -139,9 +139,9 @@ flux get kustomizations -n flux-system | grep llm-platform
 Unlike `aws-0`, there is no separate OpenTofu opt-in stack to release first — the weights bucket
 and its preload identity are Crossplane claims applied by this same umbrella
 (`llm-platform-apps`, `llm-platform-security-wi`), not a Terraform-managed filesystem. This
-umbrella, with `ai-gateway` before it, is the whole opt-in surface. Enabling it provisions real GPU spot capacity
-(`g2` + `nvidia-l4`, see `infrastructure/gcp-0/computeclass/gpu-l4.yaml`) the moment an
-InferenceService claim schedules a pod — this is not free.
+umbrella, with `ai-gateway` before it, is the whole opt-in surface. Enabling it provisions real
+GPU spot capacity (`g2` + `nvidia-l4`, see `infrastructure/gcp-0/computeclass/gpu-l4.yaml`) the
+moment an InferenceService claim schedules a pod — this is not free.
 
 ## Disable (preserve cluster state)
 

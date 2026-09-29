@@ -73,8 +73,9 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
   `opentofu/gcp/llm-platform/` stack: the weights bucket is a Crossplane claim, not a
   Terraform-managed filesystem.
 - **Three `llm-platform` children.** No `gpu-nodepools` —
-  `infrastructure/gcp-0/computeclass/gpu-l4.yaml` already provisions g2 + L4 on spot. No `runtimeclass-nvidia` — that exists on AWS only because
-  Bottlerocket's NVIDIA AMI crashloops the upstream device plugin; GKE manages GPU drivers itself.
+  `infrastructure/gcp-0/computeclass/gpu-l4.yaml` already provisions g2 + L4 on spot. No
+  `runtimeclass-nvidia` — that exists on AWS only because Bottlerocket's NVIDIA AMI crashloops the
+  upstream device plugin; GKE manages GPU drivers itself.
 - **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
   mount. [ADR-0021](../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
   covers what that gives up. The mount needs the `gke-gcsfuse/volumes` annotation — without it
