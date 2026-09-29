@@ -13,6 +13,21 @@ MCPRoute authorization allows. See [README.md](README.md) for prerequisites; run
 
 ## Steps
 
+### Step 0 — the MCP session seed is the generated one (review M7)
+
+```bash
+kubectl get pods -n envoy-ai-gateway-system -l app.kubernetes.io/instance=envoy-ai-gateway,app.kubernetes.io/name=ai-gateway-helm -o json \
+  | jq -r '[.items[].spec.containers[].args[]? | select(startswith("--mcpSessionEncryptionSeed="))
+           | sub("^--mcpSessionEncryptionSeed="; "")
+           | if . == "default-insecure-seed" then "INSECURE" elif length == 48 then "generated" else "length \(length)" end]
+           | unique | join(",")'
+```
+
+Expected: `generated`, never the value itself. `INSECURE` means the HelmRelease's `valuesFrom`
+(`ai-gateway-mcp-session-seed`, key `seed`) no longer reaches the chart: stop, every MCP session ID
+is encrypted with a published seed. `length N` means the value is not the 48-character `Password`
+generator's. An empty output means the flag moved: read the pod's args by hand.
+
 ### Step 1 — the routes are accepted
 
 ```bash
@@ -100,6 +115,7 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
+| 0 — MCP session seed | generated | | |
 | 1 — routes accepted | `Ready=True`, both `True` | `agent-mcp` `SUSPENDED=False READY=True`; both `agent-mcp-internal` and `agent-mcp-public` MCPRoutes `Accepted=True` | PASS |
 | 2 — SC-08 recheck | No `kubernetes.io` dir | Run `xplane-run-n6uymuev`: `ls: cannot access '/var/run/secrets/kubernetes.io': No such file or directory`, exit=2 | PASS |
 | 3 — `public` tools | Exactly 3 docs tools | `flux-operator-mcp__search_flux_docs`, `mcp-victoriametrics__documentation`, `mcp-victorialogs__documentation` — exactly 3, no `get_kubernetes_*`, no `query` | PASS |

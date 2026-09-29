@@ -29,15 +29,17 @@ expression directly, which the next two steps do.
 
 ```bash
 kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=max%20by%20(pod)%20(kube_pod_status_phase%7Bnamespace%3D%22agents%22%2C%20phase%3D%22Pending%22%7D)" | jq '.data.result'
-kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=sum%20by%20(resource_type)%20(karpenter_nodepool_usage%7Bnodepool%3D%22agents-gvisor%22%7D)%20%2F%20sum%20by%20(resource_type)%20(karpenter_nodepool_limit%7Bnodepool%3D%22agents-gvisor%22%7D)%20*%20100" | jq '.data.result'
+kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=sum%20by%20(resource_type)%20(karpenter_nodepools_usage%7Bnodepool%3D%22agents-gvisor%22%7D)%20%2F%20sum%20by%20(resource_type)%20(karpenter_nodepools_limit%7Bnodepool%3D%22agents-gvisor%22%7D)%20*%20100" | jq '.data.result'
 ```
 
-Expected: both queries return `200` with a `data.result` array (empty is fine if no pod is currently
-Pending or the pool is idle — the point is the expression parses and evaluates against real series,
-not a schema error).
+Expected: both queries return `success`. The first may be `[]` when no pod is Pending. The second
+must not be: `karpenter_nodepools_limit` exists for every NodePool with a limit, idle or busy. If
+the ratio is `[]`, run `sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"})`
+alone: a series there means the pool has no usage series yet, while `[]` means the metric name is
+wrong, and that is a FAIL.
 
 **What this proves:** `AgentSandboxPodPending` and `AgentGvisorPoolNearLimit` are wired to real
-metric names (`kube_pod_status_phase`, `karpenter_nodepool_usage`/`limit`) that exist on this
+metric names (`kube_pod_status_phase`, `karpenter_nodepools_usage`/`limit`) that exist on this
 cluster.
 
 ### Step 3 — the two log-based alert expressions evaluate
@@ -71,7 +73,7 @@ error:
 |---|---|---|
 | Sandbox pods by phase | `sum by (phase) (kube_pod_status_phase{namespace="agents"})` | A line per phase seen during this session |
 | Tokens per run through agent-router | `sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*"}[5m]))` | Non-empty only while/after a run made model calls (runbooks 01, 02, 07) |
-| agents-gvisor usage / limit | `karpenter_nodepool_usage / karpenter_nodepool_limit` for `agents-gvisor` | A percentage series, may be near-zero if the pool scaled to zero |
+| agents-gvisor usage / limit | `karpenter_nodepools_usage / karpenter_nodepools_limit` for `agents-gvisor` | A percentage series, may be near-zero if the pool scaled to zero |
 | agent-router 4xx | LogsQL, `log.response_code:4*` | Entries corresponding to the 401/403 checks in runbooks 02 and 04 |
 
 The "Tokens per run" panel legitimately shows nothing until SP4 PR 1's
