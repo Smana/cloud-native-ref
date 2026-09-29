@@ -128,7 +128,8 @@ script "deploy" {
         # Forget flux-operator here, in the job that just created it -- NOT only
         # in gke/configure's own `deploy`, which this job bypasses. Left in state,
         # the standalone gke/configure stack plans count=0 against a resource that
-        # IS in state, and that is a destroy: a real `helm uninstall`.
+        # IS in state, and that is a destroy: a real `helm uninstall`. The AWS
+        # lane had the identical gap and hit it on 2026-09-16.
         ${global.provisioner} state rm helm_release.flux_operator 2>/dev/null || true
       BASH
       ],
