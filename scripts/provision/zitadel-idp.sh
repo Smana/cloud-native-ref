@@ -116,7 +116,8 @@ case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
 ZITADEL_PAT_DRY_RUN="true"
 [ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
 
-PAT="$(resolve_zitadel_pat)" || exit 1
+# This script configures the directory it runs against, so that cluster hosts it.
+PAT="$(resolve_zitadel_pat hosting)" || exit 1
 
 : "${IDP_URL:?set IDP_URL to the ZITADEL base URL, e.g. https://auth.gcp.cloud.ogenki.io}"
 

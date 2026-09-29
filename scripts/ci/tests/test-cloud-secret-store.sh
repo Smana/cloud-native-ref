@@ -258,4 +258,25 @@ no_tmp() {
 check "aws mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp aws)"
 check "gcp mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp gcp)"
 
+# A failed `secrets create` stops before `versions add`, which would only fail
+# again on a secret that does not exist.
+CREATEFAIL="$(mktemp -d)"
+cat > "$CREATEFAIL/gcloud" <<'EOF'
+#!/usr/bin/env bash
+printf 'CALL:' >> "$STUB_LOG"; printf ' %q' "$@" >> "$STUB_LOG"; printf '\n' >> "$STUB_LOG"
+for a in "$@"; do case "$a" in describe|create) exit 1 ;; esac; done
+exit 0
+EOF
+chmod +x "$CREATEFAIL/gcloud"
+: > "$STUB_LOG"
+rc=0
+PATH="$CREATEFAIL:$PATH" bash -c '
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+    CLOUD=gcp REGION="" GCP_PROJECT=proj
+    store_write notfound-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+' || rc=$?
+check "gcp create failure: non-zero" "1" "$rc"
+check_log_absent "gcp create failure: no versions add" 'versions add' "$STUB_LOG"
+rm -rf "$CREATEFAIL"
+
 exit $fail

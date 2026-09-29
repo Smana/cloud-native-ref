@@ -221,19 +221,21 @@ ZITADEL_PAT_DRY_RUN="true"
 # $GCP_PROJECT need no swap: each is only read by its own cloud's branch, so
 # both can be supplied at once.
 #
-# When --idp-cloud differs from --cloud, point kubectl at the cluster that HOSTS
-# the identity provider. resolve_zitadel_pat reads the PAT from the current
-# context's Kubernetes Secret first (GP-20), and on a fresh primary that Secret
-# is the only place the token exists yet.
-_target_cloud="$CLOUD"
-CLOUD="$IDP_CLOUD"
-PAT="$(resolve_zitadel_pat)" || exit 1
-CLOUD="$_target_cloud"
-
+# A hosting sync reads the PAT from its own cluster's chart Secret first (GP-20).
+# A consuming one (--idp-cloud differs) reads only the IdP cloud's store: its
+# kube context is its own cluster, not the one that runs ZITADEL.
+#
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch
-# here is a mismatch everywhere.
+# here is a mismatch everywhere. Checked before the PAT resolve, which can write.
 : "${IDP_URL:?set IDP_URL to the ZITADEL base URL, e.g. https://auth.gcp.cloud.ogenki.io}"
 : "${PRIVATE_DOMAIN:?set PRIVATE_DOMAIN, e.g. priv.gcp.ogenki.io}"
+
+_pat_role="hosting"
+[ "$IDP_CLOUD" = "$CLOUD" ] || _pat_role="consuming"
+_target_cloud="$CLOUD"
+CLOUD="$IDP_CLOUD"
+PAT="$(resolve_zitadel_pat "$_pat_role")" || exit 1
+CLOUD="$_target_cloud"
 
 # Optional escape hatch for split-DNS workstations. The IdP hostname is public,
 # but a machine on the tailnet may resolve *.ogenki.io through a resolver that
@@ -948,6 +950,26 @@ store_write_and_mirror() {
     printf '%s' "$payload" | mirror_to_openbao "$key" || return 2
 }
 
+# GCP hosting: publish this directory's project id for gke/configure, which
+# reads it at plan time (GCP parity GP-4). A fresh directory gets a new id
+# every build, and the committed one would otherwise come back on the next
+# configure apply. Written only on a change: one Secret Manager version per
+# directory, not per sync. Called under `||`, so every step is checked.
+publish_project_id() {
+    local project_id="$1" current=""
+    if [ "$CLOUD" != "gcp" ] || [ "$IDP_CLOUD" != "$CLOUD" ] || [ "$APPLY" != "true" ] \
+       || [ "$project_id" = "DRYRUN-PROJECT" ]; then
+        return 0
+    fi
+    current="$(store_read zitadel-project-id 2>/dev/null | jq -r '.project_id // empty' 2>/dev/null || true)"
+    if [ "$current" = "$project_id" ]; then
+        echo "project: zitadel-project-id unchanged"
+        return 0
+    fi
+    printf '%s' "$project_id" | jq -Rc '{project_id: .}' | store_write zitadel-project-id || return 1
+    echo "project: published to zitadel-project-id"
+}
+
 # Point OpenBao's auth/oidc at the client ZITADEL issued. Two resources carry
 # it: the config (id and secret) and the default role's bound_audiences. Moving
 # only the config leaves every login failing on audience (design fact 5).
@@ -1366,15 +1388,9 @@ cmd_sync() {
     # is an app client id rather than the project id.
     reconcile_workforce_audience "$project_id"
 
-    # GCP hosting: publish this directory's project id for gke/configure, which
-    # reads it at plan time (GCP parity GP-4). A fresh directory gets a new id
-    # every build, and the committed one would otherwise come back on the next
-    # configure apply.
-    if [ "$CLOUD" = "gcp" ] && [ "$IDP_CLOUD" = "$CLOUD" ] && [ "$APPLY" = "true" ] \
-       && [ "$project_id" != "DRYRUN-PROJECT" ]; then
-        printf '%s' "$project_id" | jq -Rc '{project_id: .}' | store_write zitadel-project-id
-        echo "project: published to zitadel-project-id"
-    fi
+    # Accumulated like failed_mirrors: the reconcile and the summary still run.
+    local publish_failed=0
+    publish_project_id "$project_id" || publish_failed=1
 
     # Same reasoning as the workforce provider above: OpenBao's client id is
     # only known once the "openbao" consumer's app has been found or created.
@@ -1393,9 +1409,13 @@ cmd_sync() {
     if [ -n "$failed_mirrors" ]; then
         echo "[FAILED ] not mirrored to OpenBao: ${failed_mirrors} -- the managed store has them; re-run sync --apply" >&2
     fi
+    if [ "$publish_failed" -ne 0 ]; then
+        echo "[FAILED ] zitadel-project-id not published -- gke/configure keeps the committed id; re-run sync --apply" >&2
+    fi
 
     [ "$openbao_failed" -eq 0 ] || exit 1
     [ -z "$failed_mirrors" ] || exit 1
+    [ "$publish_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in

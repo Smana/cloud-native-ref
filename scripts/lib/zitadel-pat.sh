@@ -58,17 +58,27 @@ zitadel_pat_secret_name() {
 # Defaulting to "false" also matters for the persist path below: a --apply
 # run must still capture the PAT into the store on its first sight of one,
 # same as before this existed.
+#
+# $1 is required: `hosting` when the current kube context runs this directory's
+# ZITADEL, `consuming` when the caller only registers clients in another cloud's.
 resolve_zitadel_pat() {
-    local name stored="" current="" token b64
+    local role="${1:-}" name stored="" current="" token="" b64=""
     local dry_run="${ZITADEL_PAT_DRY_RUN:-false}"
+    case "$role" in
+        hosting|consuming) ;;
+        *) echo "resolve_zitadel_pat: pass hosting or consuming, got '${role}'" >&2; return 2 ;;
+    esac
     name="$(zitadel_pat_secret_name)"
     # 1. The cluster. The chart writes this Secret on FirstInstance, so when it
     #    exists it belongs to the directory that is running. A stored copy may
     #    belong to one a fresh build replaced (GCP parity GP-20), so it never
     #    wins over this.
-    b64="$(kubectl get secret "$ZITADEL_PAT_K8S_SECRET" \
-             -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
-    token=""
+    # A consumer's kube context is its own cluster: a Secret left there from when
+    # it hosted is a dead directory's, and would overwrite the IdP cloud's only copy.
+    if [ "$role" = "hosting" ]; then
+        b64="$(kubectl get secret "$ZITADEL_PAT_K8S_SECRET" \
+                 -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
+    fi
     [ -n "$b64" ] && token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
     if [ -n "$token" ]; then
         if store_exists "$name" && stored="$(store_read "$name")"; then
@@ -83,7 +93,8 @@ resolve_zitadel_pat() {
                 local STORE_WRITE_DESCRIPTION="ZITADEL iam-admin PAT for ${CLUSTER:-this cluster}. Captured by zitadel-pat.sh."
                 local STORE_WRITE_LABEL="zitadel-pat"
                 # jq -Rs: the token reaches jq on stdin, never in argv.
-                store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
+                store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')" \
+                    || echo "WARN: ${name} still holds the old PAT; the next --apply retries" >&2
             fi
         fi
         printf '%s' "$token"
@@ -101,6 +112,11 @@ resolve_zitadel_pat() {
 
     echo "ERROR: no ZITADEL admin PAT available." >&2
     echo "       looked in: ${name} (cloud secret store)" >&2
+    if [ "$role" = "consuming" ]; then
+        echo "A consuming cluster reads only the IdP cloud's store. Run the hosting" >&2
+        echo "cluster's sync --apply first; it stores the PAT there." >&2
+        return 1
+    fi
     echo "                  ${ZITADEL_PAT_K8S_NAMESPACE}/${ZITADEL_PAT_K8S_SECRET} (cluster)" >&2
     echo >&2
     echo "The chart writes that Secret during FIRSTINSTANCE, which runs only" >&2

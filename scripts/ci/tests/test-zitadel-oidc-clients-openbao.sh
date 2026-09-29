@@ -1034,7 +1034,7 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload store_write_and_mirror; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
@@ -1153,6 +1153,17 @@ run_cmd_sync
 check "reconcile fails: cmd_sync exits 1"        "1" "$rc"
 contains "$out" "created: "                      "reconcile fails: the summary line still prints"
 RECONCILE_RC=0
+
+echo
+echo "-- a failed project-id publish: the reconcile and the summary still run, then exit 1 --"
+: > "$RECONCILE_LOG"
+publish_project_id() { return 1; }
+run_cmd_sync
+check "publish fails: cmd_sync exits 1"             "1" "$rc"
+check "publish fails: reconcile still called once"  "1" "$(wc -l < "$RECONCILE_LOG")"
+contains "$out" "created: "                         "publish fails: the summary line still prints"
+contains "$out" "zitadel-project-id not published"  "publish fails: the summary names it"
+eval "$(sed -n '/^publish_project_id() {/,/^}/p' "$CONSUMERS_SRC")"
 
 echo
 echo "== flags: --openbao-url requires --openbao-root-token-secret and --openbao-ca-file =="
