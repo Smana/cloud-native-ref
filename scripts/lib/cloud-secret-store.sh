@@ -77,12 +77,16 @@ store_read() {
 #     is private, so it can't step on the caller's.
 #   * AWS goes through jq into --cli-input-json rather than --secret-string,
 #     which is what lets the payload be an arbitrary JSON document.
+#   * every step before the cloud call ends in `|| exit 1`. A caller that
+#     writes `store_write … || …` turns errexit off for the whole body, and a
+#     `cat` cut short by a full disk then went on to store the truncated
+#     secret and return 0.
 store_write() {
     local name="$1"
     (
         local payload body
-        payload=$(umask 077 && mktemp -t cloud-secret.XXXXXX)
-        body=$(umask 077 && mktemp -t cloud-secret-body.XXXXXX)
+        payload=$(umask 077 && mktemp -t cloud-secret.XXXXXX) || exit 1
+        body=$(umask 077 && mktemp -t cloud-secret-body.XXXXXX) || { rm -f "$payload"; exit 1; }
         # Paths are baked into the trap string at trap-SET time, not expanded when
         # it fires. Two earlier attempts used '...$payload...': on an errexit abort
         # bash pops the function's locals before running the EXIT trap, so under the
@@ -91,19 +95,19 @@ store_write() {
         # leaving the plaintext payload on disk. mktemp paths never contain quotes.
         # shellcheck disable=SC2064
         trap "shred -u '$payload' '$body' 2>/dev/null || rm -f '$payload' '$body'" EXIT
-        cat > "$payload"
+        cat > "$payload" || exit 1
 
         case "$CLOUD" in
             aws)
                 if store_exists "$name"; then
                     jq --arg id "$name" '{SecretId: $id, SecretString: (. | tostring)}' \
-                        < "$payload" > "$body"
+                        < "$payload" > "$body" || exit 1
                     aws secretsmanager put-secret-value ${REGION:+--region "$REGION"} \
                         --cli-input-json "file://${body}" >/dev/null
                 else
                     jq --arg n "$name" --arg d "${STORE_WRITE_DESCRIPTION:-Written by cloud-secret-store.sh}" \
                        '{Name: $n, Description: $d, SecretString: (. | tostring)}' \
-                        < "$payload" > "$body"
+                        < "$payload" > "$body" || exit 1
                     aws secretsmanager create-secret ${REGION:+--region "$REGION"} \
                         --cli-input-json "file://${body}" >/dev/null
                 fi
@@ -112,7 +116,8 @@ store_write() {
                 store_exists "$name" || gcp_gcloud secrets create "$name" \
                     ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                     --replication-policy=automatic \
-                    --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" >/dev/null
+                    --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" >/dev/null \
+                    || exit 1
                 gcp_gcloud secrets versions add "$name" \
                     ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                     --data-file="$payload" >/dev/null

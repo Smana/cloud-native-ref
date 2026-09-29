@@ -221,4 +221,41 @@ rm -rf "$FAILTMP2"
 
 rm -rf "$FAILSTUB" "$FAILTMP"
 
+# --- store_write: a failed payload write never reaches the cloud ------------
+#
+# Called under `||`, as every mirror and PAT caller does, store_write runs with
+# errexit off. A `cat > "$payload"` cut short (a full disk) then fell through to
+# `versions add` / `put-secret-value`, which stored the truncated secret and
+# returned 0. The failing `cat` is a function so it can land half the payload
+# first, the way a full disk does.
+short_write() { # cloud label -> "<rc> <cloud calls>"
+    : > "$STUB_LOG"
+    local rc=0
+    PATH="$STUB:$PATH" bash -c '
+        set -o errexit -o nounset -o pipefail
+        # shellcheck source=scripts/lib/cloud-secret-store.sh
+        . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+        cat() { command cat >/dev/null; printf "%s" "{\"pat\":\"trunc"; return 1; }
+        CLOUD="$1" REGION=eu-west-3 GCP_PROJECT=proj
+        store_write existing-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+    ' _ "$1" || rc=$?
+    echo "$rc $(grep -cE 'versions add|put-secret-value|create-secret' "$STUB_LOG")"
+}
+check "aws short payload write: non-zero, no put-secret-value" "1 0" "$(short_write aws)"
+check "gcp short payload write: non-zero, no versions add"     "1 0" "$(short_write gcp)"
+
+# mktemp failing (TMPDIR gone) is the same fall-through with an empty path.
+no_tmp() {
+    : > "$STUB_LOG"
+    local rc=0
+    PATH="$STUB:$PATH" TMPDIR=/nonexistent/cloud-secret-store-test bash -c '
+        . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+        CLOUD="$1" REGION=eu-west-3 GCP_PROJECT=proj
+        store_write existing-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+    ' _ "$1" 2>/dev/null || rc=$?
+    echo "$rc $(grep -cE 'versions add|put-secret-value|create-secret' "$STUB_LOG")"
+}
+check "aws mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp aws)"
+check "gcp mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp gcp)"
+
 exit $fail
