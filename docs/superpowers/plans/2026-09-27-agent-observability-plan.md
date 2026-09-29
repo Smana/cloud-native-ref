@@ -128,13 +128,18 @@ the spec; the rulings worth promoting into it are repeated in [Spec deltas propo
 | O10 | The dashboards live in the existing `agents` folder with **Grafana's default permissions**, which every SSO Viewer has | Grafana OSS has no team sync, and `role_attribute_path` makes every SSO user a Viewer. Any Viewer already reads the same data in Explore, so a folder ACL would hide the page, not the data. `agents-member` does not exist before SP2's S2 | Developers outside the agent groups read run metadata. The metadata-only decision is what makes that acceptable |
 | O11 | kube-state-metrics' custom-resource state goes into the shared `vm-common-helm-values`, which both clouds read, and not under the agent umbrella | The spec names the stack's single KSM (Task 0.3). The `AgentRun` CRD ships in the always-on Crossplane package, and KSM discovers CRDs itself. With no runs there are no series | A read-only list/watch on `agentruns` in a cluster that runs no agents |
 | O12 | **Stacking.** O-1 stacks on H-1 (`fix/agent-review-hardening`) and CC-O1 on CC-H1 (`ci/prerelease-xrd-crds`). SP2's CC-S1 must then stack on CC-O1, and SP2's S1 should stack on O-1 | Integration pins one crossplane-configuration package, so that stack must be linear. S1 and O-1 both edit `agent-run.sh`, its test and the agent-platform kustomization | SP2 Phase 1 starts after O-1 and CC-O1 exist. Those are the SP2 plan edits under [Cross-plan edits](#cross-plan-edits) |
-| O13 | A harness change is made **only if Task 3.3 loses the root span**. It lands in O-1 as harness source `v0.1.2`: `agent_run.py` waits 25 s instead of 10 for agent-server's shutdown. It is not made on `feat/agent-harness` | `feat/agent-harness` sits below #2111 and H-1 (whose source is `v0.1.1`, M4). A change there would be merged up two branches and would re-pin SP1's CC-2 | H-S3 must then stack on O-1 to ship it in `v0.2.0` |
+| O13 | *(Superseded by O21, 2026-09-29: Task 0.5 verified the loss, so the harness change is no longer conditional.)* A harness change is made **only if Task 3.3 loses the root span**. It lands in O-1 as harness source `v0.1.2`: `agent_run.py` waits 25 s instead of 10 for agent-server's shutdown. It is not made on `feat/agent-harness` | `feat/agent-harness` sits below #2111 and H-1 (whose source is `v0.1.1`, M4). A change there would be merged up two branches and would re-pin SP1's CC-2 | H-S3 must then stack on O-1 to ship it in `v0.2.0` |
 | O14 | agent-router's spans are found by the Envoy tag **`agent.principal`**, not by a derived `agent.run_id` | Deriving the run id needs a regex replacement with `$1`, which crosses Flux's and the collector's `$` escaping. The principal already names the run. `traceparent` puts these spans in the harness trace anyway: the harness sends one (Task 0.1), and Task 3.3 checks it survives identity-proxy | The router search uses a longer tag value |
 | O15 | **ADR-0051** records the collector as the agent trace gate | The repo rule: rejected alternatives exist. Filtering inside the sandbox, exporting straight to VictoriaTraces, and Vector's OTLP source (ADR-0030) were all rejected. It also reverses SPEC-006 CL-1's "no collector" for this path | One ADR task |
 | O16 | **No alert** for the collector, and none per run | The spec puts per-run alerts out of scope (SP3 owns alerting). A stalled collector loses traces and leaks nothing. The fleet page shows accepted, refused, exported and failed spans | A stalled trace pipeline is noticed on the page, not paged |
 | O17 | `task agent:run` prints `agent-run: dashboard <url>` on **stderr** after the create, with no link on `--dry-run` or when no host is found. The host is `AGENT_GRAFANA_URL`, else `https://` + the `grafana` HTTPRoute's first hostname. `from` is the create time minus a minute, `to=now` | SO-5's contract (the name is the last stdout line), cloud-neutral | One extra `kubectl get` per run |
 | O18 | `exception.message` and `exception.stacktrace` are dropped. `exception.type` and the span status stay, the status message capped at 128 characters, and every kept string attribute at 256 | An exception message can echo tool output. The step log beside the trace carries the error text, 400 characters and M4-redacted | A trace alone does not say why a call failed |
 | O19 | The harness gets the **base** `OTEL_EXPORTER_OTLP_ENDPOINT=http://…:4318` and `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, not the spec's `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | lmnr's log exporter reads the same `ENDPOINT` key, TRACES first. With a traces URL, any OTel log record would be POSTed to `/v1/traces`, which the run CNP admits, and only the collector's decoder would stand in the way. With a base URL, lmnr appends `/v1/traces` and `/v1/logs` itself (`_normalize_http_endpoint`), and the run CNP drops `/v1/logs`. Re-run 2026-09-27 with the base URL: the same 7 spans, 1 trace, `traceparent` present | None found |
+| O20 | The collector's :4317 is the **platform port**: it takes agent-router's spans and, from SP3, the factory's task spans (`agent-system`, `app.kubernetes.io/name: agent-factory`), both through the unfiltered `traces/router` pipeline (Task 2.2a) | Both writers are platform code whose attributes this repo reviews. The factory's task span carries ids and an end reason, never issue text | A sandbox on :4317 would skip the filter. The run CNP never admits it (SO-4), and the collector CNP admits only those two peers |
+| O21 | **The harness roots each run's trace** (Task 2.8a, harness `v0.1.2` in O-1). An `agent-run` span is parented on the pod's `TRACEPARENT` when it is a valid W3C header; the composition projects it from the claim annotation `agents.ogenki.io/traceparent`, which SP3's factory writes (R46; Task 1.3a). Otherwise the run starts a fresh trace, which is the `task agent:run` path. agent-server's own root span becomes its child through lmnr's `LMNR_SPAN_CONTEXT`. Before stopping agent-server, the harness closes the conversation and waits 2 s at a 1 s batch. **This supersedes O13's condition**: the loss is verified (Task 0.5), so Task 3.6 is replaced by Task 2.8a | Task 0.5 (2026-09-29) found three things. `LMNR_SPAN_CONTEXT` puts every agent-server span, the root included, in the given trace under the given parent. agent-server exports nothing at exit: SIGTERM after a 2 s conversation exported 0 spans. Its root span ends only when the conversation closes: without the DELETE, the root span was missing. `agents.ogenki.io/traceparent` clashes with none of SP1's annotations (`revoked`, `usage-tokens`, `pull-request`, `finished-phase`, `principal`) or SP3's (`stop`, `revert`) | SP2's H-S3 must stack on O-1 to ship this in `v0.2.0` (Cross-plan edits). A run adds a 2 s pause and one DELETE after its conversation ends; SP2's bridge has mirrored the final events by then (P5, 1 s poll) |
+| O22 | **The trace id is correlation only, never identity.** Step-log lines gain `| trace_id=<32 hex>` (Task 2.8a), and the run page turns it into a "View Trace" link through the VictoriaLogs datasource's existing `log.trace_id` derived field (Task 2.6a). Attribution stays on `x_ar_agent` (agent-router's verified sub) and on the `agent.run_id` the collector stamps from the connection (O4) | A sandbox controls the trace id it prints, the spans it sends and the `traceparent` on its requests, so all three are untrusted. Nothing meters, authorizes, attributes or joins by it except a link a human clicks | A run can print another run's trace id, which misplaces a link but reveals no content. The run page's panels still filter on the pod and principal |
+| O23 | **The tier reaches the metrics through kube-state-metrics**: `agentrun_info` gains `tier`, from the claim label `agents.ogenki.io/tier` that SP3 writes (R47; Task 2.5a). The fleet page compares tier with tokens and steps, and the run page shows the tier (Tasks 2.6a, 2.7a) | The tier is not `spec.model`: every tier maps to `agent-default` until SP4 PR 2 (SP3 R11). The gateway's labels carry the model, not the tier. A reviewer runs on another tier than its task (SP3 Task 4.2), so the task's tier is not the run's | Runs created by `task agent:run` carry no tier and show an empty cell |
+| O24 | **A run's tier is fixed; agents are never re-routed per request within a run** (SP3 R47). The fleet panels read one tier per run | Mid-run re-routing would split a conversation across models and invalidate the provider's prompt cache. `spec.model` is already immutable (XRD CEL), and agent-router routes on the model name | None here: the panels would under-report a re-routed run, which R47 forbids |
 
 **Residuals, not fixed here.** VictoriaTraces' own insert path stays reachable from the tailnet
 (`vt.${private_domain_name}`, HTTPRoute `victoria-traces`) and from in-cluster pods outside
@@ -153,6 +158,8 @@ another run's trace id, which misplaces router spans (metadata) but reveals no c
 | Δ5 | Unverified row 2, fallback "gateway spans skipped" | Resolved: EG 1.9 exports OTLP/gRPC only, and the collector's gRPC receiver takes it | O5 |
 | Δ6 | Status panel "tokens used vs `maxTokens`", "PR link" | On SP1: gateway tokens, and the branch's PR search. `status.usage.tokens` and `status.pullRequest` once SP3 and SP4 write them | O7 |
 | Δ7 | Traces row: "`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`" | "`OTEL_EXPORTER_OTLP_ENDPOINT` (the collector's base URL), so that no other OTLP signal can use the traces path" | O19 |
+| Δ9 | SO-3 "A run produces one trace" | "A run started by `task agent:run` produces one trace rooted at its `agent-run` span. A factory run's spans form a subtree of its task's trace, rooted at the factory's task span" | O21, SP3 R46 |
+| Δ10 | Logs row: the step log `agent-run step N: <tool> \| <summary> \| <target>` | "…`\| trace_id=<hex>` when tracing is on: a link to the trace, correlation only" | O22 |
 
 ## Cross-plan edits
 
@@ -177,7 +184,18 @@ The same pass drops what points at CC-F1:
 - the PR-map row CC-S1's *Base* becomes `feat/agentrun-observability` (CC-O1), and its *Needs* gains CC-O1;
 - row S1's *Base* becomes `feat/agent-observability` (O-1);
 - Phase 7's wave merges CC-O1 right after CC-H1 and O-1 right after H-1;
-- H-S3's *Base* becomes `feat/agent-observability` only if O13 triggers.
+- H-S3's *Base* becomes `feat/agent-observability`, and Task 7.3 merges it after O-1. This was
+  conditional on O13 and is now required by O21: O-1 carries harness source `v0.1.2`.
+
+**SP3 plan, further review (2026-09-29):**
+- Task 1.5a: `runs.Spec` gains `Traceparent` and `Tier`;
+- Task 1.10b: the task's root span;
+- Task 1.12a: the factory's config and its egress to :4317;
+- Task 1.13a: [LIVE];
+- Task 4.2a: a reviewer's own tier;
+- rulings R46 and R47.
+
+They need this plan's Tasks 1.3a, 2.2a and 2.8a on the integration branch.
 
 S1's `--room` edit to `agent-run.sh` keeps O-1's dashboard line after its own changes.
 
@@ -213,7 +231,7 @@ sign-off** (P33). Each PR is based on its *Base*: merge-only, never rebased.
 | # | Repo · branch | Base (stack parent) | Needs | Carries | Live gate (aws-0) |
 |---|---|---|---|---|---|
 | CC-O1 | crossplane-configuration · `feat/agentrun-observability` | `ci/prerelease-xrd-crds` (SP2 CC-H1, on SP1 CC-2 `feat/agentrun-harness` @ `d9c4449`) | CC-H1 open | Run CNP: DNS name and L7 egress to the collector's `POST /v1/traces`; harness OTEL env; printer columns | via O-1 |
-| O-1 | this · `feat/agent-observability` | `fix/agent-review-hardening` (SP2 H-1, on SP1 PR 6 `feat/agent-e2e` #2111) | H-1 open; CC-O1's pre-release | ADR-0051; the collector (HelmRepository, HelmRelease, Role, CNP, scrape); agent-router tracing and data-plane egress; KSM `AgentRun` state; the two dashboards; `agent-run.sh` stderr link; runbook 08 steps; the CC-O1 pin; the harness `v0.1.2` only under O13 | SO-1…SO-5 on the next rebuild (Phase 3) |
+| O-1 | this · `feat/agent-observability` | `fix/agent-review-hardening` (SP2 H-1, on SP1 PR 6 `feat/agent-e2e` #2111) | H-1 open; CC-O1's pre-release | ADR-0051; the collector (HelmRepository, HelmRelease, Role, CNP, scrape); agent-router tracing and data-plane egress; KSM `AgentRun` state; the two dashboards; `agent-run.sh` stderr link; runbook 08 steps; the CC-O1 pin; harness `v0.1.2` (Task 2.8a, O21) | SO-1…SO-5 on the next rebuild (Phase 3) |
 
 **Neither base exists yet.** H-1 and CC-H1 are SP2's Phase 0.5, which runs first. This plan's Phase 0
 spikes need neither and can run today.
@@ -263,7 +281,7 @@ After its live gate, O-1 leaves draft and stays open until the wave.
 | `website/content/docs/decisions/0051-otel-collector-agent-trace-gate.md`, `_index.md` | ADR-0051 |
 | `clusters/aws-0-agent-platform/README.md` | The `agent-observability` row |
 | `docs/runbooks/agent-factory/08-observability.md` | Steps 6–10: the live gate, repeatable |
-| `container-images/agent-harness/{agent_run.py,Dockerfile}` | Only under O13 |
+| `container-images/agent-harness/{agent_run.py,Dockerfile,tests/test_agent_run.py}` | Harness `v0.1.2`: the run's root span, `LMNR_SPAN_CONTEXT`, `trace_id` on step lines, the close before the stop (Task 2.8a, O21) |
 
 ## Success criteria → proving task
 
@@ -542,6 +560,106 @@ pod's own IP, so `connection` association resolves `agent.run_id`.
 
 - [ ] **Step 1: Nothing to run before Task 2.3**, which turns this run into a committed suite.
 
+### Task 0.5: agent-server under a trigger trace, and at shutdown (further review, 2026-09-29)
+
+**Question.** Does lmnr's `LMNR_SPAN_CONTEXT` (a JSON `LaminarSpanContext`: UUID-shaped
+`trace_id` and `span_id`, `is_remote`, read at `Laminar.initialize` by
+`_initialize_context_from_env`, lmnr 0.7.60) parent agent-server's root span on a given W3C
+context? Is that root span exported when agent-run stops agent-server?
+
+**Run 2026-09-29.** Harness `v0.1.0-pr2110.29b5f228`. agent-server was started and stopped as
+`agent-run` does: SIGTERM, then `wait(10)`. The same fake model and debug collector as Task 0.1.
+`LMNR_SPAN_CONTEXT` was built from `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`:
+
+| Variant | Spans exported | Trace id | Root `conversation` |
+|---|---|---|---|
+| SIGTERM right after `finished` (5 s default batch) | **0** | — | lost |
+| `OTEL_BSP_SCHEDULE_DELAY=500`, 4 s wait, SIGTERM | 6: `conversation.send_message`, `conversation.arun`, `agent.astep`, `llm.openai/agent-default`, `openai.chat`, `FinishAction` | `4bf92f…` | **lost**: the children's parent `638f…` never arrives |
+| the same, plus `DELETE /api/conversations/<id>` before the wait | 7 | `4bf92f…` | exported, **Parent ID `00f067aa0ba902b7`** |
+
+Every run also sent `traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-…-01` on the model request, so
+agent-router's spans join the same trace.
+
+**Outcome: VERIFIED offline.**
+- `LMNR_SPAN_CONTEXT` makes the given context the parent of agent-server's root span.
+- agent-server exports nothing at exit.
+- Its root span ends only when the conversation closes.
+
+This is the design of O21 and Task 2.8a.
+
+**UNVERIFIED live** (Task 3.3a):
+- the same under gVisor;
+- the same through the run CNP, with the collector attributing the `agent-run` span by connection.
+
+**Fallback.** If the root span still goes missing live, raise `FLUSH_WAIT_S` (Task 2.8a) up to the
+25 s the pod's grace period leaves, and record it.
+
+- [ ] **Step 1: Re-run on the day** only if the harness base image moved from agent-server
+  `1.49.6`. The script is Task 0.1's harness with this `main` (write it to `$S/spike-server-traces.py`):
+
+```python
+import http.server, json, os, subprocess, threading, time, urllib.request
+
+TRACE, PARENT = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"  # pragma: allowlist secret
+
+
+class Fake(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        call = {"id": "c1", "type": "function", "function": {"name": "finish", "arguments": json.dumps({"message": "done"})}}
+        data = json.dumps({"id": "c", "object": "chat.completion", "created": 0, "model": "agent-default",
+                           "choices": [{"index": 0, "finish_reason": "tool_calls",
+                                        "message": {"role": "assistant", "content": None, "tool_calls": [call]}}],
+                           "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}}).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *args):
+        pass
+
+
+threading.Thread(target=http.server.ThreadingHTTPServer(("127.0.0.1", 9999), Fake).serve_forever, daemon=True).start()
+env = dict(os.environ, OH_SECRET_KEY="spike-secret-key-spike-secret-key", LMNR_SPAN_CONTEXT=json.dumps({  # pragma: allowlist secret
+    "trace_id": "%s-%s-%s-%s-%s" % (TRACE[:8], TRACE[8:12], TRACE[12:16], TRACE[16:20], TRACE[20:]),
+    "span_id": "00000000-0000-0000-%s-%s" % (PARENT[:4], PARENT[4:]), "is_remote": True}))
+server = subprocess.Popen(["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "127.0.0.1", "--port", "8000"], cwd="/", env=env)
+for _ in range(120):
+    try:
+        urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=2)
+        break
+    except Exception:  # noqa: BLE001
+        time.sleep(1)
+from openhands.sdk import LLM  # noqa: E402
+from openhands.sdk.conversation.request import StartConversationRequest  # noqa: E402
+from openhands.tools.preset.default import get_default_agent  # noqa: E402
+
+plain = {"expose_secrets": True}
+llm = LLM(model="openai/agent-default", base_url="http://127.0.0.1:9999/v1", api_key="spike", usage_id="agent", num_retries=0)
+os.makedirs("/tmp/ws", exist_ok=True)
+req = StartConversationRequest.model_validate({"workspace": {"working_dir": "/tmp/ws"}, "autotitle": False, "max_iterations": 5,
+    "agent": get_default_agent(llm=llm, cli_mode=True).model_dump(mode="json", context=plain),
+    "initial_message": {"role": "user", "content": [{"type": "text", "text": "call finish"}], "run": True}})
+body = json.dumps(json.loads(req.model_dump_json(exclude_none=True, context=plain))).encode()
+cid = json.loads(urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8000/api/conversations", data=body,
+    method="POST", headers={"Content-Type": "application/json"}), timeout=30).read())["id"]
+for _ in range(60):
+    if json.loads(urllib.request.urlopen("http://127.0.0.1:8000/api/conversations/" + cid, timeout=10).read()).get("execution_status") == "finished":
+        break
+    time.sleep(1)
+urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8000/api/conversations/" + cid, method="DELETE"), timeout=30)
+time.sleep(2)
+server.terminate()
+server.wait(10)
+```
+
+Run it as in Task 0.1 Step 1, with `-e OTEL_BSP_SCHEDULE_DELAY=1000 -e OH_ENABLE_VSCODE=false` added,
+then:
+`docker logs obs-collector 2>&1 | grep -E '^\s+(Trace ID|Parent ID|Name)\s+:' | paste - - - | grep 'Name.*: conversation$'`
+Expected: one line with `Trace ID : 4bf92f3577b34da6a3ce929d0e0e4736` and `Parent ID : 00f067aa0ba902b7`.
+
 ---
 
 ## Phase 1 — CC-O1 in crossplane-configuration
@@ -704,6 +822,71 @@ Expected: every test passes.
 ```bash
 git add apis/agentrun/kcl/main.k apis/agentrun/kcl/main_test.k
 git commit -m "feat(agentrun): export harness traces to the collector"
+```
+
+### Task 1.3a: The factory's traceparent reaches the harness (further review, 2026-09-29; O21)
+
+**Files:**
+- Modify: `apis/agentrun/kcl/main.k` (a `_traceparent` helper before `_pullRequest`; `_tp` after `_pr`; the harness `env` list)
+- Test: `apis/agentrun/kcl/main_test.k`
+
+**Interfaces:**
+- Consumes: the claim annotation `agents.ogenki.io/traceparent`, which SP3's `runs.Build` writes at
+  creation (SP3 Task 1.5a). The value is W3C `00-<32 hex>-<16 hex>-<2 hex>`.
+- Produces: harness env `TRACEPARENT`, only for a valid value. Task 2.8a's `start_run_span` reads it.
+
+- [ ] **Step 1: Write the failing test**
+
+```kcl
+# Observability plan O21 (SP3 R46): the factory's task span reaches the harness as TRACEPARENT,
+# only when the annotation is a W3C traceparent. None, or a malformed one: a fresh trace.
+test_traceparent_annotation_reaches_the_harness = lambda {
+    _tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    _envOf = lambda annotations: any -> any {
+        {e.name: e.value for e in _pod(_render(_xr({}, annotations, {}, {}), {}, _DXR)).containers[0].env}
+    }
+    assert _envOf({"agents.ogenki.io/traceparent" = _tp}).TRACEPARENT == _tp
+    assert "TRACEPARENT" not in _envOf({"agents.ogenki.io/traceparent" = "00-4bf9-00f0-01"}), "a malformed traceparent is never projected"
+    assert "TRACEPARENT" not in _envOf({}), "no annotation: the harness starts a fresh trace (task agent:run)"
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `cd apis/agentrun/kcl && kcl test . -Y settings-example.yaml`
+Expected: `test_traceparent_annotation_reaches_the_harness: FAIL`, `PASS: 46/47`.
+
+- [ ] **Step 3: Implement**
+
+Before `_pullRequest`:
+
+```kcl
+# SP3's factory writes its task span's W3C traceparent at creation (R46). Correlation only
+# (observability plan O22): a malformed value is never projected.
+_traceparent = lambda annotations: any -> any {
+    _v = _get(annotations, "agents.ogenki.io/traceparent")
+    _v if _v and regex.match(_v, "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$") else None
+}
+```
+
+After `_pr = _pullRequest(_ann, _repo, _previous?.pullRequest)`: `_tp = _traceparent(_ann)`. The harness
+`env` list's closing bracket, after `LMNR_TRACE_CONTENT`, becomes (no mutation, constitution 2.1):
+
+```kcl
+                        ] + ([{name = "TRACEPARENT", value = _tp}] if _tp else [])
+```
+
+- [ ] **Step 4: Run the suite**
+
+Run: `cd apis/agentrun/kcl && kcl fmt . && kcl test . -Y settings-example.yaml`
+Expected: `PASS: 47/47`. Verified on the scratch copy, 2026-09-29. The examples carry no annotation,
+so the goldens do not change.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apis/agentrun/kcl/main.k apis/agentrun/kcl/main_test.k
+git commit -m "feat(agentrun): hand the factory's traceparent to the harness"
 ```
 
 ### Task 1.4: `kubectl get agentrun` shows PRINCIPAL, PR, TOKENS and REASON (O8)
@@ -1334,6 +1517,64 @@ git add scripts/ci/tests/test-agent-observability.py flux/sources/helmrepo-open-
 git commit -m "feat(observability): the agent trace collector, metadata only"
 ```
 
+### Task 2.2a: The factory's task spans reach the platform port (further review, 2026-09-29; O20)
+
+**Files:**
+- Modify: `observability/base/agent-platform/agent-traces-collector.yaml` (the CNP's :4317 rule, the `traces/router` comment)
+- Test: `scripts/ci/tests/test-agent-observability.py`
+
+**Interfaces:**
+- Produces: `agent-traces-collector.observability.svc.cluster.local:4317` (OTLP/gRPC, plaintext
+  in-cluster) admits pods labelled `app.kubernetes.io/name: agent-factory` in `agent-system`.
+  SP3's Task 1.12a adds the matching egress. It is inert until SP3 ships.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to the suite:
+
+```python
+def check_platform_port():
+    cnp = find(COLLECTOR, "CiliumNetworkPolicy", "agent-traces-collector").get("spec", {})
+    peers = [p.get("matchLabels", {}) for rule in cnp.get("ingress", []) for tp in rule.get("toPorts", [])
+             if any(x["port"] == "4317" for x in tp["ports"]) for p in rule.get("fromEndpoints", [])]
+    check({"io.kubernetes.pod.namespace": "agent-system", "app.kubernetes.io/name": "agent-factory"} in peers,
+          "SP3's factory sends its task spans to :4317 (O20)")
+    check(all(p.get("io.kubernetes.pod.namespace") != "agents" for p in peers), "no sandbox ever reaches :4317 (O5, O20)")
+```
+
+and append `check_platform_port` to `CHECKS`.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py; echo "exit $?"`
+Expected: `exit 1`, `SP3's factory sends its task spans to :4317 (O20)`.
+
+- [ ] **Step 3: Implement**
+
+In the collector CNP, the :4317 rule's `fromEndpoints` gains a second entry, after agent-router's:
+
+```yaml
+        # SP3's factory: one root span per task (O20, SP3 R46). Inert until SP3 ships.
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: agent-factory
+```
+
+The comment above `traces/router` becomes `# Platform spans: agent-router (EnvoyProxy manifest) and
+SP3's factory (task spans, ids and end reason only). No sandbox reaches this receiver.`
+
+- [ ] **Step 4: Run the suite and the gates**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add observability/base/agent-platform/agent-traces-collector.yaml scripts/ci/tests/test-agent-observability.py
+git commit -m "feat(observability): admit the factory's task spans on the platform port"
+```
+
 ### Task 2.3: The filter, run for real (SO-3's offline half)
 
 **Files:**
@@ -1711,6 +1952,52 @@ git add observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-conf
 git commit -m "feat(observability): kube-state-metrics series for AgentRun state"
 ```
 
+### Task 2.5a: The run's tier reaches the metrics (further review, 2026-09-29; O23)
+
+**Files:**
+- Modify: `observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml` (`agentrun_info`'s `labelsFromPath`)
+- Test: `scripts/ci/tests/test-agent-observability.py`
+
+**Interfaces:**
+- Consumes: the claim label `agents.ogenki.io/tier` (`light`, `standard` or `frontier`), which SP3's
+  `runs.Build` writes (SP3 Tasks 1.5a, 4.2a).
+- Produces: `agentrun_info{…, tier}`. The label is empty for runs `task agent:run` creates.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `check_ksm`:
+
+```python
+    info = metrics.get("info", {}).get("info", {}).get("labelsFromPath", {})
+    check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py; echo "exit $?"`
+Expected: `exit 1`, `agentrun_info carries the run's tier (O23)`.
+
+- [ ] **Step 3: Implement**
+
+In the `info` metric's `labelsFromPath`, after `branch: [status, branch]`:
+
+```yaml
+                          # SP3's triage tier (R47): fixed per run, empty for task agent:run.
+                          tier: [metadata, labels, agents.ogenki.io/tier]
+```
+
+- [ ] **Step 4: Run the suite and the gates**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml scripts/ci/tests/test-agent-observability.py
+git commit -m "feat(observability): the run's tier on agentrun_info"
+```
+
 ### Task 2.6: The "Agent run" dashboard
 
 **Files:**
@@ -1917,6 +2204,62 @@ git add observability/base/agent-platform scripts/ci/tests/test-agent-observabil
 git commit -m "feat(observability): the Agent run dashboard"
 ```
 
+### Task 2.6a: The run page shows the tier, and a step line links to its trace (further review, 2026-09-29; O22, O23)
+
+**Files:**
+- Modify: `observability/base/agent-platform/grafana-dashboard-agent-run.yaml` (panel 1's `filterFieldsByName`, panel 5's `expr`)
+- Test: `scripts/ci/tests/test-agent-observability.py`
+
+**Interfaces:**
+- Consumes: `agentrun_info{tier}` (Task 2.5a); step lines ending `| trace_id=<32 hex>` (Task 2.8a); the
+  VictoriaLogs datasource's existing derived field "TraceID". That field is `matcherType: label` on
+  `log.trace_id`, linking to `datasourceUid: VictoriaTraces`, in `observability/base/victoria-logs/grafana-datasource.yaml`.
+  It is unchanged.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def check_run_trace_link():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run"))
+    names = [n for tr in panels.get("Run", {}).get("transformations", []) if tr["id"] == "filterFieldsByName"
+             for n in tr["options"]["include"]["names"]]
+    check("tier" in names, "the run page shows the run's tier (O23)")
+    step = json.dumps(panels.get("Step log", {}).get("targets", []))
+    check("extract_regexp" in step and "rename trace_id as log.trace_id" in step,
+          "a step line links to its trace through the log.trace_id derived field (O22)")
+```
+
+and append `check_run_trace_link` to `CHECKS`.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py; echo "exit $?"`
+Expected: `exit 1`, both messages.
+
+- [ ] **Step 3: Implement**
+
+- Panel 1 ("Run"): `filterFieldsByName`'s `names` gains `"tier"` after `"model"`.
+- Panel 5 ("Step log"): its `expr` becomes:
+
+```json
+"expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\" | extract_regexp \"trace_id=(?P<trace_id>[0-9a-f]{32})\" | rename trace_id as log.trace_id"
+```
+
+The header comment gains the line: `# A step line's trace_id becomes log.trace_id, which the VictoriaLogs datasource links to
+# VictoriaTraces: correlation only (O22), the panels still filter on the pod.`
+
+- [ ] **Step 4: Run the suite and the gates**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py && python3 scripts/ci/flux-schema/check-substitution.py && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; exit 0; `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add observability/base/agent-platform/grafana-dashboard-agent-run.yaml scripts/ci/tests/test-agent-observability.py
+git commit -m "feat(observability): the run's tier, and a step line's trace link, on the run page"
+```
+
 ### Task 2.7: The "Agent fleet" dashboard (SO-1's one click)
 
 **Files:**
@@ -2031,6 +2374,76 @@ git add observability/base/agent-platform scripts/ci/tests/test-agent-observabil
 git commit -m "feat(observability): the Agent fleet dashboard"
 ```
 
+### Task 2.7a: Tier chosen vs spend, on the fleet page (further review, 2026-09-29; O23, O24)
+
+**Files:**
+- Modify: `observability/base/agent-platform/grafana-dashboard-agent-fleet.yaml` (`templating`, two panels)
+- Test: `scripts/ci/tests/test-agent-observability.py`
+
+**Interfaces:**
+- Consumes:
+  - `agentrun_info{tier}` (Task 2.5a);
+  - the gateway counter keyed back to `run_id`, as the "Runs" panel does;
+  - step lines in VictoriaLogs, keyed on the pod name `xplane-run-<run_id>`.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def check_fleet_tier():
+    panels = titled(dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-fleet.yaml", "agent-fleet"))
+    check({"Tier vs tokens and steps per run", "Tokens by tier"} <= set(panels), "tier vs spend panels (O23)")
+    targets = json.dumps(panels.get("Tier vs tokens and steps per run", {}).get("targets", []))
+    check("stats by (run_id) count() as steps" in targets and "agentrun_info" in targets,
+          "tier, tokens and steps joined on run_id")
+```
+
+and append `check_fleet_tier` to `CHECKS`.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py; echo "exit $?"`
+Expected: `exit 1`, `tier vs spend panels (O23)`.
+
+- [ ] **Step 3: Implement**
+
+`templating.list` gains `{"name": "logs_datasource", "type": "datasource", "query":
+"victoriametrics-logs-datasource"}`. `panels` gains, after panel 4:
+
+```json
+        {"id": 5, "type": "table", "title": "Tier vs tokens and steps per run",
+         "gridPos": {"x": 0, "y": 26, "w": 16, "h": 10},
+         "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+         "targets": [
+           {"refId": "A", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range]))"},
+           {"refId": "B", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\")"},
+           {"refId": "C", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"}, "queryType": "stats", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run step \" | extract \"xplane-run-<run_id>\" from kubernetes.pod_name | stats by (run_id) count() as steps"}
+         ],
+         "transformations": [
+           {"id": "merge", "options": {}},
+           {"id": "organize", "options": {"renameByName": {"Value #B": "tokens"}}},
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "tier", "tokens", "steps"]}}},
+           {"id": "sortBy", "options": {"sort": [{"field": "tokens", "desc": true}]}}
+         ]},
+        {"id": 6, "type": "bargauge", "title": "Tokens by tier",
+         "gridPos": {"x": 16, "y": 26, "w": 8, "h": 10},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "instant": true, "legendFormat": "{{tier}}", "expr": "sum by (tier) (label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\") * on (run_id) group_left (tier) max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range])))"}]}
+```
+
+The header comment gains: `# Tier vs spend (O23): one tier per run, never re-routed within it (O24, SP3 R47).`
+
+- [ ] **Step 4: Run the suite and the gates**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py && python3 scripts/ci/flux-schema/check-substitution.py && export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS`; exit 0; `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add observability/base/agent-platform/grafana-dashboard-agent-fleet.yaml scripts/ci/tests/test-agent-observability.py
+git commit -m "feat(observability): tier chosen vs tokens and steps, on the fleet page"
+```
+
 ### Task 2.8: `task agent:run` prints the run's page on stderr (SO-5, O17)
 
 **Files:**
@@ -2124,6 +2537,202 @@ Expected: `PASS`; shellcheck exit 0.
 git add scripts/ops/k8s/agent-run.sh scripts/ci/tests/test-agent-run.sh
 git commit -m "feat(ops): task agent:run prints the run's dashboard link on stderr"
 ```
+
+### Task 2.8a: The harness roots the run's trace, and its step log carries the trace id (further review, 2026-09-29; O21, O22)
+
+This replaces Task 3.6: Task 0.5 verified the root-span loss.
+
+**Files:**
+- Modify: `container-images/agent-harness/agent_run.py`, `container-images/agent-harness/Dockerfile` (`AGENT_HARNESS_VERSION=v0.1.2`)
+- Test: `container-images/agent-harness/tests/test_agent_run.py`
+- Modify (crossplane-configuration, on CC-O1): `apis/agentrun/kcl/main.k` (`_HARNESS_PROFILES.openhands.image`), `tests/golden/agentrun-{basic,complete}.yaml`
+
+**Interfaces:**
+- Consumes:
+  - `TRACEPARENT` (Task 1.3a);
+  - `OTEL_EXPORTER_OTLP_ENDPOINT` (Task 1.3);
+  - agent-server's `DELETE /api/conversations/{id}`;
+  - lmnr's `LMNR_SPAN_CONTEXT` (Task 0.5).
+- Produces:
+  - `agent_run.start_run_span(env, exporter=None) -> (span, provider, extra_env)`. `extra_env` is
+    `{"LMNR_SPAN_CONTEXT", "OTEL_BSP_SCHEDULE_DELAY"}`. It returns `(None, None, {})` without an
+    endpoint.
+  - `agent_run.close_conversation(cid)`, `agent_run.BSP_DELAY_MS = "1000"`, `agent_run.FLUSH_WAIT_S = 2`.
+  - `StepLog(cid, trace_id="")`: step lines end with ` | trace_id=<32 hex>` when it is set.
+  - The span `agent-run`, root of a `task agent:run` run's trace, or the child of the factory's task span.
+  - Harness `v0.1.2`, `v0.1.2-pr<O-1>.<sha8>` until the wave.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add `import uuid` to the test module's imports, and append:
+
+```python
+class TraceTest(unittest.TestCase):
+    """Observability plan O21-O23: the run's root span, its parent, and the step log's trace id."""
+
+    TP = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+    def span(self, env):
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+        exporter = InMemorySpanExporter()
+        span, provider, extra = agent_run.start_run_span(env, exporter=exporter)
+        span.end()
+        provider.shutdown()
+        [got] = exporter.get_finished_spans()
+        return got, extra
+
+    def test_the_run_span_joins_the_trigger_trace(self):
+        got, extra = self.span({"TRACEPARENT": self.TP})
+        self.assertEqual(got.name, "agent-run")
+        self.assertEqual(format(got.context.trace_id, "032x"), "4bf92f3577b34da6a3ce929d0e0e4736")
+        self.assertEqual(format(got.parent.span_id, "016x"), "00f067aa0ba902b7")
+        ctx = json.loads(extra["LMNR_SPAN_CONTEXT"])
+        # agent-server's own root span becomes this span's child (Task 0.5)
+        self.assertEqual(uuid.UUID(ctx["trace_id"]).int, got.context.trace_id)
+        self.assertEqual(uuid.UUID(ctx["span_id"]).int, got.context.span_id)
+        self.assertEqual(extra["OTEL_BSP_SCHEDULE_DELAY"], agent_run.BSP_DELAY_MS)
+
+    def test_no_or_a_bad_traceparent_starts_a_fresh_trace(self):
+        for env in ({}, {"TRACEPARENT": "00-zz-1"}, {"TRACEPARENT": "01" + self.TP[2:]}):
+            got, _ = self.span(env)
+            self.assertIsNone(got.parent, env)
+            self.assertNotEqual(format(got.context.trace_id, "032x"), "4bf92f3577b34da6a3ce929d0e0e4736")
+
+    def test_tracing_is_off_without_an_endpoint(self):
+        self.assertEqual(agent_run.start_run_span({}), (None, None, {}))
+
+    def test_step_lines_carry_the_trace_id(self):
+        log = agent_run.StepLog("cid", "4bf92f3577b34da6a3ce929d0e0e4736")
+        line = log.describe({"kind": "ActionEvent", "tool_name": "terminal", "summary": "s", "action": {"command": "ls"}})
+        self.assertEqual(line, "agent-run step 1: terminal | s | ls | trace_id=4bf92f3577b34da6a3ce929d0e0e4736")
+        self.assertEqual(agent_run.StepLog("cid").describe({"kind": "ActionEvent", "tool_name": "t", "summary": "s", "action": {}}),
+                         "agent-run step 1: t | s | ")
+
+    def test_closing_the_conversation_flushes_the_root_span(self):
+        with mock.patch.object(agent_run, "http") as http, mock.patch.object(agent_run.time, "sleep") as sleep:
+            agent_run.close_conversation("cid")
+        http.assert_called_once_with("DELETE", "/api/conversations/cid")
+        sleep.assert_called_once_with(agent_run.FLUSH_WAIT_S)
+        with mock.patch.object(agent_run, "http", side_effect=OSError("gone")), mock.patch.object(agent_run.time, "sleep"):
+            agent_run.close_conversation("cid")  # never fails the run
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `docker build --target test container-images/agent-harness`
+Expected: the test stage fails with 5 errors:
+- `AttributeError: module 'agent_run' has no attribute 'start_run_span'` (three tests);
+- `… 'close_conversation'`;
+- `TypeError: StepLog.__init__() takes 2 positional arguments but 3 were given`.
+
+- [ ] **Step 3: Implement**
+
+After H-1's `redact()` (`re` and `uuid` are already imported):
+
+```python
+# A W3C traceparent from the factory's task span (SP3 R46), handed over by the composition.
+TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
+# agent-server exports on a 5 s batch and nothing at exit, and its root span ends only when
+# the conversation closes (observability plan, Task 0.5): a 1 s batch, a close, then a wait.
+BSP_DELAY_MS = "1000"
+FLUSH_WAIT_S = 2
+
+
+def start_run_span(env: dict, exporter=None):
+    """The run's root span and the env that makes agent-server's root span its child.
+
+    Parented on TRACEPARENT when it is a valid W3C header, a fresh trace otherwise (the
+    `task agent:run` path). (None, None, {}) when tracing is off. The trace id is correlation
+    only: the collector stamps the run id from the connection (observability plan O22).
+    """
+    endpoint = env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint and exporter is None:
+        return None, None, {}
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+    if exporter is None:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        exporter = OTLPSpanExporter(endpoint=endpoint.rstrip("/") + "/v1/traces")
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    parent = None
+    m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
+    if m:
+        remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
+                                   trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED))
+        parent = trace.set_span_in_context(trace.NonRecordingSpan(remote))
+    span = provider.get_tracer("agent-run").start_span("agent-run", context=parent)
+    sc = span.get_span_context()
+    # lmnr's LaminarSpanContext: UUID-shaped ids; agent-server's spans parent on it.
+    ctx = {"trace_id": str(uuid.UUID(int=sc.trace_id)), "span_id": str(uuid.UUID(int=sc.span_id)), "is_remote": True}
+    return span, provider, {"LMNR_SPAN_CONTEXT": json.dumps(ctx), "OTEL_BSP_SCHEDULE_DELAY": BSP_DELAY_MS}
+
+
+def close_conversation(cid: str) -> None:
+    """Close the conversation, which ends the SDK's root span, and let the 1 s batch export it."""
+    try:
+        http("DELETE", "/api/conversations/" + cid)
+    except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run
+        print("agent-run: conversation not closed: %s" % exc, file=sys.stderr, flush=True)
+    time.sleep(FLUSH_WAIT_S)
+```
+
+In `StepLog`:
+- `__init__(self, cid: str, trace_id: str = "")` sets `self.trace_id = trace_id`;
+- the `ActionEvent` branch becomes:
+
+```python
+            line = "agent-run step %d: %s | %s | %s" % (self.steps, tool, _short(event.get("summary"), 120), _short(target, 200))
+            # Correlation only (O22): links the line to its trace in Grafana, attributes nothing.
+            return line + (" | trace_id=" + self.trace_id if self.trace_id else "")
+```
+
+In `main()`:
+
+1. `server = subprocess.Popen(…)` becomes:
+
+   ```python
+       span, provider, trace_env = start_run_span(env)
+       trace_id = format(span.get_span_context().trace_id, "032x") if span else ""
+       server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env({**env, **trace_env}))
+   ```
+
+2. `StepLog(conversation["id"])` becomes `StepLog(conversation["id"], trace_id)`.
+3. The inner `finally` ends with `if span: close_conversation(conversation["id"])`.
+4. After the revoke in the outer `finally`: `if span: span.end(); provider.shutdown()`, on two lines.
+
+In the Dockerfile, `ARG AGENT_HARNESS_VERSION=v0.1.2`, with the comment `# O-1 (observability plan
+O21): after H-1's v0.1.1.`
+
+- [ ] **Step 4: Run every harness suite**
+
+Run: `docker build --target test container-images/agent-harness`
+Expected: exit 0. The five `TraceTest` tests are `ok`, and every other suite is `OK`. This was
+verified 2026-09-29 on SP1's harness source: 36 tests OK.
+
+- [ ] **Step 5: Commit, push the pre-release, pin it in CC-O1**
+
+```bash
+git add container-images/agent-harness
+git commit -m "feat(agent-harness): root the run's trace and carry its id in the step log"
+git push
+PR=$(gh pr view --json number --jq .number)
+TAG="v0.1.2-pr${PR}.$(git rev-parse --short=8 HEAD)"
+gh auth token | docker login ghcr.io -u Smana --password-stdin
+docker build --platform linux/amd64 -t "ghcr.io/smana/agent-harness:${TAG}" container-images/agent-harness
+docker push "ghcr.io/smana/agent-harness:${TAG}"
+skopeo inspect --raw "docker://ghcr.io/smana/agent-harness:${TAG}" | sha256sum
+```
+
+If the push is denied, the gh token lacks `write:packages`, and [OWNER] runs the last four lines.
+Then, on CC-O1:
+1. set `_HARNESS_PROFILES.openhands.image` to `ghcr.io/smana/agent-harness:${TAG}@sha256:<digest>`,
+   with the comment `# Observability plan O21: the run's root span, LMNR_SPAN_CONTEXT, trace_id in the step log.`;
+2. re-render both goldens (Task 1.5 Step 2);
+3. run `task check`, commit `fix(agentrun): pin harness v0.1.2 (trace root)` and push;
+4. record the new package pre-release, and re-pin it on O-1 (Task 2.1 Step 3).
 
 ### Task 2.9: ADR-0051, the umbrella README and runbook 08's live steps
 
@@ -2331,7 +2940,8 @@ Expected, in order:
 - The router spans' trace ids equal the harness trace's id: `traceparent` survived identity-proxy.
   Other ids mean no join; the run page still finds them by `agent.principal` (O14).
 
-If no `conversation` span is among the run's spans, the root span was lost at shutdown: O13, Task 3.6.
+The run's root is its `agent-run` span, and a `conversation` span is its child (Task 2.8a). If no
+`conversation` span is among the run's spans, raise `FLUSH_WAIT_S` (Task 0.5's fallback).
 
 ### Step 9 — SO-4: the collector's traces path only
 
@@ -2472,8 +3082,31 @@ O19 intends; record it.
 ### Task 3.3: [LIVE] SO-3
 
 - [ ] **Step 1:** Run runbook 08 Step 8. Expected as written there.
-- [ ] **Step 2:** If the run's spans hold no `conversation` span, go to Task 3.6 (O13). Otherwise
-  Task 3.6 is skipped.
+- [ ] **Step 2:** If the run's spans hold no `conversation` span, apply Task 0.5's fallback. Task
+  3.6 is superseded by Task 2.8a (O21).
+
+### Task 3.3a: [LIVE] The trace root and the step log's trace link (further review, 2026-09-29; O21, O22)
+
+This is the live half of Task 0.5, on SP1's path: `task agent:run`, no traceparent. SP3's factory
+path is proved by SP3's Task 1.13a.
+
+- [ ] **Step 1: One root, `agent-run`, and the conversation under it** (run A, Step 8's `/tmp/obs-traces.json`)
+
+Run: `jq -r '.data[].spans[] | select((.references // []) | length == 0) | .operationName' /tmp/obs-traces.json; jq -r '[.data[].spans[] | {id: .spanID, name: .operationName}] as $s | .data[].spans[] | select(.operationName == "conversation") | .references[0].spanID as $p | $s[] | select(.id == $p) | .name' /tmp/obs-traces.json`
+Expected: `agent-run`, then `agent-run`: the conversation's parent is the harness's root span.
+
+- [ ] **Step 2: The step log names that trace**
+
+```bash
+curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_name:\"xplane-run-$A\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run step \" | extract_regexp \"trace_id=(?P<trace_id>[0-9a-f]{32})\" | stats by (trace_id) count() lines"
+jq -r '[.data[].traceID] | unique[]' /tmp/obs-traces.json
+```
+
+Expected: one row, its `trace_id` equal to the second command's single trace id, and `lines` equal to
+the run's step count.
+
+- [ ] **Step 3: [OWNER]** On run A's page, a step line shows "View Trace", and it opens that trace.
+  Record both in O-1's "Live evidence".
 
 ### Task 3.4: [LIVE] SO-4
 
@@ -2491,6 +3124,9 @@ O19 intends; record it.
 - [ ] **Step 1:** Run runbook 08 Step 10, the [OWNER] click included. Expected as written there.
 
 ### Task 3.6: [LIVE, conditional] The root span is lost at shutdown (O13)
+
+**Superseded, 2026-09-29.** Task 0.5 verified the loss offline, and Task 2.8a ships the fix
+unconditionally (O21). This task is kept for its numbering only; do not run it.
 
 Only if Task 3.3 Step 2 sends you here.
 
@@ -2563,3 +3199,16 @@ Then:
   fallback fired).
 - [ ] **Step 4:** Take O-1 and CC-O1 out of draft for review.
   - Both stay open until the programme's merge wave (P33), in the order the PR map gives.
+
+---
+
+## Further review (2026-09-29)
+
+The owner accepted three additions from a further external review. SP3's share is in its own
+"Further review (2026-09-29)" table.
+
+| # | Addition | Where | What |
+|---|---|---|---|
+| F1 | A trigger-rooted trace per task | Task 0.5; Tasks 1.3a, 2.2a, 2.8a, 3.3a; O20, O21; Δ9; SP3 R46 | The composition projects `agents.ogenki.io/traceparent` as `TRACEPARENT`. The harness's `agent-run` span parents on it, or starts a fresh trace, and agent-server's root span joins it through `LMNR_SPAN_CONTEXT`. The collector's :4317 takes the factory's task spans. The harness closes the conversation before the stop, so the root span survives (was O13) |
+| F2 | The step log carries `trace_id` | Tasks 2.6a, 2.8a, 3.3a; O22; Δ10 | Step lines end with `\| trace_id=<hex>`, and the run page turns it into a "View Trace" link through the existing `log.trace_id` derived field. Correlation only: attribution stays on `x_ar_agent` and the connection-stamped `agent.run_id` |
+| F3 | Routing tier vs spend | Tasks 2.5a, 2.6a, 2.7a; O23, O24; SP3 R47 | `agentrun_info{tier}` from the claim label `agents.ogenki.io/tier`. The fleet page compares tier with tokens and steps per run, and tokens by tier; the run page shows the tier. One tier per run, never re-routed within it |

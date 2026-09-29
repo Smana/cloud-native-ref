@@ -299,7 +299,7 @@ merge-only, never rebased.
 | AP-2 | agent-platform · `feat/room-viewers` | `feat/room-log` | 2 | AP-1 | Policy matrix, human auth, fan-out hub, WebSocket replay, read-only UI | via S2 |
 | S2 | this · `feat/rooms-viewers` | `feat/rooms-log` | 2 | S1; AP-2 pre-release | ADR-0049, ZITADEL roles + `rooms-proxy`, oauth2-proxy, route, `KVStore`, 2 replicas, recovery seed | SC-2, SC-9, SC-11, SC-12; P17 across two replicas |
 | AP-3 | agent-platform · `feat/room-tools` | `feat/room-viewers` | 3 | AP-2 | MCP server :8090 with `room_*`; GitHub App client; verdict poster (Δ1) | via S3 |
-| H-S3 | this · `feat/agent-harness-pr-footer` | `fix/agent-review-hardening` (H-1, P37), **beside** the S stack | 3 | H-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
+| H-S3 | this · `feat/agent-harness-pr-footer` | `feat/agent-observability` (O-1, which stacks on H-1; P37, observability plan O13), **beside** the S stack | 3 | H-1 and O-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
 | CC-S3 | crossplane-configuration · `feat/agentrun-room-rules` | `feat/agentrun-room-bridge` | 3 | CC-S2; H-S3's pre-release | Room rules in `rules.md`; `ROOM_ID` and `TASK_URL` for the harness; the H-S3 harness pin | via S3 |
 | S3 | this · `feat/rooms-tools` | `feat/rooms-viewers` | 3 | S2; AP-3 and CC-S3 pre-releases; [OWNER] factory App (Task 3.9) | `room-broker` MCP backend on both MCPRoutes, MCP key, CNP; factory App key, `api.github.com` egress, `RoomVerdictsNotReachingGitHub` | SC-4 (owner-sequenced), tool lists per role, SC-14, SC-15 |
 | AP-4 | agent-platform · `feat/room-driver` | `feat/room-tools` | 4 | AP-3 | Driver token, queue, steering, interrupt, brief, hand to role, new room | via S4 |
@@ -14031,7 +14031,7 @@ It stays open until Phase 7):
     `pr_footer.main(argv, env) -> int`.
   - `ghcr.io/smana/agent-harness:v0.2.0-pr<N>.<sha8>`, pushed by hand (Step 5). `v0.2.0` itself is
     published when H-S3 merges in Phase 7.
-  - The image also carries H-1's M4 redaction (Task 0.5.6): H-S3 stacks on H-1 (ruling P37).
+  - The image also carries H-1's M4 redaction (Task 0.5.6): H-S3 stacks on O-1, which carries H-1 and the harness `v0.1.2` root-span fix (P37, observability plan O13).
 
 - [ ] **Step 1: Write the failing tests**
 
