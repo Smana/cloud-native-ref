@@ -18,8 +18,10 @@ mkdir -p "$tmp/bin"
 # a CEL/admission rejection would.
 cat >"$tmp/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
-# `get httproute` answers the Grafana host the dashboard link is built from (SO-5).
-if [ "$1" = get ]; then printf '%s' "${STUB_HOST:-}"; exit 0; fi
+# The grafana HTTPRoute answers the Grafana host the dashboard link is built from (SO-5);
+# any other `get` fails, as a wrong resource or namespace would.
+if [ "$*" = "get httproute grafana -n observability -o jsonpath={.spec.hostnames[0]}" ]; then printf '%s' "${STUB_HOST:-}"; exit 0; fi
+[ "$1" = get ] && exit 1
 printf '%s\n' "$*" >"$STUB_ARGS"
 cat >"$STUB_CLAIM"
 [ "${STUB_FAIL:-0}" = "1" ] && exit 1
@@ -27,6 +29,7 @@ exit 0
 STUB
 chmod +x "$tmp/bin/kubectl"
 export PATH="$tmp/bin:$PATH" STUB_ARGS="$tmp/args" STUB_CLAIM="$tmp/claim" AGENT_PRINCIPAL="human:312345678901234567"
+unset AGENT_GRAFANA_URL
 
 out="$(bash "$SUBJECT" --role implementer --class public --task 'Fix "the" link' --profiles pypi,npm 2>/dev/null)" || fail "a valid call exits 0"
 jq -e '.metadata.name | test("^xplane-run-[a-z2-7]{8}$")' "$STUB_CLAIM" >/dev/null || fail "runId is 8 characters of [a-z2-7]"

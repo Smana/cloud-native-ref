@@ -57,7 +57,7 @@ def redact(text: str) -> str:
 
 
 # A W3C traceparent from the factory's task span (SP3 R46), handed over by the composition.
-TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
+TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
 # agent-server exports on a 5 s batch and nothing at exit, and its root span ends only when
 # the conversation closes (observability plan, Task 0.5): a 1 s batch, a close, then a wait.
 BSP_DELAY_MS = "1000"
@@ -68,28 +68,35 @@ def start_run_span(env: dict, exporter=None):
     """The run's root span and the env that makes agent-server's root span its child.
 
     Parented on TRACEPARENT when it is a valid W3C header, a fresh trace otherwise (the
-    `task agent:run` path). (None, None, {}) when tracing is off. The trace id is correlation
-    only: the collector stamps the run id from the connection (observability plan O22).
+    `task agent:run` path). (None, None, {}) when tracing is off or cannot start. The trace id
+    is correlation only: the collector stamps the run id from the connection (observability
+    plan O22).
     """
     endpoint = env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint and exporter is None:
         return None, None, {}
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-    if exporter is None:
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        exporter = OTLPSpanExporter(endpoint=endpoint.rstrip("/") + "/v1/traces")
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    parent = None
-    m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
-    if m:
-        remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
-                                   trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED))
-        parent = trace.set_span_in_context(trace.NonRecordingSpan(remote))
-    span = provider.get_tracer("agent-run").start_span("agent-run", context=parent)
+        if exporter is None:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            # The root span exports after the revoke; a collector that drops packets must
+            # not hold the pod past its grace period.
+            exporter = OTLPSpanExporter(endpoint=endpoint.rstrip("/") + "/v1/traces", timeout=5)
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        parent = None
+        m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
+        if m:
+            remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
+                                       trace_flags=trace.TraceFlags(int(m[3], 16)))
+            parent = trace.set_span_in_context(trace.NonRecordingSpan(remote))
+        span = provider.get_tracer("agent-run").start_span("agent-run", context=parent)
+    except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run
+        print("agent-run: tracing off: %s" % exc, file=sys.stderr, flush=True)
+        return None, None, {}
     sc = span.get_span_context()
     # lmnr's LaminarSpanContext: UUID-shaped ids; agent-server's spans parent on it.
     ctx = {"trace_id": str(uuid.UUID(int=sc.trace_id)), "span_id": str(uuid.UUID(int=sc.span_id)), "is_remote": True}
@@ -99,7 +106,8 @@ def start_run_span(env: dict, exporter=None):
 def close_conversation(cid: str) -> None:
     """Close the conversation, which ends the SDK's root span, and let the 1 s batch export it."""
     try:
-        http("DELETE", "/api/conversations/" + cid)
+        # Bounded: closing a running conversation first waits out its in-flight LLM call.
+        http("DELETE", "/api/conversations/" + cid, timeout=5)
     except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run
         print("agent-run: conversation not closed: %s" % exc, file=sys.stderr, flush=True)
     time.sleep(FLUSH_WAIT_S)
@@ -321,12 +329,14 @@ def main() -> int:
         conversation = http("POST", "/api/conversations", request)
         steps = StepLog(conversation["id"], trace_id)
         try:
-            return poll(conversation["id"], on_tick=steps)
+            code = poll(conversation["id"], on_tick=steps)
         finally:
             steps()
             steps.summary()
-            if span:
-                close_conversation(conversation["id"])
+        # Never on SIGTERM: the close can outlast the grace period and the revoke must not wait.
+        if span:
+            close_conversation(conversation["id"])
+        return code
     finally:
         # A second SIGTERM during cleanup must not abort the revoke, and
         # agent-server must be stopped BEFORE the token is revoked so it

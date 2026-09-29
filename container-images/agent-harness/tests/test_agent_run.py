@@ -7,6 +7,7 @@ import io
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -373,10 +374,201 @@ class TraceTest(unittest.TestCase):
     def test_closing_the_conversation_flushes_the_root_span(self):
         with mock.patch.object(agent_run, "http") as http, mock.patch.object(agent_run.time, "sleep") as sleep:
             agent_run.close_conversation("cid")
-        http.assert_called_once_with("DELETE", "/api/conversations/cid")
+        # Bounded: a running conversation drains its LLM call before it closes.
+        http.assert_called_once_with("DELETE", "/api/conversations/cid", timeout=5)
         sleep.assert_called_once_with(agent_run.FLUSH_WAIT_S)
         with mock.patch.object(agent_run, "http", side_effect=OSError("gone")), mock.patch.object(agent_run.time, "sleep"):
             agent_run.close_conversation("cid")  # never fails the run
+
+    def test_the_run_span_carries_no_attributes(self):
+        # AK8: agent.run_id is the collector's to set; the harness adds nothing to the span.
+        got, _ = self.span({"TRACEPARENT": self.TP})
+        self.assertEqual(dict(got.attributes), {})
+        self.assertEqual(tuple(got.links), ())
+        self.assertEqual(tuple(got.events), ())
+
+    def test_an_unsampled_trigger_is_honoured(self):
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+        exporter = InMemorySpanExporter()
+        span, provider, _ = agent_run.start_run_span({"TRACEPARENT": self.TP[:-2] + "00"}, exporter=exporter)
+        span.end()
+        provider.shutdown()
+        self.assertEqual(tuple(exporter.get_finished_spans()), ())
+
+    def test_the_exporter_gives_up_fast(self):
+        with mock.patch(EXPORTER) as exporter:
+            _, provider, _ = agent_run.start_run_span({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318/"})
+            provider.shutdown()
+        exporter.assert_called_once_with(endpoint="http://c:4318/v1/traces", timeout=5)
+
+    def test_a_broken_exporter_turns_tracing_off(self):
+        with mock.patch(EXPORTER, side_effect=ValueError("bad OTEL_EXPORTER_OTLP_COMPRESSION")):
+            self.assertEqual(agent_run.start_run_span({"OTEL_EXPORTER_OTLP_ENDPOINT": "http://c:4318"}), (None, None, {}))
+
+
+EXPORTER = "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"
+
+# A stand-in agent-server on a real port: records the env it was started with, when the
+# conversation was posted and closed, and when it was stopped. `running` never ends the
+# conversation, and its DELETE drains for a minute, as agent-server's does mid-LLM-call.
+STAND_IN = r"""
+import http.server, json, os, signal, sys, threading, time
+port, status, record = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+def note(name, value):
+    with open(os.path.join(record, name), "w") as f:
+        f.write(value)
+note("env", json.dumps({k: os.environ.get(k) for k in ("LMNR_SPAN_CONTEXT", "OTEL_BSP_SCHEDULE_DELAY")}))
+EVENT = {"id": "e1", "kind": "ActionEvent", "tool_name": "terminal", "summary": "s", "action": {"command": "ls"}}
+class Handler(http.server.BaseHTTPRequestHandler):
+    def reply(self, body):
+        data = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+    def do_GET(self):
+        if self.path == "/ready":
+            return self.reply({})
+        if "/events/search" in self.path:
+            return self.reply({"items": [EVENT]})
+        self.reply({"execution_status": status})
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.reply({"id": "cid"})
+    def do_DELETE(self):
+        note("closed", repr(time.time()))
+        time.sleep(60 if status == "running" else 0)
+        self.reply({})
+    def log_message(self, *args):
+        pass
+server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+server.daemon_threads = True
+threading.Thread(target=server.serve_forever, daemon=True).start()
+signal.signal(signal.SIGTERM, lambda *_: (note("stopped", repr(time.time())), os._exit(0)))
+while True:
+    time.sleep(1)
+"""
+DRIVER = (
+    "import sys, agent_run\n"
+    "agent_run.AGENT_SERVER = 'http://127.0.0.1:' + sys.argv[1]\n"
+    "agent_run.SERVER_CMD = [sys.executable, '-c', sys.argv[2], sys.argv[1], sys.argv[3], sys.argv[4]]\n"
+    "agent_run.clone = lambda env: None\n"
+    "agent_run.build_request = lambda env, task, rules: {}\n"
+    "agent_run.POLL_INTERVAL_S = 0.2\n"
+    "agent_run.FLUSH_WAIT_S = 0\n"
+    "sys.exit(agent_run.main())\n"
+)
+
+
+class Collector(http.server.BaseHTTPRequestHandler):
+    spans = []
+
+    def do_POST(self):
+        from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+        body = ExportTraceServiceRequest.FromString(self.rfile.read(int(self.headers["Content-Length"])))
+        Collector.spans += [s for rs in body.resource_spans for ss in rs.scope_spans for s in ss.spans]
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+class TracedRunTest(unittest.TestCase):
+    """main() with tracing on, as every composed run has it (observability plan O21)."""
+
+    def serve(self, handler):
+        server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_port
+
+    def start(self, status, endpoint, extra_env=None):
+        GitHub.revoked.clear()
+        self.addCleanup(GitHub.revoked.clear)
+        github = self.serve(GitHub)
+        self.tmp = tempfile.mkdtemp()
+        self.cache = os.path.join(self.tmp, "token.json")
+        with open(self.cache, "w") as f:
+            json.dump({"token": "ghs_run", "expires_at": time.time() + 3600}, f)
+        for name in ("task", "rules"):
+            with open(os.path.join(self.tmp, name), "w") as f:
+                f.write(name)
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = str(probe.getsockname()[1])
+        probe.close()
+        self.out = os.path.join(self.tmp, "stdout")
+        env = {**os.environ, "GIT_TOKEN_CACHE": self.cache, "GITHUB_API": "http://127.0.0.1:%d" % github,
+               "TASK_FILE": os.path.join(self.tmp, "task"), "RULES_FILE": os.path.join(self.tmp, "rules"),
+               "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint, **(extra_env or {})}
+        with open(self.out, "w") as out:
+            driver = subprocess.Popen([sys.executable, "-c", DRIVER, port, STAND_IN, status, self.tmp],
+                                      cwd=HERE, env=env, stdout=out)
+        self.addCleanup(lambda: driver.poll() is None and driver.kill())
+        return driver
+
+    def read(self, name):
+        with open(os.path.join(self.tmp, name)) as f:
+            return f.read()
+
+    def wait_for_a_step(self):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if "agent-run step 1" in self.read("stdout"):
+                return
+            time.sleep(0.1)
+        self.fail("the driver never logged a step")
+
+    def assert_handed_over(self, trace_id=None):
+        env = json.loads(self.read("env"))
+        self.assertEqual(env["OTEL_BSP_SCHEDULE_DELAY"], agent_run.BSP_DELAY_MS)
+        ctx = uuid.UUID(json.loads(env["LMNR_SPAN_CONTEXT"])["trace_id"]).hex
+        if trace_id:
+            self.assertEqual(ctx, trace_id)
+        # The step line links to the same trace (O22).
+        self.assertIn("agent-run step 1: terminal | s | ls | trace_id=" + ctx + "\n", self.read("stdout"))
+
+    def assert_stopped_then_revoked(self):
+        self.assertEqual([r[:2] for r in GitHub.revoked], [("/installation/token", "Bearer ghs_run")])
+        self.assertLess(float(self.read("stopped")), GitHub.revoked[0][2])
+        return GitHub.revoked[0][2]
+
+    def test_sigterm_revokes_within_the_grace_whatever_the_collector(self):
+        driver = self.start("running", "http://127.0.0.1:1")  # nothing listens: a dead collector
+        self.wait_for_a_step()
+        signalled = time.time()
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+
+        self.assertEqual(driver.returncode, 143, "SIGTERM is 128 + 15")
+        self.assert_handed_over()
+        revoked = self.assert_stopped_then_revoked()
+        # The close drains a running conversation, so the signal path skips it: the revoke
+        # lands well inside the pod's 30 s grace, and a dead collector does not delay it.
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "closed")), "the signal path must not close")
+        self.assertLess(revoked - signalled, 3)
+        self.assertLess(time.time() - signalled, 5)
+
+    def test_a_finished_run_closes_the_conversation_then_exports_its_root_span(self):
+        Collector.spans = []
+        collector = self.serve(Collector)
+        _, trace_id, parent_id, _ = TraceTest.TP.split("-")
+        driver = self.start("finished", "http://127.0.0.1:%d" % collector, {"TRACEPARENT": TraceTest.TP})
+        driver.wait(timeout=60)
+
+        self.assertEqual(driver.returncode, 0)
+        self.assert_handed_over(trace_id)
+        self.assert_stopped_then_revoked()
+        # Closed before agent-server stops, so the SDK's root span can end and export.
+        self.assertLess(float(self.read("closed")), float(self.read("stopped")))
+        [span] = Collector.spans
+        self.assertEqual(span.name, "agent-run")
+        self.assertEqual(span.trace_id.hex(), trace_id)
+        self.assertEqual(span.parent_span_id.hex(), parent_id)
+        self.assertEqual(list(span.attributes), [])
 
 
 if __name__ == "__main__":
