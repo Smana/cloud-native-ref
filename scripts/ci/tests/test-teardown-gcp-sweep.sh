@@ -14,7 +14,9 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 set -e
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# Absolute: teardown.sh cd's before calling terramate, and a relative PATH entry
+# stops resolving there, letting the real CLI run with the destroy confirmed.
+T="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 cat >"$T/bin/gcloud" <<EOF
 #!/usr/bin/env bash
@@ -57,6 +59,7 @@ export PATH="$T/bin:$PATH"
 
 require_stubs() { # abort the whole test unless every cloud CLI is the stub
   local tool
+  case "$T" in /*) ;; *) echo "ABORT: stub dir '$T' is not absolute" >&2; exit 1 ;; esac
   for tool in gcloud terramate aws; do
     if [ "$(command -v "$tool")" != "$T/bin/$tool" ] \
        || [ "$("$T/bin/$tool" --stub-probe 2>/dev/null)" != stub ]; then
