@@ -102,6 +102,20 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
       echo
     fi
   fi
+
+  # GKE's LB leftovers (GCP parity GP-22, owner 2026-09-29): swept only on a
+  # confirmed teardown, and only once gcp-0 is gone (the script refuses otherwise).
+  if wants gcp && [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
+    echo "=== sweeping the LoadBalancer leftovers GKE left in the platform VPC ==="
+    if bash "${ROOT}/scripts/ops/gcp/sweep-lb-orphans.sh" --project "${GCP_PROJECT:-ogenki-435905}" \
+         --network "${GCP_NETWORK:-vpc-europe-west4-dev}" --cluster "${GKE_CLUSTER_NAME:-gcp-0}" --apply; then
+      echo
+      echo "=== retrying the destroy after the GCP sweep ==="
+      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+      destroy_rc=$?
+      echo "=== terramate exit after retry: ${destroy_rc} ==="
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -159,6 +173,14 @@ if wants gcp; then
       --format='value(name)' 2>/dev/null)"
     report "Forwarding rules" "$(gcloud compute forwarding-rules list --project "$project" \
       --format='value(name)' 2>/dev/null)"
+    # A deleted cluster leaves its LoadBalancers' target pools and k8s-* firewall
+    # rules behind, in no tofu state, and the firewall rules block the VPC delete
+    # (memory gke_lb_orphans_block_vpc_delete). The health-check rule is named
+    # after the node pool, not the LB, hence the prefix filter.
+    report "Target pools" "$(gcloud compute target-pools list --project "$project" \
+      --format='value(name)' 2>/dev/null)"
+    report "k8s-* firewall rules" "$(gcloud compute firewall-rules list --project "$project" \
+      --filter='name~^k8s-' --format='value(name)' 2>/dev/null)"
     report "Disks" "$(gcloud compute disks list --project "$project" \
       --format='value(name)' 2>/dev/null)"
   fi
