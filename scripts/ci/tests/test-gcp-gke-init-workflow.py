@@ -60,6 +60,13 @@ if any("|| true" in l or "2>/dev/null" in l for l in state_lines):
 if not any("state rm -lock-timeout=" in l for l in state_lines):
     fails.append("the destroy's custom-role state rm waits for the state lock")
 
+s3 = job_body(TEXT, "stage3-secrets-and-oidc")
+hosting = s3[s3.find("== registering the OIDC clients"):] if "== registering the OIDC clients" in s3 else ""
+before(s3, 'zitadel-idp.sh" sync', "== registering the OIDC clients", "a hosting stage 3 configures the IdP and Action before its clients")
+for flag in ("--openbao-url", "--openbao-root-token-secret openbao-priv-gcp-root-token", "--openbao-ca-file", "--mirror-openbao"):
+    if flag not in hosting:
+        fails.append(f"the hosting clients sync passes {flag}")
+
 for f in fails:
     print("FAIL", f)
 if fails:

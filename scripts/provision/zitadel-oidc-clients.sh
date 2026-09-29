@@ -29,8 +29,7 @@
 #      it (--openbao-url and friends; #2045). A rebuild restores ZITADEL from
 #      a seed that predates the app, so its id is new every time and
 #      Terraform, which created the mount, ignores this field afterwards.
-#      No-op when --openbao-url is empty, which is every call except aws-0's
-#      own sync.
+#      No-op when --openbao-url is empty, which is every consumer call.
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -111,9 +110,9 @@ ZITADEL_PROJECT_ROLES=(admin backend frontend data)
 # nobody can reproduce, which is how gcp-0 ended up with no groups claim at all.
 GRANT_ADMIN=""
 
-# Empty means reconcile_openbao_oidc (#2045) is a no-op -- correct on GCP and
-# for the gcp-0 consumer call, since OpenBao OIDC exists only on AWS (design
-# fact 1). Only aws-0's own sync passes these.
+# Empty means reconcile_openbao_oidc is a no-op: the consumer call on a
+# secondary cluster. A cluster hosting its own directory (aws-0's stage 4,
+# gcp-0's hosting stage 3) passes all three.
 OPENBAO_URL=""
 OPENBAO_ROOT_TOKEN_SECRET=""
 OPENBAO_CA_FILE=""

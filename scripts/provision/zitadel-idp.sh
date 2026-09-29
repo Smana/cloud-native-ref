@@ -36,6 +36,10 @@
 #
 # Dry-run unless --apply. The client secret is never printed.
 #
+# It resolves the admin PAT as the HOSTING cloud, so run it with kubectl
+# pointed at the cluster that hosts the IdP: a leftover security/iam-admin-pat
+# in any other cluster would overwrite that cloud's stored PAT (GP-20).
+#
 # THE ONE THING TO DO BY HAND, ONCE PER CLUSTER
 #
 # Google OAuth clients accept MANY authorized redirect URIs -- unlike a GitHub

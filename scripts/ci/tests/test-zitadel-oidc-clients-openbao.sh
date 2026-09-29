@@ -17,8 +17,9 @@
 #     registers in ZITADEL.
 #   * the reconcile is only as good as its invocation: the unit tests below
 #     pass whether or not any deploy ever hands the script --openbao-url. The
-#     Terramate guards pin who passes it (aws-0's own sync, nobody else) and
-#     that stage5 runs the check without swallowing its exit code.
+#     Terramate guards pin who passes it (each cloud's hosting sync, never a
+#     consumer's) and that stage5 runs the check without swallowing its exit
+#     code.
 #
 # WHY PATH STUBS. curl, jq and sleep are executables on a stub PATH, not shell
 # functions: a function is bypassed by `command curl` or `env curl`, and a jq
@@ -135,7 +136,7 @@ in_job() { # body, needle, label
 }
 
 echo
-echo "== contract: only aws-0's own sync passes the --openbao-* flags (design §2) =="
+echo "== contract: only a hosting sync passes the --openbao-* flags (design §2, GP-5) =="
 aws_syncs="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' || true)"
 own_sync="$(grep -F -- '--cluster "${global.eks_cluster_name}"' <<< "$aws_syncs" || true)"
 consumer_sync="$(grep -F -- '--idp-cloud aws' <<< "$aws_syncs" || true)"
@@ -157,8 +158,14 @@ contains "$openbao_args" '--openbao-ca-file ' "OPENBAO_ARGS carries the CA file"
 check "gcp/gke/init's workflows file exists" "yes" "$([ -f "$GCP_WORKFLOWS_SRC" ] && echo yes || echo no)"
 gcp_syncs="$(logical_lines "$GCP_WORKFLOWS_SRC" 2>/dev/null | grep -cF 'zitadel-oidc-clients.sh" sync')"
 check "gcp/gke/init runs at least one sync" "yes" "$([ "${gcp_syncs:-0}" -ge 1 ] && echo yes || echo no)"
-gcp_openbao="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -E -- '--openbao-|OPENBAO_ARGS' || true)"
-check "gcp/gke/init passes no --openbao-* flag" "" "$gcp_openbao"
+# GCP parity GP-5: gcp-0's HOSTING sync reconciles its own OpenBao and mirrors
+# into it; the CONSUMER sync (registering in another cloud's directory) must not.
+gcp_hosting="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -vF -- '--idp-cloud' || true)"
+gcp_consumer="$(logical_lines "$GCP_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -F -- '--idp-cloud' || true)"
+contains "$gcp_consumer" '--idp-cloud' "gcp/gke/init's consumer sync is found"
+contains "$gcp_hosting" '--openbao-url' "gcp/gke/init's hosting sync passes --openbao-url"
+contains "$gcp_hosting" '--mirror-openbao' "gcp/gke/init's hosting sync mirrors into OpenBao"
+check "gcp/gke/init's consumer sync passes no --openbao-* flag" "" "$(grep -E -- '--openbao-|--mirror-openbao' <<<"$gcp_consumer" || true)"
 
 echo
 echo "== contract: stage5 runs the check after stage4, and its failure halts the deploy =="

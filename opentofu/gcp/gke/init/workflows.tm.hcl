@@ -302,11 +302,25 @@ script "deploy" {
         # cluster fails as a bare `invalid_grant` with everything looking healthy.
         # Empty (no such stack / no such key) simply skips that reconciliation.
         WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+        # A fresh directory (GCP parity GP-3) has neither the Google IdP nor the
+        # groups Action; both must exist before the clients, or no token carries
+        # a groups claim.
+        echo "== registering the Google IdP and the groups Action"
+        IDP_URL="https://auth.$${PUBLIC_DOMAIN}" \
+          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync \
+            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+          echo "[warn] IdP registration failed; re-run it by hand"
+
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
             --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
-            --workforce-pool "$${WORKFORCE_POOL}" --apply || \
+            --workforce-pool "$${WORKFORCE_POOL}" \
+            --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200" \
+            --openbao-root-token-secret openbao-priv-gcp-root-token \
+            --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem" \
+            --mirror-openbao \
+            --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"
