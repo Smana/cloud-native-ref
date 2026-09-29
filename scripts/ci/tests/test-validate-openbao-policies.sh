@@ -125,6 +125,10 @@ expect "identical shared policy copies pass" 0 "$r"
 echo "path \"y\" { capabilities = [\"read\"] }" >"$r/opentofu/shared/modules/openbao-store-of-record/policies/admin.hcl"
 expect "a diverged shared policy copy fails, naming the file" 1 "$r" \
   'opentofu/aws/openbao/management/policies/admin.hcl and opentofu/shared/modules/openbao-store-of-record/policies/admin.hcl have diverged'
+cp "$r/opentofu/aws/openbao/management/policies/admin.hcl" "$r/opentofu/shared/modules/openbao-store-of-record/policies/admin.hcl"
+rm "$r/opentofu/shared/modules/openbao-store-of-record/policies/secrets-admin.hcl"
+expect "a shared policy copy deleted on one side fails" 1 "$r" \
+  'policies/secrets-admin.hcl have diverged'
 
 expect "the repository itself passes" 0 "$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 

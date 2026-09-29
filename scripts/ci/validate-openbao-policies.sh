@@ -120,7 +120,8 @@ if [ -d "$AWS_POLICIES" ] && [ -d "$SHARED_POLICIES" ]; then
     for name in admin app-prefix external-secrets pki-admin secrets-admin; do
         aws_file="$AWS_POLICIES/$name.hcl"
         shared_file="$SHARED_POLICIES/$name.hcl"
-        if [ -f "$aws_file" ] && [ -f "$shared_file" ] && ! cmp -s "$aws_file" "$shared_file"; then
+        # A copy missing on one side is divergence too, or deleting it would pass.
+        if ! [ -f "$aws_file" ] || ! [ -f "$shared_file" ] || ! cmp -s "$aws_file" "$shared_file"; then
             echo "FAIL: opentofu/aws/openbao/management/policies/${name}.hcl and opentofu/shared/modules/openbao-store-of-record/policies/${name}.hcl have diverged -- a deliberate divergence (e.g. G-5's agents/ grant) must land in both copies"
             diverged=1
         fi

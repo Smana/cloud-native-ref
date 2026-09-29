@@ -410,13 +410,18 @@ recovery-keys pre-flight: on a project where `openbao-priv-gcp-recovery-keys`
 has no readable version, the switch is unreachable and `rehydrate` refuses
 before it ever reads `OPENBAO_NEW_LINEAGE`.
 
-**Immediately after the proceed arm prints its warning, force-replace the
-break-glass user:**
+**Once the deploy that printed the proceed arm's warning finishes, force-replace
+the break-glass user:**
 
 ```bash
-tofu -chdir=opentofu/gcp/openbao/management apply \
+tofu -chdir=opentofu/gcp/openbao/management apply -parallelism=1 \
+  -var-file=variables.tfvars \
   -replace=module.store_of_record.vault_generic_endpoint.admin_user
 ```
+
+Keep both flags. Without `-var-file`, `secret_owning_apps` falls back to `[]`
+and the plan destroys every app persona; `-parallelism=1` is what the stack's
+own deploy uses against the OpenBao 2.6 write deadlock.
 
 `vault_generic_endpoint.admin_user` sets `disable_read = true` (the password is
 never readable back, so a read would always look like drift). That also means a
