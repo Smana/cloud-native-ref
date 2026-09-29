@@ -239,7 +239,7 @@ each gate actually checks.
 
 | Script | Purpose |
 |--------|---------|
-| `validate-manifests.sh` | Renders the repo (Kustomize + `helm template`) and gates it with `flux schema validate` + Polaris |
+| `validate-manifests.sh` | Renders the repo (Kustomize + `helm template`) and gates it with `flux schema validate`, Polaris, the AI-gateway and gcp-0 cloud-shape invariants, and the Alertmanager template render |
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
 | `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
 | `verify-doc-paths.sh` | Checks the documentation site's structural conventions |

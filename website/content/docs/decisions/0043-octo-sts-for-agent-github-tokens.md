@@ -145,6 +145,11 @@ repository it grants.
 `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
 it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
 
+*Amended 2026-09-29 (SP2 ruling P38).* The App key now lives at `github-app` on the `agents` kv-v2
+mount, which only `agents-secrets` and `secrets-admin` name. A mount of its own was chosen over a
+`namespaceSelector` on `openbao-platform`: `external-secrets` reads all of `platform/`, and a
+selector would still let every namespace it admits read the key.
+
 ---
 
 ## References

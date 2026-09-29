@@ -12,7 +12,7 @@ spec:
   # Programmed=False; retry soon rather than holding agent-mcp back a whole interval.
   retryInterval: 30s
   timeout: 5m0s
-  path: ./infrastructure/base/agent-router
+  path: ./infrastructure/aws-0/agent-router
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact

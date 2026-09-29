@@ -10,7 +10,7 @@ spec:
   prune: true
   interval: 5m0s
   timeout: 5m0s
-  path: ./infrastructure/base/envoy-ai-gateway
+  path: ./infrastructure/aws-0/envoy-ai-gateway
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact

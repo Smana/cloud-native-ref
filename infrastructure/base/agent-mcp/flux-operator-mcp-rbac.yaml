@@ -1,8 +1,8 @@
 ---
 # What an agent may read through the Flux MCP server (SP1 §6): Flux objects,
 # platform claims, workloads, events and pod logs. Never `secrets` (T12), never a
-# write verb. Logs and ConfigMaps may still carry what a process printed; the
-# MCPRoutes keep logs away from implementers and from every `public` run.
+# write verb. ConfigMaps and pod logs only in `flux-system` (the Role below):
+# either can carry whatever a process printed.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -32,16 +32,16 @@ rules:
   - apiGroups: [fluxcd.controlplane.io]
     resources: [fluxinstances, fluxreports, resourcesets, resourcesetinputproviders]
     verbs: [get, list, watch]
-  # This platform's own claims (`get_flux_instance`/`get_kubernetes_resources`
-  # traverse from a Flux object down to what it manages). `agentruns` carries
-  # a run's task text and principal annotation -- already reachable before
-  # this change, now the only cloud.ogenki.io Kind that is, rather than every
-  # future one a Configuration bump adds (review M1).
+  # This platform's own claims (`get_kubernetes_resources` takes any kind and
+  # namespace, like `kubectl get`, so this ClusterRole, not the tool, is the
+  # boundary). `agentruns` carries a run's task text and principal annotation
+  # -- already reachable before this change, now the only cloud.ogenki.io Kind
+  # that is, rather than every future one a Configuration bump adds (review M1).
   - apiGroups: [cloud.ogenki.io]
     resources: [apps, sqlinstances, inferenceservices, kvstores, epis, gcpworkloadidentities, agentruns]
     verbs: [get, list, watch]
   - apiGroups: [""]
-    resources: [pods, pods/log, services, endpoints, events, namespaces, configmaps, persistentvolumeclaims, serviceaccounts, nodes]
+    resources: [pods, services, endpoints, events, namespaces, persistentvolumeclaims]
     verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets, replicasets]
@@ -66,6 +66,33 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: agent-mcp-flux-read
+subjects:
+  - kind: ServiceAccount
+    name: flux-operator-mcp
+    namespace: agent-system
+---
+# ConfigMaps and pod logs, in flux-system only (external review M3). Cluster-wide they reached
+# `security`, `crossplane-system` and other runs' sandboxes; Flux's controllers are what an
+# agent debugs through this server.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-mcp-flux-read
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, pods/log]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-mcp-flux-read
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: agent-mcp-flux-read
 subjects:
   - kind: ServiceAccount

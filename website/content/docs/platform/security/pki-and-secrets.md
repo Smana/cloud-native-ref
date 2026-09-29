@@ -402,8 +402,8 @@ Gateway picks up the new `Secret` without a redeploy.
 Where cert-manager pulls certificates *out* of OpenBao's PKI, External Secrets
 Operator pulls arbitrary credentials into the cluster. **Most of them now come
 from OpenBao itself** — see [Secrets]({{< relref "/docs/platform/security/secrets.md" >}})
-for the two mounts, who may read each one, and what a developer writes to give an
-application a secret.
+for the three mounts (`platform/`, `apps/` and the agents' own `agents/`), who may
+read each one, and what a developer writes to give an application a secret.
 
 What remains on the cloud's managed store is the **bootstrap tier**: the CA chain
 above, OpenBao's own server certificate, the root token and recovery keys — every

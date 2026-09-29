@@ -21,10 +21,12 @@ wrong:
       that targets it, since Envoy Gateway does not merge CTP levels: a
       listener-scoped policy REPLACES the Gateway-level one for that listener
       rather than adding to it, so relying on the Gateway-level strip alone
-      would let a later, unrelated listener-scoped policy silently drop it.
-      At least one Gateway of this class must exist in the bundle -- zero is a
-      layout regression, not compliance, and used to pass this check
-      vacuously.
+      would let a later, unrelated listener-scoped policy silently drop it. A
+      Gateway is covered by a Gateway-scoped ClientTrafficPolicy, or by
+      listener-scoped ones whose `sectionName`s cover every listener it
+      declares (review M6). At least one Gateway of this class must exist in
+      the bundle -- zero is a layout regression, not compliance, and used to
+      pass this check vacuously.
   A4  A BackendTrafficPolicy that targets an HTTPRoute or AIGatewayRoute sets
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
@@ -162,7 +164,11 @@ def check_identity_strips(objs):
     gateway_keys = {((g.get("metadata") or {}).get("namespace", ""), (g.get("metadata") or {}).get("name"))
                     for g in gateways}
 
-    targeted = set()
+    # Gateway-scoped policies (whole) cover every listener; listener-scoped ones
+    # (sections) cover only the sectionNames they name -- Envoy Gateway does not
+    # merge CTP levels, so a listener left out of every sections[key] entry is
+    # unstripped even though the Gateway itself looks targeted.
+    whole, sections = set(), {}
     for obj in objs:
         if obj.get("kind") != "ClientTrafficPolicy":
             continue
@@ -175,7 +181,10 @@ def check_identity_strips(objs):
             key = (ns, target.get("name"))
             if key not in gateway_keys:
                 continue
-            targeted.add(key)
+            if target.get("sectionName"):
+                sections.setdefault(key, set()).add(target["sectionName"])
+            else:
+                whole.add(key)
             # A sectionName scopes the policy to one listener. Envoy Gateway
             # does not merge CTP levels, so a listener-scoped policy REPLACES
             # the Gateway-level one for that listener and must independently
@@ -189,8 +198,16 @@ def check_identity_strips(objs):
     for obj in gateways:
         meta = obj.get("metadata") or {}
         key = (meta.get("namespace", ""), meta.get("name"))
-        if key not in targeted:
+        if key in whole:
+            continue
+        if key not in sections:
             errors.append(f"{ref(obj)}: no ClientTrafficPolicy removes the identity headers before authentication")
+            continue
+        listeners = {listener.get("name") for listener in spec_of(obj).get("listeners") or []}
+        uncovered = sorted(listeners - sections[key])
+        if not listeners or uncovered:
+            errors.append(f"{ref(obj)}: no Gateway-scoped ClientTrafficPolicy, and no listener-scoped one "
+                          f"covers listener(s) {', '.join(uncovered) or '(none declared)'}")
     return errors
 
 

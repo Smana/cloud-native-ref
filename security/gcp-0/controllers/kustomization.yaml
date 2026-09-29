@@ -1,7 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# The two controllers, and NOTHING they admit.
+# The three controllers (External Secrets, cert-manager, Kyverno), and NOTHING
+# they admit. Kyverno's policies follow the same rule: security-sandbox-policies
+# applies them once this Kustomization's health checks pass.
 #
 # This split is load-bearing, not organisational. Both charts ship a VALIDATING
 # WEBHOOK with failurePolicy: Fail, and both webhooks admit resources that live
@@ -33,6 +35,9 @@ kind: Kustomization
 # nobody. Those siblings now live in security/aws-0/{openbao,cert-manager-public}/,
 # mirroring this cluster's own layout.
 #
+# kyverno: agent-policies' admission and GC need it (GCP parity), as aws-0's
+# security does; its chart admits nothing in ../openbao.
+#
 # The third entry is not a chart and is not admitted by either webhook: it is the
 # Role and RoleBinding that let cert-manager mint a projected ServiceAccount
 # token for itself. It is applied HERE, with cert-manager, rather than from
@@ -52,6 +57,7 @@ kind: Kustomization
 # postBuild.substituteFrom to gke-gcp-0-vars, which ../rbac's
 # ${workforce_pool_id} needs.
 resources:
+  - ../../base/kyverno
   - ../../base/external-secrets
   - ../../base/cert-manager
   - ../../base/cert-manager-token-creator

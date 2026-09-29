@@ -60,10 +60,10 @@ def btp(rules, name="ai-gateway-token-budgets", target=None):
                      "rateLimit": {"global": {"rules": rules}}}}
 
 
-def gateway(name="ai-gateway", ns="envoy-ai-gateway-system", cls="envoy-ai-gateway"):
+def gateway(name="ai-gateway", ns="envoy-ai-gateway-system", cls="envoy-ai-gateway", listeners=()):
     return {"apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway",
             "metadata": {"name": name, "namespace": ns},
-            "spec": {"gatewayClassName": cls, "listeners": []}}
+            "spec": {"gatewayClassName": cls, "listeners": [{"name": n} for n in listeners]}}
 
 
 def ctp(remove, gw="ai-gateway", ns="envoy-ai-gateway-system", section=None):
@@ -169,8 +169,14 @@ check("one header missing fails, naming it", len(errs) == 1 and "agent-session-i
 check("no ClientTrafficPolicy fails", len(gate.check_identity_strips([gateway()])) == 1)
 check("a policy in another namespace does not count",
       len(gate.check_identity_strips([gateway(), ctp(STRIPS, ns="other")])) == 1)
-check("a listener-scoped policy that itself fully strips satisfies the Gateway",
-      gate.check_identity_strips([gateway(), ctp(STRIPS, section="http")]) == [])
+errs = gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public")])
+check("a listener-scoped policy covers its own listener only (M6): the other one is reported",
+      len(errs) == 1 and errs[0].endswith("covers listener(s) internal"), str(errs))
+check("listener-scoped policies covering every listener satisfy the Gateway",
+      gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public"),
+                                  ctp(STRIPS, section="internal")]) == [])
+check("a listener-scoped policy on a Gateway that declares no listener covers nothing",
+      len(gate.check_identity_strips([gateway(), ctp(STRIPS, section="public")])) == 1)
 errs = gate.check_identity_strips([gateway(), ctp(STRIPS), ctp(None, section="http")])
 check("a listener-scoped override with no header strip fails even though the Gateway baseline is compliant",
       len(errs) == 1, str(errs))

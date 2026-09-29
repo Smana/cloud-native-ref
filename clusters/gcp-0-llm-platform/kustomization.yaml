@@ -5,15 +5,11 @@ kind: Kustomization
 # Kustomization at clusters/gcp-0/llm-platform.yaml applies this directory
 # only when its `spec.suspend` is false.
 #
-# Six children, fewer than aws-0's -- no gpu-nodepools (GKE ComputeClass
+# Three children, fewer than aws-0's -- no gpu-nodepools (GKE ComputeClass
 # already covers gpu-l4, see infrastructure/gcp-0/computeclass/gpu-l4.yaml)
-# and no runtimeclass-nvidia (GKE manages GPU drivers itself). See README.md.
+# and no runtimeclass-nvidia (GKE manages GPU drivers itself). The gateway
+# layer lives in the ai-gateway umbrella (../gcp-0-ai-gateway). See README.md.
 resources:
-  # AI gateway: Envoy Gateway -> Envoy AI Gateway -> vLLM Service, same as
-  # aws-0 (SPEC-001 direct routing; no interceptor in the data path).
-  - infrastructure-envoy-gateway.yaml
-  - infrastructure-envoy-ai-gateway.yaml
-  - infrastructure-vllm-semantic-router.yaml
   - apps-llm.yaml
   - security-llm-workloadidentity.yaml
   - tooling-promptfoo.yaml

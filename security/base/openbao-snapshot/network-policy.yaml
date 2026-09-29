@@ -26,11 +26,11 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-    # EKS Pod Identity agent on AWS; on GCP this is what lets `gcloud` reach
-    # GKE's metadata server at 169.254.169.254. Both run on the node's host
-    # network, so Cilium classifies the destination as the `host` entity and a
-    # toCIDR rule for the link-local address silently fails - see
-    # security/AGENTS.md.
+    # The EKS Pod Identity agent (169.254.170.23) runs on the node's host
+    # network, so Cilium classifies it as the `host` entity and a toCIDR rule
+    # silently fails. GKE's metadata server is the opposite case, so gcp-0
+    # replaces this rule with a toCIDR (security/gcp-0/openbao-snapshot). See
+    # rule 3 in security/AGENTS.md.
     - toEntities:
         - host
       toPorts:
