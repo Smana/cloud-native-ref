@@ -606,8 +606,10 @@ merge_secret() {
         # It measures the STRING, not the decoded bytes, so the base64 has to
         # be truncated to the cipher length rather than sized to decode into
         # it. `head -c 32` is the recipe the chart's own values.yaml gives.
-        cookie_secret="$(jq -r '."cookie-secret" // empty' <<< "$existing")"
-        [ -n "$cookie_secret" ] || cookie_secret="$(openssl rand -base64 32 | head -c 32)"
+        # `|| return 1` on both: cmd_sync calls this in $( ), where errexit is
+        # not inherited, and an empty cookie secret would be written as is.
+        cookie_secret="$(jq -r '."cookie-secret" // empty' <<< "$existing")" || return 1
+        [ -n "$cookie_secret" ] || cookie_secret="$(openssl rand -base64 32 | head -c 32)" || return 1
     fi
 
     {
@@ -855,49 +857,87 @@ openbao_oidc_config_payload() {
         end' || return 1
 }
 
+# The fields this script owns in a consumer secret: every key merge_secret and
+# converge_secret write. The mirror copies only these. The rest of a blob
+# belongs to another writer -- seed's GF_SECURITY_ADMIN_PASSWORD in
+# grafana-envvars -- and OpenBao's copy of it may be newer than the store's (a
+# rotation made in OpenBao), so the mirror never overwrites it.
+# test-zitadel-oidc-clients-mirror.sh fails when merge_secret writes a key
+# missing here.
+MIRRORED_FIELDS=(
+    GF_AUTH_GENERIC_OAUTH_CLIENT_ID GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+    OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_ISSUER_URL OIDC_SCOPES
+    OIDC_VALIDATOR_CLIENT_ID OIDC_VALIDATOR_ISSUER_URL
+    clientID clientSecret
+    client_id client_secret endpoint
+    client-id client-secret cookie-secret
+)
+
 # Mirror one consumer secret into the OpenBao path its ExternalSecret reads
-# (--mirror-openbao). Merges into what is there -- grafana-envvars also carries
-# the generated admin credentials -- and the payload wins on a shared key.
-# Unmapped keys (openbao-oidc, headlamp-oauth2-proxy) are read from the managed
-# store, so they are left alone. A subshell, like reconcile_openbao_oidc, so its
-# token file and trap stay local; the secret goes through stdin, never argv.
+# (--mirror-openbao): MIRRORED_FIELDS from the store's blob, onto what OpenBao
+# holds. Writes only when that changes OpenBao's value, so a re-run adds no KV
+# version. Unmapped keys (openbao-oidc, headlamp-oauth2-proxy) are read from the
+# managed store; they are skipped, and said so. A subshell, like
+# reconcile_openbao_oidc, so its temp files and trap stay local. Secrets move
+# through stdin and 0700-directory files, never argv.
 mirror_to_openbao() (
     # xtrace would print the payload, and the client secret with it.
     set +x
     key="$1"
     [ "${MIRROR_OPENBAO:-false}" = "true" ] || exit 0
-    target="$(bao_target_for "$key")" || exit 0
+    if ! target="$(bao_target_for "$key")"; then
+        echo "[skip   ] ${key}: no OpenBao path in scripts/lib/bao-map.sh" >&2
+        exit 0
+    fi
     mount="${target%%/*}"
     path="${target#*/}"
-    payload="$(cat)"
-    OPENBAO_TOKEN_CONFIG="$(umask 077 && mktemp -t openbao-mirror-curl.XXXXXX)" || exit 1
-    body="$(umask 077 && mktemp -t openbao-mirror-read.XXXXXX)" || exit 1
-    trap 'rm -f "$OPENBAO_TOKEN_CONFIG" "$body"' EXIT
+    # One directory, trapped the moment it exists, so no second mktemp can
+    # fail and strand the first. The path is baked in at trap-set time.
+    tmp="$(umask 077 && mktemp -d -t openbao-mirror.XXXXXX)" || exit 1
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    cat > "$tmp/payload" || exit 1
+    OPENBAO_TOKEN_CONFIG="$tmp/token"
     if ! openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}"; then
         echo "[FAILED ] ${key} -- no OpenBao root token readable from ${OPENBAO_ROOT_TOKEN_SECRET:-<unset>}" >&2
         exit 1
     fi
-    # Only a 404 means "nothing there yet". Any other failure (403, timeout)
-    # must not become an empty merge base, or the POST below would drop every
-    # key the payload does not carry.
-    code="$(openbao_req GET "${mount}/data/${path}" -o "$body" -w '%{http_code}' 2>/dev/null)" || true
+    # Only a 404 means "nothing there yet". Any other answer (403, a TLS or CA
+    # error, a timeout) must not become an empty merge base. curl's stderr is
+    # shown for those: it holds curl's own error line only -- the token is in a
+    # -K file and a body goes to -o -- and a 404's "(22)" line is expected.
+    code="$(openbao_req GET "${mount}/data/${path}" -o "$tmp/read" -w '%{http_code}' 2>"$tmp/err")" || true
     case "$code" in
-        200) current="$(jq -c '.data.data // {}' "$body")" \
+        200) jq -ce '.data.data // {} | objects' "$tmp/read" > "$tmp/current" \
                  || { echo "[FAILED ] ${key} -- ${target} is not readable JSON; not overwriting it" >&2; exit 1; } ;;
-        404) current='{}' ;;
+        404) printf '{}' > "$tmp/current" ;;
         *)   echo "[FAILED ] ${key} -- reading ${target} returned HTTP ${code:-none}; not overwriting it" >&2
+             cat "$tmp/err" >&2
              exit 1 ;;
     esac
-    if ! printf '%s\n%s\n' "$current" "$payload" \
-        | jq -c -s '{data: (.[0] * .[1])}' \
-        | openbao_req POST "${mount}/data/${path}" --data-binary @- >/dev/null; then
+    # Field NAMES go in as --args (none is secret); both values on stdin.
+    if ! cat "$tmp/current" "$tmp/payload" | jq -cn '
+            input as $cur | input as $p |
+            ($cur + ($p | with_entries(select(.key | IN($ARGS.positional[]))))) as $new |
+            if $new == $cur then empty else {data: $new} end' \
+            --args "${MIRRORED_FIELDS[@]}" > "$tmp/write"; then
+        echo "[FAILED ] ${key} -- could not merge into ${target}; not overwriting it" >&2
+        exit 1
+    fi
+    if [ ! -s "$tmp/write" ]; then
+        echo "[ok     ] ${key} -- ${target} already holds these fields"
+        exit 0
+    fi
+    if ! openbao_req POST "${mount}/data/${path}" --data-binary @- < "$tmp/write" >/dev/null; then
         echo "[FAILED ] ${key} -- not mirrored to ${target}" >&2
         exit 1
     fi
     echo "[mirrored] ${key} -> ${target}"
 )
 
-# The managed store first, then the mirror, with one payload.
+# The managed store first, then the mirror, with one payload. Returns 1 when
+# the store write fails and 2 when only the mirror does: cmd_sync stops on the
+# first and carries on past the second (failed_mirrors there).
 store_write_and_mirror() {
     # The payload sits in a variable here, so xtrace would print it.
     local -
@@ -905,7 +945,7 @@ store_write_and_mirror() {
     local key="$1" payload
     payload="$(cat)"
     printf '%s' "$payload" | store_write "$key" || return 1
-    printf '%s' "$payload" | mirror_to_openbao "$key"
+    printf '%s' "$payload" | mirror_to_openbao "$key" || return 2
 }
 
 # Point OpenBao's auth/oidc at the client ZITADEL issued. Two resources carry
@@ -1104,6 +1144,9 @@ cmd_sync() {
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
     local created=0 skipped=0 updated=0 converged=0
+    # A failed mirror does not stop the loop, like openbao_failed below: the
+    # other consumers and both reconciles still run, then the sync exits 1.
+    local failed_mirrors="" wrc=0
     # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
     # branches below for where each is set. Empty stays empty on a dry run
     # (reconcile_openbao_oidc treats that as its own skip) and on any topology
@@ -1255,11 +1298,24 @@ cmd_sync() {
             desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
+                # A mirror that failed after its store write leaves the store
+                # converged, so nothing else here would ever retry it. Never on
+                # a dry run; a no-op without --mirror-openbao.
+                if [ "$APPLY" = "true" ]; then
+                    printf '%s' "$existing_secret" | mirror_to_openbao "$key" \
+                        || failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+                fi
             elif [ "$APPLY" != "true" ]; then
                 echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
                 converged=$((converged + 1))
             else
-                printf '%s' "$desired" | store_write_and_mirror "$key"
+                wrc=0
+                printf '%s' "$desired" | store_write_and_mirror "$key" || wrc=$?
+                case "$wrc" in
+                    0) ;;
+                    2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
+                    *) exit 1 ;;
+                esac
                 echo "[converged] ${name} -> ${key} (client id ${client_id}, secret untouched)"
                 converged=$((converged + 1))
             fi
@@ -1289,7 +1345,17 @@ cmd_sync() {
             openbao_client_id="$client_id"
         fi
 
-        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write_and_mirror "$key"
+        # Built first, so a failed merge stops here instead of feeding the
+        # store an empty payload.
+        local merged
+        merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret")" || exit 1
+        wrc=0
+        printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
+        case "$wrc" in
+            0) ;;
+            2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
+            *) exit 1 ;;
+        esac
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done
@@ -1314,8 +1380,12 @@ cmd_sync() {
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
     fi
+    if [ -n "$failed_mirrors" ]; then
+        echo "[FAILED ] not mirrored to OpenBao: ${failed_mirrors} -- the managed store has them; re-run sync --apply" >&2
+    fi
 
     [ "$openbao_failed" -eq 0 ] || exit 1
+    [ -z "$failed_mirrors" ] || exit 1
 }
 
 case "$COMMAND" in

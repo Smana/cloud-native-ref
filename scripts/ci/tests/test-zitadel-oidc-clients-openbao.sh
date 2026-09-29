@@ -1034,7 +1034,7 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
@@ -1053,8 +1053,17 @@ converge_secret() { echo '{}'; }
 store_exists() { return 0; }
 store_probe()  { return 0; }
 store_read()   { echo '{}'; }
-store_write()  { cat >/dev/null; }
-store_write_and_mirror() { cat >/dev/null; }
+STORE_WRITE_RC=0
+store_write()  { cat >/dev/null; return "$STORE_WRITE_RC"; }
+# The mirror's own behaviour is test-zitadel-oidc-clients-mirror.sh; here only
+# whether cmd_sync calls it, and what it does with a failure.
+MIRROR_LOG="$WORK/mirror-calls.log"
+MIRROR_RC=0
+mirror_to_openbao() {
+    cat >/dev/null
+    printf 'MIRROR %s\n' "$1" >> "$MIRROR_LOG"
+    return "$MIRROR_RC"
+}
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0
@@ -1076,7 +1085,7 @@ run_cmd_sync() {
 }
 
 echo "-- the existing-app path --"
-: > "$RECONCILE_LOG"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
 CONSUMERS=("openbao|${WIRE_CB}|openbao-oidc")
 app_id_by_name() { echo "app-1"; }
 app_get() { jq -n --arg r "$WIRE_CB" --arg cid "existing-openbao-id" \
@@ -1087,10 +1096,20 @@ check "existing-app path: cmd_sync succeeds"     "0" "$rc"
 check "existing-app path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
 check "existing-app path: called with (key, id)" "CALL openbao-oidc existing-openbao-id" \
     "$(cat "$RECONCILE_LOG")"
+# The store is already converged (converge_secret == store_read), so only the
+# retry in that branch can repair a mirror an earlier run failed.
+check "already converged, --apply: the mirror is retried" "MIRROR openbao-oidc" "$(cat "$MIRROR_LOG")"
+
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+APPLY=false
+run_cmd_sync
+check "already converged, dry run: cmd_sync succeeds"      "0" "$rc"
+check "already converged, dry run: OpenBao is never written" "" "$(cat "$MIRROR_LOG")"
+APPLY=true
 
 echo
 echo "-- the create path --"
-: > "$RECONCILE_LOG"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
 app_id_by_name() { echo ""; }
 api_or_fail() { printf '{"clientId":"created-openbao-id","clientSecret":"created-secret"}'; }  # pragma: allowlist secret
 APPLY=true
@@ -1099,6 +1118,31 @@ check "create path: cmd_sync succeeds"     "0" "$rc"
 check "create path: reconcile called once" "1" "$(wc -l < "$RECONCILE_LOG")"
 check "create path: called with (key, id)" "CALL openbao-oidc created-openbao-id" \
     "$(cat "$RECONCILE_LOG")"
+check "create path: the new secret is mirrored" "MIRROR openbao-oidc" "$(cat "$MIRROR_LOG")"
+
+echo
+echo "-- a failed mirror: the loop, both reconciles and the summary still run, then exit 1 --"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+CONSUMERS=("harbor|https://harbor.priv.aws.ogenki.io/c/oidc/callback|harbor-oidc"
+           "openbao|${WIRE_CB}|openbao-oidc")
+MIRROR_RC=1
+run_cmd_sync
+check "mirror fails: cmd_sync exits 1"                     "1" "$rc"
+check "mirror fails: the next consumer is still processed" "2" "$(wc -l < "$MIRROR_LOG")"
+check "mirror fails: reconcile still called once"          "1" "$(wc -l < "$RECONCILE_LOG")"
+contains "$out" "created: 2"                               "mirror fails: the summary line still prints"
+contains "$out" "not mirrored to OpenBao: harbor-oidc openbao-oidc" "mirror fails: the summary names each failed mirror"
+MIRROR_RC=0
+
+echo
+echo "-- a failed store write: stops at once, OpenBao untouched --"
+: > "$RECONCILE_LOG"; : > "$MIRROR_LOG"
+STORE_WRITE_RC=1
+run_cmd_sync
+check "store write fails: cmd_sync exits 1"       "1" "$rc"
+check "store write fails: no mirror is attempted" "" "$(cat "$MIRROR_LOG")"
+STORE_WRITE_RC=0
+CONSUMERS=("openbao|${WIRE_CB}|openbao-oidc")
 
 echo
 echo "-- a reconcile failure exits 1, after the summary --"
