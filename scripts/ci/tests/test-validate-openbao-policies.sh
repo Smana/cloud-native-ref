@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VALIDATOR="${SCRIPT_DIR}/../validate-openbao-policies.sh"
+VALIDATOR="$SCRIPT_DIR/../validate-openbao-policies.sh"
 failures=0
 
 # role_policies <root> <cloud> <quoted,list> -- a configure stack naming policies
