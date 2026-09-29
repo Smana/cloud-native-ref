@@ -135,7 +135,8 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # scope has to name it. Substituting it means a rename is caught by
       # check-substitution.py instead of surfacing as a bare `invalid_grant`
       # with oauth2-proxy, the exchange proxy and Headlamp all reporting healthy.
-      zitadel_project_id = var.zitadel_project_id
+      # Live-reconciled when this cluster hosts ZITADEL: see local.zitadel_project_id.
+      zitadel_project_id = local.zitadel_project_id
     }
   })
   server_side_apply = true
