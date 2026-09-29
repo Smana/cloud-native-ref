@@ -94,6 +94,17 @@ if acs.check_umbrellas(tree):
 (tree / "clusters/gcp-0-agent-platform/infrastructure-agent-router.yaml").write_text(child.format(path="./infrastructure/base/agent-router"))
 if not acs.check_umbrellas(tree):
     fails.append("a substituted child on a base/ path must fail")
+# A renamed vars ConfigMap must not turn the check off.
+renamed = child.replace("gke-gcp-0-vars", "gke-gcp-0-vars-v2")
+(tree / "clusters/gcp-0-agent-platform/infrastructure-agent-router.yaml").write_text(renamed.format(path="./infrastructure/base/agent-router"))
+if not acs.check_umbrellas(tree):
+    fails.append("a child substituting a renamed ConfigMap into a base/ path must fail")
+(tree / "clusters/gcp-0-agent-platform/infrastructure-agent-router.yaml").write_text(renamed.format(path="./infrastructure/gcp-0/agent-router"))
+if not acs.check_umbrellas(tree):
+    fails.append("an umbrella where no child substitutes gke-gcp-0-vars must fail: the check would be vacuous")
+(tree / "clusters/gcp-0-agent-platform/infrastructure-agent-router.yaml").write_text(child.format(path="./infrastructure/gcp-0/agent-router"))
+if acs.check_umbrellas(tree):
+    fails.append("restoring the cluster's vars must pass again")
 # A renamed umbrella leaves its children unjudged.
 (tree / "clusters/gcp-0-agent-platform").rename(tree / "clusters/gcp-0-agents")
 if not acs.check_umbrellas(tree):

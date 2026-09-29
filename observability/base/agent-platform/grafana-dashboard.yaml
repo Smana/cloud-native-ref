@@ -29,7 +29,7 @@ spec:
          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "targets": [{"refId": "A", "expr": "sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:.*\"}[5m]))", "legendFormat": "{{ar_agent}}"}]},
-        {"id": 3, "type": "timeseries", "title": "agents-gvisor usage / limit",
+        {"id": 3, "type": "timeseries", "title": "agents-gvisor usage / limit (aws-0 only: Karpenter)",
          "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},

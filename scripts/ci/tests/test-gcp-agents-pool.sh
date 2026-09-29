@@ -63,6 +63,43 @@ for pol in pols:
         print(f"FAIL {pol['metadata']['name']}: no rule adds {want} to pods with runtimeClassName gvisor")
     if pol["metadata"].get("annotations", {}).get("pod-policies.kyverno.io/autogen-controllers") != "none":
         print(f"FAIL {pol['metadata']['name']}: autogen must be off, or it patches Deployment templates")
+    # The precondition runs inside Kyverno; only a matchCondition keeps every
+    # other Pod create from waiting on Kyverno's webhook.
+    conds = (pol["spec"].get("webhookConfiguration") or {}).get("matchConditions") or []
+    exprs = ["".join(str(c.get("expression", "")).split()) for c in conds]
+    if exprs != ["has(object.spec.runtimeClassName)&&object.spec.runtimeClassName=='gvisor'"]:
+        print(f"FAIL {pol['metadata']['name']}: the webhook must match only runtimeClassName == 'gvisor' "
+              f"(webhookConfiguration.matchConditions), got {exprs}")
+
+# The cluster autoscaler's ceiling counts every node, the fixed pools included.
+import re
+init = root / "opentofu/gcp/gke/init"
+tfvars = (init / "variables.tfvars").read_text() if (init / "variables.tfvars").is_file() else ""
+tfvars_src = (init / "variables.tf").read_text() if (init / "variables.tf").is_file() else ""
+def var(name):
+    m = re.search(rf'(?m)^{name}\s*=\s*"?([^"\s]+)"?', tfvars)
+    if not m:
+        m = re.search(rf'variable "{name}" \{{.*?default\s*=\s*"?([^"\s]+)"?', tfvars_src, re.S)
+    return m.group(1) if m else None
+def e2(mt):  # (vCPU, GiB) of an e2-standard-N
+    m = re.fullmatch(r"e2-standard-(\d+)", mt or "")
+    return (int(m.group(1)), 4 * int(m.group(1))) if m else None
+# The gpu-l4 class's L4 allowance is also a fixed maximum (one L4 per
+# g2-standard-4: 4 vCPU / 16 GiB), and it must fit beside both pools too.
+gpu = re.search(r'resource_type\s*=\s*"nvidia-l4".*?maximum\s*=\s*(\d+)',
+                (init / "main.tf").read_text() if (init / "main.tf").is_file() else "", re.S)
+ngpu = int(gpu.group(1)) if gpu else 0
+static, agents = e2(var("node_machine_type")), e2(var("agents_pool_machine_type"))
+if static and agents:
+    ns, na = int(var("node_max_count")), int(var("agents_pool_max_nodes"))
+    for i, (key, unit) in enumerate([("autoscaling_max_cpu_cores", "vCPU"), ("autoscaling_max_memory_gb", "GiB")]):
+        need = ns * static[i] + na * agents[i] + ngpu * (4, 16)[i]
+        have = int(var(key))
+        if have < need:
+            print(f"FAIL {key} = {have} < static max + agents max + L4 allowance = {need} {unit}: "
+                  "agent nodes are refused (NotTriggerScaleUp: max cluster limit reached)")
+else:
+    print("FAIL cannot size the fixed pools: a machine type is not e2-standard-N; extend this check")
 
 wired = [d for p in (root / "clusters/gcp-0").rglob("*.yaml") for d in docs(p)
          if d.get("kind") == "Kustomization" and str(d.get("spec", {}).get("path", "")).rstrip("/") == "./security/gcp-0/sandbox-policies"]

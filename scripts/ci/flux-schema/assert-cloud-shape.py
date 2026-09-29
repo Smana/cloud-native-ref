@@ -45,6 +45,7 @@ FORBIDDEN = [
 ]
 GKE_ISSUER = "https://container.googleapis.com/"
 UMBRELLAS = ("clusters/gcp-0-agent-platform", "clusters/gcp-0-ai-gateway")
+CLUSTER_VARS = "gke-gcp-0-vars"  # flux_cluster_vars in opentofu/gcp/gke/configure/kubernetes.tf
 
 
 def _walk(node, key):
@@ -94,18 +95,24 @@ def check_bundle(bundle_dir):
 def check_umbrellas(root):
     problems = []
     for d in UMBRELLAS:
-        children = 0
+        children = substituting = 0
         for f in sorted((pathlib.Path(root) / d).glob("*.yaml")):
             for doc in yaml.safe_load_all(f.read_text()):
                 if not doc or doc.get("kind") != "Kustomization" or "toolkit.fluxcd.io" not in doc.get("apiVersion", ""):
                     continue
                 children += 1
                 subs = ((doc.get("spec") or {}).get("postBuild") or {}).get("substituteFrom") or []
-                if any(s.get("name") == "gke-gcp-0-vars" for s in subs) and "/gcp-0/" not in doc["spec"].get("path", ""):
-                    problems.append(f"{f.relative_to(root)}: substitutes gke-gcp-0-vars into {doc['spec']['path']}, "
+                substituting += any(s.get("name") == CLUSTER_VARS for s in subs)
+                # Keyed on any substitution, not the name: a renamed ConfigMap must still be judged.
+                if subs and "/gcp-0/" not in doc["spec"].get("path", ""):
+                    names = ", ".join(str(s.get("name")) for s in subs)
+                    problems.append(f"{f.relative_to(root)}: substitutes {names} into {doc['spec']['path']}, "
                                     "which CI renders with AWS values; point it at a */gcp-0/* overlay")
         if not children:
             problems.append(f"{d}: missing or holds no Flux Kustomization: the umbrella check would be vacuous")
+        elif not substituting:
+            problems.append(f"{d}: no child substitutes {CLUSTER_VARS}; was the ConfigMap renamed? "
+                            "gcp-0's values would never reach these children")
     return problems
 
 

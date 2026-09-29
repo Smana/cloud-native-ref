@@ -16,6 +16,10 @@ no gVisor RuntimeClass child here (GKE provides it, GP-9).
 | `agent-mcp` | `infrastructure/gcp-0/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
 | `agent-observability` | `observability/gcp-0/agent-platform` | VMRules and the Grafana dashboard |
 
+`AgentGvisorPoolNearLimit` and the dashboard's pool-usage panel read Karpenter metrics, so they stay
+silent here. A full `agents-gvisor` pool, or the cluster ceiling in `gke/init/variables.tfvars`,
+shows up as `AgentSandboxPodPending`.
+
 ## Resume
 
 Not before the owner's UX sign-off (G-5) and never from `main` alone: this umbrella `dependsOn`

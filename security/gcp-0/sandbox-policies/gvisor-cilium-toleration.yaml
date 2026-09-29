@@ -13,6 +13,12 @@
 # so a merge would replace GKE's sandbox toleration. The list always exists by
 # admission time (the RuntimeClass and DefaultTolerationSeconds plugins run
 # before webhooks). Autogen is off so no Deployment template is ever patched.
+#
+# The matchCondition, not the precondition, is what scopes the webhook: the API
+# server evaluates it before calling Kyverno, so only gVisor pods ever wait on
+# Kyverno. Fail holds for those alone (an unmutated one would sit Pending with
+# no error); every other Pod create in the cluster, GKE's own included, never
+# reaches this webhook, so a Kyverno outage cannot block it.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -25,6 +31,11 @@ metadata:
       under RuntimeClass gvisor, so GKE scales the agents-gvisor pool from zero.
 spec:
   background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+    matchConditions:
+      - name: gvisor-pods-only
+        expression: "has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'gvisor'"
   rules:
     - name: tolerate-cilium-agent-not-ready
       match:

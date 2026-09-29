@@ -19,9 +19,12 @@ spec:
             severity: warning
           annotations:
             summary: "Agent sandbox pod {{ $labels.pod }} has been Pending for 15 minutes"
-            description: "Check the agents-gvisor NodePool (limit, spot capacity) and runsc on the node: kubectl describe pod -n agents {{ $labels.pod }}"
+            description: "Check the agents-gvisor pool (aws-0: NodePool limit; gcp-0: node pool max, cluster CPU ceiling, the Cilium-taint toleration), spot capacity and runsc on the node: kubectl describe pod -n agents {{ $labels.pod }}"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # aws-0 only: karpenter_nodepools_* has no series on gcp-0, whose pool is a
+        # GKE node pool (no Karpenter), so this can never fire there. On gcp-0 a
+        # full pool surfaces as AgentSandboxPodPending.
         - alert: AgentGvisorPoolNearLimit
           expr: sum by (resource_type) (karpenter_nodepools_usage{nodepool="agents-gvisor"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"}) * 100 > 90
           for: 10m
@@ -29,7 +32,7 @@ spec:
             severity: warning
           annotations:
             summary: "agents-gvisor is above 90 % of its {{ $labels.resource_type }} limit"
-            description: "New runs will stay Pending. Raise the NodePool limit or wait for runs to finish."
+            description: "New runs will stay Pending. Raise the NodePool limit or wait for runs to finish. aws-0 only (Karpenter metrics); gcp-0 relies on AgentSandboxPodPending."
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         # No enforced per-run cap exists until SP4 PR 2 (design spec line 162):
