@@ -238,6 +238,12 @@ def check_ksm():
     check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
     info = metrics.get("info", {}).get("info", {}).get("labelsFromPath", {})
     check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
+    check(metrics.get("outcome_info", {}).get("info", {}).get("labelsFromPath") == {"reason": ["status", "reason"], "pull_request": ["status", "pullRequest"]},
+          "outcome_info reads status.reason and status.pullRequest")
+    check(metrics.get("usage_tokens", {}).get("gauge", {}).get("path") == ["status", "usage", "tokens"], "usage_tokens reads status.usage.tokens")
+    check(metrics.get("budget_max_tokens", {}).get("gauge", {}).get("path") == ["spec", "budget", "maxTokens"], "budget_max_tokens reads spec.budget.maxTokens")
+    check(metrics.get("started_timestamp_seconds", {}).get("gauge", {}).get("path") == ["status", "startedAt"], "started_timestamp_seconds reads status.startedAt")
+    check(metrics.get("finished_timestamp_seconds", {}).get("gauge", {}).get("path") == ["status", "finishedAt"], "finished_timestamp_seconds reads status.finishedAt")
 
 
 DASHBOARDS = "observability/base/agent-platform"
