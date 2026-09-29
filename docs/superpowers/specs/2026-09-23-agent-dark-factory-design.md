@@ -118,7 +118,7 @@ sequenceDiagram
 | Source | Trigger | Authorisation | Idempotency key | Content |
 |---|---|---|---|---|
 | GitHub issue | Label `factory/ready` applied | The `labeled` event's actor must be in `maintainers` (factory config), which is stronger than Triage+ | `github:issue:<repo>#<n>:gen<k>`. `k` increments on re-labelling after the previous task ended | Title and body **snapshotted at label time**, with the sha256 recorded. Later edits are ignored until someone re-labels. Comments from non-maintainers are never forwarded. `dataClass: public` |
-| RunLore | `notify.templated` POST to `http://agent-factory.agent-system:8080/intake/runlore` | Bearer token (`token_env`): one value, read by the factory from `platform/agents/*` and by RunLore from its own store. CNP ingress from namespace `runlore` only | `runlore:<alert_name>:<resource_ref>`, **while a task for it is open** | Accepted when `verdict ∈ {action_required, action_suggested}` and `confidence ≥ 0.75`. The factory opens an issue from it. `dataClass: internal` |
+| RunLore | `notify.templated` POST to `http://agent-factory.agent-system:8080/intake/runlore` | Bearer token (`token_env`): one value, read by the factory from the dedicated `agents` mount (`agents/*`, SP2 plan P38) and by RunLore from its own store. CNP ingress from namespace `runlore` only | `runlore:<alert_name>:<resource_ref>`, **while a task for it is open** | Accepted when `verdict ∈ {action_required, action_suggested}` and `confidence ≥ 0.75`. The factory opens an issue from it. `dataClass: internal` |
 | Schedule | A cron entry in the factory config | The config is a gate path | `schedule:<name>:<scheduled-time>` | Task text comes from config. A GitHub-API probe runs first where one exists (e.g. Renovate PRs red for more than 24 h). If it finds nothing, no task is created. `dataClass` from the entry, default `public` |
 
 - **RunLore findings become issues** (`factory/proposed`, plus `factory/ready` when actionable, 5 a
@@ -416,7 +416,7 @@ gateway holds the 5 M per-run and fleet/day ceilings; SP3 the exact run, task an
 
 All three: restricted PSS (non-root, read-only root FS, drop ALL, `RuntimeDefault`), a
 `VMServiceScrape`, and secrets only through namespaced stores (C1), never `openbao-platform`:
-`agents-secrets` (`platform/agents/*`) for the factory's App key and intake token, the `merge-gate`
+`agents-secrets` (the dedicated `agents` mount (`agents/*`, SP2 plan P38)) for the factory's App key and intake token, the `merge-gate`
 store (`platform/merge-gate/*`) for policy-bot's App key, HMAC and OAuth secrets.
 
 ## 7. Outcome measurement
