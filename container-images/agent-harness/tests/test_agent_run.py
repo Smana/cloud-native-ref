@@ -14,6 +14,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import uuid
 from unittest import mock
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -326,6 +327,56 @@ class SigtermTest(unittest.TestCase):
             "agent-server must be fully stopped before the token is revoked, "
             "so it cannot mint a fresh one in between",
         )
+
+
+class TraceTest(unittest.TestCase):
+    """Observability plan O21-O23: the run's root span, its parent, and the step log's trace id."""
+
+    TP = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+    def span(self, env):
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+        exporter = InMemorySpanExporter()
+        span, provider, extra = agent_run.start_run_span(env, exporter=exporter)
+        span.end()
+        provider.shutdown()
+        [got] = exporter.get_finished_spans()
+        return got, extra
+
+    def test_the_run_span_joins_the_trigger_trace(self):
+        got, extra = self.span({"TRACEPARENT": self.TP})
+        self.assertEqual(got.name, "agent-run")
+        self.assertEqual(format(got.context.trace_id, "032x"), "4bf92f3577b34da6a3ce929d0e0e4736")
+        self.assertEqual(format(got.parent.span_id, "016x"), "00f067aa0ba902b7")
+        ctx = json.loads(extra["LMNR_SPAN_CONTEXT"])
+        # agent-server's own root span becomes this span's child (Task 0.5)
+        self.assertEqual(uuid.UUID(ctx["trace_id"]).int, got.context.trace_id)
+        self.assertEqual(uuid.UUID(ctx["span_id"]).int, got.context.span_id)
+        self.assertEqual(extra["OTEL_BSP_SCHEDULE_DELAY"], agent_run.BSP_DELAY_MS)
+
+    def test_no_or_a_bad_traceparent_starts_a_fresh_trace(self):
+        for env in ({}, {"TRACEPARENT": "00-zz-1"}, {"TRACEPARENT": "01" + self.TP[2:]}):
+            got, _ = self.span(env)
+            self.assertIsNone(got.parent, env)
+            self.assertNotEqual(format(got.context.trace_id, "032x"), "4bf92f3577b34da6a3ce929d0e0e4736")
+
+    def test_tracing_is_off_without_an_endpoint(self):
+        self.assertEqual(agent_run.start_run_span({}), (None, None, {}))
+
+    def test_step_lines_carry_the_trace_id(self):
+        log = agent_run.StepLog("cid", "4bf92f3577b34da6a3ce929d0e0e4736")
+        line = log.describe({"kind": "ActionEvent", "tool_name": "terminal", "summary": "s", "action": {"command": "ls"}})
+        self.assertEqual(line, "agent-run step 1: terminal | s | ls | trace_id=4bf92f3577b34da6a3ce929d0e0e4736")
+        self.assertEqual(agent_run.StepLog("cid").describe({"kind": "ActionEvent", "tool_name": "t", "summary": "s", "action": {}}),
+                         "agent-run step 1: t | s | ")
+
+    def test_closing_the_conversation_flushes_the_root_span(self):
+        with mock.patch.object(agent_run, "http") as http, mock.patch.object(agent_run.time, "sleep") as sleep:
+            agent_run.close_conversation("cid")
+        http.assert_called_once_with("DELETE", "/api/conversations/cid")
+        sleep.assert_called_once_with(agent_run.FLUSH_WAIT_S)
+        with mock.patch.object(agent_run, "http", side_effect=OSError("gone")), mock.patch.object(agent_run.time, "sleep"):
+            agent_run.close_conversation("cid")  # never fails the run
 
 
 if __name__ == "__main__":
