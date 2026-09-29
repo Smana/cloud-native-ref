@@ -33,6 +33,9 @@ kind: Kustomization
 # nobody. Those siblings now live in security/aws-0/{openbao,cert-manager-public}/,
 # mirroring this cluster's own layout.
 #
+# kyverno: agent-policies' admission and GC need it (GCP parity), as aws-0's
+# security does; its chart admits nothing in ../openbao.
+#
 # The third entry is not a chart and is not admitted by either webhook: it is the
 # Role and RoleBinding that let cert-manager mint a projected ServiceAccount
 # token for itself. It is applied HERE, with cert-manager, rather than from
@@ -52,6 +55,7 @@ kind: Kustomization
 # postBuild.substituteFrom to gke-gcp-0-vars, which ../rbac's
 # ${workforce_pool_id} needs.
 resources:
+  - ../../base/kyverno
   - ../../base/external-secrets
   - ../../base/cert-manager
   - ../../base/cert-manager-token-creator
