@@ -1054,6 +1054,7 @@ store_exists() { return 0; }
 store_probe()  { return 0; }
 store_read()   { echo '{}'; }
 store_write()  { cat >/dev/null; }
+store_write_and_mirror() { cat >/dev/null; }
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0

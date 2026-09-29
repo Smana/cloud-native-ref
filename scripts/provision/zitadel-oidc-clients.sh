@@ -39,6 +39,7 @@
 # Usage:
 #   # a cluster that HOSTS its own identity provider
 #   zitadel-oidc-clients.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
+#     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F [--mirror-openbao]]
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #
 #   # a SECONDARY cluster consuming the primary cloud's identity provider:
@@ -64,6 +65,8 @@ set -o pipefail
 . "$(dirname "$0")/../lib/zitadel-pat.sh"
 # shellcheck source=scripts/lib/openbao-api.sh
 . "$(dirname "$0")/../lib/openbao-api.sh"
+# shellcheck source=scripts/lib/bao-map.sh
+. "$(dirname "$0")/../lib/bao-map.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -114,6 +117,10 @@ GRANT_ADMIN=""
 OPENBAO_URL=""
 OPENBAO_ROOT_TOKEN_SECRET=""
 OPENBAO_CA_FILE=""
+# --mirror-openbao: also write each consumer secret to the OpenBao path its
+# ExternalSecret reads. Only gcp-0's own sync sets it (GCP parity GP-5): a fresh
+# directory re-registers every client on every build, and gcp-0 reads OpenBao.
+MIRROR_OPENBAO="false"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -128,6 +135,7 @@ while [ $# -gt 0 ]; do
         --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
         --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
         --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
+        --mirror-openbao) MIRROR_OPENBAO="true"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -143,6 +151,9 @@ if [ -n "$OPENBAO_URL" ]; then
     [ -n "$OPENBAO_ROOT_TOKEN_SECRET" ] || { echo "--openbao-url requires --openbao-root-token-secret" >&2; exit 2; }
     [ -n "$OPENBAO_CA_FILE" ] || { echo "--openbao-url requires --openbao-ca-file" >&2; exit 2; }
     [ -f "$OPENBAO_CA_FILE" ] || { echo "--openbao-ca-file ${OPENBAO_CA_FILE} not found" >&2; exit 2; }
+fi
+if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
+    echo "--mirror-openbao requires --openbao-url" >&2; exit 2
 fi
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
@@ -844,6 +855,59 @@ openbao_oidc_config_payload() {
         end' || return 1
 }
 
+# Mirror one consumer secret into the OpenBao path its ExternalSecret reads
+# (--mirror-openbao). Merges into what is there -- grafana-envvars also carries
+# the generated admin credentials -- and the payload wins on a shared key.
+# Unmapped keys (openbao-oidc, headlamp-oauth2-proxy) are read from the managed
+# store, so they are left alone. A subshell, like reconcile_openbao_oidc, so its
+# token file and trap stay local; the secret goes through stdin, never argv.
+mirror_to_openbao() (
+    # xtrace would print the payload, and the client secret with it.
+    set +x
+    key="$1"
+    [ "${MIRROR_OPENBAO:-false}" = "true" ] || exit 0
+    target="$(bao_target_for "$key")" || exit 0
+    mount="${target%%/*}"
+    path="${target#*/}"
+    payload="$(cat)"
+    OPENBAO_TOKEN_CONFIG="$(umask 077 && mktemp -t openbao-mirror-curl.XXXXXX)" || exit 1
+    body="$(umask 077 && mktemp -t openbao-mirror-read.XXXXXX)" || exit 1
+    trap 'rm -f "$OPENBAO_TOKEN_CONFIG" "$body"' EXIT
+    if ! openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}"; then
+        echo "[FAILED ] ${key} -- no OpenBao root token readable from ${OPENBAO_ROOT_TOKEN_SECRET:-<unset>}" >&2
+        exit 1
+    fi
+    # Only a 404 means "nothing there yet". Any other failure (403, timeout)
+    # must not become an empty merge base, or the POST below would drop every
+    # key the payload does not carry.
+    code="$(openbao_req GET "${mount}/data/${path}" -o "$body" -w '%{http_code}' 2>/dev/null)" || true
+    case "$code" in
+        200) current="$(jq -c '.data.data // {}' "$body")" \
+                 || { echo "[FAILED ] ${key} -- ${target} is not readable JSON; not overwriting it" >&2; exit 1; } ;;
+        404) current='{}' ;;
+        *)   echo "[FAILED ] ${key} -- reading ${target} returned HTTP ${code:-none}; not overwriting it" >&2
+             exit 1 ;;
+    esac
+    if ! printf '%s\n%s\n' "$current" "$payload" \
+        | jq -c -s '{data: (.[0] * .[1])}' \
+        | openbao_req POST "${mount}/data/${path}" --data-binary @- >/dev/null; then
+        echo "[FAILED ] ${key} -- not mirrored to ${target}" >&2
+        exit 1
+    fi
+    echo "[mirrored] ${key} -> ${target}"
+)
+
+# The managed store first, then the mirror, with one payload.
+store_write_and_mirror() {
+    # The payload sits in a variable here, so xtrace would print it.
+    local -
+    set +x
+    local key="$1" payload
+    payload="$(cat)"
+    printf '%s' "$payload" | store_write "$key" || return 1
+    printf '%s' "$payload" | mirror_to_openbao "$key"
+}
+
 # Point OpenBao's auth/oidc at the client ZITADEL issued. Two resources carry
 # it: the config (id and secret) and the default role's bound_audiences. Moving
 # only the config leaves every login failing on audience (design fact 5).
@@ -1195,7 +1259,7 @@ cmd_sync() {
                 echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
                 converged=$((converged + 1))
             else
-                printf '%s' "$desired" | store_write "$key"
+                printf '%s' "$desired" | store_write_and_mirror "$key"
                 echo "[converged] ${name} -> ${key} (client id ${client_id}, secret untouched)"
                 converged=$((converged + 1))
             fi
@@ -1225,7 +1289,7 @@ cmd_sync() {
             openbao_client_id="$client_id"
         fi
 
-        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
+        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write_and_mirror "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done

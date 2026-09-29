@@ -115,6 +115,10 @@ store_probe() {
 }
 store_read()   { cat "$STORE_DIR/$1" 2>/dev/null || true; }
 store_write()  { cat > "$STORE_DIR/$1"; }
+# cmd_sync writes through the real wrapper; the OpenBao mirror behind it has its
+# own suite (test-zitadel-oidc-clients-mirror.sh).
+load_function store_write_and_mirror "$SRC"
+mirror_to_openbao() { cat >/dev/null; }
 
 # ── globals cmd_sync / converge_secret read ─────────────────────────────────
 CLUSTER="aws-0"
