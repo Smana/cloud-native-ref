@@ -117,7 +117,16 @@ def check_reference_grant():
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
 
 
-CHECKS = [check_collector, check_reference_grant]
+def check_platform_port():
+    cnp = find(COLLECTOR, "CiliumNetworkPolicy", "agent-traces-collector").get("spec", {})
+    peers = [p.get("matchLabels", {}) for rule in cnp.get("ingress", []) for tp in rule.get("toPorts", [])
+             if any(x["port"] == "4317" for x in tp["ports"]) for p in rule.get("fromEndpoints", [])]
+    check({"io.kubernetes.pod.namespace": "agent-system", "app.kubernetes.io/name": "agent-factory"} in peers,
+          "SP3's factory sends its task spans to :4317 (O20)")
+    check(all(p.get("io.kubernetes.pod.namespace") != "agents" for p in peers), "no sandbox ever reaches :4317 (O5, O20)")
+
+
+CHECKS = [check_collector, check_reference_grant, check_platform_port]
 
 for run in CHECKS:
     run()

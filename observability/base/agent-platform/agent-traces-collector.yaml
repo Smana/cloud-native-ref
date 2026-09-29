@@ -222,7 +222,8 @@ spec:
             receivers: [otlp/agents]
             processors: [memory_limiter, transform/untrusted, k8s_attributes, filter/unattributed, transform/attribute, redaction, transform/cap, batch]
             exporters: [otlp_http/victoriatraces]
-          # Every attribute here is set by agent-router's EnvoyProxy manifest, not by a run.
+          # Platform spans: agent-router (EnvoyProxy manifest) and SP3's factory (task spans, ids
+          # and end reason only). No sandbox reaches this receiver.
           traces/router:
             receivers: [otlp/router]
             processors: [memory_limiter, batch]
@@ -282,6 +283,10 @@ spec:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
             gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+        # SP3's factory: one root span per task (O20, SP3 R46). Inert until SP3 ships.
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: agent-factory
       toPorts:
         - ports:
             - port: "4317"
