@@ -1,0 +1,14 @@
+- op: remove
+  path: /spec/data
+- op: remove
+  path: /spec/secretStoreRef
+- op: add
+  path: /spec/refreshPolicy
+  value: CreatedOnce
+- op: add
+  path: /spec/dataFrom
+  value:
+    - sourceRef:
+        generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: ai-gateway-openwebui-key}
+    - sourceRef:
+        generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: ai-gateway-promptfoo-key}

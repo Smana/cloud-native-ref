@@ -13,7 +13,7 @@ spec:
   prune: true
   interval: 5m0s
   timeout: 10m0s
-  path: ./infrastructure/base/vllm-semantic-router
+  path: ./infrastructure/gcp-0/vllm-semantic-router
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact
