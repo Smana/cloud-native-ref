@@ -234,6 +234,11 @@ locals {
   crossplane_bucket_grantable_roles = [
     "roles/storage.objectAdmin",
     "roles/storage.objectViewer",
+    # openbao-snapshot's bucket grant (security/gcp-0/openbao-snapshot): create
+    # only, strictly weaker than objectAdmin above. Missing, the condition denied
+    # the grant with a bare 403 and gcp-0 never took a scheduled snapshot
+    # (GCP parity GP-23, 09-11 bug 7).
+    "roles/storage.objectCreator",
     "roles/storage.legacyBucketReader",
   ]
 
