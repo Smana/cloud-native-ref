@@ -12,6 +12,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-policies` | `security/base/agent-policies` | Kyverno admission and GC for runs |
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
+| `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 
 ## Resume
 
@@ -22,6 +23,11 @@ On an **existing** cluster, first apply `opentofu/aws/openbao/management` then
 `opentofu/aws/eks/configure` — they create the `agents-secrets` policy and JWT role, without which
 `SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `eks/configure` needs
 `TF_VAR_flux_git_ref=refs/heads/<branch>`.
+
+The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
+(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its
+key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
+`CreateContainerConfigError` and its child fails the health check.
 
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
