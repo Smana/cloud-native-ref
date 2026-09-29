@@ -17644,3 +17644,12 @@ collector and dashboard share is in the observability plan's own "Further review
 | F1 | A trigger-rooted trace per task | R46; Tasks 1.5a, 1.10b, 1.11a, 1.12a, 1.13a | Accepting a `factory/ready` task mints its root span into `status.trace`, and every run gets its `traceparent` as `agents.ogenki.io/traceparent`. When the task ends, the span is exported once to the collector's :4317, carrying ids, tier and end reason |
 | F2 | The step log carries `trace_id` | observability plan O22 | Nothing here: the harness prints it. Correlation only: the factory attributes and meters nothing by trace id |
 | F3 | Routing tier vs spend | R47; Tasks 1.5a, 1.10b, 4.2a | Every factory run is labelled `agents.ogenki.io/tier`, the tier it runs on, fixed for the run. Agents are never re-routed per request within a run |
+
+## GCP parity cross-plan edit (2026-09-29)
+
+- **The merge gate lands on GCP's management stack too, not only AWS's.** The `merge-gate` kv-v2 mount, the
+  `merge-gate-secrets` policy (Task 6.4) and `secrets-admin`'s paths on it go into the shared store-of-record
+  module (`opentofu/shared/modules/openbao-store-of-record`), which `opentofu/gcp/openbao/management` calls, with
+  the JWT role `merge-gate-secrets` in `opentofu/gcp/gke/configure/openbao.tf` beside AWS's
+  `opentofu/aws/eks/configure/openbao.tf`. gcp-0 is the platform (GCP parity plan), and
+  `validate-openbao-policies.sh` fails when the AWS and module copies of a shared policy differ.

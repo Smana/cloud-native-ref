@@ -142,12 +142,13 @@ therefore lives in the RuntimeClass, and **the composition stays cloud-neutral, 
 
 | | aws-0 (integration branch) | gcp-0 (this slice) |
 |---|---|---|
-| Pool | Karpenter `agents-gvisor`: AL2023 spot, c/m 4–16 vCPU, `limits.cpu: 16` | GKE Sandbox node pool `agents-gvisor`: `e2-standard-8` spot, 0–2 nodes (16 vCPU / 64 GiB), Cilium taint |
+| Pool | Karpenter `agents-gvisor`: AL2023 spot, c/m 4–16 vCPU, `limits.cpu: 16` | GKE Sandbox node pool `agents-gvisor`: `e2-standard-8` spot, 0–2 nodes (16 vCPU / 64 GiB), `pd-standard`, Cilium taint |
 | Runtime | `runsc` from EC2NodeClass user-data | native GKE Sandbox |
 | RuntimeClass `gvisor` | ours: selects `agents.ogenki.io/runtime=gvisor` and tolerates it | GKE's own: selects `sandbox.gke.io/runtime=gvisor` and tolerates it |
-| Per-cloud manifests | `agents-nodepool`, `runtimeclass-gvisor` | none: the pool is OpenTofu, and GKE ships the RuntimeClass |
+| Scale from zero past the Cilium taint | Karpenter ignores `startupTaints` when it simulates scheduling | GKE's autoscaler needs the pod to tolerate every taint (ADR-0006): a gcp-0-only Kyverno mutate adds `node.cilium.io/agent-not-ready` to every `runtimeClassName: gvisor` pod (execution Ruling Z1) |
+| Per-cloud manifests | `agents-nodepool`, `runtimeclass-gvisor` | the toleration policy only: the pool is OpenTofu, and GKE ships the RuntimeClass |
 | DaemonSets that must reach run nodes (Vector) | tolerate `agents.ogenki.io/runtime` | tolerate `sandbox.gke.io/runtime` too, in base |
-| Cilium | `socketLB.hostNamespaceOnly: true` | added. gVisor's netstack never calls `connect()` in the host kernel, so socket-LB cannot translate ClusterIPs |
+| Cilium | `socketLB.hostNamespaceOnly: true` | set as an explicit guard. gVisor's netstack never calls `connect()` in the host kernel, so socket-LB cannot translate ClusterIPs. The chart already forces it since 1.20 with `gatewayAPI.enabled`, so it changes no datapath (Z2) |
 
 ## Wiring
 
@@ -217,13 +218,16 @@ Two agent inputs are Secret Manager keys rather than variables, and gcp-0's over
    The deploy is then
    `TM_CLOUD=gcp TF_VAR_flux_git_ref=refs/heads/integration/agent-factory OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true terramate script run deploy`,
    from an `integration/agent-factory` checkout. Stage 3 swallows its failures, so its log is grepped for
-   `[warn]`, `[FAILED ]` and `skipping stage 3`.
+   `[warn]`, `[FAILED ]` and `skipping stage 3`. A stale OpenBao `auth/oidc` client does halt it: GCP's hosting
+   deploy runs `stage5-verify-openbao-oidc`, as aws-0 does (execution Ruling U).
 2. **Platform gates.** Every non-suspended Kustomization is Ready. Every OpenBao-backed ExternalSecret is
    synced. Stage 2 mounts, policies and capability probes pass. ZITADEL is fresh, and SSO works on all
    four consumers and on OpenBao.
 3. **Sandbox smoke.** A gVisor pod, on a pool scaled from zero, with `RuntimeDefault` seccomp, runs
-   threads, resolves DNS and reaches a ClusterIP.
-4. **Agent gates.** The runbooks in `docs/runbooks/agent-factory/`, retargeted to gcp-0; SC-04 end to end.
+   threads, resolves DNS and reaches a ClusterIP. A pod whose CNP allows only DNS cannot reach a Gateway VIP,
+   from the zitadel node or another (Z2).
+4. **Agent gates.** The runbooks in `docs/runbooks/agent-factory/`, retargeted to gcp-0 on
+   `integration/agent-factory`, where they live (W2); SC-04 end to end.
 5. **Programme gates on gcp-0.** H-1's Task 0.5.14 and CC-H1 (CI), O-1 Phase 3 and CC-O1 (via O-1), then
    SP2's live tasks. The plan's *Cross-plan edits* hold their gcp-0 deltas.
 
@@ -239,7 +243,7 @@ Two agent inputs are Secret Manager keys rather than variables, and gcp-0's over
 | D6 | **GCP is primary on `integration/agent-factory` only** (owner, 2026-09-29, revising the first draft). The flip (G-4) is a draft PR, "do not merge", with its ADR in *Proposed*; `main` stays AWS-primary until the owner promotes it | Merging the flip to `main` now (the first draft's choice): the owner wants it proven live first |
 | D7 | **Custom GKE role IDs carry a generation suffix (`_v3`) and survive teardown** (state-rm on destroy, adopt on deploy) | Bumping the suffix every rebuild: GCP reserves a deleted role ID for 37 days, which a weekly rebuild always hits |
 | D8 | **Restore the existing GCP lineage** (owner, 2026-09-29). The newest `-gcpckms` snapshot is restored with the Secret Manager root-token and recovery-key versions that belong to it; older versions are re-added when the entries were re-copied for the `awskms` standby. A new lineage only when no `-gcpckms` object exists | A new lineage beside an existing one: the salvaged switch refuses it by design, and it would discard the 09-11 lineage's `platform/` data and `oidc/` mount |
-| D9 | **The chart's fresh ZITADEL admin PAT always wins** and overwrites Secret Manager's copy; the store is read only when no chart Secret exists (a seed restore). The owner deletes the pre-slice copy once (owner, 2026-09-29) | "The store wins" (the old order): with a fresh directory every build, the stored PAT belongs to a replaced directory, and every stage-3 call gets a 401 that the deploy swallows |
+| D9 | **The chart's fresh ZITADEL admin PAT always wins** and overwrites Secret Manager's copy; the store is read only when no chart Secret exists (a seed restore). The owner deletes the pre-slice copy once (owner, 2026-09-29). Only on the hosting cloud: a consumer stays store-first and never writes (execution Ruling R) | "The store wins" (the old order): with a fresh directory every build, the stored PAT belongs to a replaced directory, and every stage-3 call gets a 401 that the deploy swallows |
 | D10 | **Merge classes** (owner, 2026-09-29): G-0 first; G-1 to G-3 each when green and reviewed; G-4 never (D6); G-5 with the programme, and it never contains G-4 | Holding the platform fixes for Phase 7: they are wanted regardless of the programme |
 | D11 | **A confirmed teardown sweeps GKE's LB leftovers** (owner, 2026-09-29): the forwarding rules and target pools GKE created, and the `k8s-*` firewall rules on the platform VPC. It runs only with `TM_DESTROY_CONFIRMED=true` and only once gcp-0 is gone, then retries the destroy | Reporting only (the first draft): forwarding rules keep billing and the VPC delete keeps failing |
 | D12 | **The AI gateway's client keys are generated on gcp-0** | Hand-seeding `platform-llm-api-keys` into GCP Secret Manager: a second exception for keys the gateway itself issues |
@@ -267,9 +271,12 @@ Two agent inputs are Secret Manager keys rather than variables, and gcp-0's over
 | `gke/init` stage 2 skips the CA write, the jwt adopt and `deploy_identity_provider` (09-11 bug 3) | Real | stage-2 job in `gcp/gke/init/workflows.tm.hcl` | G-2 |
 | AWS-shaped issuer/JWKS in agent-router, agent-mcp, octo-sts | Real, silent (renders clean) | `oidc.eks.${region}.amazonaws.com` (data-plane CNP:78, octo-sts CNP:54); `${oidc_issuer_url}/keys` | per-cloud vars + cloud-shape gate |
 | octo-sts trust policies pin the EKS issuer | Real | `.github/chainguard/agent-*.sts.yaml` on `main` | G-0 merges ahead |
-| gcp-0 pins `crossplane-configuration-gcp:v0.7.0`, which has no AgentRun XRD | Real | `configuration-gcp/configuration-packages.yaml:16`. H-1's aws pin, `v0.7.1`, has none either | G-5 pins both clouds to the `v0.7.2-pr31.988146f` pre-release. `task push` publishes `-gcp` with every pre-release; skopeo checks all three digests |
+| gcp-0 pins `crossplane-configuration-gcp:v0.7.0`, which has no AgentRun XRD | Real | `configuration-gcp/configuration-packages.yaml:16`. H-1's aws pin is CC-H1's `v0.7.2-pr30.7e3211e` | G-5 pins both clouds to the `v0.7.2-pr31.988146f` pre-release (W3). `task push` publishes `-gcp` with every pre-release; skopeo checks all three digests and the `xrd-crds` artifact |
 | gcp-0 has no Kyverno; `agent-policies` needs it | Real | `security/gcp-0/controllers` lacks `../../base/kyverno` | G-5 |
-| gVisor + full socket-LB on GCP | Likely | aws values carry `hostNamespaceOnly: true`; gcp values list it as absent | the sandbox smoke probe |
+| gVisor + full socket-LB on GCP | **Closed** (Z2) | the chart forces per-packet LB since Cilium 1.20 whenever `gatewayAPI.enabled`; gcp-0 is on 1.20 since #1693 | the sandbox smoke probe |
+| The sandbox pool never scales from zero | **Real, found in review** (Z1) | the pool carries Cilium's startup taint, and GKE's RuntimeClass adds only its sandbox toleration | a gcp-0 Kyverno toleration mutate; `agent-sandbox` depends on it; the probe carries the toleration |
+| A Gateway VIP bypasses egress policy under per-packet L7 LB | Unlikely: Envoy enforces it (`EnforcePolicyOnL7Lb`), same on aws-0 | read from Cilium's datapath, not measured | the negative Gateway check from two nodes (plan 8.5 Step 2a) |
+| gcp-0's metadata-server rules use `toEntities: host` | **Real, found in review** (Z3) | on GKE 169.254.169.254 is DNAT'ed after Cilium classifies it as `world`; barman and `openbao-snapshot` relied on `host` | `toCIDR 169.254.169.254/32:80` (G-5), a source test and a render gate; archiving and snapshot checks (plan 8.3 Step 10) |
 | gVisor + `RuntimeDefault` seccomp breaks threads (AWS spike) | Unknown on GKE | AWS turned `oci-seccomp` off; GKE Sandbox's setting is not ours | the sandbox smoke probe |
 | SP2's bridge → broker :8443 is plain HTTP and relies on WireGuard (P2) | Real, and it blocks SP2's gates on gcp-0 | gcp cilium values: "WireGuard is intentionally absent" | GP-18: TLS on both clouds from the `openbao` ClusterIssuer, as concrete amendments to SP2 Tasks 1.9, 1.11, 1.14 (CC-S2), 1.18 and 1.20 |
 
@@ -305,7 +312,7 @@ Two agent inputs are Secret Manager keys rather than variables, and gcp-0's over
 - Persisting the Let's Encrypt certificate across teardowns.
 - Merging the GCP-primary flip to `main` (D6: the owner promotes it later).
 - gcp-0's `llm-platform` clients reading the generated gateway keys: a cross-namespace read, for when that
-  umbrella is unsuspended on gcp-0 (D12).
+  umbrella is unsuspended on gcp-0 (D12). An open item of the llm-platform-on-gcp-0 step (execution Ruling AB).
 - #2085's OIDC client check in GCP's management `drift detect`. AWS runs it; GCP drift will not report a stale
   OIDC client between deploys.
 
@@ -328,3 +335,18 @@ table of the same name maps every finding to a task.
 | `platform-llm-api-keys` (I10) | D12: generated on gcp-0; not an exception |
 | Bug 7, no scheduled snapshots (I11) | the allowlist risk row flips to *triggered*; success criterion 9 |
 | Merge classes | D10 (owner) |
+
+## Execution rulings that changed the design (2026-09-29)
+
+The plan's *Rulings applied during execution* table holds all of them; these changed this document.
+
+| Ruling | Design change |
+|---|---|
+| R | D9 applies on the hosting cloud only |
+| U | Validation 1: GCP's deploy halts on a stale OpenBao OIDC client |
+| W2 | Validation 4: the runbooks are retargeted on the integration branch |
+| W3 | the pin risk row: H-1's aws pin, and the `xrd-crds` artifact check |
+| Z1 | *Sandbox nodes*: the Kyverno toleration; a new risk row |
+| Z2 | *Sandbox nodes*: the Cilium value is a guard; the socket-LB risk closed; a Gateway-VIP risk row; Validation 3 |
+| Z3 | a new risk row: the metadata server by CIDR on gcp-0 |
+| AB | *Out of scope*: the gateway-key read is the llm-platform-on-gcp-0 step's open item |

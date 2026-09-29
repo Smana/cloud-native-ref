@@ -132,8 +132,8 @@ Each ruling reads: what · why · cost if wrong.
 | GP-7 | **Lineage: restore the existing one** (owner, 2026-09-29). When a top-level `-gcpckms` snapshot exists, the deploy restores the newest one (`OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, because newer `-awskms` mirror objects sit above it). Before the deploy, P-4 makes the latest Secret Manager versions of `openbao-priv-gcp-root-token` and `openbao-priv-gcp-recovery-keys` those of that lineage, re-adding the older versions when the entries were re-copied for the `awskms` standby. `OPENBAO_NEW_LINEAGE=true` is used **only** when no top-level `-gcpckms` object exists. The salvaged switch refuses it otherwise, by design (`refuse-same-seal`, `refuse-own-seal-exists`). The first management apply cannot import anything before the OpenBao VM exists, so a missing state address is repaired after the first failed apply (8.2 Step 3a) | Restoring keeps the 09-11 lineage's `platform/` data and the `oidc/` mount, and needs no stale-`openbao-oidc` delete | A token version from another lineage fails the management apply with 403. Recovery: re-add the next candidate version and re-run. The node is already restored, so rehydrate is a no-op |
 | GP-8 | **M1 moves here, for both clouds.** The `agents` mount and the `agents-secrets` policy, the SecretStore path and the ExternalSecret keys land in G-5. `merge-gate` stays with SP2 S1 | The owner writes the three agent keys to `agents/` on GCP before S1 exists, and the SecretStore path is shared base | SP2 Task 1.15a shrinks (Cross-plan edits). The management-from-`main` hazard now runs until G-5 merges |
 | GP-9 | **Node selection stays in the RuntimeClass**, with no composition change | The composition sets only `runtimeClassName: gvisor` (`main.k:333`). GKE's `gvisor` RuntimeClass carries the `sandbox.gke.io/runtime` selector and toleration; ours carries `agents.ogenki.io/runtime` | If GKE's RuntimeClass has no `scheduling`, runs land on runc nodes and fail to start. The smoke probe (8.5) checks it first |
-| GP-10 | **The sandbox pool is a standalone `google_container_node_pool` with `provider = google-beta`**: `e2-standard-8` spot, 0–2 nodes, the Cilium taint | Independent of the module's `node_pools` map, whose sandbox support differs between the beta and GA modules. 16 vCPU / 64 GiB matches aws-0's `limits` | If e2 is refused for GKE Sandbox, change `agents_pool_machine_type` to `n2-standard-8` (dearer) |
-| GP-11 | **Cilium on gcp-0 gets `socketLB.hostNamespaceOnly: true`** | gVisor's netstack never calls `connect()` in the host kernel, so socket-LB cannot translate a ClusterIP; per-packet LB can. aws-0 already runs it | It is the first datapath change since the GKE gate. The smoke probe and the gateways (L-4) prove it; the rollback is one line |
+| GP-10 | **The sandbox pool is a standalone `google_container_node_pool` with `provider = google-beta`**: `e2-standard-8` spot, 0–2 nodes, `pd-standard`, the Cilium taint. gVisor pods tolerate that taint through a gcp-0-only Kyverno mutate (Ruling Z1) | Independent of the module's `node_pools` map, whose sandbox support differs between the beta and GA modules. 16 vCPU / 64 GiB matches aws-0's `limits`. Not `e2-standard-4`: an AgentRun of size `large` requests 4 vCPU, above its ~3.9 allocatable. The autoscaler scales a pool from zero only for a pod that tolerates every taint the node will carry (ADR-0006), and GKE's RuntimeClass adds only its own sandbox toleration | If e2 is refused for GKE Sandbox, change `agents_pool_machine_type` to `n2-standard-8` (dearer). If the Kyverno policy is missing, every gcp-0 AgentRun stays Pending |
+| GP-11 | **Cilium on gcp-0 gets `socketLB.hostNamespaceOnly: true`** | gVisor's netstack never calls `connect()` in the host kernel, so socket-LB cannot translate a ClusterIP; per-packet LB can. aws-0 already runs it | The chart has forced it since Cilium 1.20 whenever `gatewayAPI.enabled`, so the value is an explicit guard, not a datapath change (Ruling Z2). The smoke probe proves the gVisor path; the rollback is one line |
 | GP-12 | **Per-cloud issuer variables** (`oidc_issuer_url`, `oidc_jwks_uri`, `oidc_jwks_host`) in both ConfigMaps. The base manifests use them | `oidc.eks.${region}.amazonaws.com` renders a host that does not exist on gcp-0, and `/keys` is EKS's JWKS path (GKE's is `/jwks`). The render stays clean, so nothing would notice | SP2's broker (P11) and any later consumer must use the same keys (Cross-plan edits) |
 | GP-13 | **octo-sts `issuer_pattern` becomes an alternation** of the EKS pattern and `https://container\.googleapis\.com/v1/projects/ogenki-435905/locations/[a-z0-9-]+/clusters/gcp-0`. G-0 merges ahead | octo-sts reads trust policies from `main` only. The agent-router `sts` listener verifies every token against its own cluster's issuer first | Until G-0 merges, runbooks 05 and 07 fail at the exchange on gcp-0 |
 | GP-14 | **The GCP render fixture uses per-cloud overlays.** Each substituted agent base gets `*/aws-0/<name>` and `*/gcp-0/<name>` one-liners, and the new `assert-cloud-shape.py` gates the gcp-0 renders | `render-bundle.py` renders a base with AWS fixtures and a `*/gcp-0/*` overlay with `CLUSTER_FIXTURE_VARS["gcp-0"]`. A base referenced by an overlay stops being a render root, which is why aws-0 needs its twin (as 89a2666b did for envoy-gateway) | Twelve small files. A future gcp-0 child that substitutes into a `base/` path fails the gate, by design |
@@ -141,13 +141,13 @@ Each ruling reads: what · why · cost if wrong.
 | GP-16 | **The GCP-primary flip (G-4) stays on `integration/agent-factory`** (owner, 2026-09-29). It is a draft PR, "do not merge", with an ADR in *Proposed* status, the flip of `primary_cloud`, both ZITADEL `suspend`s, the fresh-directory overlay, and the doc-claim and pages that pin the primary cloud. `main` stays AWS-primary | The owner wants GCP-primary proven live before it becomes `main`'s default. `validate-idp-topology.sh` and `task check` must hold on the branch | While unmerged, `main`'s `TM_CLOUD=gcp` deploy builds a *consuming* gcp-0. Deploy gcp-0 only from the integration checkout (Global Constraints) |
 | GP-17 | **gcp-0's Envoy Gateway gets the rate limit through a shared `infrastructure/base/envoy-gateway-ratelimit`.** The Karpenter panel and alert stay in base, inert on gcp-0 | `llm-gateway`'s budget policy needs the rate-limit service (SP4 PR 1). GKE has no Karpenter metrics, and `AgentSandboxPodPending` is gcp-0's capacity signal | The gcp-0 dashboard shows one empty panel |
 | GP-18 | **SP2 on gcp-0: the bridge → broker `:8443` serves TLS on both clouds**, not plain HTTP behind WireGuard (reverses SP2 P2). The certificate comes from cert-manager's internal issuer, the `openbao` ClusterIssuer that both clusters have. This is a cross-plan edit, with concrete steps in *Cross-plan edits* → SP2: Tasks 1.9, 1.11, 1.14 (CC-S2), 1.18 and 1.20. SP2 itself is not edited here | gcp-0's Cilium has no WireGuard ("Do not add WireGuard here without new evidence"), and a run token must not cross nodes in clear | CC-S2 grows a CA volume, which needs a crossplane-configuration pre-release. SP2's live gates on gcp-0 wait for it |
-| GP-19 | **Stacking.** G-5 is based on H-1 (`fix/agent-review-hardening`) and merges G-3 (`fix/gcp-hosted-idp`, which carries G-1 and G-2), or `origin/main` once G-1 to G-3 have merged. **Never G-4.** O-1 re-bases onto G-5. The integration branch merges G-4 and G-5 separately. The first deploy needs only G-1 to G-4; G-5 can follow through Flux and three stack re-applies | H-1's live gate runs on gcp-0, and G-5 edits runbooks H-1 also edits. G-4 inside G-5 would reach `main` with the programme, against GP-16 | G-5's PR diff shows G-1 to G-3 until they reach `main`. Phase 7 order: #2111 → H-1 → G-5 → O-1 → S1 |
-| GP-20 | **The chart's fresh ZITADEL PAT always wins** (owner, 2026-09-29). `resolve_zitadel_pat` reads the in-cluster `security/iam-admin-pat` first and overwrites Secret Manager's copy when the two differ. The store is read only when the cluster has no such Secret (a directory restored from a seed, as on aws-0). The PAT stored before tonight is deleted once, by the owner (P-11) | The store used to win. A fresh directory every build (GP-3) makes the stored PAT belong to a directory that no longer exists: every stage-3 call then gets a 401, which the stage swallows as `[warn]`. The deploy exits 0 with no clients | aws-0's seed-restored directory is unchanged (no chart Secret, store read). A fresh aws-0 bootstrap now overwrites a stale copy, which is also correct |
+| GP-19 | **Stacking.** G-5 is based on H-1 (`fix/agent-review-hardening`) and merges G-3 (`fix/gcp-hosted-idp`, which carries G-1 and G-2), or `origin/main` once G-1 to G-3 have merged. As executed: G-5 branched from H-1 after the main → SP1 stack → H-1 cascade (Ruling T), so H-1 already carried G-1 to G-3 and no separate G-3 merge ran (Ruling W1). **Never G-4.** O-1 re-bases onto G-5. The integration branch merges G-4 and G-5 separately. The first deploy needs only G-1 to G-4; G-5 can follow through Flux and three stack re-applies | H-1's live gate runs on gcp-0, and G-5 edits runbooks H-1 also edits. G-4 inside G-5 would reach `main` with the programme, against GP-16 | G-5's PR diff shows G-1 to G-3 until they reach `main`. Phase 7 order: #2111 → H-1 → G-5 → O-1 → S1 |
+| GP-20 | **The chart's fresh ZITADEL PAT always wins** (owner, 2026-09-29). `resolve_zitadel_pat` reads the in-cluster `security/iam-admin-pat` first and overwrites Secret Manager's copy when the two differ. The store is read only when the cluster has no such Secret (a directory restored from a seed, as on aws-0). The PAT stored before tonight is deleted once, by the owner (P-11). **Only on the hosting cloud** (`IDP_CLOUD == CLOUD`, Ruling R): a consumer keeps store-first and never writes, so a leftover chart Secret on a consumer cannot overwrite the host's only PAT | The store used to win. A fresh directory every build (GP-3) makes the stored PAT belong to a directory that no longer exists: every stage-3 call then gets a 401, which the stage swallows as `[warn]`. The deploy exits 0 with no clients | aws-0's seed-restored directory is unchanged (no chart Secret, store read). A fresh aws-0 bootstrap now overwrites a stale copy, which is also correct |
 | GP-21 | **G-0 to G-3 merge to `main` each when green and reviewed; G-0 first** (owner, 2026-09-29). They are platform fixes, not agent-factory code: octo-sts trust, Stage 2 on GCP, rebuild hygiene, the hosted-IdP sync | octo-sts reads `main` only, and the platform fixes are wanted regardless of the programme | G-1 on `main` adds the Stage 2 mounts to GCP's management stack. A deploy from `main` is then fine until G-5 adds `agents` |
 | GP-22 | **The teardown sweeps what GKE leaves behind** (owner, 2026-09-29). `scripts/ops/gcp/sweep-lb-orphans.sh` lists, then deletes, the platform VPC's GKE-created forwarding rules, their target pools, and the `k8s-*` firewall rules on `vpc-europe-west4-dev`. `teardown.sh` runs it only with `TM_DESTROY_CONFIRMED=true`, and only once no `gcp-0` cluster exists; then it retries the destroy once, as the AWS lane does | Forwarding rules bill hourly, and the firewall rules block the VPC delete, which fails every GCP teardown (memory `gke_lb_orphans_block_vpc_delete`) | It deletes only objects GKE made (description `kubernetes.io/service-name`, or a `k8s-` firewall on this VPC). A hand-made LB on that VPC with a GKE-shaped description would be swept too |
 | GP-23 | **09-11 bug 7 is fixed in G-2: Crossplane may grant `roles/storage.objectCreator` on `ogenki-` buckets.** `security/gcp-0/openbao-snapshot/workloadidentity.yaml` asks for it, but `crossplane_bucket_grantable_roles` (`gke/init/iam.tf`) lists only objectAdmin, objectViewer and legacyBucketReader. The `hasOnly` condition therefore denies the grant with a bare 403, and gcp-0 has never taken a scheduled snapshot | objectCreator is strictly weaker than objectAdmin, which is already grantable: create only, no read and no delete. The bucket clause still confines it to `ogenki-` buckets. Without it, the agent keys and migrated data survive only through a teardown's pre-destroy snapshot | The cause is read from code (memory `gcp_crossplane_grant_allowlist_contract`), and 8.3 Step 9 proves it live. If the CronJob still fails, the 403's resource names the next missing permission |
-| GP-24 | **`platform-llm-api-keys` is generated on gcp-0, never hand-seeded.** The keys are the AI gateway's own client keys: the gateway issues them, and nothing external does. Its clients (Open WebUI, promptfoo) sit in `llm-platform`, which stays suspended on gcp-0. `infrastructure/gcp-0/envoy-ai-gateway` replaces the ExternalSecret's store read with two `Password` generators (`CreatedOnce`) | aws-0's entry is a one-time hand-made AWS Secrets Manager secret (`clusters/aws-0-ai-gateway/README.md`). Copying it to GCP would be a second hand-seed, and the key is only ever used on the cluster that issues it | When gcp-0's `llm-platform` is unsuspended, its two clients need the same values. That is a follow-up (cross-namespace read), recorded in the spec's *Out of scope* |
-| GP-25 | **G-5 pins crossplane-configuration's pre-release `v0.7.2-pr31.988146f` for `-aws` and `-gcp`** (the coordinator's default). H-1's pin, `v0.7.1`, has no `apis/agentrun`. The integration branch's `c87e364a` pinned only `-aws`, to `pr29`. A pre-release `-gcp` pins its `-core` dependency exactly, so a fresh gcp-0 installs the AgentRun XRD with no core patch | "Lockstep with H-1" would have given gcp-0 `v0.7.1`, and 8.2 Step 4 would time out waiting for `agentruns.cloud.ogenki.io` | Phase 7 swaps both pins to the release tag. Merging G-5 into the integration branch conflicts with `c87e364a`: keep `pr31` |
+| GP-24 | **`platform-llm-api-keys` is generated on gcp-0, never hand-seeded.** The keys are the AI gateway's own client keys: the gateway issues them, and nothing external does. Its clients (Open WebUI, promptfoo) sit in `llm-platform`, which stays suspended on gcp-0. `infrastructure/gcp-0/envoy-ai-gateway` replaces the ExternalSecret's store read with two `Password` generators (`CreatedOnce`) | aws-0's entry is a one-time hand-made AWS Secrets Manager secret (`clusters/aws-0-ai-gateway/README.md`). Copying it to GCP would be a second hand-seed, and the key is only ever used on the cluster that issues it | When gcp-0's `llm-platform` is unsuspended, its two clients need the same values. Open WebUI and promptfoo still read `platform-llm-api-keys` from the cluster store (Secret Manager on gcp-0): 401 or `SecretSyncedError`. That is a follow-up (cross-namespace read, e.g. an ESO `kubernetes`-provider store over `envoy-ai-gateway-system`), recorded in the spec's *Out of scope* and as an open item for the llm-platform-on-gcp-0 step (Ruling AB) |
+| GP-25 | **G-5 pins crossplane-configuration's pre-release `v0.7.2-pr31.988146f` for `-aws` and `-gcp`** (the coordinator's default, kept by Ruling W3). H-1 pins `-aws` to `v0.7.2-pr30.7e3211e` (CC-H1, which does carry `apis/agentrun`); `-gcp` was `v0.7.0`, with none. `pr31` publishes all four artifacts, `crossplane-configuration-xrd-crds` included, which H-1's `fetch-xrd-crds.sh` pulls in CI. The integration branch's `c87e364a` pinned only `-aws`, to `pr29`. A pre-release `-gcp` pins its `-core` dependency exactly, so a fresh gcp-0 installs the AgentRun XRD with no core patch | "Lockstep with H-1" would have given gcp-0 `v0.7.1`, and 8.2 Step 4 would time out waiting for `agentruns.cloud.ogenki.io` | Phase 7 swaps both pins to the release tag. Merging G-5 into the integration branch conflicts with `c87e364a`: keep `pr31` |
 | GP-26 | **The agents' `openbao-ca` is per cloud.** `security/base/agent-secrets/externalsecret-openbao-ca.yaml` reads the AWS shape: `certificates/${private_domain_name}/ca-chain`, property `ca`. `security/gcp-0/agent-secrets` patches it to gcp-0's Secret Manager entry, `openbao-priv-gcp-ca-chain`, a raw PEM with no property. `assert-cloud-shape.py` forbids `certificates/` in gcp-0 agent overlays | GCP Secret Manager forbids `/` in names. Without the patch the `agents-secrets` SecretStore has no CA, and no agent secret ever syncs | SP2's CA copy in `agents` (GP-18) follows the same patch |
 | GP-27 | **09-11 bug 6 is salvaged into G-2.** gcp-0's private `external-dns` HelmRelease inherits `dependsOn: aws-load-balancer-controller` from base, and gcp-0 has no such release. The fix, a JSON6902 `remove /spec/dependsOn`, exists only on `origin/test/gcp-only-live` | The release never installs, so no `*.priv.gcp.ogenki.io` record is ever written. Grafana, Headlamp, the Flux UI and Harbor are unreachable by name: the owner's first login (8.4) and every runbook fail. The `infrastructure` Kustomization has no `wait`, so it still reports Ready | None: gcp-0 has no controller to wait for, since GKE's own controller creates its LoadBalancers |
 
@@ -168,25 +168,28 @@ Verdicts and evidence are in the spec's *Risks* table. This maps each one to the
 | The agents' CA key AWS-shaped (GP-26) | 6.5, 6.8 (`certificates/` forbidden in gcp-0 agent overlays) |
 | `platform-llm-api-keys` absent on GCP (GP-24) | 6.5 (generated in the gcp-0 overlay), 6.8 |
 | Grant allowlist | not triggered: 6.4 Step 1 greps the pinned compositions for new `roles/` |
-| Hairpin on gcp-0's own Gateway | 8.4 Step 5 (SSO on every consumer); SP2 cross-plan edit |
+| Hairpin on gcp-0's own Gateway | 8.4 Step 5 (SSO on every consumer), 8.5 Step 2a (the negative Gateway check, from the zitadel node and another); SP2 cross-plan edit |
 | external-dns child filter | 8.3 Step 8 |
-| gVisor + socket-LB, gVisor + seccomp, scale from zero | 8.5 |
+| gVisor + socket-LB, gVisor + seccomp, scale from zero | 8.5; the scale-from-zero toleration (Z1) in 6.3 |
+| The metadata server through `host` on GKE (Z3: never matches) | 6.3 commit B (`toCIDR`, `test-gcp-metadata-server-cidr.py`), 8.3 Step 10 |
+| An agent-sandbox pod admitted before the toleration policy exists | G-5 Task 6.7 fix round (`dependsOn: security-sandbox-policies`), 8.5 Step 2 table |
 | AgentRun XRD missing on gcp-0 | 6.4 (pin lockstep), 8.2 Step 4 (core patch) |
 | Destroy false success | only `scripts/ops/teardown/teardown.sh`, then `--verify-only` (3.3) |
 
 ## PR map
 
-| # | Repo · branch | Base | Class | Carries | Gate |
-|---|---|---|---|---|---|
-| G-0 | this · `chore/octo-sts-gke-issuer` | `main` | **merge first** (owner, 2026-09-29) | trust policies accept gcp-0's issuer | CI; **[OWNER] merges when green and reviewed, before the others** |
-| G-1 | this · `fix/openbao-stage2-gcp` | `main` | **platform fix: merge when green and reviewed** (owner, 2026-09-29) | module, GCP stack call, policy-parity gate, `migrate --keys`, new-lineage switch | CI; live in 8.3 |
-| G-2 | this · `fix/gke-rebuild-hygiene` | `fix/openbao-stage2-gcp` | **platform fix: merge when green and reviewed**, after G-1 | stage 2: CA, jwt adopt, `deploy_identity_provider`; custom roles `_v3` that survive teardown; private external-dns (bug 6); the snapshot grant (bug 7); teardown report and sweep | CI; live in 8.2, 8.3 and at teardown |
-| G-3 | this · `fix/gcp-hosted-idp` | `fix/gke-rebuild-hygiene` | **platform fix: merge when green and reviewed**, after G-2 (inert while AWS is primary, except GP-20) | shared key map, sync `--mirror-openbao`, `zitadel-project-id`, the fresh PAT wins, stage 3: IdP sync and OpenBao flags | CI; live in 8.3–8.4 |
-| G-4 | this · `feat/gcp-primary` | `fix/gcp-hosted-idp` | **integration-only: draft, "do not merge"** (owner, 2026-09-29) | ADR-00NN (Proposed), `primary_cloud = "gcp"`, both suspends, the doc claim and its pages, fresh ZITADEL | CI on the PR; live in 8.3–8.4 |
-| G-5 | this · `feat/gcp-agent-platform` | `fix/agent-review-hardening` (H-1), merges `fix/gcp-hosted-idp` (never G-4) | **programme stack** (Phase 7) | M1 on both clouds, issuer vars, the agents' CA per cloud, sandbox pool + Cilium, CC pre-release pin, Kyverno, overlays, generated gateway keys, two umbrellas, cloud-shape gate, runbooks | CI; live in 8.5–8.6 |
+| # | Repo · branch | Base | Class | Carries | Gate | Status (2026-09-29) |
+|---|---|---|---|---|---|---|
+| G-0 | this · `chore/octo-sts-gke-issuer` | `main` | **merge first** (owner, 2026-09-29) | trust policies accept gcp-0's issuer | CI; **[OWNER] merges when green and reviewed, before the others** | **merged**, #2122 |
+| G-1 | this · `fix/openbao-stage2-gcp` | `main` | **platform fix: merge when green and reviewed** (owner, 2026-09-29) | module, GCP stack call, policy-parity gate, `migrate --keys`, new-lineage switch | CI; live in 8.3 | **merged**, #2123 |
+| G-2 | this · `fix/gke-rebuild-hygiene` | `main` (built on G-1's head, then `rebase --onto origin/main` once G-1 squash-merged: Ruling H') | **platform fix: merge when green and reviewed**, after G-1 | stage 2: CA, jwt adopt, `deploy_identity_provider`; custom roles `_v3` that survive teardown; private external-dns (bug 6); the snapshot grant (bug 7); teardown report and sweep | CI; live in 8.2, 8.3 and at teardown | **merged**, #2125 |
+| G-3 | this · `fix/gcp-hosted-idp` | `main` (rebased the same way after G-2) | **platform fix: merge when green and reviewed**, after G-2 (inert while AWS is primary, except GP-20) | shared key map, sync `--mirror-openbao`, `zitadel-project-id`, the fresh PAT wins, stage 3: IdP sync, OpenBao flags and `stage5-verify-openbao-oidc` (Ruling U) | CI; live in 8.3–8.4 | **merged**, #2126 |
+| G-4 | this · `feat/gcp-primary` | `main` (G-1 to G-3 are on it) | **integration-only: draft, "do not merge"** (owner, 2026-09-29) | ADR-00NN (Proposed), `primary_cloud = "gcp"`, both suspends, the doc claim and its pages, fresh ZITADEL | CI on the PR; live in 8.3–8.4 | draft PR |
+| G-5 | this · `feat/gcp-agent-platform` | `fix/agent-review-hardening` (H-1), which carries G-1 to G-3 through `main` (never G-4) | **programme stack** (Phase 7) | M1 on both clouds, issuer vars, the agents' CA per cloud, sandbox pool + Cilium + the gVisor toleration policy, the metadata-server CIDR fix (Z3), CC pre-release pin, Kyverno, overlays, generated gateway keys, two umbrellas, cloud-shape gate. The runbooks moved to Task 7.2 (W2) | CI; live in 8.5–8.6 | in progress |
 
 `integration/agent-factory` merges G-4 and G-5 separately (G-5 contains H-1 and G-1 to G-3). It adds one
-test-only commit that unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1).
+test-only commit that unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task 7.1), and carries the runbook
+retarget (Task 7.2).
 
 ## File structure
 
@@ -211,23 +214,24 @@ test-only commit that unsuspends gcp-0's `ai-gateway` and `agent-platform` (Task
 | `opentofu/gcp/gke/configure/{data.tf,locals.tf,kubernetes.tf}` | G-3 | Read `zitadel-project-id` |
 | `opentofu/config.tm.hcl`, `clusters/{gcp-0,aws-0}/security/zitadel.yaml`, `website/content/docs/decisions/00NN-gcp-primary-platform.md`, `_index.md`, `opentofu/AGENTS.md`, `.doc-claims.yaml`, `website/content/docs/platform/foundations/cloud-support.md`, `website/content/docs/guides/migrate-the-identity-provider.md` | G-4 | GCP primary |
 | `security/gcp-0/zitadel/{kustomization.yaml,password-generators.yaml,externalsecrets-generated.yaml,helmrelease-env-patch.yaml}`, `scripts/ci/tests/test-zitadel-gcp-fresh.py` | G-4 | Fresh ZITADEL |
-| `opentofu/{aws,gcp}/openbao/management/{mounts.tf,policies.tf,policies/*.hcl}`, module `policies/secrets-admin.hcl`, `opentofu/gcp/gke/configure/openbao.tf`, `security/base/agent-secrets/secretstore.yaml`, `security/base/octo-sts/externalsecret.yaml`, `infrastructure/base/agent-router/externalsecret-zai.yaml`, `scripts/ci/tests/test-openbao-agent-mounts.sh` | G-5 | M1 on both clouds |
+| `opentofu/{aws,gcp}/openbao/management/{mounts.tf,policies.tf,policies/*.hcl}`, module `policies/{secrets-admin,external-secrets}.hcl`, `opentofu/gcp/gke/configure/openbao.tf`, `security/base/agent-secrets/secretstore.yaml`, `security/base/octo-sts/externalsecret.yaml`, `infrastructure/base/agent-router/externalsecret-zai.yaml`, `scripts/ci/tests/test-openbao-agent-mounts.sh`; the stale `platform/agents` references (W1) and `website/content/docs/platform/security/{secrets,pki-and-secrets}.md` | G-5 | M1 on both clouds <!-- pragma: allowlist secret --> |
 | `opentofu/{aws/eks,gcp/gke}/configure/{kubernetes.tf,locals.tf,openbao.tf}`, `infrastructure/base/agent-router/{securitypolicy-*.yaml,network-policy-data-plane.yaml}`, `infrastructure/base/agent-mcp/mcproutes.yaml`, `security/base/octo-sts/network-policy.yaml`, `scripts/ci/tests/test-oidc-issuer-vars.sh` | G-5 | Per-cloud issuer |
-| `opentofu/gcp/gke/init/{sandbox.tf,variables.tf,helm_values/cilium.yaml}`, the Vector toleration file(s), `scripts/ops/k8s/gvisor-smoke.yaml`, `scripts/ci/tests/test-gcp-agents-pool.sh` | G-5 | Sandbox nodes |
+| `opentofu/gcp/gke/init/{sandbox.tf,variables.tf,helm_values/cilium.yaml}`, the Vector toleration file(s), `scripts/ops/k8s/gvisor-smoke.yaml`, `scripts/ci/tests/test-gcp-agents-pool.sh`, `security/gcp-0/sandbox-policies/*`, `clusters/gcp-0/security/security-sandbox-policies.yaml` | G-5 | Sandbox nodes, and the toleration that lets them scale from zero (Z1) |
+| `infrastructure/gcp-0/cloudnative-pg-barman-plugin/network-policy-patch.yaml`, `security/gcp-0/openbao-snapshot/{kustomization.yaml,network-policy-patch.yaml}`, `security/AGENTS.md`, `scripts/ci/tests/test-gcp-metadata-server-cidr.py` | G-5 | The metadata server by CIDR on gcp-0 (Z3) |
 | `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`, `security/gcp-0/controllers/kustomization.yaml`, `scripts/ci/tests/test-gcp-agent-prereqs.sh` | G-5 | AgentRun XRD and Kyverno on gcp-0 |
 | `{infrastructure,security,observability}/{aws-0,gcp-0}/<agent base>/kustomization.yaml` (14, incl. `vllm-semantic-router`), `security/gcp-0/agent-secrets/openbao-ca-patch.yaml`, `infrastructure/gcp-0/envoy-ai-gateway/{password-generators.yaml,api-keys-patch.yaml}` | G-5 | Per-cloud render roots; the agents' CA (GP-26); generated gateway keys (GP-24) |
 | `clusters/gcp-0/security/security.yaml` | G-5 | Kyverno health check |
 | `infrastructure/base/envoy-gateway-ratelimit/**`, `infrastructure/{aws-0,gcp-0}/envoy-gateway/kustomization.yaml` | G-5 | Shared rate limit |
-| `clusters/gcp-0/{ai-gateway,agent-platform,llm-platform}.yaml`, `clusters/gcp-0-ai-gateway/*`, `clusters/gcp-0-agent-platform/*`, `clusters/gcp-0-llm-platform/kustomization.yaml`, `clusters/aws-0-{agent-platform,ai-gateway}/*` (paths), `.doc-claims.yaml` | G-5 | Umbrellas |
+| `clusters/gcp-0/{ai-gateway,agent-platform,llm-platform}.yaml`, `clusters/gcp-0-ai-gateway/*`, `clusters/gcp-0-agent-platform/*` (a `README.md` included, W4), `clusters/gcp-0-llm-platform/{kustomization.yaml,README.md}`, `clusters/aws-0-{agent-platform,ai-gateway}/*` (paths), `.doc-claims.yaml` (two claims, W4) | G-5 | Umbrellas |
 | `scripts/ci/flux-schema/assert-cloud-shape.py`, `scripts/ci/tests/flux-schema/test-assert-cloud-shape.py`, `scripts/ci/validate-manifests.sh` | G-5 | GCP render gate |
-| `docs/runbooks/agent-factory/*.md`, `scripts/ci/tests/test-runbooks-gcp.py` | G-5 | Runbooks on gcp-0 |
+| `docs/runbooks/agent-factory/*.md`, `scripts/ci/tests/test-runbooks-gcp.py` | `integration/agent-factory` (Task 7.2, W2) | Runbooks on gcp-0 |
 
 ## Owner actions
 
 | Marker | Task | What |
 |---|---|---|
-| [OWNER] | 1.1 | Merge G-0 to `main` first, when green and reviewed (octo-sts reads `main`). Required before 8.6 |
-| [OWNER] | 2.5, 3.3, 4.4 | Merge G-1, then G-2, then G-3 to `main`, each when green and reviewed (GP-21). Not required before tonight's deploy: the integration branch carries them |
+| [OWNER] | 1.1 | Merge G-0 to `main` first, when green and reviewed (octo-sts reads `main`). Required before 8.6. **Done: #2122** |
+| [OWNER] | 2.5, 3.3, 4.4 | Merge G-1, then G-2, then G-3 to `main`, each when green and reviewed (GP-21). Not required before tonight's deploy: the integration branch carries them. **Done: #2123, #2125, #2126** |
 | — | 5.2 | G-4 is never merged: its PR stays a draft (GP-16). No owner merge |
 | [OWNER] | 8.1 | After 21:00: `gcloud auth login` **and** `gcloud auth application-default login` (P-2); check the Google OAuth client's redirect list (P-8); align the OpenBao token versions with the `-gcpckms` lineage (P-4); delete the stale ZITADEL PAT (P-11); read the pre-flight verdicts |
 | [OWNER] | 8.2 | The first deploy; if the management apply fails on an existing mount, the import in Step 3a |
@@ -304,7 +308,8 @@ Apply these to the plans' canonical copies in Task 0.1.
 - Every child O-1 adds to `clusters/aws-0-agent-platform/` (collector and the rest) gets its gcp-0 twin
   under the same rule.
 
-**SP3 plan:** when `merge-gate` lands, it lands on GCP's management stack too.
+**SP3 plan:** when `merge-gate` lands, it lands on GCP's management stack too. Applied 2026-09-29, in the SP3
+plan's *GCP parity cross-plan edit* section.
 
 ---
 
@@ -831,6 +836,9 @@ right after G-0 (GP-21).
 - [ ] **Step 1: Worktree**
 
 `EnterWorktree` with branch `fix/gke-rebuild-hygiene`, then `git reset --hard origin/fix/openbao-stage2-gcp`.
+Once G-1 squash-merges, move the branch onto `main` with `git rebase --onto origin/main <G-1's head>` (the tree
+is unchanged), force-push with lease, and let GitHub retarget the PR (Ruling H'). A branch left stacked on a
+squash-merged parent carries the parent's commits as a conflicting duplicate. G-3 moves the same way after G-2.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1555,7 +1563,7 @@ git add scripts/ops/teardown/teardown.sh scripts/ops/gcp/sweep-lb-orphans.sh scr
 git commit -m "fix(teardown): sweep the forwarding rules, target pools and k8s-* firewall rules a GKE cluster leaves"
 ```
 
-Run `create-pr` with base `fix/openbao-stage2-gcp`. Title: `fix(gcp): GKE rebuilds that can repeat`. The body lists:
+Run `create-pr` with base `fix/openbao-stage2-gcp` (`main` once G-1 has merged: Ruling H'). Title: `fix(gcp): GKE rebuilds that can repeat`. The body lists:
 - 09-11 bugs 2, 3, 6 and 7;
 - the missing `deploy_identity_provider`;
 - the confirmed-only orphan sweep.
@@ -1577,7 +1585,8 @@ It says: **platform fix, merged when green and reviewed, after G-1** (owner, 202
 
 - [ ] **Step 1: Worktree**
 
-`EnterWorktree` with branch `fix/gcp-hosted-idp`, then `git reset --hard origin/fix/gke-rebuild-hygiene`.
+`EnterWorktree` with branch `fix/gcp-hosted-idp`, then `git reset --hard origin/fix/gke-rebuild-hygiene`. After
+G-2 merges, `git rebase --onto origin/main <G-2's head>` (Ruling H').
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1970,6 +1979,12 @@ changes:
    `ZITADEL_PAT_DRY_RUN=true`.
 2. The stored copy, only when the cluster has none (a directory restored from a seed).
 
+**Only the hosting cloud's run takes this order (Ruling R).** When `IDP_CLOUD != CLOUD` (a consumer registering
+in another cloud's directory, with kubectl on its own cluster), the resolver keeps store-first and never writes:
+a leftover chart Secret on the consumer would otherwise overwrite the host's only PAT, and every call would get a
+401. The IdP cloud's own sync refreshes the store. As merged, `resolve_zitadel_pat` takes a required role,
+`hosting` or `consuming`; `zitadel-idp.sh` passes `hosting` and must run against the hosting cluster's context.
+
 - [ ] **Step 1: Write the failing test**
 
 In `scripts/ci/tests/test-zitadel-pat.sh`, replace case `# 1.` (from its comment through
@@ -2128,6 +2143,13 @@ In the clients sync call right below it, add before `--apply`:
 
 The CA file is the one stage 2 wrote in this same run (Task 3.1).
 
+**Stage 5, `stage5-verify-openbao-oidc` (Ruling U).** gcp-0 becomes the host tonight, so a stale `auth/oidc`
+must halt the deploy there as it does on aws-0. Add a job after stage 3 that runs
+`scripts/provision/openbao-oidc-check.sh` against GCP's OpenBao, as its last statement, so its exit 1 (stale)
+**and** exit 2 (cannot tell) both halt. It skips when `deploy_identity_provider` is false: a consuming cluster's
+directory is verified by its host's deploy. The PR body carries the operator note: a halted stage 5 means
+re-run the stage-3 sync, then the deploy. Also drop the stale "There is no stage 3" line from `workflows.tm.hcl`'s header.
+
 #2078's contract suite asserts the opposite of this change: `test-zitadel-oidc-clients-openbao.sh:157-161`
 fails with `gcp/gke/init passes no --openbao-* flag` as soon as the flags above exist. Replace its line 160–161
 pair with a split that still guards the consumer path:
@@ -2165,7 +2187,7 @@ git add opentofu/gcp/gke/init/workflows.tm.hcl scripts/ci/tests/test-gcp-gke-ini
 git commit -m "fix(gcp): a hosting stage 3 registers the IdP, then mirrors every client into OpenBao"
 ```
 
-Run `create-pr` with base `fix/gke-rebuild-hygiene`. Title: `fix(gcp): a GCP-hosted ZITADEL keeps its consumers in step`.
+Run `create-pr` with base `fix/gke-rebuild-hygiene` (`main` once G-2 has merged). Title: `fix(gcp): a GCP-hosted ZITADEL keeps its consumers in step`.
 The body names:
 - 09-11 bug 9 (the sync wrote Secret Manager only);
 - bug 8 (`zitadel_project_id` committed per directory);
@@ -2191,7 +2213,8 @@ unsuspended and aws-0's is suspended.
 
 - [ ] **Step 1: Worktree**
 
-`EnterWorktree` with branch `feat/gcp-primary`, then `git reset --hard origin/fix/gcp-hosted-idp`.
+`EnterWorktree` with branch `feat/gcp-primary`, then `git reset --hard origin/main`: G-1 to G-3 are merged
+(#2123, #2125, #2126), and `fix/gcp-hosted-idp` was deleted with G-3's merge.
 
 - [ ] **Step 2: The failing check: flip only `primary_cloud`**
 
@@ -2570,10 +2593,10 @@ git add security/gcp-0/zitadel scripts/ci/tests/test-zitadel-gcp-fresh.py
 git commit -m "feat(zitadel): gcp-0's directory is fresh every build, its keys generated in-cluster"
 ```
 
-Run `create-pr` as a **draft** with base `fix/gcp-hosted-idp`. Title:
+Run `create-pr` as a **draft** with base `main`. Title:
 `feat(platform): GCP is the primary cloud, with a fresh ZITADEL (integration-only, do not merge)`. The body carries
 ADR-00NN's decision, and says: **integration-only: reviewed, never merged; `integration/agent-factory` carries it**
-(owner, 2026-09-29; GP-16). Once G-3 merges, GitHub retargets it to `main`; it stays a draft.
+(owner, 2026-09-29; GP-16). It stays a draft.
 
 ---
 
@@ -2584,10 +2607,14 @@ ADR-00NN's decision, and says: **integration-only: reviewed, never merged; `inte
 **Files:**
 - Modify: `opentofu/aws/openbao/management/{mounts.tf,policies.tf,policies/agents-secrets.hcl,policies/secrets-admin.hcl,policies/external-secrets.hcl}`,
   `opentofu/gcp/openbao/management/{mounts.tf,policies.tf}`,
-  `opentofu/shared/modules/openbao-store-of-record/policies/secrets-admin.hcl`,
+  `opentofu/shared/modules/openbao-store-of-record/policies/{secrets-admin.hcl,external-secrets.hcl}` (byte-identical
+  to AWS's: `validate-openbao-policies.sh` compares them, W1),
   `opentofu/gcp/gke/configure/openbao.tf`, `opentofu/aws/eks/configure/openbao.tf` (comment),
   `security/base/agent-secrets/secretstore.yaml`, `security/base/octo-sts/externalsecret.yaml`,
   `infrastructure/base/agent-router/externalsecret-zai.yaml`
+- Modify, stale `platform/agents` references (W1): `clusters/aws-0-agent-platform/README.md` (two lines),
+  the header of `infrastructure/base/llm-gateway/externalsecret-zai.yaml`, and
+  `website/content/docs/platform/security/{secrets,pki-and-secrets}.md`, which must name three mounts, not two
 - Create: `opentofu/gcp/openbao/management/policies/agents-secrets.hcl`, `scripts/ci/tests/test-openbao-agent-mounts.sh`
 
 **Interfaces:**
@@ -2606,14 +2633,20 @@ controller has pushed H-1, stop here (Global Constraints).
 
 ```bash
 git reset --hard origin/fix/agent-review-hardening
-git merge --no-ff origin/fix/gcp-hosted-idp -m "merge: GCP parity G-1..G-3 into the gcp-0 agent platform"
+# G-3's branch is deleted when it merges: merge it only while it still exists (W1).
+if git ls-remote --exit-code origin refs/heads/fix/gcp-hosted-idp >/dev/null; then
+  git merge --no-ff origin/fix/gcp-hosted-idp -m "merge: GCP parity G-1..G-3 into the gcp-0 agent platform"
+else
+  echo "G-3 on main"
+fi
 git merge origin/main
 git log --oneline HEAD | grep -c 'GCP is the primary cloud' || true
 ```
 
-Expected: both merges clean, and the last count `0`: **G-4 is never merged into G-5** (GP-16, GP-19). If G-1 to
-G-3 are already on `main`, the first merge is a no-op. On a conflict in `docs/runbooks/` or `opentofu/`, keep
-H-1's side and re-apply G-3's lines. PR base: `fix/agent-review-hardening`, merge-only (GP-19).
+Expected: the merges clean, and the last count `0`: **G-4 is never merged into G-5** (GP-16, GP-19). As executed,
+G-1 to G-3 were on `main` and H-1 already carried them through the stack cascade (Ruling T), so only
+`origin/main` merged. On a conflict in `docs/runbooks/` or `opentofu/`, keep H-1's side and re-apply G-3's
+lines. PR base: `fix/agent-review-hardening`, merge-only (GP-19).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -2743,13 +2776,19 @@ path "agents/config" {
 }
 ```
 
-In AWS's `policies/external-secrets.hcl`, add to the header:
+In **both** `policies/external-secrets.hcl` copies (AWS's and the shared module's), add the same header, byte
+for byte. `validate-openbao-policies.sh` (G-1, in `task check` and CI) fails when the two differ (W1):
 
 ```hcl
 # Never the `agents` mount (SP2 ruling P38, external review M1): this identity
 # backs `openbao-platform`, a ClusterSecretStore any namespace can use (T14).
 # scripts/ci/tests/test-openbao-agent-mounts.sh fails if a path here names it.
 ```
+
+Both `secrets-admin.hcl` headers, identically: "Full control of both secret mounts" names three. The module's
+`policies.tf` comment on "both Stage 2 mounts" follows. In `opentofu/gcp/gke/configure/openbao.tf`, the
+`external-secrets` role's comment no longer says the policy is "defined once, by opentofu/aws/openbao/management"
+(false since G-1), and the `token_type` comment's client list gains `agents-secrets`.
 
 `opentofu/gcp/gke/configure/openbao.tf`, in `local.openbao_roles`:
 
@@ -2770,15 +2809,23 @@ sentence "Its OpenBao role reads the `agents` mount and nothing else (SP2 P38)".
 `security/base/octo-sts/externalsecret.yaml`, every `key: agents/github-app` becomes `key: github-app`. In
 `infrastructure/base/agent-router/externalsecret-zai.yaml`, `key: agents/zai` becomes `key: zai`.
 
+Rewrite the stale `platform/agents` references listed under *Files* to the `agents` mount. The two website pages
+describe three kv-v2 mounts (`platform`, `apps`, `agents`) and say only `agents-secrets` and `secrets-admin`
+name the third (review I-1: two mounts would read as the old boundary).
+
 - [ ] **Step 5: Run it to see it pass, with the gates it touches**
 
 Run: `bash scripts/ci/tests/test-openbao-agent-mounts.sh && ./scripts/ci/validate-openbao-policies.sh && for d in aws/openbao/management gcp/openbao/management gcp/gke/configure; do tofu -chdir=opentofu/$d init -backend=false -input=false >/dev/null && tofu -chdir=opentofu/$d validate; done && tofu -chdir=opentofu/shared/modules/openbao-store-of-record test`
-Expected: `PASS`, parity passes, `Success! The configuration is valid.` three times, and `2 passed, 0 failed`.
+Expected: `PASS`, parity passes, `Success! The configuration is valid.` three times, and `3 passed, 0 failed`
+(the module has three `run` blocks since 2.2's fix round). Then `./scripts/ci/validate-links.sh &&
+./scripts/ci/verify-doc-paths.sh` for the website pages: exit 0.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add opentofu security/base/agent-secrets security/base/octo-sts infrastructure/base/agent-router/externalsecret-zai.yaml scripts/ci/tests/test-openbao-agent-mounts.sh
+git add opentofu security/base/agent-secrets security/base/octo-sts infrastructure/base/agent-router/externalsecret-zai.yaml \
+  infrastructure/base/llm-gateway/externalsecret-zai.yaml clusters/aws-0-agent-platform/README.md \
+  website/content/docs/platform/security scripts/ci/tests/test-openbao-agent-mounts.sh
 git commit -m "fix(openbao): the agents' secrets on their own mount, on both clouds (SP2 P38)"
 ```
 
@@ -2872,6 +2919,10 @@ Expected:
 In `opentofu/gcp/gke/configure/openbao.tf`, `oidc_discovery_url` and `bound_issuer` both become
 `local.oidc_issuer_url`.
 
+Run `tofu fmt` on both `kubernetes.tf`: their `data` maps are column-aligned and the snippets above are not
+(W5). Leave G-3's `zitadel_project_*` and `gcp_dns_editor_role` lines untouched: `test-gcp-zitadel-project-id.sh`
+greps them. Reword the two base comments that still name `${oidc_issuer_host}`.
+
 In the base manifests:
 
 | File | Change |
@@ -2913,14 +2964,22 @@ git commit -m "fix(agents): the token issuer and its JWKS are per-cloud variable
 ### Task 6.3: GKE Sandbox pool, Cilium per-packet LB, tolerations, smoke probe
 
 **Files:**
-- Create: `opentofu/gcp/gke/init/sandbox.tf`, `scripts/ops/k8s/gvisor-smoke.yaml`, `scripts/ci/tests/test-gcp-agents-pool.sh`
+- Create: `opentofu/gcp/gke/init/sandbox.tf`, `scripts/ops/k8s/gvisor-smoke.yaml`, `scripts/ci/tests/test-gcp-agents-pool.sh`,
+  `security/gcp-0/sandbox-policies/{kustomization.yaml,gvisor-cilium-toleration.yaml}`,
+  `clusters/gcp-0/security/security-sandbox-policies.yaml` (Ruling Z1)
 - Modify: `opentofu/gcp/gke/init/{variables.tf,helm_values/cilium.yaml}`, and each file that tolerates
   `agents.ogenki.io/runtime` (Step 1 lists them)
+- Commit B (Ruling Z3), its own commit: `infrastructure/gcp-0/cloudnative-pg-barman-plugin/network-policy-patch.yaml`,
+  `security/gcp-0/openbao-snapshot/{kustomization.yaml,network-policy-patch.yaml}`, the base openbao-snapshot
+  CNP comment, `clusters/gcp-0/security/security-openbao-snapshot.yaml`, `security/AGENTS.md` (rule 3),
+  `website/content/docs/platform/security/policies.md`; create `scripts/ci/tests/test-gcp-metadata-server-cidr.py`
 
 **Interfaces:**
 - Produces the node pool `agents-gvisor`. GKE labels and taints it `sandbox.gke.io/runtime=gvisor` and ships
   the RuntimeClass `gvisor` (GP-9, GP-10).
 - Produces `var.agents_pool_machine_type` (`"e2-standard-8"`) and `var.agents_pool_max_nodes` (`2`).
+- Produces the Kyverno `ClusterPolicy` `gvisor-tolerate-cilium-startup-taint` and the always-on Flux Kustomization
+  `security-sandbox-policies` (`dependsOn: security`), which Task 6.7's `agent-sandbox` child depends on.
 - Produces the probe manifest used in Task 8.5.
 
 - [ ] **Step 1: Find the tolerations and write the failing test**
@@ -2937,6 +2996,8 @@ Expected: the Vector values file(s) SP1 PR 2 changed ("Vector toleration"). Note
 # GCP parity GP-9..GP-11: gcp-0's runs land on a GKE Sandbox pool through GKE's
 # own `gvisor` RuntimeClass; gVisor needs Cilium's per-packet LB; and every
 # DaemonSet that follows runs onto aws-0's gVisor nodes follows them onto GKE's.
+# The pool keeps Cilium's startup taint, so it scales from zero only for pods
+# that tolerate it (ADR-0006): a Kyverno policy adds that toleration to gVisor pods.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 F="$ROOT/opentofu/gcp/gke/init/sandbox.tf"
@@ -2947,6 +3008,7 @@ if [ -f "$F" ]; then
   grep -Eq 'spot[[:space:]]*=[[:space:]]*true' "$F" || fail "the pool is not spot"
   grep -Eq 'min_node_count[[:space:]]*=[[:space:]]*0' "$F" || fail "the pool does not scale to zero"
   grep -q 'node.cilium.io/agent-not-ready' "$F" || fail "no Cilium startup taint"
+  grep -Eq 'disk_type[[:space:]]*=[[:space:]]*"pd-standard"' "$F" || fail "the pool's disk is not pd-standard, the cheapest"
 else
   fail "no $F"
 fi
@@ -2959,7 +3021,68 @@ grep -rqs 'runtimeclass-gvisor\|karpenter-nodepools-agents' "$ROOT"/clusters/gcp
 while IFS= read -r f; do
   grep -q 'sandbox.gke.io/runtime' "$f" || fail "$f tolerates agents.ogenki.io/runtime but not sandbox.gke.io/runtime"
 done < <(grep -rl --include=*.yaml 'key: agents.ogenki.io/runtime' "$ROOT/observability" "$ROOT/infrastructure" "$ROOT/security" | grep -v -e karpenter-nodepools-agents -e runtimeclass-gvisor)
-[ -f "$ROOT/scripts/ops/k8s/gvisor-smoke.yaml" ] || fail "no scripts/ops/k8s/gvisor-smoke.yaml"
+
+# The toleration path and the probe, parsed rather than grepped.
+out="$(python3 - "$ROOT" <<'PY'
+import pathlib, sys
+try:
+    import yaml
+except ImportError:
+    print("SKIP PyYAML is not installed"); sys.exit(0)
+root = pathlib.Path(sys.argv[1])
+want = {"key": "node.cilium.io/agent-not-ready", "operator": "Exists", "effect": "NoSchedule"}
+def docs(p):
+    return [d for d in yaml.safe_load_all(p.read_text()) if d] if p.is_file() else []
+
+pol_dir = root / "security/gcp-0/sandbox-policies"
+kust = docs(pol_dir / "kustomization.yaml")
+pols = [d for r in (kust[0].get("resources", []) if kust else []) for d in docs(pol_dir / r)
+        if d.get("kind") == "ClusterPolicy"]
+if not pols:
+    print("FAIL no Kyverno ClusterPolicy in security/gcp-0/sandbox-policies")
+for pol in pols:
+    rules = [r for r in pol["spec"].get("rules", []) if "mutate" in r]
+    ok = False
+    for r in rules:
+        pre = r.get("preconditions", {}).get("all", [])
+        gvisor = any("runtimeClassName" in str(c.get("key")) and c.get("operator") == "Equals"
+                     and c.get("value") == "gvisor" for c in pre)
+        patch = yaml.safe_load(r["mutate"].get("patchesJson6902", "[]")) or []
+        adds = any(p.get("op") == "add" and p.get("path") == "/spec/tolerations/-" and p.get("value") == want
+                   for p in patch)
+        ok = ok or (gvisor and adds)
+    if not ok:
+        print(f"FAIL {pol['metadata']['name']}: no rule adds {want} to pods with runtimeClassName gvisor")
+    if pol["metadata"].get("annotations", {}).get("pod-policies.kyverno.io/autogen-controllers") != "none":
+        print(f"FAIL {pol['metadata']['name']}: autogen must be off, or it patches Deployment templates")
+
+wired = [d for p in (root / "clusters/gcp-0").rglob("*.yaml") for d in docs(p)
+         if d.get("kind") == "Kustomization" and str(d.get("spec", {}).get("path", "")).rstrip("/") == "./security/gcp-0/sandbox-policies"]
+if not wired:
+    print("FAIL no gcp-0 Flux Kustomization applies security/gcp-0/sandbox-policies")
+for k in wired:
+    if "security" not in [x.get("name") for x in k["spec"].get("dependsOn", [])]:
+        print(f"FAIL {k['metadata']['name']} must dependsOn security, which health-checks kyverno")
+
+probe = docs(root / "scripts/ops/k8s/gvisor-smoke.yaml")
+if not probe:
+    print("FAIL no scripts/ops/k8s/gvisor-smoke.yaml")
+for d in probe:
+    if d.get("kind") == "CiliumNetworkPolicy" and d["spec"].get("ingress") != [{}]:
+        print("FAIL the probe's CNP must deny ingress with the `- {}` idiom")
+    if d.get("kind") == "Pod":
+        s = d["spec"]
+        if want not in s.get("tolerations", []):
+            print("FAIL the probe does not tolerate the Cilium startup taint")
+        if not s.get("activeDeadlineSeconds"):
+            print("FAIL the probe has no activeDeadlineSeconds")
+        if '!= "4.4.0"' not in "".join(s["containers"][0].get("command", [])):
+            print("FAIL the probe does not assert it runs under gVisor (release 4.4.0)")
+PY
+)"
+case "$out" in SKIP*) echo "${out#SKIP }"; exit 77 ;; esac
+[ -n "$out" ] && printf '%s\n' "$out" >&2
+fails=$((fails + $(printf '%s\n' "$out" | grep -c '^FAIL')))
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
 ```
@@ -2967,8 +3090,8 @@ echo PASS
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `bash scripts/ci/tests/test-gcp-agents-pool.sh; echo "exit $?"`
-Expected: `FAIL no …/sandbox.tf`, the socketLB failure, one line per toleration file, and the missing probe,
-then `exit 1`.
+Expected: `FAIL no …/sandbox.tf`, the socketLB failure, one line per toleration file, then the parsed checks:
+no ClusterPolicy, no Flux wiring, no probe; then `exit 1`. Without PyYAML the parsed half says SKIP (exit 77).
 
 - [ ] **Step 3: Implement**
 
@@ -2976,9 +3099,11 @@ then `exit 1`.
 
 ```hcl
 # The agents' GKE Sandbox pool (GCP parity GP-10). 2 x e2-standard-8 = 16 vCPU /
-# 64 GiB, aws-0's agents-gvisor limits. The NAP ceiling
-# (autoscaling_max_cpu_cores = 32) counts these nodes too: with the static pool
-# (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the ceiling if one starves.
+# 64 GiB, aws-0's agents-gvisor limits. Not e2-standard-4: an AgentRun of size
+# `large` requests 4 vCPU (the XRD's size table), more than its ~3.9 allocatable.
+# The NAP ceiling (autoscaling_max_cpu_cores = 32) counts these nodes too: with
+# the static pool (8-12 vCPU) at its max, NAP classes keep 4-8 vCPU. Raise the
+# ceiling if one starves.
 variable "agents_pool_machine_type" {
   description = "Machine type of the agents-gvisor GKE Sandbox pool"
   type        = string
@@ -3029,7 +3154,7 @@ resource "google_container_node_pool" "agents_gvisor" {
     image_type      = "COS_CONTAINERD"
     spot            = true
     disk_size_gb    = var.node_disk_size_gb
-    disk_type       = "pd-balanced"
+    disk_type       = "pd-standard"
     service_account = module.gke.service_account
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
     labels          = local.labels
@@ -3051,7 +3176,10 @@ resource "google_container_node_pool" "agents_gvisor" {
     }
 
     # Same as the static pool: nothing schedules before Cilium is ready, and
-    # Cilium clears it. GKE adds its own sandbox taint.
+    # Cilium clears it. GKE adds its own sandbox taint. The pool scales from
+    # zero only for a pod that tolerates this taint (ADR-0006, as on every
+    # ComputeClass): gVisor pods get the toleration from the Kyverno policy in
+    # security/gcp-0/sandbox-policies.
     taint {
       key    = "node.cilium.io/agent-not-ready"
       value  = "true"
@@ -3069,12 +3197,84 @@ resource "google_container_node_pool" "agents_gvisor" {
 ```yaml
 # gVisor's netstack sends packets from the Sentry and never calls connect() in
 # the host kernel, so socket-LB cannot translate a ClusterIP for a GKE Sandbox
-# pod; per-packet LB in the pod namespace does (GCP parity GP-11). aws-0 runs the
-# same value, for Tailscale (tailscale#15478). Proved on gcp-0 by the gVisor
-# smoke probe (scripts/ops/k8s/gvisor-smoke.yaml) and the gateway checks.
+# pod; per-packet LB in the pod namespace does (GCP parity GP-11). The chart has
+# already forced this since 1.20 whenever gatewayAPI.enabled (for TCPRoute
+# weights); it is set here so gVisor does not depend on that coupling. aws-0
+# sets it too, for Tailscale (tailscale#15478).
 socketLB:
   hostNamespaceOnly: true
 ```
+
+The value is a no-op on today's render (Ruling Z2): Cilium 1.20's `cilium-configmap.yaml` already sets
+`bpf-lb-sock-hostns-only: "true"` with `gatewayAPI.enabled`, and gcp-0 has been on 1.20 since #1693. So no
+fan-out of socket-LB checks follows it; Phase 8 keeps the gVisor probe and the negative Gateway check (8.5).
+
+**The toleration (Ruling Z1).** The pool keeps Cilium's startup taint, as every ComputeClass does (ADR-0006).
+GKE's autoscaler provisions a node only for a pod that tolerates every taint the node will carry, and GKE's
+`gvisor` RuntimeClass adds only its own sandbox toleration: without this policy no gVisor pod scales the pool
+up. The composition stays cloud-neutral.
+
+`security/gcp-0/sandbox-policies/gvisor-cilium-toleration.yaml`:
+
+```yaml
+# The agents-gvisor pool (opentofu/gcp/gke/init/sandbox.tf) carries Cilium's
+# startup taint and scales from zero. GKE's autoscaler provisions a node only
+# for a pod that tolerates every taint the node will carry (ADR-0006), and GKE's
+# `gvisor` RuntimeClass adds only its own sandbox toleration, so without this
+# no gVisor pod ever scales the pool up. aws-0 needs no equivalent: Karpenter
+# ignores startupTaints when it simulates scheduling.
+#
+# A mutation, unlike agent-policies' validate-only rule, because this is the
+# cloud's node shape rather than a composition bug to surface; the AgentRun
+# composition stays cloud-neutral.
+#
+# JSON6902 append rather than a strategic merge: tolerations have no merge key,
+# so a merge would replace GKE's sandbox toleration. The list always exists by
+# admission time (the RuntimeClass and DefaultTolerationSeconds plugins run
+# before webhooks). Autogen is off so no Deployment template is ever patched.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: gvisor-tolerate-cilium-startup-taint
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: none
+    policies.kyverno.io/title: gVisor pods tolerate Cilium's startup taint
+    policies.kyverno.io/description: >-
+      Adds the node.cilium.io/agent-not-ready toleration to every pod that runs
+      under RuntimeClass gvisor, so GKE scales the agents-gvisor pool from zero.
+spec:
+  background: false
+  rules:
+    - name: tolerate-cilium-agent-not-ready
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              operations: [CREATE]
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.runtimeClassName || '' }}"
+            operator: Equals
+            value: gvisor
+          - key: node.cilium.io/agent-not-ready
+            operator: AnyNotIn
+            value: "{{ request.object.spec.tolerations[].key || `[]` }}"
+      mutate:
+        patchesJson6902: |-
+          - op: add
+            path: /spec/tolerations/-
+            value:
+              key: node.cilium.io/agent-not-ready
+              operator: Exists
+              effect: NoSchedule
+```
+
+`security/gcp-0/sandbox-policies/kustomization.yaml` lists that one file. The Flux Kustomization
+`clusters/gcp-0/security/security-sandbox-policies.yaml` applies it, **always on** (the pool exists whether or not
+the agent platform runs), from `security-artifact`, path `./security/gcp-0/sandbox-policies`, with
+`dependsOn: [{name: security}]`: `security` health-checks the kyverno HelmRelease, so the policy lands on a
+running Kyverno. The mutate is CREATE-only with `background: false`, so a pod admitted before the policy exists
+is never fixed: Task 6.7's `agent-sandbox` child depends on this Kustomization.
 
 In each file Step 1 listed, next to the `agents.ogenki.io/runtime` toleration, add:
 
@@ -3091,7 +3291,10 @@ Indent it like its neighbour, and add a comment line: `# gcp-0's GKE Sandbox tai
 
 ```yaml
 # gVisor smoke probe for gcp-0 (GCP parity Task 8.5). Proves in one pod:
-#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass;
+#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass and the
+#     Cilium-taint toleration (security/gcp-0/sandbox-policies adds it to every
+#     gVisor pod; written here too so the probe runs before that policy lands);
+#   - the pod runs under gVisor: it exits non-zero unless uname reports 4.4.0;
 #   - threads start under RuntimeDefault seccomp (the AWS spike's clone3 trap);
 #   - DNS through kube-dns's ClusterIP and a TCP connection to a ClusterIP work,
 #     i.e. per-packet LB (socketLB.hostNamespaceOnly).
@@ -3113,7 +3316,8 @@ spec:
   endpointSelector:
     matchLabels:
       app.kubernetes.io/name: gvisor-smoke
-  ingress: []
+  ingress:
+    - {}
   egress:
     - toEndpoints:
         - matchLabels:
@@ -3145,8 +3349,13 @@ metadata:
 spec:
   runtimeClassName: gvisor
   restartPolicy: Never
+  activeDeadlineSeconds: 900
   automountServiceAccountToken: false
   enableServiceLinks: false
+  tolerations:
+    - key: node.cilium.io/agent-not-ready
+      operator: Exists
+      effect: NoSchedule
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -3160,12 +3369,15 @@ spec:
         - python3
         - -c
         - |
-          import os, socket, threading
+          import os, socket, sys, threading
+          release = os.uname().release
+          if release != "4.4.0":
+              sys.exit(f"not under gVisor: release={release}")
           ts = [threading.Thread(target=lambda: None) for _ in range(4)]
           [t.start() for t in ts]; [t.join() for t in ts]
           ip = socket.getaddrinfo("kubernetes.default.svc.cluster.local.", 443, proto=socket.IPPROTO_TCP)[0][4][0]
           socket.create_connection((ip, 443), timeout=5).close()
-          print(f"threads={len(ts)} dns=ok tcp=ok release={os.uname().release}")
+          print(f"threads={len(ts)} dns=ok tcp=ok release={release}")
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 200m, memory: 128Mi}
@@ -3182,13 +3394,45 @@ Run: `bash scripts/ci/tests/test-gcp-agents-pool.sh && tofu -chdir=opentofu/gcp/
 Expected: `PASS`, `Success! The configuration is valid.`, trivy exit 0. On a trivy finding against
 `google_container_node_pool.agents_gvisor`, set the attribute it names rather than ignoring it. If
 `module.gke.service_account` or `module.gke.location` is not an output of module v45, `validate` names it:
-use `module.gke.name`'s sibling output that `outputs.tf` already reads for the cluster location.
+use `module.gke.name`'s sibling output that `outputs.tf` already reads for the cluster location. Then
+`./scripts/ci/validate-manifests.sh`: `Invalid: 0, Skipped: 0`, and the ClusterPolicy renders in
+`overlay-security-gcp-0-sandbox-policies.yaml`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add opentofu/gcp/gke/init scripts/ops/k8s/gvisor-smoke.yaml scripts/ci/tests/test-gcp-agents-pool.sh observability infrastructure security
+git add opentofu/gcp/gke/init scripts/ops/k8s/gvisor-smoke.yaml scripts/ci/tests/test-gcp-agents-pool.sh observability infrastructure security \
+  clusters/gcp-0/security/security-sandbox-policies.yaml
 git commit -m "feat(gcp): a GKE Sandbox pool for agent runs, and per-packet LB for gVisor"
+```
+
+- [ ] **Step 6: Commit B, the metadata server by CIDR on gcp-0 (Ruling Z3)**
+
+On GKE, `169.254.169.254` is DNAT'ed to gke-metadata-server **after** Cilium classifies it as `world`, so a
+`toEntities: [host]` rule never matches. gcp-0's barman plugin and `openbao-snapshot` relied on it; RunLore and
+image-gallery already use `toCIDR` (live-proven, #1862). The GCP lineage depends on the snapshot job.
+
+- `infrastructure/gcp-0/cloudnative-pg-barman-plugin/network-policy-patch.yaml`: the metadata rule becomes
+  `toCIDR: [169.254.169.254/32]` on TCP 80, RunLore's shape.
+- `security/gcp-0/openbao-snapshot/network-policy-patch.yaml`, a JSON6902 patch wired into that overlay's
+  `kustomization.yaml`: `test /spec/egress/1/toEntities == [host]`, then `replace /spec/egress/1` with the
+  `toCIDR` rule. The `test` op fails the build if base reorders its rules.
+- The base openbao-snapshot CNP comment scopes `host` to EKS and points at the gcp-0 patch; the same for
+  `clusters/gcp-0/security/security-openbao-snapshot.yaml` and `website/content/docs/platform/security/policies.md`.
+- `security/AGENTS.md` rule 3 splits into EKS (`host`, `169.254.170.23:80`) and GKE (`toCIDR 169.254.169.254/32:80`).
+- `scripts/ci/tests/test-gcp-metadata-server-cidr.py` (`# requires: python3 kustomize`): builds every path a gcp-0
+  Flux Kustomization applies, fails on a CNP egress to `host` with port 80 or no ports, and requires both known
+  consumers to carry the `toCIDR` rule, so it cannot pass vacuously. Chart-rendered CNPs are out of its reach;
+  6.8's gate covers them.
+
+Run: `python3 scripts/ci/tests/test-gcp-metadata-server-cidr.py && ./scripts/ci/validate-manifests.sh`
+Expected: `PASS (<n> gcp-0 paths built)`, then `Invalid: 0, Skipped: 0`.
+
+```bash
+git add infrastructure/gcp-0/cloudnative-pg-barman-plugin security/gcp-0/openbao-snapshot security/base/openbao-snapshot \
+  clusters/gcp-0/security/security-openbao-snapshot.yaml security/AGENTS.md website/content/docs/platform/security/policies.md \
+  scripts/ci/tests/test-gcp-metadata-server-cidr.py
+git commit -m "fix(gcp): workloads reach the metadata server by CIDR, not the host entity"
 ```
 
 ### Task 6.4: The AgentRun XRD and Kyverno reach gcp-0
@@ -3207,8 +3451,9 @@ git commit -m "feat(gcp): a GKE Sandbox pool for agent runs, and per-packet LB f
 
 - [ ] **Step 1: The grant allowlist is not triggered**
 
-Run: `git -C /home/smana/Sources/crossplane-configuration fetch origin && git -C /home/smana/Sources/crossplane-configuration diff origin/main origin/feat/agentrun-observability -- 'apis/*/kcl/*.k' | grep -E '^\+.*roles/' || echo "no new GCP role"`
+Run, with `CC` set to a crossplane-configuration checkout: `git -C "$CC" fetch origin --tags && git -C "$CC" diff v0.7.0 origin/feat/agentrun-observability -- 'apis/*/kcl/*.k' | grep -E '^\+.*roles/' || echo "no new GCP role"`
 Expected: `no new GCP role`. `feat/agentrun-observability` is CC-O1, the PR behind the `pr31` pre-release (GP-25).
+The diff starts at `v0.7.0`, gcp-0's pin before this task, not at `origin/main` (W3).
 A new `roles/…` needs its allowlist entry in `opentofu/gcp/gke/init/iam.tf` (memory
 `gcp_crossplane_grant_allowlist_contract`; Task 3.2b's test covers `bucketRoles`).
 
@@ -3242,7 +3487,7 @@ echo PASS
 
 Run: `bash scripts/ci/tests/test-gcp-agent-prereqs.sh; echo "exit $?"`
 Expected, on H-1's tree:
-- `FAIL crossplane-configuration pins differ: aws=v0.7.1 gcp=v0.7.0`;
+- `FAIL crossplane-configuration pins differ: aws=v0.7.2-pr30.7e3211e gcp=v0.7.0` (H-1 pins CC-H1's pre-release, W3);
 - `FAIL the gcp pin v0.7.0 predates the AgentRun XRD`;
 - `FAIL gcp-0's security Kustomization has no Kyverno`;
 - the health-check failure;
@@ -3263,17 +3508,25 @@ Expected: three `sha256:` digests. crossplane-configuration's pre-release job ru
 Ask CC-O1's owner to re-run the job; no CC change is needed. A missing tag altogether means CC-O1 moved on:
 take the newest `v0.7.2-pr31.*` tag from that PR's checks and use it everywhere below.
 
+The XRD CRDs artifact must exist too (W3): H-1's `fetch-xrd-crds.sh` reads the **aws** pin and `flux pull`s it in
+CI. It is an OCI artifact, not an image, so check the manifest only:
+`skopeo inspect --raw docker://ghcr.io/smana/crossplane-configuration-xrd-crds:v0.7.2-pr31.988146f >/dev/null && echo XRD-CRDS-OK`
+→ `XRD-CRDS-OK`. Step 5's `validate-manifests.sh` run with `XRD_CRDS_FILE` is the authoritative pull.
+
 Set `package:` in **both** `configuration-aws/configuration-packages.yaml` and
-`configuration-gcp/configuration-packages.yaml` to `ghcr.io/smana/crossplane-configuration-<cloud>:v0.7.2-pr31.988146f`,
-each with the line comment `# pre-release carrying the AgentRun XRD (GCP parity GP-25); Phase 7 swaps in the release`.
+`configuration-gcp/configuration-packages.yaml` to `ghcr.io/smana/crossplane-configuration-<cloud>:v0.7.2-pr31.988146f`.
+The gcp line gets the comment `# pre-release carrying the AgentRun XRD (GCP parity GP-25); Phase 7 swaps in the release.`
+The aws line keeps H-1's B2 rationale, re-worded for the new pin: `# CC-O1's pre-release
+(crossplane-configuration#31): carries the XRD CRDs the evidence gate (B2) uses. Phase 7 re-pins to a release tag.`
 
 In `security/gcp-0/controllers/kustomization.yaml`, add `- ../../base/kyverno` first in `resources`, and extend
 the header's resource commentary with:
 "kyverno: agent-policies' admission and GC need it (GCP parity), as aws-0's security does; its chart admits
 nothing in ../openbao."
 
-In `clusters/gcp-0/security/security.yaml`, add to `healthChecks`, as `clusters/aws-0/security/security.yaml`
-has it:
+In `clusters/gcp-0/security/security.yaml`, the header's first line becomes "External Secrets, cert-manager and
+Kyverno", its "does not run yet" list goes (rbac, tailscale-operator and openbao-snapshot come from their own gcp-0
+overlays), and `healthChecks` gains, as `clusters/aws-0/security/security.yaml` has it:
 
 ```yaml
     - apiVersion: helm.toolkit.fluxcd.io/v2
@@ -3319,7 +3572,9 @@ git commit -m "feat(gcp): AgentRun's pre-release package and Kyverno on gcp-0"
   `./infrastructure/base/vllm-semantic-router`, which 6.8's `check_umbrellas` rejects.
 
 **Interfaces:** Produces the bundle files `overlay-<area>-{aws-0,gcp-0}-<name>.yaml`, each substituted with
-its own cloud's fixture. The base render roots for these seven disappear.
+its own cloud's fixture. The base bundles stay, rendered with the AWS fixture: `render-bundle.py` keeps any
+top-most directory as a root, and `{infrastructure,security,observability}/base` have no `kustomization.yaml`.
+Harmless to the gates; do not assert that they disappear (W4).
 
 - [ ] **Step 1: The failing check**
 
@@ -3443,9 +3698,11 @@ git commit -m "feat(ci): one render root per cloud for every substituted agent b
     → `clusters/gcp-0-ai-gateway/`;
   - `infrastructure/aws-0/envoy-gateway/{kvstore.yaml,externalsecret-ratelimit-valkey.yaml,network-policy-ratelimit.yaml,vmpodscrape-ratelimit.yaml,helmrelease-ratelimit.yaml}`
     → `infrastructure/base/envoy-gateway-ratelimit/`
-- Modify: `clusters/gcp-0/llm-platform.yaml`, `clusters/gcp-0-llm-platform/kustomization.yaml`,
+- Modify: `clusters/gcp-0/llm-platform.yaml`, `clusters/gcp-0-llm-platform/{kustomization.yaml,README.md}` (the
+  README still lists the three moved children, and the kustomization header says "Six children": W4),
   `infrastructure/{aws-0,gcp-0}/envoy-gateway/kustomization.yaml`,
-  `clusters/gcp-0-ai-gateway/infrastructure-envoy-gateway.yaml`
+  `clusters/gcp-0-ai-gateway/infrastructure-envoy-gateway.yaml`,
+  `infrastructure/base/envoy-gateway/network-policy.yaml` (its "rate-limit only on aws-0" comment is now false)
 
 **Interfaces:** Produces the Flux Kustomization `ai-gateway` on gcp-0 (`suspend: true`, `deletionPolicy: Orphan`),
 with the children `envoy-gateway`, `envoy-ai-gateway`, `vllm-semantic-router` and `llm-gateway`, names
@@ -3553,7 +3810,8 @@ resources:
 # test-only commit.
 #
 # deletionPolicy Orphan: removing this object must not uninstall Envoy Gateway
-# and every Gateway on the cluster.
+# and every Gateway on the cluster. Teardown order: clusters/aws-0-ai-gateway/README.md,
+# with the gcp-0 paths.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -3584,7 +3842,12 @@ add under `spec` (before `path`):
 ```
 
 In its *Full teardown* comment, the `flux delete kustomization` list keeps only `llm-platform-apps`,
-`llm-platform-security-wi` and `llm-platform-promptfoo`.
+`llm-platform-security-wi` and `llm-platform-promptfoo`. Update `clusters/gcp-0-llm-platform/README.md`'s child
+list and the kustomization's "Six children" header to the three that stay (W4).
+
+`llm-gateway` on gcp-0 reads `openbao-platform` key `runlore/credentials` for its `zai-api-key` ExternalSecret;
+that key arrives only through Task 8.3's `migrate`. Until then the ExternalSecret reports `SecretSyncedError` and
+the frontier tier returns 5xx. Phase 8 checks it (8.3 Step 4a); nothing changes here.
 
 - [ ] **Step 3: Run the check to see it pass**
 
@@ -3595,7 +3858,7 @@ check-substitution exit 0.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add clusters/gcp-0 clusters/gcp-0-ai-gateway clusters/gcp-0-llm-platform infrastructure/base/envoy-gateway-ratelimit infrastructure/aws-0/envoy-gateway infrastructure/gcp-0/envoy-gateway
+git add clusters/gcp-0 clusters/gcp-0-ai-gateway clusters/gcp-0-llm-platform infrastructure/base/envoy-gateway-ratelimit infrastructure/aws-0/envoy-gateway infrastructure/gcp-0/envoy-gateway infrastructure/base/envoy-gateway/network-policy.yaml
 git commit -m "feat(gcp): gcp-0's ai-gateway umbrella, with the rate limit its budgets need"
 ```
 
@@ -3605,7 +3868,8 @@ git commit -m "feat(gcp): gcp-0's ai-gateway umbrella, with the rate limit its b
 - Create: `clusters/gcp-0/agent-platform.yaml`, and in `clusters/gcp-0-agent-platform/`: `kustomization.yaml`,
   `infrastructure-agent-sandbox.yaml`, `infrastructure-agent-runtime.yaml`, `security-agent-policies.yaml`,
   `security-agent-secrets.yaml`, `infrastructure-agent-router.yaml`, `security-octo-sts.yaml`,
-  `infrastructure-agent-mcp.yaml`, `observability-agent-platform.yaml`
+  `infrastructure-agent-mcp.yaml`, `observability-agent-platform.yaml`, and `README.md` (W4: the doc-claim's page,
+  saying "suspended by default")
 - Modify: `.doc-claims.yaml`
 
 **Interfaces:** Produces the Flux Kustomization `agent-platform` on gcp-0 (`suspend: true`, dependsOn
@@ -3637,6 +3901,8 @@ spec:
   prune: true
   interval: 1m0s
   timeout: 5m0s
+  # A sibling of clusters/gcp-0/, never a sub-path: flux-system syncs that tree
+  # recursively and would apply the children around this suspend.
   path: ./clusters/gcp-0-agent-platform
   sourceRef:
     kind: GitRepository
@@ -3683,11 +3949,22 @@ changes:
 | `observability-agent-platform.yaml` | `./observability/gcp-0/agent-platform` | `gke-gcp-0-vars` |
 
 Names, `dependsOn`, health checks, intervals and header comments stay identical. Copy them rather than
-retyping.
+retyping. **One gcp-0-only difference** (G-5 Task 6.7 fix round): `infrastructure-agent-sandbox.yaml` also
+`dependsOn: security-sandbox-policies` (Task 6.3). The toleration mutate is CREATE-only with `background: false`,
+so a run pod admitted on a fresh gcp-0 before that policy exists would stay Pending forever. Keep the umbrella's
+"a sibling of clusters/gcp-0/, never a sub-path" guard comment on `path:`, as `ai-gateway.yaml` has it.
 
-In `.doc-claims.yaml`, find the claim H-1 Task 0.5.9 added for aws-0's umbrellas
-(`grep -n 'agent-platform' .doc-claims.yaml`). Add a sibling claim of the same shape for
-`clusters/gcp-0/agent-platform.yaml` and `clusters/gcp-0/ai-gateway.yaml` holding `suspend: true`.
+In `.doc-claims.yaml`, find the claims H-1 Task 0.5.9 added for aws-0's umbrellas
+(`grep -n 'umbrella-suspended' .doc-claims.yaml`). A claim has **one** `source.file`, so add **two** sibling
+claims of the same shape (W4): one for `clusters/gcp-0/agent-platform.yaml`, whose page is the new
+`clusters/gcp-0-agent-platform/README.md` (`must_contain: suspended by default`), and one for
+`clusters/gcp-0/ai-gateway.yaml`, which can reuse `website/data/repo-tree.yaml` as its page.
+
+`clusters/gcp-0-agent-platform/README.md` says the umbrella is suspended by default, lists the eight children and
+what gcp-0 lacks against aws-0 (no node pool or RuntimeClass child), and carries a *Resume* section with gcp-0's
+prerequisites (G-5 Task 6.7 fix round): apply `gcp/openbao/management` then `gke/configure` from an
+`integration/agent-factory` checkout (the `agents` mount and the `agents-secrets` role), write the three agent
+keys to the `agents` mount (Task 8.6 Step 1), and the branch ruleset the runbooks rely on.
 
 - [ ] **Step 3: Run the check to see it pass**
 
@@ -3710,7 +3987,8 @@ git commit -m "feat(gcp): gcp-0's agent-platform umbrella"
 
 **Interfaces:** Produces `assert-cloud-shape.py BUNDLE_DIR [ROOT]`, with importable
 `check_bundle(bundle_dir) -> list[str]` and `check_umbrellas(root) -> list[str]`. It exits 1 on any problem,
-and prints `==> cloud shape: N gcp-0 overlay(s), M umbrella child(ren), 0 problem(s)`.
+and prints `==> cloud shape: N gcp-0 overlay(s), M umbrella child(ren), 0 problem(s)`. It also asserts that
+gcp-0's envoy-gateway renders the rate-limit `KVStore` while `llm-gateway` is an umbrella child (6.6 review).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3938,115 +4216,21 @@ git add scripts/ci/flux-schema/assert-cloud-shape.py scripts/ci/tests/flux-schem
 git commit -m "feat(ci): gate gcp-0's agent renders on GKE-shaped values"
 ```
 
-### Task 6.9: The runbooks on gcp-0; gates and PR G-5
+### Task 6.9: Gates and PR G-5
 
-**Files:**
-- Modify: `docs/runbooks/agent-factory/{README.md,01-runtime-sandbox.md,02-identity-tokens.md,03-egress.md,04-gateway-secrets-budgets.md,05-github-octo-sts.md,06-mcp.md,07-end-to-end.md,08-observability.md}`
-- Create: `scripts/ci/tests/test-runbooks-gcp.py`
+**Ruling W2.** The runbook retarget this task used to carry moved to Task 7.2: the runbooks live only on
+`integration/agent-factory`. G-5's PR opens right after Task 6.8, with the gates below.
 
-**Interfaces:** Produces runbooks whose every command targets gcp-0. Past rounds' results stay as history.
+**Files:** none new. **Interfaces:** Produces the G-5 draft PR.
 
-- [ ] **Step 1: Write the failing test**
-
-`scripts/ci/tests/test-runbooks-gcp.py`:
-
-```python
-#!/usr/bin/env python3
-# requires: python3
-"""Every command in the agent-factory runbooks targets gcp-0 (GCP parity).
-Only fenced code is judged: past rounds' prose and results stay as history."""
-import pathlib
-import re
-import sys
-
-ROOT = pathlib.Path(__file__).resolve().parents[3]
-AWSISMS = re.compile(r"priv\.aws\.ogenki\.io|opentofu/aws/|eks-aws-0|jwt/aws-0|\baws (sts|secretsmanager|ssm)\b|karpenter_nodepools|auth\.cloud\.ogenki\.io")
-fails = []
-for f in sorted((ROOT / "docs/runbooks/agent-factory").glob("*.md")):
-    fenced = False
-    for n, line in enumerate(f.read_text().splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced and AWSISMS.search(line):
-            fails.append(f"{f.name}:{n}: {line.strip()}")
-for x in fails:
-    print("FAIL", x)
-if fails:
-    sys.exit(1)
-print("PASS")
-```
-
-- [ ] **Step 2: Run it to see it fail**
-
-Run: `python3 scripts/ci/tests/test-runbooks-gcp.py | tail -3; echo "exit ${PIPESTATUS[0]}"`
-Expected: `FAIL` lines across README, 02, 04, 05 and 08, then `exit 1`.
-
-- [ ] **Step 3: Retarget**
-
-In fenced code, everywhere:
-
-| Replace | With |
-|---|---|
-| `priv.aws.ogenki.io` | `priv.gcp.ogenki.io` |
-| `opentofu/aws/openbao/management/.tls/ca.pem` | `opentofu/gcp/openbao/management/.tls/ca.pem` |
-| `eks-aws-0-vars` | `gke-gcp-0-vars` |
-| `jwt/aws-0` | `jwt/gcp-0` |
-| `auth.cloud.ogenki.io` | `auth.gcp.cloud.ogenki.io` |
-| `aws sts get-caller-identity` | `gcloud auth application-default print-access-token >/dev/null && echo ADC-OK` |
-
-Specific rewrites:
-- **`README.md`**
-  - Title: `# Agent Factory live test session — gcp-0`.
-  - *Prerequisites*:
-    - Tailscale reaching `*.priv.gcp.ogenki.io`;
-    - gcloud ADC plus AWS credentials (the shared stacks only);
-    - context `gke_ogenki-435905_europe-west4-a_gcp-0`;
-    - `VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200`;
-    - VictoriaLogs at `https://vl.priv.gcp.ogenki.io`.
-  - *Runbook 00*: gcp-0 tracks `integration/agent-factory` (the parity plan's first deploy).
-  - Owner action 1 is done by G-5: the `agents-secrets` policy and role are in the stacks.
-  - Actions 2 and 4 become `bao kv put -mount=agents zai api_key=-` and
-    `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`.
-  - New action 4b: `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem file>`.
-  - Add the note: "These three keys are the platform's one owner-written exception: GitHub and Z.ai issue
-    them, and the AWS snapshot cannot be restored across KMS seals (GCP parity). Once per GCP lineage."
-  - The footgun: "Deploy `*/openbao/management` and `gke/configure` only from an `integration/agent-factory`
-    checkout, with `TF_VAR_flux_git_ref`: from `main`, the `agents` mount is destroyed and the agent platform
-    pruned."
-  - The *Out of scope* line about "The gcp-0 follow-up is a separate, unscoped design" goes.
-  - A new *Status* line: "Retargeted to gcp-0 on 2026-09-29 (GCP parity plan); rounds 1–6 below ran on aws-0."
-- **`04-gateway-secrets-budgets.md`**: Step 3's probes use `jwt/gcp-0` and `agents/data/zai`, and expect
-  `read`, `deny`, `deny`, `deny` for `agents/data/zai`, `platform/data/agents/zai`, `platform/data/llm/zai`,
-  `apps/data/anything`.
-- **`05-github-octo-sts.md`**: the App key is at `github-app` on the `agents` mount. The trust policy accepts
-  gcp-0's GKE issuer (G-0).
-- **`08-observability.md`**: the pool check becomes
-
-  ```bash
-  kubectl get nodes -l sandbox.gke.io/runtime=gvisor --no-headers | wc -l
-  gcloud container node-pools describe agents-gvisor --cluster gcp-0 --location europe-west4-a \
-    --project ogenki-435905 --format='value(autoscaling.maxNodeCount)'
-  ```
-
-  with Expected `1` while a run is live and `2` for the maximum. The Karpenter panel is noted as empty on
-  gcp-0 (GP-17).
-
-- [ ] **Step 4: Run it to see it pass**
-
-Run: `python3 scripts/ci/tests/test-runbooks-gcp.py && ./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
-Expected: `PASS`, then exit 0 twice.
-
-- [ ] **Step 5: Every gate**
+- [ ] **Step 1: Every gate**
 
 Run: `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh && ./scripts/ci/validate-vmrules.sh && ./scripts/ci/validate-doc-claims.sh && ./scripts/ci/validate-idp-topology.sh && ./scripts/ci/validate-openbao-policies.sh && python3 scripts/ci/flux-schema/check-substitution.py && task check`
 Expected: `Invalid: 0, Skipped: 0` with `==> cloud shape: … 0 problem(s)`, then every command exit 0.
 
-- [ ] **Step 6: Commit and open G-5 as a draft**
+- [ ] **Step 2: Open G-5 as a draft**
 
 ```bash
-git add docs/runbooks/agent-factory scripts/ci/tests/test-runbooks-gcp.py
-git commit -m "docs(runbooks): the agent-factory runbooks target gcp-0"
 git merge origin/main
 git push -u origin feat/gcp-agent-platform
 ```
@@ -4054,11 +4238,12 @@ git push -u origin feat/gcp-agent-platform
 Run `create-pr` as a **draft**, base `fix/agent-review-hardening`. Title:
 `feat(agents): the agent platform on gcp-0 (GCP parity)`. The body:
 - links the spec and plan;
-- names G-1 to G-3 as merged-in prerequisites (the diff narrows once they reach `main`), and says G-4 is
-  deliberately absent (GP-16);
+- names G-1 to G-3 as prerequisites already on `main` (#2123, #2125, #2126), and says G-4 is deliberately
+  absent (GP-16);
 - names M1's move from SP2 S1 (GP-8);
 - gives the Phase 7 position `#2111 → H-1 → G-5 → O-1 → S1`;
 - says **programme stack: nothing merges before the owner's UX sign-off** (P33);
+- says the runbook retarget is on `integration/agent-factory` (Task 7.2, W2), not in this PR;
 - carries a *Live evidence* section that Tasks 8.5 and 8.6 fill in.
 
 Run: `gh pr checks <G-5> --watch`
@@ -4114,9 +4299,138 @@ Expected: `Invalid: 0, Skipped: 0`, `gcp hosts, all other clouds suspended.`, an
 Run: `git push origin integration/agent-factory && git log -1 --format='%h %s' origin/integration/agent-factory`
 Expected: the test-only commit.
 
+### Task 7.2: The runbooks on gcp-0 (integration branch, Ruling W2)
+
+The runbooks exist only on `integration/agent-factory` (the owner declined moving them to `main`, SP2 Δ7), so
+this task runs there, beside Task 7.1, and is never on a PR branch. On G-5 the test below would pass on zero
+files, which is why it now refuses fewer than nine.
+
+**Files** (integration branch only):
+- Modify: `docs/runbooks/agent-factory/{README.md,01-runtime-sandbox.md,02-identity-tokens.md,03-egress.md,04-gateway-secrets-budgets.md,05-github-octo-sts.md,06-mcp.md,07-end-to-end.md,08-observability.md}`
+- Create: `scripts/ci/tests/test-runbooks-gcp.py`
+
+**Interfaces:** Produces runbooks whose every command targets gcp-0. Past rounds' results stay as history.
+
+- [ ] **Step 1: Worktree, then write the failing test**
+
+Work in Task 7.1's `integration/agent-factory` worktree, after its Step 4 push.
+
+`scripts/ci/tests/test-runbooks-gcp.py`:
+
+```python
+#!/usr/bin/env python3
+# requires: python3
+"""Every command in the agent-factory runbooks targets gcp-0 (GCP parity).
+Only fenced code is judged: past rounds' prose and results stay as history."""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+AWSISMS = re.compile(r"priv\.aws\.ogenki\.io|opentofu/aws/|eks-aws-0|jwt/aws-0|\baws (sts|secretsmanager|ssm)\b|karpenter_nodepools|auth\.cloud\.ogenki\.io")
+fails = []
+files = sorted((ROOT / "docs/runbooks/agent-factory").glob("*.md"))
+if len(files) < 9:
+    sys.exit(f"FAIL {len(files)} runbooks found, expected README and 01-08: nothing was checked")
+for f in files:
+    fenced = False
+    for n, line in enumerate(f.read_text().splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced and AWSISMS.search(line):
+            fails.append(f"{f.name}:{n}: {line.strip()}")
+for x in fails:
+    print("FAIL", x)
+if fails:
+    sys.exit(1)
+print("PASS")
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `python3 scripts/ci/tests/test-runbooks-gcp.py | tail -3; echo "exit ${PIPESTATUS[0]}"`
+Expected: `FAIL` lines across README, 02, 04, 05 and 08, then `exit 1`.
+
+- [ ] **Step 3: Retarget**
+
+In fenced code, everywhere:
+
+| Replace | With |
+|---|---|
+| `priv.aws.ogenki.io` | `priv.gcp.ogenki.io` |
+| `opentofu/aws/openbao/management/.tls/ca.pem` | `opentofu/gcp/openbao/management/.tls/ca.pem` |
+| `eks-aws-0-vars` | `gke-gcp-0-vars` |
+| `jwt/aws-0` | `jwt/gcp-0` |
+| `auth.cloud.ogenki.io` | `auth.gcp.cloud.ogenki.io` |
+| `aws sts get-caller-identity` | `gcloud auth application-default print-access-token >/dev/null && echo ADC-OK` |
+
+Specific rewrites:
+- **`README.md`**
+  - Title: `# Agent Factory live test session — gcp-0`.
+  - *Prerequisites*:
+    - Tailscale reaching `*.priv.gcp.ogenki.io`;
+    - gcloud ADC plus AWS credentials (the shared stacks only);
+    - context `gke_ogenki-435905_europe-west4-a_gcp-0`;
+    - `VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200`;
+    - VictoriaLogs at `https://vl.priv.gcp.ogenki.io`.
+  - *Runbook 00*: gcp-0 tracks `integration/agent-factory` (the parity plan's first deploy).
+  - Owner action 1 is done by G-5: the `agents-secrets` policy and role are in the stacks.
+  - Actions 2 and 4 become `bao kv put -mount=agents zai api_key=-` and
+    `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>` (they read
+    `bao kv put -mount=platform agents/…`, which P38 retired).
+  - New action 4b: `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem file>`.
+  - Add the note: "These three keys are the platform's one owner-written exception: GitHub and Z.ai issue
+    them, and the AWS snapshot cannot be restored across KMS seals (GCP parity). Once per GCP lineage."
+  - The footgun: "Deploy `*/openbao/management` and `gke/configure` only from an `integration/agent-factory`
+    checkout, with `TF_VAR_flux_git_ref`: from `main`, the `agents` mount is destroyed and the agent platform
+    pruned."
+  - The *Out of scope* line about "The gcp-0 follow-up is a separate, unscoped design" goes.
+  - A new *Status* line: "Retargeted to gcp-0 on 2026-09-29 (GCP parity plan); rounds 1–6 below ran on aws-0."
+- **Prose `platform/agents/*`** in 04 and 05 is outside any fence, so the test passes over it while it is wrong
+  after P38: rewrite it to the `agents` mount too.
+- **`04-gateway-secrets-budgets.md`**: Step 3's probes use `VAULT_ADDR`/`VAULT_CACERT` on gcp-0's OpenBao,
+  `jwt/gcp-0` and `agents/data/zai`, and expect `read`, `deny`, `deny`, `deny` for `agents/data/zai`, `platform/data/agents/zai`, `platform/data/llm/zai`,
+  `apps/data/anything`.
+- **`05-github-octo-sts.md`**: the App key is at `github-app` on the `agents` mount. The trust policy accepts
+  gcp-0's GKE issuer (G-0).
+- **`08-observability.md`**: the pool check becomes
+
+  ```bash
+  kubectl get nodes -l sandbox.gke.io/runtime=gvisor --no-headers | wc -l
+  gcloud container node-pools describe agents-gvisor --cluster gcp-0 --location europe-west4-a \
+    --project ogenki-435905 --format='value(autoscaling.maxNodeCount)'
+  ```
+
+  with Expected `1` while a run is live and `2` for the maximum. The Karpenter panel is noted as empty on
+  gcp-0 (GP-17).
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: `python3 scripts/ci/tests/test-runbooks-gcp.py && ./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
+Expected: `PASS`, then exit 0 twice.
+
+- [ ] **Step 5: Commit and push on the integration branch**
+
+```bash
+git add docs/runbooks/agent-factory scripts/ci/tests/test-runbooks-gcp.py
+git commit -m "docs(runbooks): the agent-factory runbooks target gcp-0"
+git push origin integration/agent-factory
+```
+
 ---
 
 ## Phase 8 — Live, after the reset (2026-09-29 21:00)
+
+**Open live items (execution, 2026-09-29).** Each is proven only on the cluster; the step that checks it:
+
+| Item | Why it is open | Checked by |
+|---|---|---|
+| `llm-gateway`'s `zai-api-key` ExternalSecret Ready on gcp-0 | It reads `openbao-platform` `runlore/credentials`, which arrives only through `migrate` (6.6 review) | 8.3 Step 4a |
+| CNPG barman `ContinuousArchiving` and the last `openbao-snapshot` success on gcp-0 | Both reached the metadata server through `host`, which never matches on GKE; fixed by `toCIDR` (Z3) | 8.3 Step 10 |
+| The negative Gateway check, from the zitadel node and from another | Per-packet L7 LB forwards to Envoy before egress policy (`EnforcePolicyOnL7Lb`): a Gateway VIP must still be refused to a pod whose CNP allows only DNS (Z2) | 8.5 Step 2a |
+| `agent-sandbox` waits for `security-sandbox-policies`; the gcp-0 README's resume prerequisites | Being implemented: **G-5 Task 6.7 fix round**. Without the `dependsOn`, a run pod admitted before the toleration policy stays Pending | 8.5 Step 2 table, 8.6 Step 2 |
+| gcp-0's LLM clients cannot read the generated gateway key (Ruling AB) | Open WebUI and promptfoo read `platform-llm-api-keys` from Secret Manager, while gcp-0 generates the keys in-cluster (GP-24). Tonight `llm-platform` stays suspended on gcp-0 | **The llm-platform-on-gcp-0 step**, before that umbrella is unsuspended: an ESO `kubernetes`-provider store over `envoy-ai-gateway-system`, or equivalent |
 
 ### Task 8.1: [OWNER] Pre-flight, read-only
 
@@ -4314,6 +4628,9 @@ Expected:
 
   Fix the cause, then re-run only stage 3's work: `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`
   is idempotent.
+- `stage5-verify-openbao-oidc` passed (Ruling U): `grep -n 'verifying OpenBao' "$LOG"` shows the job ran, and a
+  non-zero `TERRAMATE_EXIT` names it when OpenBao's `auth/oidc` client is stale (exit 1) or the check cannot tell
+  (exit 2). Re-run the stage-3 sync, then the deploy.
 
 - [ ] **Step 3a: Only if the management apply failed on an existing mount** (RESTORE with P-5 < 2)
 
@@ -4397,6 +4714,13 @@ kubectl get kustomizations.kustomize.toolkit.fluxcd.io -n flux-system -o json | 
 Expected: both lists empty. The agent-system ExternalSecrets wait for Task 8.6's three keys; they are the
 only allowed entries now.
 
+- [ ] **Step 4a: The frontier route's key** (6.6 review; only when `ai-gateway` is unsuspended)
+
+Run: `kubectl -n llm-gateway get externalsecret zai-api-key -o jsonpath='{.status.conditions[?(@.type=="Ready")].status} {.status.conditions[?(@.type=="Ready")].reason}{"\n"}'`
+Expected: `True SecretSynced`. `SecretSyncedError` means Step 3 did not copy `runlore-credentials` to
+`platform/runlore/credentials`: re-run the migrate for that key, then force-sync. Until then the frontier tier
+answers 5xx.
+
 - [ ] **Step 5: No store reads AWS**
 
 Run: `kubectl get clustersecretstores,secretstores -A -o json | jq -r '.items[].spec.provider | keys[0]' | sort | uniq -c`
@@ -4450,6 +4774,18 @@ Expected: `True`, `condition met`, and a newest object `<now>-gcpckms.snap`. A `
 message is a 403 means the allowlist still lacks a role (GP-23's cost). Read the provider-gcp log for the role
 it names.
 
+- [ ] **Step 10: Backups reach the metadata server** (Ruling Z3)
+
+```bash
+kubectl get cluster.postgresql.cnpg.io -A -o json | jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name) \((.status.conditions // [])[] | select(.type=="ContinuousArchiving") | .status)"'
+kubectl get cronjob -n security openbao-snapshot -o jsonpath='{.status.lastSuccessfulTime}{"\n"}'
+```
+
+Expected: `True` for every CNPG cluster (ZITADEL's included), and a `lastSuccessfulTime` after the deploy (Step 9's
+probe job counts only once the schedule has fired; re-check after the next run). `False` on archiving, or no
+success: `hubble observe --to-ip 169.254.169.254 --verdict DROPPED` on the barman or snapshot pod's node. A drop
+means a `host` rule survived somewhere Z3's test cannot see (a chart-rendered CNP).
+
 ### Task 8.4: [OWNER] Identity: login, grant, OpenBao OIDC, SSO
 
 **Files:** none. **Interfaces:** Produces the owner's `admin` grant in the fresh directory, and the OpenBao
@@ -4496,7 +4832,8 @@ Expected: `["admin","pki-admin","secrets-admin"]`.
 | Harbor | `https://harbor.priv.gcp.ogenki.io` | logged in via OIDC |
 
 A consumer that hangs at the IdP redirect: its CNP has a port-scoped egress to `auth.gcp.cloud.ogenki.io`.
-Fix it the way `tooling/gcp-0/headlamp/network-policy.yaml` does, in a G-4 commit. Harbor needs
+Fix it the way `tooling/gcp-0/headlamp/network-policy.yaml` does, in a G-4 commit. The policy side of the same
+Gateway VIP is 8.5 Step 2a. Harbor needs
 `flux reconcile helmrelease harbor -n tooling` after a rotated client (09-11 bug 9).
 
 ### Task 8.5: [LIVE] The gVisor smoke probe
@@ -4524,9 +4861,22 @@ Expected: `condition met`, then `threads=4 dns=ok tcp=ok release=4.4.0`, then `g
 | Output | Meaning | Action |
 |---|---|---|
 | a `RuntimeError: can't start new thread` or `Operation not permitted` | GKE Sandbox enforces RuntimeDefault with the clone3 trap | Stop. Owner decision: every AgentRun sets RuntimeDefault, and the constitution requires it |
+| `not under gVisor: release=…` (non-zero exit) | the RuntimeClass did not apply | `kubectl get pod -n gvisor-smoke gvisor-smoke -o jsonpath='{.spec.runtimeClassName}'` |
 | `socket.gaierror` | no DNS through a ClusterIP: per-packet LB is off | Check `kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose \| grep -i socket` |
 | `TimeoutError` on connect | the CNP | `hubble observe --namespace gvisor-smoke --verdict DROPPED` |
-| Pending > 10 min | the pool did not scale | `kubectl describe pod`; GP-10's machine-type fallback |
+| Pending > 10 min | first suspect: the Cilium-taint toleration (Z1). The probe carries it itself, so for the probe the pool did not scale | For an AgentRun pod: `flux get kustomization security-sandbox-policies` is `True`, and `kubectl get pod -o jsonpath='{.spec.tolerations}'` holds `node.cilium.io/agent-not-ready`. Then `kubectl describe pod`; GP-10's machine-type fallback |
+
+- [ ] **Step 2a: The negative Gateway check, twice** (Ruling Z2)
+
+Per-packet L7 LB hands Gateway-VIP traffic to Envoy before egress policy, and Envoy enforces the policy
+(`EnforcePolicyOnL7Lb`). Prove a default-deny pod still cannot reach a Gateway: run a throwaway pod whose CNP
+allows only kube-dns, once on a node that does **not** host the zitadel pod and once on the node that **does**
+(`nodeName` from `kubectl get pod -n security -l app.kubernetes.io/name=zitadel -o wide`). Wait about 35 s after
+applying the CNP, then `curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://auth.gcp.cloud.ogenki.io`.
+
+Expected: both attempts **fail** (a timeout, or `000`). A response means per-packet L7 LB skips egress policy for
+Gateway VIPs on gcp-0: a policy hole, so file it (aws-0 would share it). Delete the pods, CNP and namespace in this
+step.
 
 - [ ] **Step 3: Clean up, and the pool scales back to zero**
 
@@ -4535,7 +4885,8 @@ Expected: `namespace "gvisor-smoke" deleted`, then `0`.
 
 ### Task 8.6: [OWNER] The agents' keys, and the agent gates on gcp-0
 
-**Files:** `docs/runbooks/agent-factory/*.md`: results tables, committed on G-5.
+**Files:** `docs/runbooks/agent-factory/*.md`: results tables, committed on `integration/agent-factory`, where
+the runbooks live (W2).
 
 **Interfaces:** Produces the agent platform live on gcp-0, and the entry point for the programme gates.
 
@@ -4567,14 +4918,14 @@ Expected: `1`. `0` means the owner has not merged G-0 yet (Task 1.1), and runboo
 
 - [ ] **Step 4: The runbooks, 01 to 08, on gcp-0**
 
-Run them in order, as retargeted in Task 6.9, filling each results table in place.
+Run them in order, as retargeted in Task 7.2, filling each results table in place.
 Expected:
 - 01 to 06 and 08 pass;
 - 07 passes SC-04 (`task agent:run -- --role implementer --class public --task <issue url>` → a PR);
 - the run's pod ran on a `sandbox.gke.io/runtime=gvisor` node;
 - the run's token was accepted by `agent-router` (JWKS from `container.googleapis.com`) and by octo-sts.
 
-Commit the results on G-5: `docs(runbooks): round 7, gcp-0`.
+Commit the results on `integration/agent-factory`: `docs(runbooks): round 7, gcp-0`.
 
 - [ ] **Step 5: Hand-off**
 
@@ -4603,14 +4954,14 @@ reported: the `_v3` custom roles (free), the lineage's KMS key and GCS buckets, 
 | 2. A fresh ZITADEL with in-cluster keys, no seed | 5.2, 8.3 Step 7 |
 | 2. Clients recreated; `zitadel_project_id` handled | 4.2–4.4, 4.3 (GP-4), 8.2 Step 3 |
 | 3. `migrate --cloud gcp` | 2.4, 8.3 Step 3 |
-| 3. The owner's three keys, and the exception recorded | spec *Secrets*, Global Constraints, ADR (5.1), 6.9 README, 8.6 Step 1 |
+| 3. The owner's three keys, and the exception recorded | spec *Secrets*, Global Constraints, ADR (5.1), 7.2 README, 8.6 Step 1 |
 | 4. GKE Sandbox pool, spot, scale to zero, RuntimeClass `gvisor` | 6.3, 8.5 |
 | 4. Composition and aws-0 selection checked; neutral or per-cloud | GP-9 (RuntimeClass carries it on both), 6.3 tolerations |
 | 5. Umbrellas `gcp-0-ai-gateway` and `gcp-0-agent-platform` with GCP overlays | 6.5–6.7 |
 | 5. DNS, issuers, node selection, observability | 6.2 (issuers), 6.5 (per-cloud `${private_domain_name}`), 6.3, 6.5 (observability overlay), GP-17 |
 | 5. A GCP render fixture in CI | 6.2 (fixtures), 6.5, 6.8 |
 | 6. AWS keeps only …; stacks under `TM_CLOUD=gcp` | spec table, ADR (5.1), `opentofu/AGENTS.md` (5.1) |
-| 7. Runbooks retargeted | 6.9, 8.6 |
+| 7. Runbooks retargeted | 7.2 (W2), 8.6 |
 | 7. H-1, CC-H1, O-1, CC-O1 and SP2 gates on gcp-0 | *Cross-plan edits*, 0.1, 8.6 Step 5 |
 | Every named risk has an early check | *Risks → early checks* table, 8.1 |
 | The first deploy after the reset, with its gates | 8.2, 8.3–8.6 |
@@ -4697,3 +5048,47 @@ Checked offline while applying these fixes, against the real sources:
 - Task 4.2's mirror (the 404 and 403 cases);
 - Task 4.3a's PAT resolver against every existing `test-zitadel-pat.sh` case;
 - Task 6.8's gate and its test.
+
+---
+
+## Rulings applied during execution (2026-09-29)
+
+One line per ruling of the execution ledger, in its order. Where a ruling changes a task, the task text above
+already carries it; this table is the index.
+
+| # | What changed | Why | Lands in |
+|---|---|---|---|
+| A | Task 0.1, G-0 and G-1's chain ran in parallel | Different worktrees and files: nothing can conflict | execution only |
+| B | Task 0.1 committed onto the existing #2120 branch | The plan's own Step 1 names it | #2120 |
+| C | The controller session lived in G-1's worktree while G-1 to G-3 ran | Subagent shells inherit the session's worktree at spawn | execution only |
+| D | Main-based single-task PRs (G-0, G-4) run as isolated-worktree subagents | The shared-pin issue affects only worktree switching | G-0 #2122, G-4 |
+| E | Task 2.1's test-script-paths fix rode in Task 2.3's commit | A one-line change on the same branch; squash-merged together | G-1 #2123 |
+| F | G-0's issuer pattern pins `europe-west4-a`, not a location wildcard | gcp-0 is zonal and fixed: the policy admits exactly gcp-0 | G-0 #2122 |
+| G | A final whole-branch review runs beside the last task's review | Both read-only | every PR |
+| H | *Superseded by H'* | — | — |
+| H' | G-2 started on G-1's head, then `rebase --onto origin/main` once G-1 squash-merged; G-3 the same after G-2 | A branch stacked on a squash-merged parent carries it as a conflicting duplicate; no wait on the owner's merge | Tasks 3.1, 3.3, 4.1, 4.4; PR map |
+| I | G-1's final-review residuals fixed by the controller (one log line, a guide block, a gate condition, two assertions) | Text-sized; verified by the policy and new-lineage suites | G-1 #2123 |
+| J | Tasks 3.1, 3.2a and 3.2b batched into one dispatch | Small, independent files, each with its full code | G-2 #2125 |
+| K | A task's review runs while the next task's implementer works | Reviews are read-only; fix rounds queue after the commit | every PR |
+| L | Task 3.2's fix round waited for Task 3.3's commit | One worktree: concurrent commits race the index | G-2 #2125 |
+| M | G-2's test resolves its stub directory to an absolute path and refuses a relative one | A relative `TMPDIR` let the real teardown run (3 destroys in a decoy run) | G-2 #2125 |
+| N | Tasks 4.1 and 4.2 to one implementer; 4.3 and 4.3a to one | Each pair shares a script or a store | G-3 #2126 |
+| O | *Amended by O'* | — | — |
+| O' | The converged-store branch mirrors too, gated on `--apply`; the mirror writes only the fields the sync owns, merged onto OpenBao's value, and PUTs only on change; failures accumulate to a non-zero exit | A failed mirror was never repaired on re-run; a full-payload mirror reverted OpenBao rotations of fields it does not own | Task 4.2, G-3 #2126 |
+| P | `store_write`'s GCP truncation gap fixed in its own commit inside Task 4.3 | It writes secrets, the fix is two `\|\| exit 1`, and G-3 makes the path hot | G-3 #2126 |
+| Q | The stale PAT version is deleted by the owner (P-11), not by code | By design; the dispatch misstated it | Task 8.1 P-11 |
+| R | GP-20 applies only on the hosting cloud (`IDP_CLOUD == CLOUD`); a consumer keeps store-first and never writes | A consumer's leftover chart Secret would overwrite the host's only PAT (401s) | GP-20, Task 4.3a, G-3 #2126 |
+| T | The main → SP1 stack → H-1 cascade ran once, after G-3 merged; G-5 started right after, on H-1 | Merge-only stack: cascading twice doubles CI on six PRs | G-5, Task 6.1 Step 1 |
+| U | GCP gets `stage5-verify-openbao-oidc`, halting on the check's exit 1 or 2 | gcp-0 becomes the host tonight: a stale `auth/oidc` must halt as on aws-0 | Task 4.4, 8.2 Step 3; G-3 #2126 |
+| W1 | 6.1's `external-secrets.hcl` header in both copies, byte-identical; module test expects 3 passed; G-3's merge guarded by `ls-remote`; stale `platform/agents` references and the two website pages fixed | `validate-openbao-policies.sh` compares the copies; G-3's branch dies on merge | Task 6.1, G-5 |
+| W2 | The runbook retarget moves to Phase 7 on `integration/agent-factory`; its test refuses fewer than nine files; G-5's PR opens after 6.8 | The runbooks exist only on the integration branch (SP2 Δ7); the test passed on zero files | Tasks 6.9, 7.2, 8.6 |
+| W3 | 6.4 keeps `pr31.988146f` on both clouds; Step 3 expects `aws=v0.7.2-pr30.7e3211e`; Step 4 checks the `xrd-crds` artifact; the role check diffs from `v0.7.0`; the aws line keeps a B2 comment | H-1 had re-pinned to CC-H1; `fetch-xrd-crds.sh` pulls the aws pin's artifact | GP-25, Task 6.4, G-5 |
+| W4 | 6.7 writes two doc-claims and creates `clusters/gcp-0-agent-platform/README.md`; 6.5 drops "base roots disappear"; 6.6 updates `clusters/gcp-0-llm-platform/README.md` | One claim has one `source.file`; `render-bundle.py` keeps top-most roots | Tasks 6.5, 6.6, 6.7, G-5 |
+| W5 | 6.2 runs `tofu fmt` on both `kubernetes.tf` and leaves G-3's lines; Phase 8 was to fan out socket-LB checks | Column-aligned maps; G-3's test greps those lines. The fan-out was trimmed by Z2 | Task 6.2, G-5 |
+| Z1 | The gVisor pool keeps the Cilium taint; a gcp-0 Kyverno `ClusterPolicy` adds the toleration to every `runtimeClassName: gvisor` pod (JSON6902 append, autogen off), wired always-on after `security` | GKE's autoscaler scales a pool from zero only for pods tolerating all its taints (ADR-0006); the composition stays cloud-neutral | GP-10, Task 6.3, G-5 |
+| Z2 | `socketLB.hostNamespaceOnly` kept as an explicit guard with a reworded comment; Phase 8 is the gVisor probe plus a negative Gateway check from the zitadel node and another | The chart forces it since Cilium 1.20 with `gatewayAPI.enabled` (gcp-0 on 1.20 since #1693): no datapath change | GP-11, Task 6.3, 8.5 Step 2a |
+| Z3 | gcp-0 reaches the metadata server by `toCIDR 169.254.169.254/32:80`, not `host`: the barman plugin patch, an openbao-snapshot overlay patch, `security/AGENTS.md` rule 3 per cloud, and a test | On GKE `host` never matches 169.254.169.254 (DNAT after classification); the GCP lineage depends on the snapshot job | Task 6.3 Step 6, 8.3 Step 10, G-5 |
+| AB | gcp-0's LLM clients cannot read the generated gateway key yet: recorded, not fixed | Tonight's Phase 7 unsuspends only `ai-gateway` and `agent-platform` on gcp-0 | GP-24, Phase 8 open items; **the llm-platform-on-gcp-0 step** |
+
+**Outcomes.** G-0 #2122, G-1 #2123, G-2 #2125 and G-3 #2126 are merged. G-4 is a draft (`feat/gcp-primary`,
+base `main`). G-5 is in progress: 6.1 to 6.6 complete, 6.7 in its fix round, 6.8 in progress.
