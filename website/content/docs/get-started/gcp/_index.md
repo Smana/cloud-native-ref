@@ -10,9 +10,9 @@ The GCP lane builds the same three-stage model as
 and PKI, then Kubernetes — on GKE Standard with self-managed Cilium.
 
 {{< callout type="info" >}}
-**One knob picks the cloud: `TM_CLOUD`.** It defaults to `aws`, so
-`terramate script run deploy` from `opentofu/` skips every GCP stack and exits 0
-while doing so. Both clouds share one Terramate run order, and this is what keeps
+**One knob picks the cloud: `TM_CLOUD`.** It defaults to `aws`, but while GCP is
+primary ([ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}}))
+an unset `TM_CLOUD` fails every job with exit 3, so always pass `TM_CLOUD=gcp`. Both clouds share one Terramate run order, and this is what keeps
 an AWS deploy from building GCP as a side effect.
 
 ```bash

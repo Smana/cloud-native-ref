@@ -24,12 +24,14 @@ tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
 ```
 
-**`TM_CLOUD` picks the cloud**, and defaults to `aws`. Both clouds share one
+**`TM_CLOUD` picks the cloud**, and defaults to `aws`, except while `primary_cloud`
+is not `aws`: then an unset `TM_CLOUD` fails every job with exit 3
+([ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})). Both clouds share one
 Terramate run order; this is what stops an AWS deploy building GCP as a side
 effect, and a GCP deploy rebuilding `aws-0`:
 
 ```bash
-terramate script run deploy                    # aws alone (the default)
+terramate script run deploy                    # aws alone; exit 3 while GCP is primary
 TM_CLOUD=gcp     terramate script run deploy   # gcp alone; AWS stacks echo [skip]
 TM_CLOUD=aws,gcp terramate script run deploy   # both
 TM_CLOUD=all     terramate script run deploy   # every lane there is
@@ -143,6 +145,12 @@ gcloud compute forwarding-rules list --project <project>
 gcloud compute disks list --project <project>
 gcloud compute addresses list --project <project>
 ```
+
+`scripts/ops/teardown/teardown.sh` does both, sweeps GKE's LoadBalancer
+leftovers, and retries once while the VPC stands. A non-zero terramate exit
+beside `cloud: clean` comes from that retry failing on already-destroyed stacks
+(typically `opentofu/gcp/openbao/cluster`'s snapshot of a gone node): re-run
+with `TM_OPENBAO_SKIP_SNAPSHOT=true` only if the first pass's snapshot succeeded.
 
 ## Opt-in stacks
 

@@ -33,6 +33,10 @@ tasks:
     desc: Assert exactly one cloud hosts ZITADEL (ADR-0027)
     cmds: ["{{.TASKFILE_DIR}}/ci/validate-idp-topology.sh"]
 
+  openbao-policies:
+    desc: Assert every policy an OpenBao JWT role names is defined by its cloud's management stack
+    cmds: ["{{.TASKFILE_DIR}}/ci/validate-openbao-policies.sh"]
+
   vector-vrl:
     desc: Test the CNPG auto_explain VRL in the timberio/vector image (needs docker)
     cmds: ["{{.TASKFILE_DIR}}/ci/validate-vector-vrl.sh"]
