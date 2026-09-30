@@ -1,5 +1,5 @@
 # Vendored from Smana/agent-platform config/crd (ruling P16): the stack-tip branch until the merge wave, then the release asset.
-# Source: feat/room-log at 363626af2fbc512ed133e27c0b5481f9dfea06bd (2026-09-29).
+# Source: feat/room-log at f3ac98ceac4d217518639b7b297c0c01d398da3c (2026-09-30, agent-platform#5), the room-broker pin.
 # Refresh with every AP pin: gh api repos/Smana/agent-platform/contents/config/crd/agents.ogenki.io_rooms.yaml?ref=<branch or tag> --jq .content | base64 -d
 ---
 apiVersion: apiextensions.k8s.io/v1
