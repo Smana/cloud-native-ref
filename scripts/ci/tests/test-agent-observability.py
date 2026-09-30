@@ -41,7 +41,8 @@ CONTENT = re.compile(r"^(gen_ai\.(input|output|prompt|completion|tool\.definitio
                      r"|lmnr\.span\.(input|output)|llm\.headers|exception\.(message|stacktrace))")
 EXPORTERS = ["otlp_http/victoriatraces"]
 # Links and tracestate carry run-controlled text that no attribute processor sees, and names
-# and versions are free text too (AK5, review I1). Substring is byte-based unless told otherwise.
+# and versions are free text too, so they are capped rather than trusted. Substring is byte-based
+# unless told otherwise.
 CAPS = ["truncate_all(resource.attributes, 256)",
         "truncate_all(span.attributes, 256)",
         "truncate_all(spanevent.attributes, 256)",
@@ -93,12 +94,12 @@ def check_collector():
     hr = find(COLLECTOR, "HelmRelease", "agent-traces-collector").get("spec", {})
     values = hr.get("values", {})
     # The chart labels pods instance=<releaseName>, and CI renders with the object name instead
-    # (render-bundle.py), so only this ties the selectors to the real pods (review M5).
+    # (render-bundle.py), so only this ties the selectors to the real pods.
     check(hr.get("releaseName") == CNP_SELECTOR["matchLabels"]["app.kubernetes.io/instance"],
           f"releaseName {hr.get('releaseName')!r} is the instance label the CNP selects")
     check(find(COLLECTOR, "VMServiceScrape", "agent-traces-collector").get("spec", {}).get("selector") == CNP_SELECTOR,
           "the VMServiceScrape selects the same pods as the CNP")
-    # Without it `set(span.links, nil)` is a silent no-op on 0.160 (review I1').
+    # Without it `set(span.links, nil)` is a silent no-op on 0.160, and link attributes reach storage.
     check("--feature-gates=ottl.set.allowNil" in values.get("command", {}).get("extraArgs", []),
           "the collector runs with ottl.set.allowNil, so set(span.links, nil) clears links")
     image = values.get("image", {})
@@ -254,7 +255,7 @@ def dashboard(rel, name):
     check(not re.search(r"(?<!\$)\$\{", (ROOT / rel).read_text()), f"{rel}: every ${{…}} is written $${{…}} for Flux")
     check(d.get("spec", {}).get("folderRef") == "agents", f"{rel}: in the agents folder (O10)")
     try:
-        return json.loads(d.get("spec", {}).get("json", "{}").replace("$${", "${"))
+        return json.loads(d.get("spec", {}).get("json", "{}").replace("$$", "$"))
     except json.JSONDecodeError as exc:
         errors.append(f"{rel}: invalid JSON: {exc}")
         return {}
@@ -290,6 +291,11 @@ def check_run_trace_link():
     step = json.dumps(panels.get("Step log", {}).get("targets", []))
     check("extract_regexp" in step and "rename trace_id as log.trace_id" in step,
           "a step line links to its trace through the log.trace_id derived field (O22)")
+    m = re.search(r'extract_regexp "([^"]*)"', panels.get("Step log", {}).get("targets", [{}])[0].get("expr", ""))
+    own, decoy = "a" * 32, "b" * 32
+    line = f"agent-run step 3: terminal | echo trace_id={decoy} | x | trace_id={decoy} | trace_id={own}"
+    got = re.search(m[1], line) if m else None
+    check(got is not None and got["trace_id"] == own, "the trace id is the line's last field, not agent-written text")
 
 
 def check_fleet_dashboard():

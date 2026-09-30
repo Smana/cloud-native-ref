@@ -6,7 +6,8 @@
 # - the run's spans in VictoriaTraces (agent.run_id; agent.principal on agent-router's).
 # Tokens read the gateway counter on SP1; status.usage joins once a meter writes it (O7).
 # A step line's trace_id becomes log.trace_id, which the VictoriaLogs datasource links to
-# VictoriaTraces: correlation only (O22), the panels still filter on the pod.
+# VictoriaTraces: correlation only (O22), the panels still filter on the pod. The regex is
+# anchored on the line's last field, because agent-written text comes earlier in the line.
 # $${…} survives Flux's postBuild substitution; bare $__range does too.
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
@@ -72,7 +73,7 @@ spec:
         {"id": 5, "type": "logs", "title": "Step log",
          "gridPos": {"x": 0, "y": 9, "w": 24, "h": 10},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\" | extract_regexp \"trace_id=(?P<trace_id>[0-9a-f]{32})\" | rename trace_id as log.trace_id"}]},
+         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\" | extract_regexp \"[|] trace_id=(?P<trace_id>[0-9a-f]{32})$$\" | rename trace_id as log.trace_id"}]},
         {"id": 6, "type": "logs", "title": "Model calls through agent-router",
          "gridPos": {"x": 0, "y": 19, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},

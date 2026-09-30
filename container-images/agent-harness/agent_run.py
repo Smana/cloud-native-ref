@@ -39,7 +39,7 @@ DEFAULT_OUTPUT_USD_PER_MTOK = "4.40"
 MAX_POLL_ERRORS = 5
 # The run's installation token as git-credential-agent caches it (T3), and every GitHub
 # token shape. An injected agent can print its token into a command or its final message,
-# and these lines reach VictoriaLogs (review M4), so both are redacted before any print.
+# and these lines reach VictoriaLogs, so both are redacted before any print.
 TOKEN_CACHE = os.environ.get("GIT_TOKEN_CACHE", "/run/agent/git/token.json")
 GITHUB_TOKEN = re.compile(r"gh[posu]_[A-Za-z0-9_]{20,}")
 REDACTED = "[REDACTED:github-token]"
@@ -90,7 +90,7 @@ def start_run_span(env: dict, exporter=None):
         parent = None
         m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
         if m:
-            # Always sampled, whatever the trigger's flags (ruling AK9): lmnr's span context has
+            # Always sampled, whatever the trigger's flags: lmnr's span context has
             # no flags field, so agent-server's spans export regardless, and an unsampled trigger
             # would leave them under a harness span that never lands. The factory samples 100%.
             remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
@@ -227,7 +227,7 @@ class StepLog:
     pod is gone. The final agent message is printed in full: for a read-only
     role it is the report. Actions are printed, their outputs never are. Best
     effort: a failure here is logged and never fails the run. Agent-written
-    text is redacted first (M4)."""
+    text is redacted first."""
 
     def __init__(self, cid: str, trace_id: str = ""):
         self.cid = cid

@@ -81,8 +81,10 @@ spec:
               file:
                 path: /dev/stdout
     # Spans to the agent trace collector over OTLP/gRPC, the one protocol Envoy Gateway
-    # 1.9 exports. Its pipeline has no content filter: every attribute here is set by this
-    # file. A run's traceparent survives identity-proxy, so these join the run's trace.
+    # 1.9 exports. Its pipeline has no allowlist: the tags this file adds are verified, but
+    # Envoy's default tags (http.url, user_agent) and the tracestate come from the request,
+    # so traces/router caps them. A run's traceparent survives identity-proxy, so these join
+    # the run's trace.
     tracing:
       samplingRate: 100
       provider:
