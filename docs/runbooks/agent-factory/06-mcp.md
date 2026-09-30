@@ -121,6 +121,20 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 0 — MCP session seed | generated | `generated` | PASS |
+| 1 — routes accepted | `Ready=True`, both `True` | `agent-mcp` `Ready=True`; `agent-mcp-internal` `True`, `agent-mcp-public` `True` | PASS |
+| 2 — SC-08 recheck | No `kubernetes.io` dir | Run `xplane-run-6qnowwxl` (shared with runbooks 01, 03 and 05): `No such file or directory`, exit=2 | PASS |
+| 3 — `public` tools | Exactly 3 docs tools | `flux-operator-mcp__search_flux_docs`, `mcp-victorialogs__documentation`, `mcp-victoriametrics__documentation` | PASS |
+| 4 — `internal` tools | Implementer: 4 Flux tools, no logs/resources; 13 VM tools; VL docs only | Flux: `search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics`. 13 `mcp-victoriametrics` tools, none of `tsdb_status`, `active_queries` or `top_queries`. Only `mcp-victorialogs__documentation` | PASS |
+| 5 — SC-12 denial | Refused | `flux-operator-mcp__get_kubernetes_logs` → `access denied`, `HTTP 403` | PASS |
+| 5 — RBAC | `no`, `yes`, `no`, `no`, `no`, `no` | `get secrets -A` `no`; `configmaps -n security` `no`; `list nodes` `no`; `get secrets -n flux-system` `no`. **The two `pods/log` lines as written answer the wrong question.** `kubectl auth can-i get pods/log` parses `log` as a pod *name*, so it answered `yes` in `security` through the cluster-wide `get pods`. With `--subresource=log`, the answers are `no` in `security` and `yes` in `flux-system`. A SubjectAccessReview agrees: `allowed:false` in `security`, `allowed:true` in `flux-system` "by RoleBinding agent-mcp-flux-read/flux-system". Use `kubectl auth can-i get pods --subresource=log …` | PASS (with the corrected command) | <!-- pragma: allowlist secret -->
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 0 — MCP session seed | generated | | |

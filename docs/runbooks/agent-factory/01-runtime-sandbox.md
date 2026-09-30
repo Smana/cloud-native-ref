@@ -207,6 +207,24 @@ Expected: `No resources found` (this doubles as an early look at SC-14, fully pr
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 — platform up | All `Ready=True`; XRD `True`; `yes` | `agent-platform`, `agent-sandbox`, `agent-runtime`, `agent-policies` `Ready=True`. `agents-nodepool` and `runtimeclass-gvisor` do not exist on gcp-0: the pool and the RuntimeClass are GKE-managed (GP-9, GP-10). XRD `Established=True`; `can-i` = `yes` | PASS |
+| 2 — Q1 timing | Node Ready ≤ pod start; small `FailedCreatePodSandBox` count | `xplane-run-6qnowwxl`: node Ready `20:25:32Z`, pod start `20:27:57Z`, harness started `20:28:33Z`, 0 × `FailedCreatePodSandBox`, but submission to `Running` took 343 s. **The race Q1 asks about exists on gcp-0.** On a freshly scaled gVisor node, cilium-operator logged `Restarting unmanaged pod` for six of the ten run pods this round created (`4iv2rpdq`, `j2qh5avm`, `x5hf55tr`, `6qnowwxl`, `pttpamhs`, `x6jexfi4`), 53 s to 2 min 31 s after they started. Each of the six had landed on a node that was minutes old; the four that landed on a warm node were left alone. The pods tolerate `node.cilium.io/agent-not-ready` (Ruling Z1), so they land before the Cilium agent is ready. A run whose pod is still Pending survives, because the Sandbox recreates the pod. A run that already reached `Running` fails for good, as R7 designs: `xplane-run-j2qh5avm` was `Running` at 20:19:12, its pod was deleted at 20:19:19, and the run ended `Failed PodFailed`. `xplane-run-pttpamhs` (the first SC-06 attempt) ended the same way. On a warm node, `zt7vyyi6` went from `Pending` to `Running` in 29 s | **FAIL** (see `results-gcp-0-2026-09-30.md`, F2) |
+| 3 — SC-01 | `gvisor`/`gvisor`/gVisor banner/`Seccomp: 0` | `gvisor gke-gcp-0-nap-e2-standard-4-1h1w69k1-…`; node label `sandbox.gke.io/runtime=gvisor` (gcp-0 has no `agents.ogenki.io/runtime` label); `Starting gVisor...`; `Seccomp:\t0`; `uname -r` = `4.4.0` | PASS |
+| 4 — SC-02 | pinned `runsc`, v3 plugin id, `oci-seccomp = "false"` | Not run. The step is AWS-shaped: its `amazonlinux` image, `/usr/local/bin/runsc` and `/etc/containerd/runsc.toml` do not apply to GKE Sandbox, where Google manages `runsc`. The privileged `kubectl debug node/…` adapted for GKE was refused by this session's permission classifier | [OWNER] |
+| 5 — SC-08 | No `kubernetes.io` dir; API call fails | `ls: cannot access '/var/run/secrets/kubernetes.io': No such file or directory` exit=2; `urlopen('https://kubernetes.default.svc')` exit=1 | PASS |
+| 6 — SC-03 pods | `1` and `1` | `1` and `1` | PASS |
+| 6 — SC-03 claims | Both denied, correct messages | `spec.branch in body should match '^agent/[a-z0-9][a-z0-9._/-]{0,100}$'`; `an AgentRun is named xplane-run-<runId>, runId being 8 characters of [a-z2-7]` | PASS |
+| 7 — R7 | `Failed PodFailed`; old SA NotFound; new run Running on `$BRANCH` | `xplane-run-6qnowwxl`: `BRANCH=agent/6qnowwxl`; `Failed PodFailed`; `serviceaccounts "xplane-run-6qnowwxl" not found`; `xplane-run-peiuqflu` Running, `spec=agent/6qnowwxl status=agent/6qnowwxl` | PASS |
+| Cleanup | `No resources found` | `6qnowwxl`: `No resources found`. `peiuqflu`: CNP, pod (`Terminating`) and Usage still present right after `delete --wait` returned, which is the SC-07 ordering at work. All three were gone by the final sweep (see runbook 07, SC-14) | PASS |
+
+Round 7 notes: the runbook's "Idle. Do nothing" task now finishes in about a minute (`x5hf55tr` `Succeeded` after 106 s), so runs that must stay up used `Run 'sleep N' in the terminal …`.
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 1 — platform up | All `Ready=True`; XRD `True`; `yes` | All 6 Kustomizations `Ready=True`; XRD `Established=True`; `can-i` = `yes` | PASS |

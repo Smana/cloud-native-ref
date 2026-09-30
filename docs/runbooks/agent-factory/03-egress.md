@@ -61,6 +61,21 @@ kubectl delete agentrun -n agents $RUN --wait
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+Run `xplane-run-6qnowwxl`, on the NAP node `gke-gcp-0-nap-e2-standard-4-1h1w69k1-…` (`sandbox.gke.io/runtime=gvisor`).
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 2 — `git ls-remote` | A SHA | `299408d68b5cfb3fbc68b5564a453b8d76b0a796\tHEAD` | PASS |
+| 2 — `example.com` | `exit=1` | `urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>`, exit=1 | PASS |
+| 2 — random `*.example.org` | `exit=1` | `socket.gaierror: [Errno -3] Temporary failure in name resolution`, exit=1 | PASS |
+| 2 — `api.github.com` | An IP | `('140.82.121.5', 443)` | PASS |
+| 3 — Hubble DNS | Allowed FORWARDED, denied REFUSED/DROPPED | `api.github.com` A+AAAA `dns-request proxy FORWARDED`; `example.com.agents.svc.cluster.local` and `6dc553fbd826.example.org` (plus its search-path forms) A+AAAA `dns-request proxy DROPPED` | PASS |
+| 3 — Hubble DROPPED | No TCP reaches a denied host | Every `DROPPED` entry is a `dns-request proxy DROPPED`, with no TCP verdict toward any `example.*` address | PASS |
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 2 — `git ls-remote` | A SHA | `674175608fa9bdcf05a44190748e8de6bcae94c6\tHEAD` | PASS |

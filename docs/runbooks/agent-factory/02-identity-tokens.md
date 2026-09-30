@@ -178,6 +178,22 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| A.1 — probe | `Ready` | `sandbox.agents.x-k8s.io/agent-probe condition met` | PASS |
+| A.2 — 401/403 matrix (`/v1/models`) | 401 without a valid token, 404 with one (#2108) | `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 404`, `public→public 404`, `self-signed→public 401`. The issuer is `https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0` | PASS |
+| A.2 — matrix (`/v1/chat/completions`) | `401,403,403,401,200` | `none→chat 401`, `sts→chat 403`, `internal→chat 403`, `self-signed→chat 401`, `forged-header 200` | PASS |
+| A.2 — attribution | `x_ar_agent` = probe's SA, never forged | VictoriaLogs (path matched with `log.path:~"chat/completions"`): the accepted call logs `log.path:"/api/paas/v4/chat/completions"`, `log.x_ar_agent:"system:serviceaccount:agents:agent-probe"`, `200`, `httproute/agent-system/agent-models/rule/0`. The rejected calls carry no `x_ar_agent`, and no row says `agent:forged`. The `vl.priv.gcp.ogenki.io` calls need `--cacert opentofu/gcp/openbao/management/.tls/ca.pem`. Without it, curl under `-s` prints nothing | PASS |
+| A.3 — Q8 | `refused` / `False` / `False` | Against `xplane-run-6qnowwxl`'s harness: `9901: refused`; `admin socket visible: False`; `hot-restart socket: False` | PASS |
+| B.1 — token TTL | `expirationSeconds = max(600, 10×60)` | `xplane-run-t3g57qb4` (10 min): projected tokens `agent-router.implementer.public` and `octo-sts/…/implementer`, both `exp: 600` | PASS |
+| B.2 — pod gone | ≤ 60 s | `pod gone after 16 s` | PASS |
+| B.2 — GitHub token dead | ≤ 60 s | Not attempted. Capturing `$GHT` through `git-credential-agent` is credential materialization, which the round-6 classifier refused, so this step stays with the owner, run interactively | [OWNER] |
+| B.2 — gateway token dead | ~600 s after issue | The copied token was accepted right after issue (`/v1/models` → `404`). `copied gateway token dead 671 s after issue`: 600 s TTL, plus the 15 s poll, plus the JWT clock-skew leeway | PASS |
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | A.2 — 401/403 matrix (`/v1/models`, as written) | `401,403,403,403,200,401,200` | `none→public 200`, `sts→public 200`, `internal→public 200`, `public→internal 404`, `public→public 200`, `self-signed→public 200`, `forged-header 200` — every token combination, including no token and a self-signed garbage JWT, returns `200` | **FAIL** (see Platform findings — `GET /v1/models` bypasses JWT entirely) |

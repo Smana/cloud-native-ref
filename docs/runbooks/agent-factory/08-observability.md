@@ -98,6 +98,18 @@ clients through `apiKeyAuth`.
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 — VMRules loaded | Both present, correct groups | `agent-platform`→`agent-platform`; `agent-platform-logs`→`agent-platform-logs` | PASS |
+| 2 — pending expression, pool room | `success`; `1` while a run is live; max `2` | `AgentSandboxPodPending` expression `success`, `[]`. The gVisor node count was `0` when checked, before any run of this round; `maxNodeCount` = `2`. While runs were live, the `agents-gvisor` pool scaled 0→1 and NAP added `nap-e2-standard-4-*` gVisor nodes when `agents-gvisor`'s `e2-standard-8` hit `GCE quota exceeded` (see `results-gcp-0-2026-09-30.md`, F3) | PASS |
+| 3 — log expressions | Both run without syntax error | Both `HTTP:200`, empty (below threshold). They need `--cacert opentofu/gcp/openbao/management/.tls/ca.pem` | PASS |
+| 4 — dashboard | All 4 panels render | Grafana `/api/health` `200`. Panel expressions: phases `success` (`Running=3` at check time); tokens per run `success`, 9 series; `karpenter_nodepools_*` empty on gcp-0, as documented (GP-17); agent-router 4xx rows present in VictoriaLogs (runbook 02). The UI itself is SSO-gated, so the owner still has to look at the render | PASS (data); render [OWNER] |
+| 5 — gateway metrics | `ar_client`/`ar_agent` series present | `ar_client=promptfoo` `3073`; `ar_agent` series for `agent-probe` and eight runs (e.g. `xplane-run-4iv2rpdq` `120136`, `xplane-run-zt7vyyi6` `171116`) | PASS |
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 1 — VMRules loaded | Both present, correct groups | `agent-platform`→`agent-platform`; `agent-platform-logs`→`agent-platform-logs` | PASS |

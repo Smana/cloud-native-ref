@@ -239,6 +239,24 @@ kubectl delete btp -n llm-gateway zz-budget-marker-probe --ignore-not-found
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| A.1 — secrets synced | `Ready=True` ×2, `SecretSynced` | `agent-secrets` and `agent-router` `Ready=True`; SecretStore `agents-secrets` `True`; `agents-zai-api-key` `SecretSynced` | PASS | <!-- pragma: allowlist secret -->
+| A.2 — R5 label | 1 pod each | `agent-router`: 2 pods (2 replicas); `ai-gateway`: 1 pod | PASS |
+| A.3 — SC-10, cluster half | `0`; ExternalSecret denied | `0` secrets in `agents`. The server-side dry run of `sc10` was refused by `agents-no-secret-import`: `namespace agents holds no secret: External Secrets objects are refused (SP1 S9)` | PASS |
+| A.3 — SC-10, OpenBao half | `read,deny,deny,deny` | Needs `bao write auth/jwt/gcp-0/login …`, which mints a token. This session holds no OpenBao token | [OWNER] |
+| A.4 — SC-17 listener half | `404`; no `zai` on 8081 | `internal chat 404`; VictoriaLogs: 2 hits on port 8081 in 15 min, both with a null `upstream_cluster` | PASS |
+| B.1 — promptfoo key | key fetched, never echoed | Length 48, never printed. The Secret's key is `promptfoo`, not `promptfoo_apikey` as this runbook says (`ai-gateway-api-keys` holds `openwebui,promptfoo`) | PASS |
+| B.2 — budget/ratelimit live | `READY True`; `Running 1/1`; `Accepted=True` | KVStore `xplane-ai-gateway-ratelimit` `SYNCED=True READY=True`; `envoy-ratelimit-69b6cdc49f-6ph5c` `1/1 Running`; BTP `Accepted=True Accepted` | PASS |
+| B.3 — frontier call | the frontier model, non-zero usage | `"glm-5.3"` (the route now serves GLM-5.3, not 5.2); `{"prompt_tokens":17,"completion_tokens":94,"total_tokens":111}` | PASS |
+| B.4 — VM attribution | `promptfoo` series, no `forged` | `ar_client=promptfoo` = `3073`; no `forged` series | PASS |
+| B.5 — shadow counters | Non-zero `total_hits` | `ratelimit_service_rate_limit_total_hits` = `739` on `ai-gateway-token-budgets` rule 1 and rule 2; `311` on the marker probe | PASS |
+| B.6 — marker probe | `200`, `200`, then `429` | First attempt, 20 s after the apply: `200`, `200` (no rate-limit headers: the policy was not programmed yet), then `200` with `x-ratelimit-remaining: 1`. Second attempt, 60 s after the re-apply: `429 Too Many Requests` ×3, `x-ratelimit-remaining: 0`, `x-ratelimit-reset: 772`. The bucket is keyed on the rule, not on the header value, so it carried over. No `x-envoy-ratelimited` header. Wait about 60 s after the apply | PASS |
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | A.1 — secrets synced | `Ready=True` ×2, `SecretSynced` | `agent-secrets`/`agent-router` both `SUSPENDED=False READY=True`; SecretStore condition `True`; ExternalSecret `agents-zai-api-key` reason `SecretSynced` | PASS | <!-- pragma: allowlist secret -->

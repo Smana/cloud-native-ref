@@ -171,6 +171,31 @@ Expected: the branch deleted; octo-sts log lines naming the run subjects
 
 ## Results
 
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+G-0 is on `main` (#2122): the implementer trust policy's `issuer_pattern` carries
+`https://container\.googleapis\.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0`.
+Runs: implementer `xplane-run-6qnowwxl`, reviewer `xplane-run-x6jexfi4` (task URL `pull/1`; a reviewer run
+refuses `--task` text: `a reviewer run needs a pull request URL as its task`).
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 — ruleset active | `active` | `active` | PASS |
+| 2 — octo-sts up | `Ready=True` | `octo-sts` `Ready=True` | PASS |
+| 4 — implementer exchange | `-> token ghs_…` | `exchange Smana/cloud-native-ref implementer -> token ghs_…`, a GKE-issued token accepted by the `sts` listener and by octo-sts | PASS |
+| 4 — push to own branch | `ok` | `push HEAD:refs/heads/agent/6qnowwxl -> ok` | PASS |
+| 4 — push to `main` | Rejected (`GH013`) | `remote: error: GH013: Repository rule violations found for refs/heads/main.` / `Cannot update this protected ref.` / `push declined due to repository rule violations` | PASS |
+| 4 — push to a non-`agent/**` branch | Rejected (`GH013`) | `GH013: Repository rule violations found for refs/heads/sc11-not-agent` | PASS |
+| 5 — reviewer exchange | Token issued | `exchange Smana/cloud-native-ref reviewer -> token ghs_…` | PASS |
+| 5 — reviewer push rejected | Push rejected | Every push, `rc=128`: `remote: Permission to Smana/cloud-native-ref.git denied to ogenki-agents[bot].` (HTTP 403) | PASS |
+| 5 — cross-repo exchange | denied | `HTTP Error 404: Not Found {"code":5,"message":"unable to find trust policy for \"agent-implementer\""}` | PASS |
+| 5 — wrong-role exchange | Audience mismatch, both directions | Implementer asking for `agent-reviewer`: `403 {"code":7,"message":"trust policy: audience \"octo-sts/Smana/cloud-native-ref/reviewer\" did not match any of [\"octo-sts/Smana/cloud-native-ref/implementer\"]"}`. Reviewer asking for `agent-implementer`: the symmetric 403 | PASS |
+| 5 — non-run subject rejected | 403 | `agent-probe`'s `sts` token on `:8082`: `{"code":7,"message":"trust policy: subject \"system:serviceaccount:agents:agent-probe\" did not match pattern …"}` HTTP 403 | PASS |
+| 5 — direct octo-sts call | `exit=1` | `urlopen('http://octo-sts.agent-system.svc.cluster.local:8080/')` → exit=1 | PASS |
+| 6 — revoke, branch, logs | Tokens revoked; branch deleted; log lines | Every minted token revoked (`DELETE /installation/token` → `204`). `agent/6qnowwxl` deleted through `gh api --method DELETE`. octo-sts logged `exchange request: "agent-implementer"` and the two `WARN token does not match trust policy` lines above | PASS |
+
+### Earlier rounds — aws-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 1 — ruleset active | `active` | `active` | PASS |
