@@ -112,6 +112,8 @@ jq -e '.spec.roomRef == "3kq7x2ma" and .spec.branch == "agent/3kq7x2ma"' "$STUB_
 bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma --branch agent/7f3cq2xz --dry-run >/dev/null 2>&1 || fail "--room with --branch exits 0"
 jq -e '.spec.branch == "agent/7f3cq2xz"' "$STUB_CLAIM" >/dev/null || fail "an explicit --branch wins"
 bash "$SUBJECT" --role implementer --class public --task x --room ROOM >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room that is not a C2 id"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a 7-character --room"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m1 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room with a digit outside 2-7"
 bash "$SUBJECT" --role implementer --class public --task x --dry-run >/dev/null 2>&1
 jq -e '.spec | has("roomRef") | not' "$STUB_CLAIM" >/dev/null || fail "no roomRef unless asked"
 AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma 2>"$tmp/err" >/dev/null
