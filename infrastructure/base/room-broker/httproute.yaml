@@ -1,0 +1,38 @@
+# rooms.${private_domain_name}: tailnet only, then oauth2-proxy, then the broker (§3).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: rooms
+  namespace: agent-system
+spec:
+  parentRefs:
+    - name: platform-tailscale-general
+      namespace: infrastructure
+      sectionName: https
+  hostnames:
+    - "rooms.${private_domain_name}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        # oauth2-proxy sets these downstream; a client must not bring its own.
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-Forwarded-Access-Token
+              - X-Forwarded-User
+              - X-Forwarded-Email
+              - X-Forwarded-Groups
+              - X-Auth-Request-User
+              - X-Auth-Request-Email
+              - X-Auth-Request-Groups
+              - X-Auth-Request-Access-Token
+      backendRefs:
+        - name: rooms-oauth2-proxy
+          port: 80
+      # Envoy's route default is 15 s; a room WebSocket lives up to an hour, kept
+      # alive by a 30 s ping under the 5 min idle timeout (§3).
+      timeouts:
+        request: 0s

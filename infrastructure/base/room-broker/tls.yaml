@@ -1,0 +1,43 @@
+---
+# :8443 serves TLS on both clouds: gcp-0's Cilium has no WireGuard (GCP parity GP-18). The
+# broker re-reads the pair when cert-manager renews it, so no restart.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: room-broker-tls
+  namespace: agent-system
+spec:
+  secretName: room-broker-tls  # pragma: allowlist secret
+  duration: 720h # 30d
+  renewBefore: 240h # 10d
+  dnsNames:
+    - room-broker.agent-system.svc.cluster.local
+    - room-broker.agent-system.svc
+  issuerRef:
+    name: openbao
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# The CA the run bridges trust, in their own namespace: a pod mounts Secrets from
+# its namespace only. Certificates only, the same source as
+# security/base/agent-secrets/externalsecret-openbao-ca.yaml; the one ESO object
+# agents-no-secret-import admits, and only in exactly this shape.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: room-broker-ca
+  namespace: agents
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: clustersecretstore
+  target:
+    name: room-broker-ca
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: ca.crt  # pragma: allowlist secret
+      remoteRef:
+        key: certificates/${private_domain_name}/ca-chain
+        property: ca

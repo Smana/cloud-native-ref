@@ -2165,6 +2165,7 @@ opentelemetry-exporter-otlp-proto-http==1.39.1 \
     --hash=sha256:d9f5207183dd752a412c4cd564ca8875ececba13be6e9c6c370ffb752fd59985
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
+    #   -r container-images/agent-harness/requirements.in
     #   lmnr
 opentelemetry-instrumentation==0.60b1 \
     --hash=sha256:04480db952b48fb1ed0073f822f0ee26012b7be7c3eac1a3793122737c78632d \
@@ -2192,6 +2193,7 @@ opentelemetry-sdk==1.39.1 \
     --hash=sha256:cf4d4563caf7bff906c9f7967e2be22d0d6b349b908be0d90fb21c8e9c995cc6
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
+    #   -r container-images/agent-harness/requirements.in
     #   lmnr
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http

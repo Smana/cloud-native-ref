@@ -1,0 +1,140 @@
+---
+# The room broker (SP2 §9). Default deny; one allow per flow. It listens on :8443
+# (bridges, system API), :8080 (humans) and :9090 (metrics, probes).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: room-broker
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: room-broker
+  ingress:
+    # Run bridges. The run CNP opens this egress only with roomRef (C3).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agents
+          matchExpressions:
+            - key: agents.ogenki.io/run-id
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    # SP3's factory: the system API (reads the log, appends task_state).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: agent-factory
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    # Humans, through oauth2-proxy only (§9).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: oauth2-proxy
+            app.kubernetes.io/instance: rooms-oauth2-proxy
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Kubelet's probes.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # The Room and AgentRun watches, and the leader lease.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            cnpg.io/cluster: xplane-rooms-cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # The run issuer's JWKS, fetched at start (an unreachable issuer fails the
+    # rollout) and hourly after (ruling P11). The host is per cloud (GCP parity GP-12).
+    - toFQDNs:
+        - matchName: ${oidc_jwks_host}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # ZITADEL's JWKS, for the ID and access tokens humans present. gcp-0's overlay
+    # replaces this rule: its own Gateway VIP refuses any toPorts (ruling AU).
+    - toFQDNs:
+        - matchName: "auth.${public_domain_name}"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# The retention job reaches the log and nothing else.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: room-broker-retention
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: room-broker-retention
+  # An empty rule selects no peer: ingress enforcement on, nothing allowed (the
+  # agents default-deny idiom, SP1).
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            cnpg.io/cluster: xplane-rooms-cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP

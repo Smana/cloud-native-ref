@@ -1,0 +1,87 @@
+---
+# Every agent run in the time range, one row each (agent observability design). A run_id
+# opens its "Agent run" page. "Agent platform" stays the capacity view the alerts link to
+# (O9). The collector's panel is how a stalled trace pipeline is noticed (O16). Tokens read
+# the gateway counter, keyed back to run_id by label_replace ($1 passes Flux untouched).
+# Tier vs spend (O23): one tier per run, never re-routed within it (O24, SP3 R47).
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: agent-fleet
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "agents"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Agent fleet",
+      "uid": "agent-fleet",
+      "schemaVersion": 39,
+      "time": {"from": "now-7d", "to": "now"},
+      "links": [{"title": "Agent platform", "type": "link", "url": "/d/agent-platform/agent-platform", "keepTime": true}],
+      "templating": {"list": [
+        {"name": "datasource", "type": "datasource", "query": "prometheus"},
+        {"name": "logs_datasource", "type": "datasource", "query": "victoriametrics-logs-datasource"}
+      ]},
+      "panels": [
+        {"id": 1, "type": "table", "title": "Runs",
+         "gridPos": {"x": 0, "y": 0, "w": 24, "h": 12},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [
+           {"refId": "A", "instant": true, "format": "table", "expr": "topk by (run_id) (1, tlast_over_time(agentrun_info{namespace=\"agents\"}[$__range]))"},
+           {"refId": "B", "instant": true, "format": "table", "expr": "max by (run_id, phase) (last_over_time(agentrun_status_phase{namespace=\"agents\"}[$__range]) == 1)"},
+           {"refId": "C", "instant": true, "format": "table", "expr": "topk by (run_id) (1, tlast_over_time(agentrun_outcome_info{namespace=\"agents\"}[$__range]))"},
+           {"refId": "D", "instant": true, "format": "table", "expr": "max by (run_id) (last_over_time(agentrun_started_timestamp_seconds{namespace=\"agents\"}[$__range]) > 0) * 1000"},
+           {"refId": "E", "instant": true, "format": "table", "expr": "label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\")"}
+         ],
+         "transformations": [
+           {"id": "merge", "options": {}},
+           {"id": "organize", "options": {"renameByName": {"Value #D": "started", "Value #E": "tokens"}}},
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "role", "data_class", "principal", "phase", "reason", "pull_request", "started", "tokens"]}}},
+           {"id": "sortBy", "options": {"sort": [{"field": "started", "desc": true}]}}
+         ],
+         "fieldConfig": {"defaults": {}, "overrides": [
+           {"matcher": {"id": "byName", "options": "run_id"}, "properties": [{"id": "links", "value": [{"title": "Open this run", "url": "/d/agent-run/agent-run?var-run=$${__value.text}&$${__url_time_range}"}]}]},
+           {"matcher": {"id": "byName", "options": "started"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]},
+           {"matcher": {"id": "byName", "options": "pull_request"}, "properties": [{"id": "links", "value": [{"title": "Pull request", "url": "$${__value.text}", "targetBlank": true}]}]}
+         ]}},
+        {"id": 2, "type": "timeseries", "title": "Runs by phase",
+         "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{phase}}", "expr": "sum by (phase) (agentrun_status_phase{namespace=\"agents\"} == 1)"}]},
+        {"id": 3, "type": "timeseries", "title": "Tokens per run",
+         "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{ar_agent}}", "expr": "sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:.*\", gen_ai_token_type=~\"input|output\"}[$__rate_interval]))"}]},
+        {"id": 4, "type": "timeseries", "title": "Trace pipeline (agent-traces-collector)",
+         "gridPos": {"x": 0, "y": 20, "w": 24, "h": 6},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [
+           {"refId": "A", "legendFormat": "accepted", "expr": "sum(rate(otelcol_receiver_accepted_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"},
+           {"refId": "B", "legendFormat": "refused", "expr": "sum(rate(otelcol_receiver_refused_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"},
+           {"refId": "C", "legendFormat": "exported", "expr": "sum(rate(otelcol_exporter_sent_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"},
+           {"refId": "D", "legendFormat": "export failed", "expr": "sum(rate(otelcol_exporter_send_failed_spans_total{job=\"agent-traces-collector\"}[$__rate_interval]))"}
+         ]},
+        {"id": 5, "type": "table", "title": "Tier vs tokens and steps per run",
+         "gridPos": {"x": 0, "y": 26, "w": 16, "h": 10},
+         "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+         "targets": [
+           {"refId": "A", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range]))"},
+           {"refId": "B", "datasource": {"type": "prometheus", "uid": "$${datasource}"}, "instant": true, "format": "table", "expr": "label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\")"},
+           {"refId": "C", "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"}, "queryType": "stats", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run step \" | extract \"xplane-run-<run_id>\" from kubernetes.pod_name | stats by (run_id) count() as steps"}
+         ],
+         "transformations": [
+           {"id": "merge", "options": {}},
+           {"id": "organize", "options": {"renameByName": {"Value #B": "tokens"}}},
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "tier", "tokens", "steps"]}}},
+           {"id": "sortBy", "options": {"sort": [{"field": "tokens", "desc": true}]}}
+         ]},
+        {"id": 6, "type": "bargauge", "title": "Tokens by tier",
+         "gridPos": {"x": 16, "y": 26, "w": 8, "h": 10},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "instant": true, "legendFormat": "{{tier}}", "expr": "sum by (tier) (label_replace(sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~\"system:serviceaccount:agents:xplane-run-.*\", gen_ai_token_type=~\"input|output\"}[$__range])), \"run_id\", \"$1\", \"ar_agent\", \"system:serviceaccount:agents:xplane-run-(.*)\") * on (run_id) group_left (tier) max by (run_id, tier) (last_over_time(agentrun_info{namespace=\"agents\", tier!=\"\"}[$__range])))"}]}
+      ]
+    }

@@ -18,6 +18,10 @@ mkdir -p "$tmp/bin"
 # a CEL/admission rejection would.
 cat >"$tmp/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
+# The grafana HTTPRoute answers the Grafana host the dashboard link is built from (SO-5);
+# any other `get` fails, as a wrong resource or namespace would.
+if [ "$*" = "get httproute grafana -n observability -o jsonpath={.spec.hostnames[0]}" ]; then printf '%s' "${STUB_HOST:-}"; exit 0; fi
+[ "$1" = get ] && exit 1
 printf '%s\n' "$*" >"$STUB_ARGS"
 cat >"$STUB_CLAIM"
 [ "${STUB_FAIL:-0}" = "1" ] && exit 1
@@ -25,6 +29,7 @@ exit 0
 STUB
 chmod +x "$tmp/bin/kubectl"
 export PATH="$tmp/bin:$PATH" STUB_ARGS="$tmp/args" STUB_CLAIM="$tmp/claim" AGENT_PRINCIPAL="human:312345678901234567"
+unset AGENT_GRAFANA_URL
 
 out="$(bash "$SUBJECT" --role implementer --class public --task 'Fix "the" link' --profiles pypi,npm 2>/dev/null)" || fail "a valid call exits 0"
 jq -e '.metadata.name | test("^xplane-run-[a-z2-7]{8}$")' "$STUB_CLAIM" >/dev/null || fail "runId is 8 characters of [a-z2-7]"
@@ -87,6 +92,33 @@ email_out="$(cd "$email_home" && env -u AGENT_PRINCIPAL HOME="$email_home" GIT_C
 rm -rf "$email_home"
 [ "$email_rc" -eq 2 ] || fail "a missing git user.email exits 2"
 printf '%s' "$email_out" | grep -qi 'user.email' || fail "the missing-email message names git config user.email"
+
+# SO-5: the run's page goes to stderr, so `| tail -1` still yields the run's name.
+out="$(AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err")"
+[ "$out" = "$(jq -r .metadata.name "$STUB_CLAIM")" ] || fail "stdout is still only the run's name"
+run_id="$(jq -r '.metadata.name | sub("^xplane-run-"; "")' "$STUB_CLAIM")"
+grep -qE "^agent-run: dashboard https://grafana\.example/d/agent-run/agent-run\?var-run=${run_id}&from=[0-9]{13}&to=now$" "$tmp/err" \
+  || fail "stderr carries the run's dashboard link"
+STUB_HOST=grafana.stub.example bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err" >/dev/null
+grep -q 'agent-run: dashboard https://grafana.stub.example/d/agent-run/agent-run?var-run=' "$tmp/err" \
+  || fail "without AGENT_GRAFANA_URL the host comes from the grafana HTTPRoute"
+bash "$SUBJECT" --role implementer --class public --task x 2>"$tmp/err" >/dev/null || fail "no Grafana host is not an error"
+grep -q 'agent-run: dashboard' "$tmp/err" && fail "no host, no link"
+AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --dry-run 2>"$tmp/err" >/dev/null
+grep -q 'agent-run: dashboard' "$tmp/err" && fail "a dry run creates no run, so it prints no link"
+
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma --dry-run >/dev/null 2>&1 || fail "a --room call exits 0"
+jq -e '.spec.roomRef == "3kq7x2ma" and .spec.branch == "agent/3kq7x2ma"' "$STUB_CLAIM" >/dev/null || fail "--room sets roomRef and the room's shared branch"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma --branch agent/7f3cq2xz --dry-run >/dev/null 2>&1 || fail "--room with --branch exits 0"
+jq -e '.spec.branch == "agent/7f3cq2xz"' "$STUB_CLAIM" >/dev/null || fail "an explicit --branch wins"
+bash "$SUBJECT" --role implementer --class public --task x --room ROOM >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room that is not a C2 id"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a 7-character --room"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m1 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room with a digit outside 2-7"
+bash "$SUBJECT" --role implementer --class public --task x --dry-run >/dev/null 2>&1
+jq -e '.spec | has("roomRef") | not' "$STUB_CLAIM" >/dev/null || fail "no roomRef unless asked"
+AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma 2>"$tmp/err" >/dev/null
+grep -q 'room=3kq7x2ma branch=agent/3kq7x2ma' "$tmp/err" || fail "stderr echoes the room and its branch"
+grep -q '^agent-run: dashboard https://grafana.example/' "$tmp/err" || fail "a room run still prints its dashboard link"
 
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"

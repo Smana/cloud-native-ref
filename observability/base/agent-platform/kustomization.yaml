@@ -4,5 +4,10 @@ kind: Kustomization
 resources:
   - vmrule.yaml
   - vmrule-logs.yaml
+  - vmrule-rooms.yaml
   - grafana-folder.yaml
   - grafana-dashboard.yaml
+  - grafana-dashboard-agent-run.yaml
+  - grafana-dashboard-agent-fleet.yaml
+  - agent-traces-collector.yaml
+  - referencegrant-agent-traces.yaml

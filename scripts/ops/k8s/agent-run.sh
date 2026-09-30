@@ -5,16 +5,18 @@
 # usage: agent-run.sh --role <implementer|reviewer|tester|triager> --class <public|internal>
 #                     (--task "<text>" | --task-url <issue or PR URL>)
 #                     [--repo <owner/name>] [--branch agent/<id>] [--size small|medium|large]
-#                     [--minutes <1-480>] [--profiles pypi,npm,golang,crates] [--dry-run]
+#                     [--minutes <1-480>] [--profiles pypi,npm,golang,crates] [--room <roomId>] [--dry-run]
+# --room joins the run to a room (SP2) and defaults --branch to the room's shared agent/<roomId>.
 # --class internal has no model route until SP4 PR 2, so such a run 404s on every model call; it is
 # still accepted because the runbooks use it to test the internal listener.
 # AGENT_PRINCIPAL overrides the principal (default: human:<git user.email>) and must match
 # the design's principal CEL: human:<id> or system:<name> (lowercase, plan Task 1.1).
 # Only the run's name goes to stdout (callers capture it with `| tail -1`); the
-# applied claim's key fields (principal, role, class, repo, branch, minutes) go to stderr.
+# applied claim's key fields and the run's dashboard link go to stderr (SO-5).
+# AGENT_GRAFANA_URL overrides the Grafana host, read otherwise from the grafana HTTPRoute.
 set -euo pipefail
 
-repo=Smana/cloud-native-ref role="" class="" task="" url="" branch="" size=small minutes=120 profiles="" dry=""
+repo=Smana/cloud-native-ref role="" class="" task="" url="" branch="" size=small minutes=120 profiles="" room="" dry=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) repo=$2; shift 2 ;;
@@ -26,6 +28,7 @@ while [ $# -gt 0 ]; do
     --size) size=$2; shift 2 ;;
     --minutes) minutes=$2; shift 2 ;;
     --profiles) profiles=$2; shift 2 ;;
+    --room) room=$2; shift 2 ;;
     --dry-run) dry="--dry-run=server"; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -58,6 +61,13 @@ fi
 if [ "$minutes" -lt 1 ] || [ "$minutes" -gt 480 ]; then
   echo "--minutes must be an integer between 1 and 480" >&2; exit 2
 fi
+if [ -n "$room" ] && [[ ! "$room" =~ ^[a-z2-7]{8}$ ]]; then
+  echo "--room must be a room id: 8 characters of [a-z2-7]" >&2; exit 2
+fi
+# A human room's runs share one branch (C3); --branch still wins.
+if [ -n "$room" ] && [ -z "$branch" ]; then
+  branch="agent/$room"
+fi
 if { [ -n "$task" ] && [ -n "$url" ]; } || { [ -z "$task" ] && [ -z "$url" ]; }; then
   echo "give exactly one of --task or --task-url" >&2; exit 2
 fi
@@ -79,9 +89,12 @@ fi
 
 run_id="$(python3 -c 'import secrets; print("".join(secrets.choice("abcdefghijklmnopqrstuvwxyz234567") for _ in range(8)))')"
 
+# The run's page opens a minute before the run exists (epoch ms).
+from_ms="$(( $(date +%s) - 60 ))000"
+
 # JSON, not YAML: task text passes through unescaped by the shell.
 claim="$(RUN_ID="$run_id" REPO="$repo" ROLE="$role" CLASS="$class" TASK="$task" URL="$url" \
-  BRANCH="$branch" SIZE="$size" MINUTES="$minutes" PROFILES="$profiles" PRINCIPAL="$principal" python3 -c '
+  BRANCH="$branch" SIZE="$size" MINUTES="$minutes" PROFILES="$profiles" PRINCIPAL="$principal" ROOM="$room" python3 -c '
 import json, os
 e = os.environ
 spec = {"role": e["ROLE"], "repository": e["REPO"], "principal": e["PRINCIPAL"], "dataClass": e["CLASS"],
@@ -89,6 +102,8 @@ spec = {"role": e["ROLE"], "repository": e["REPO"], "principal": e["PRINCIPAL"],
         "task": {"text": e["TASK"]} if e["TASK"] else {"url": e["URL"]}}
 if e["BRANCH"]:
     spec["branch"] = e["BRANCH"]
+if e["ROOM"]:
+    spec["roomRef"] = e["ROOM"]
 if e["PROFILES"]:
     spec["egress"] = {"profiles": e["PROFILES"].split(",")}
 print(json.dumps({"apiVersion": "cloud.ogenki.io/v1alpha1", "kind": "AgentRun",
@@ -99,6 +114,15 @@ print(json.dumps({"apiVersion": "cloud.ogenki.io/v1alpha1", "kind": "AgentRun",
 # AlreadyExists rather than a silent, CEL-immutability-rejected update.
 # shellcheck disable=SC2086
 printf '%s\n' "$claim" | kubectl create $dry -f -
-printf 'agent-run: principal=%s role=%s dataClass=%s repository=%s branch=%s maxMinutes=%s\n' \
-  "$principal" "$role" "$class" "$repo" "${branch:--}" "$minutes" >&2
+printf 'agent-run: principal=%s role=%s dataClass=%s repository=%s room=%s branch=%s maxMinutes=%s\n' \
+  "$principal" "$role" "$class" "$repo" "${room:--}" "${branch:--}" "$minutes" >&2
+# The run's page (observability plan O17). No host, no link; a dry run creates no run.
+if [ -z "$dry" ]; then
+  grafana="${AGENT_GRAFANA_URL:-}"
+  if [ -z "$grafana" ]; then
+    host="$(kubectl get httproute grafana -n observability -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || true)"
+    [ -z "$host" ] || grafana="https://$host"
+  fi
+  [ -z "$grafana" ] || printf 'agent-run: dashboard %s/d/agent-run/agent-run?var-run=%s&from=%s&to=now\n' "${grafana%/}" "$run_id" "$from_ms" >&2
+fi
 echo "xplane-run-$run_id"
