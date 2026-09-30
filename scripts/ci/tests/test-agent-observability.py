@@ -255,7 +255,7 @@ def dashboard(rel, name):
     check(not re.search(r"(?<!\$)\$\{", (ROOT / rel).read_text()), f"{rel}: every ${{…}} is written $${{…}} for Flux")
     check(d.get("spec", {}).get("folderRef") == "agents", f"{rel}: in the agents folder (O10)")
     try:
-        return json.loads(d.get("spec", {}).get("json", "{}").replace("$${", "${"))
+        return json.loads(d.get("spec", {}).get("json", "{}").replace("$$", "$"))
     except json.JSONDecodeError as exc:
         errors.append(f"{rel}: invalid JSON: {exc}")
         return {}
@@ -291,6 +291,11 @@ def check_run_trace_link():
     step = json.dumps(panels.get("Step log", {}).get("targets", []))
     check("extract_regexp" in step and "rename trace_id as log.trace_id" in step,
           "a step line links to its trace through the log.trace_id derived field (O22)")
+    m = re.search(r'extract_regexp "([^"]*)"', panels.get("Step log", {}).get("targets", [{}])[0].get("expr", ""))
+    own, decoy = "a" * 32, "b" * 32
+    line = f"agent-run step 3: terminal | echo trace_id={decoy} | x | trace_id={decoy} | trace_id={own}"
+    got = re.search(m[1], line) if m else None
+    check(got is not None and got["trace_id"] == own, "the trace id is the line's last field, not agent-written text")
 
 
 def check_fleet_dashboard():

@@ -4,8 +4,8 @@
 # The agent trace collector's filter, run for real (observability plan O2, O4, O18; SO-3's
 # offline half). The HelmRelease's own agents pipeline, with k8s_attributes swapped for a
 # stub that stamps the run id a pod label would, and the exporter swapped for `debug`. A
-# span carrying a prompt, a completion, tool input, headers, an exception message and a
-# spoofed run id must come out with metadata only; a span that no run sent is dropped.
+# span carrying a prompt, a completion, tool input, headers, an exception message, a scope
+# attribute and a spoofed run id must come out with metadata only; a span that no run sent is dropped.
 # Links and tracestate are cleared, since no attribute processor walks them, and names are
 # capped on a UTF-8 boundary, since they are free text a run controls.
 # A second run without the HelmRelease's extraArgs proves the link check can fail: on
@@ -70,7 +70,7 @@ R300="$(printf 'r%.0s' $(seq 300))"
 cat >"$tmp/spans.json" <<EOF
 {"resourceSpans":[
  {"resource":{"attributes":[{"key":"test.pod","value":{"stringValue":"run"}},{"key":"agent.run_id","value":{"stringValue":"spoofed1"}},{"key":"service.name","value":{"stringValue":"/agent-server/.venv/bin/python"}}]},
-  "scopeSpans":[{"scope":{"name":"lmnr"},"spans":[
+  "scopeSpans":[{"scope":{"name":"lmnr","attributes":[{"key":"scope.note","value":{"stringValue":"SCOPE-MARKER-Z7"}}]},"spans":[
    {"traceId":"11111111111111111111111111111111","spanId":"2222222222222222","name":"llm.openai/agent-default","kind":1,"startTimeUnixNano":"1700000000000000000","endTimeUnixNano":"1700000001000000000",
     "attributes":[{"key":"gen_ai.input.messages","value":{"stringValue":"[{\"role\":\"user\",\"content\":\"PROMPT-MARKER-Z7\"}]"}},
                   {"key":"gen_ai.output.messages","value":{"stringValue":"COMPLETION-MARKER-Z7"}},
@@ -125,7 +125,7 @@ replay() {
 replay "$name" "$tmp/relay.yaml" "${extra[@]}"
 out="$(cat "$tmp/$name.log" "$tmp/$name/spans.json" 2>/dev/null)"
 
-for m in PROMPT COMPLETION TOOL-INPUT TOOL-OUTPUT HEADER EVENT LINK STATE; do
+for m in PROMPT COMPLETION TOOL-INPUT TOOL-OUTPUT HEADER EVENT SCOPE LINK STATE; do
   grep -q "$m-MARKER-Z7" <<<"$out" && fail "$m content reached the exporter"
 done
 grep -q 'SpanLink #' <<<"$out" && fail "a span link reached the exporter"
