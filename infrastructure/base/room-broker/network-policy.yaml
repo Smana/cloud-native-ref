@@ -112,6 +112,13 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    # api.github.com: agents' review verdicts as the factory App's PR comments (SP2 design §3).
+    - toFQDNs:
+        - matchName: api.github.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 ---
 # The retention job reaches the log and nothing else.
 apiVersion: cilium.io/v2

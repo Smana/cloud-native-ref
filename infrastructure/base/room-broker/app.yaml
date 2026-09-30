@@ -69,6 +69,10 @@ spec:
         secretKeyRef:
           name: room-broker-mcp-key
           key: apiKey
+    # The factory App's key (verdict comments, §3). Empty until the owner writes it:
+    # verdicts wait in the room, up to 24 h.
+    - name: ROOMS_GITHUB_APP_DIR
+      value: /var/run/secrets/factory-app
   # The config sits beside the TLS pair, not above it: a mount nested in a
   # read-only ConfigMap mount cannot create its mount point.
   extraVolumes:
@@ -83,6 +87,15 @@ spec:
     - name: oidc
       secret:
         secretName: room-broker-oidc  # pragma: allowlist secret
+    # optional: the broker runs before the owner creates the App, and kubelet fills
+    # the volume once the key lands. A secretKeyRef env would need a restart (P31).
+    # 0440: the non-root broker reads the key through the pod's fsGroup, which the
+    # App composition sets to its user (1001). Without it every mint fails.
+    - name: factory-app
+      secret:
+        secretName: room-broker-factory-app  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -92,6 +105,9 @@ spec:
       readOnly: true
     - name: oidc
       mountPath: /etc/room-broker/oidc
+      readOnly: true
+    - name: factory-app
+      mountPath: /var/run/secrets/factory-app
       readOnly: true
   networkPolicies:
     enabled: false

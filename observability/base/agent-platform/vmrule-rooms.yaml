@@ -125,3 +125,15 @@ spec:
             description: "A client is probing the section 1 matrix, or a UI bug is sending actions a role cannot take. Break down by reason: sum by (reason) (increase(rooms_rejected_actions_total[10m]))"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#1-room-model"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # Verdicts back off per verdict up to 15 min (ruling TC), so errors with no success
+        # for 30 min means GitHub or the key is failing, not one flaky call.
+        - alert: RoomVerdictsNotReachingGitHub
+          expr: sum(rate(rooms_verdict_posts_total{result="error"}[10m])) > 0 unless sum(rate(rooms_verdict_posts_total{result="posted"}[30m])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agents' review verdicts have not reached GitHub for 30 minutes"
+            description: "They stay in the room and SP3 still reads them there. Check the key (kubectl get externalsecret -n agent-system room-broker-factory-app), the App's installation on Smana/cloud-native-ref, and the broker log: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep -i verdict"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#3-agent-collaboration-and-the-broker"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"

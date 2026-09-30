@@ -18,3 +18,4 @@ resources:
   - network-policy-oauth2-proxy.yaml
   - httproute.yaml
   - externalsecret-mcp-key.yaml
+  - externalsecret-factory-app.yaml
