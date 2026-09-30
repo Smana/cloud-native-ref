@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # The three controllers (External Secrets, cert-manager, Kyverno), and NOTHING
-# they admit. Kyverno's policies follow the same rule: security-sandbox-policies
-# applies them once this Kustomization's health checks pass.
+# they admit. Kyverno policies follow the same rule: they belong in a separate
+# Kustomization that waits for this one's health checks.
 #
 # This split is load-bearing, not organisational. Both charts ship a VALIDATING
 # WEBHOOK with failurePolicy: Fail, and both webhooks admit resources that live

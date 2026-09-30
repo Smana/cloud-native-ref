@@ -149,8 +149,9 @@ datapath as of 2026-08. So this is not "disable Dataplane V2" — it is "do not 
 - Unsupported by Google, and off Cilium's documented happy path.
   - *Mitigation*: pin `imageType` so kernel requirements are known; treat the CNI-displacement
     check as a permanent regression test rather than a one-off.
-- The `node.cilium.io/agent-not-ready` taint must reach every node, including autoscaled ones.
+- The agent-not-ready taint must reach every node, including autoscaled ones.
   - *Mitigation*: `ComputeClass.nodePoolConfig.taints[]`, verified by the autoscaling slice.
+    GKE uses a non-default key that the cluster autoscaler ignores; see ADR-0006.
 
 ### Neutral
 

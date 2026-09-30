@@ -4,8 +4,9 @@
 # GCP parity GP-9..GP-11: gcp-0's runs land on a GKE Sandbox pool through GKE's
 # own `gvisor` RuntimeClass; gVisor needs Cilium's per-packet LB; and every
 # DaemonSet that follows runs onto aws-0's gVisor nodes follows them onto GKE's.
-# The pool keeps Cilium's startup taint, so it scales from zero only for pods
-# that tolerate it (ADR-0006): a Kyverno policy adds that toleration to gVisor pods.
+# F2: every GKE pool and ComputeClass carries Cilium's startup taint under the
+# key Cilium clears, in the autoscaler's startup-taint namespace, so the pool
+# scales from zero with NO toleration and nothing runs before Cilium is ready.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 F="$ROOT/opentofu/gcp/gke/init/sandbox.tf"
@@ -15,7 +16,7 @@ if [ -f "$F" ]; then
   grep -Eq 'sandbox_type[[:space:]]*=[[:space:]]*"gvisor"' "$F" || fail "the pool is not a GKE Sandbox pool"
   grep -Eq 'spot[[:space:]]*=[[:space:]]*true' "$F" || fail "the pool is not spot"
   grep -Eq 'min_node_count[[:space:]]*=[[:space:]]*0' "$F" || fail "the pool does not scale to zero"
-  grep -q 'node.cilium.io/agent-not-ready' "$F" || fail "no Cilium startup taint"
+  grep -Eq 'key[[:space:]]*=[[:space:]]*local\.cilium_agent_not_ready_taint' "$F" || fail "no Cilium startup taint"
   grep -Eq 'disk_type[[:space:]]*=[[:space:]]*"pd-standard"' "$F" || fail "the pool's disk is not pd-standard, the cheapest"
 else
   fail "no $F"
@@ -38,41 +39,38 @@ try:
 except ImportError:
     print("SKIP PyYAML is not installed"); sys.exit(0)
 root = pathlib.Path(sys.argv[1])
-want = {"key": "node.cilium.io/agent-not-ready", "operator": "Exists", "effect": "NoSchedule"}
 def docs(p):
     return [d for d in yaml.safe_load_all(p.read_text()) if d] if p.is_file() else []
 
-pol_dir = root / "security/gcp-0/sandbox-policies"
-kust = docs(pol_dir / "kustomization.yaml")
-pols = [d for r in (kust[0].get("resources", []) if kust else []) for d in docs(pol_dir / r)
-        if d.get("kind") == "ClusterPolicy"]
-if not pols:
-    print("FAIL no Kyverno ClusterPolicy in security/gcp-0/sandbox-policies")
-for pol in pols:
-    rules = [r for r in pol["spec"].get("rules", []) if "mutate" in r]
-    ok = False
-    for r in rules:
-        pre = r.get("preconditions", {}).get("all", [])
-        gvisor = any("runtimeClassName" in str(c.get("key")) and c.get("operator") == "Equals"
-                     and c.get("value") == "gvisor" for c in pre)
-        patch = yaml.safe_load(r["mutate"].get("patchesJson6902", "[]")) or []
-        adds = any(p.get("op") == "add" and p.get("path") == "/spec/tolerations/-" and p.get("value") == want
-                   for p in patch)
-        ok = ok or (gvisor and adds)
-    if not ok:
-        print(f"FAIL {pol['metadata']['name']}: no rule adds {want} to pods with runtimeClassName gvisor")
-    if pol["metadata"].get("annotations", {}).get("pod-policies.kyverno.io/autogen-controllers") != "none":
-        print(f"FAIL {pol['metadata']['name']}: autogen must be off, or it patches Deployment templates")
-    # The precondition runs inside Kyverno; only a matchCondition keeps every
-    # other Pod create from waiting on Kyverno's webhook.
-    conds = (pol["spec"].get("webhookConfiguration") or {}).get("matchConditions") or []
-    exprs = ["".join(str(c.get("expression", "")).split()) for c in conds]
-    if exprs != ["has(object.spec.runtimeClassName)&&object.spec.runtimeClassName=='gvisor'"]:
-        print(f"FAIL {pol['metadata']['name']}: the webhook must match only runtimeClassName == 'gvisor' "
-              f"(webhookConfiguration.matchConditions), got {exprs}")
+# One taint key everywhere on GKE: cilium-operator clears only the key it is
+# configured with, so a pool carrying another one never becomes schedulable.
+import re
+prefixes = ("ignore-taint.cluster-autoscaler.kubernetes.io/", "startup-taint.cluster-autoscaler.kubernetes.io/")
+cilium = docs(root / "opentofu/gcp/gke/init/helm_values/cilium.yaml")
+taint_key = (cilium[0] if cilium else {}).get("agentNotReadyTaintKey")
+if not taint_key or not taint_key.startswith(prefixes):
+    print(f"FAIL cilium.yaml: agentNotReadyTaintKey must carry an autoscaler startup-taint prefix, got {taint_key!r}")
+m = re.search(r'cilium_agent_not_ready_taint\s*=\s*"([^"]+)"', (root / "opentofu/gcp/gke/init/main.tf").read_text())
+if not m or m.group(1) != taint_key:
+    print(f"FAIL gke/init local.cilium_agent_not_ready_taint != cilium.yaml agentNotReadyTaintKey ({taint_key!r})")
+if not re.search(r'key\s*=\s*local\.cilium_agent_not_ready_taint', (root / "opentofu/gcp/gke/init/main.tf").read_text()):
+    print("FAIL the static pool does not carry local.cilium_agent_not_ready_taint")
+for p in sorted((root / "infrastructure/gcp-0/computeclass").glob("*.yaml")):
+    for d in docs(p):
+        if d.get("kind") != "ComputeClass":
+            continue
+        taints = [t.get("key") for t in (d["spec"].get("nodePoolConfig") or {}).get("taints", [])]
+        if taint_key not in taints:
+            print(f"FAIL ComputeClass {d['metadata']['name']} does not carry the Cilium taint {taint_key!r}")
+
+# A toleration of that key re-opens F2: the pod lands before Cilium, unpoliced.
+for base in ("clusters/gcp-0", "clusters/gcp-0-agent-platform", "infrastructure", "security",
+             "observability", "tooling", "apps", "scripts/ops"):
+    for p in (root / base).rglob("*.yaml"):
+        if taint_key and taint_key in p.read_text() and "computeclass" not in p.parts:
+            print(f"FAIL {p.relative_to(root)} names the Cilium startup taint; nothing may tolerate it")
 
 # The cluster autoscaler's ceiling counts every node, the fixed pools included.
-import re
 init = root / "opentofu/gcp/gke/init"
 tfvars = (init / "variables.tfvars").read_text() if (init / "variables.tfvars").is_file() else ""
 tfvars_src = (init / "variables.tf").read_text() if (init / "variables.tf").is_file() else ""
@@ -101,14 +99,6 @@ if static and agents:
 else:
     print("FAIL cannot size the fixed pools: a machine type is not e2-standard-N; extend this check")
 
-wired = [d for p in (root / "clusters/gcp-0").rglob("*.yaml") for d in docs(p)
-         if d.get("kind") == "Kustomization" and str(d.get("spec", {}).get("path", "")).rstrip("/") == "./security/gcp-0/sandbox-policies"]
-if not wired:
-    print("FAIL no gcp-0 Flux Kustomization applies security/gcp-0/sandbox-policies")
-for k in wired:
-    if "security" not in [x.get("name") for x in k["spec"].get("dependsOn", [])]:
-        print(f"FAIL {k['metadata']['name']} must dependsOn security, which health-checks kyverno")
-
 probe = docs(root / "scripts/ops/k8s/gvisor-smoke.yaml")
 if not probe:
     print("FAIL no scripts/ops/k8s/gvisor-smoke.yaml")
@@ -117,8 +107,8 @@ for d in probe:
         print("FAIL the probe's CNP must deny ingress with the `- {}` idiom")
     if d.get("kind") == "Pod":
         s = d["spec"]
-        if want not in s.get("tolerations", []):
-            print("FAIL the probe does not tolerate the Cilium startup taint")
+        if any("agent-not-ready" in str(t.get("key")) for t in s.get("tolerations") or []):
+            print("FAIL the probe tolerates a Cilium startup taint: it must prove scale-up without one")
         if not s.get("activeDeadlineSeconds"):
             print("FAIL the probe has no activeDeadlineSeconds")
         if '!= "4.4.0"' not in "".join(s["containers"][0].get("command", [])):
