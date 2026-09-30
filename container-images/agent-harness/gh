@@ -3,4 +3,8 @@
 # git-credential-agent and held only in its in-memory cache (design §5).
 GH_TOKEN="$(/usr/local/bin/git-credential-agent token)" || exit 1
 export GH_TOKEN
+# `gh pr create` also gets the run's provenance footer (SP2 design §5).
+if [ "$1" = pr ] && [ "$2" = create ]; then
+  exec /opt/agent/pr_footer.py "$@"
+fi
 exec /usr/local/lib/gh-real "$@"

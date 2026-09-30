@@ -1,4 +1,37 @@
-#!/bin/sh
-# Adds the Agent-Run trailer SP3 re-verifies server-side (design §4). Guidance,
-# not a control: an agent with a shell can skip a hook.
-exec git interpret-trailers --in-place --if-exists doNothing --trailer "Agent-Run: ${RUN_ID:?RUN_ID is unset}" "$1"
+#!/agent-server/.venv/bin/python
+"""Adds the Agent-Run trailer SP3 re-verifies server-side (design §4), and
+Agent-Task when the run has a task (SP3 ruling SW). Guidance, not a control:
+an agent with a shell can skip a hook.
+
+The harness's keys are its own (SP3 ruling SL). `--if-exists replace` removes
+only one existing trailer, and git matches keys case-insensitively, so an
+agent-written `agent-run:` would survive beside the real one. Every such line
+is neutralised first, as in the PR body, then the real values are added.
+"""
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, "/opt/agent")
+import pr_footer  # noqa: E402
+
+TRAILERS = (("Agent-Run", "RUN_ID"), ("Agent-Task", "TASK_ID"))
+
+
+def main(path: str, env: dict) -> int:
+    if not pr_footer.value(env, "RUN_ID"):
+        print("commit-msg: RUN_ID is unset", file=sys.stderr)
+        return 1
+    with open(path, encoding="utf-8") as f:
+        message = f.read()
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(pr_footer.neutralise(message))
+    args = ["git", "interpret-trailers", "--in-place", "--if-exists", "replace"]
+    for key, var in TRAILERS:
+        if pr_footer.value(env, var):
+            args += ["--trailer", "%s: %s" % (key, pr_footer.value(env, var))]
+    return subprocess.run(args + [path]).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1], dict(os.environ)))
