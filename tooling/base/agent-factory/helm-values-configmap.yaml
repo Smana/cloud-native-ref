@@ -46,3 +46,5 @@ data:
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
         query: 'sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+      # Task spans (R46) to the trace collector's platform port (observability plan O20).
+      tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}

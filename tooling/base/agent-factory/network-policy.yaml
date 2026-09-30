@@ -46,6 +46,12 @@ spec:
             app.kubernetes.io/name: vmsingle
       toPorts:
         - ports: [{port: "8428", protocol: TCP}]
+    - toEndpoints:  # task spans (R46): the trace collector's platform port, OTLP/gRPC
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports: [{port: "4317", protocol: TCP}]
     - toFQDNs:
         - matchName: api.github.com
       toPorts:
