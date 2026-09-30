@@ -68,7 +68,7 @@ BOTH="${UI_CB},${CLI_CB}"
 ensure_project() { echo "proj-1"; }
 ensure_project_role_assertion() { :; }
 ensure_project_roles() { :; }
-grant_admin_role() { :; }
+grant_role() { :; }
 app_id_by_name() { echo "app-1"; }
 # cmd_sync's last step, unrelated to redirects (it fixes the workforce-identity
 # audience). Stubbed rather than exercised -- but stubbed EXPLICITLY, because

@@ -1062,7 +1062,7 @@ force_sync_mirrored() { :; }
 ensure_project() { echo "proj-1"; }
 ensure_project_role_assertion() { :; }
 ensure_project_roles() { :; }
-grant_admin_role() { :; }
+grant_role() { :; }
 reconcile_workforce_audience() { :; }
 app_set_redirect() { :; }
 merge_secret() { echo '{}'; }

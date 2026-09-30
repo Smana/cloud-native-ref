@@ -21,7 +21,7 @@
 #
 # Everything cmd_sync calls OTHER than the convergence path is stubbed:
 # ensure_project/ensure_project_role_assertion/ensure_project_roles/
-# grant_admin_role/app_set_redirect do nothing, and app_id_by_name/
+# grant_role/app_set_redirect do nothing, and app_id_by_name/
 # app_get/app_redirect_uris (old and new names, so this test runs unmodified
 # against either version of the script) report ONE consumer, "headlamp",
 # already existing with the CORRECT redirect URI -- so the only thing that
@@ -70,7 +70,7 @@ fi
 ensure_project() { echo "proj-1"; }
 ensure_project_role_assertion() { :; }
 ensure_project_roles() { :; }
-grant_admin_role() { :; }
+grant_role() { :; }
 app_set_redirect() { :; }
 app_id_by_name() { echo "app-1"; }
 # Explicit, not left to fall through undefined: the two reconciles cmd_sync

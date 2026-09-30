@@ -133,7 +133,7 @@ store_read() { :; }
 IDP_URL="https://auth.example.invalid"
 HEADLAMP_OIDC_SCOPES="profile,email,groups"
 missing=""
-for consumer in grafana headlamp flux-ui harbor openbao headlamp-proxy; do
+for consumer in grafana headlamp flux-ui harbor openbao headlamp-proxy rooms-proxy; do
     keys="$(merge_secret k "$consumer" id-fixture fake-secret | jq -r 'keys[]')"  # pragma: allowlist secret
     [ -n "$keys" ] || missing="${missing} ${consumer}:<no output>"
     while IFS= read -r k; do
