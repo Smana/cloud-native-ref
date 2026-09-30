@@ -19,7 +19,7 @@ The dark factory turns triggers (a maintainer's issue label, RunLore findings, s
 sequential agent runs that open a pull request, then watches CI, policy and humans for hours until
 the PR merges, closes or is reverted. It must enforce three levels of token budget, honour a kill
 switch, and be the only creator of `AgentRun`s so that a principal's daily budget has one
-enforcement point (programme C3).
+enforcement point.
 
 ---
 
@@ -28,7 +28,7 @@ enforcement point (programme C3).
 - The lifecycle is a reconciliation against GitHub state that lasts hours
 - Budgets, caps and the kill switch are domain logic every option would still need
 - No new stateful service: the cluster is rebuilt routinely
-- Configuration in Git, state at runtime, audit through the room log (C4)
+- Configuration in Git, state at runtime, audit through the room log that already records every run
 
 ---
 
@@ -69,7 +69,7 @@ enforcement point (programme C3).
 
 **Rationale**: Every alternative still needs the budget, cap and kill-switch logic written by us,
 and each adds a component or loses the reconciliation model. A controller-runtime controller
-reconciling `Task`s, shipped as a signed chart from `Smana/agent-platform` (OD-4), is the smallest
+reconciling `Task`s, shipped as a signed chart from `Smana/agent-platform` beside the room broker, is the smallest
 thing that fits.
 
 ---
@@ -79,7 +79,7 @@ thing that fits.
 ### Positive
 
 - One Deployment with leader election; Tasks are inspectable with `kubectl`
-- The factory is the single creator of runs, so admission-time budgets hold (C3, C5)
+- The factory is the single creator of runs, so the budgets it checks before creating one hold, beneath the gateway's per-run token ceiling
 
 ### Negative
 

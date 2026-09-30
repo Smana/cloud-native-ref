@@ -10,6 +10,7 @@ data:
     image:
       repository: ghcr.io/smana/agent-factory
       # agent-platform#7 at 45ecd75, the chart's appVersion.
+      # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
       tag: "v0.0.1-pr7.45ecd758@sha256:4b86e861ff4e73f88623413536973886c59cf571336ea3d7c6e395e00407c250"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github

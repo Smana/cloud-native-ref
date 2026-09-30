@@ -676,6 +676,12 @@ def render_overlay(overlay, outdir):
     return None, rendered
 
 
+def chartref_path(source):
+    """The helm chart reference for a chartRef source: `<url>@<digest>` when it is digest-pinned."""
+    digest = (source.get("ref") or {}).get("digest")
+    return f"{source['url']}@{digest}" if digest else source["url"]
+
+
 def _resolve_chart(spec, sources, namespace):
     """Resolve a HelmRelease's chart source, whether inline or by reference.
 
@@ -688,6 +694,9 @@ def _resolve_chart(spec, sources, namespace):
     if chart_ref:
         source = resolve_source(sources, chart_ref, namespace)
         pin = (source.get("ref") or {}) if source else {}
+        # Flux resolves digest before semver and tag; chartref_path pulls that digest.
+        if pin.get("digest"):
+            return source, None, None
         return source, None, pin.get("tag") or pin.get("semver")
     chart_spec = spec.get("chart", {}).get("spec", {})
     source = resolve_source(sources, chart_spec.get("sourceRef", {}), namespace)
@@ -901,7 +910,7 @@ def render_helmrelease(doc, sources, outdir, namespace, stem, value_objects):
         elif via_ref:
             # chartRef -> OCIRepository: the source URL already points at the
             # chart itself, so there is no chart name to append.
-            chart_path = url
+            chart_path = chartref_path(source)
         else:
             chart_path = f"{url.rstrip('/')}/{chart}" if is_oci else chart
 
