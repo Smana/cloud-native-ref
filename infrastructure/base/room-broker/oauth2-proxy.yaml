@@ -1,0 +1,86 @@
+# The rooms UI's front door (§3, S5): the ZITADEL session lives in an HttpOnly,
+# SameSite=Strict cookie, never in the page that renders LLM output (T10).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rooms-oauth2-proxy
+  namespace: agent-system
+spec:
+  interval: 30m
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: oauth2-proxy
+      version: "10.7.0"
+      sourceRef:
+        kind: HelmRepository
+        name: oauth2-proxy
+        namespace: tooling
+      interval: 12h
+  # The secret exists only after the deploy's zitadel sync: retry rather than stall
+  # (tooling/gcp-0/headlamp/oauth2-proxy.yaml hit exactly this).
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: rooms-oauth2-proxy
+    config:
+      existingSecret: rooms-proxy # pragma: allowlist secret
+    extraArgs:
+      provider: oidc
+      oidc-issuer-url: "${identity_provider_url}"
+      redirect-url: "https://rooms.${private_domain_name}/oauth2/callback"
+      upstream: "http://room-broker.agent-system.svc.cluster.local:8080"
+      # The broker re-validates both (§3): the ID token in Authorization, and the
+      # JWT access token, forwarded to SP3's factory as the human's proof (C4).
+      pass-authorization-header: "true"
+      pass-access-token: "true"
+      pass-user-headers: "false"
+      set-xauthrequest: "false"
+      # Anyone outside the two agent groups is rejected here (§1 Groups, SC-9).
+      allowed-group: "agents-admin,agents-member"
+      oidc-groups-claim: groups
+      email-domain: "*"
+      cookie-name: _rooms
+      cookie-secure: "true"
+      # oauth2-proxy's default is empty (T9).
+      cookie-samesite: strict
+      skip-provider-button: "true"
+      reverse-proxy: "true"
+      # Phase 6 turns this on, with extra-jwt-issuers, for roomctl's bearer tokens.
+      skip-jwt-bearer-tokens: "false"
+    # ZITADEL puts the project id in `aud` only when asked with this scope, and the
+    # broker refuses a token without it (ruling AS). The id comes from the secret,
+    # beside the client it belongs to: aws-0's vars carry no zitadel_project_id,
+    # and gcp-0 mints a new one every build. $(VAR) expands earlier env entries.
+    extraEnv:
+      - name: ZITADEL_PROJECT_ID
+        valueFrom:
+          secretKeyRef:
+            name: rooms-proxy
+            key: project-id
+      - name: OAUTH2_PROXY_SCOPE
+        value: "openid profile email urn:zitadel:iam:org:project:id:$(ZITADEL_PROJECT_ID):aud"
+    # It never calls the API server, and its CNP could not reach it anyway.
+    serviceAccount:
+      automountServiceAccountToken: false
+    securityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi

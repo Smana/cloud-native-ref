@@ -13,3 +13,6 @@ resources:
   - network-policy-cnpg.yaml
   - retention-cronjob.yaml
   - vmservicescrape.yaml
+  - externalsecret-rooms-proxy.yaml
+  - oauth2-proxy.yaml
+  - network-policy-oauth2-proxy.yaml

@@ -60,6 +60,12 @@ check "an existing cookie secret is kept" kept-cookie-fixture \
 check "converge keeps the secret" SECRET "$(converge_secret rooms-proxy CID2 "$p" | jq -r '."client-secret"')"
 check "converge updates the id" CID2 "$(converge_secret rooms-proxy CID2 "$p" | jq -r '."client-id"')"
 check "converge keeps the cookie" "$(jq -r '."cookie-secret"' <<<"$p")" "$(converge_secret rooms-proxy CID2 "$p" | jq -r '."cookie-secret"')"
+# The project id rides with the client (S2): oauth2-proxy's audience scope and the
+# broker's aud check need it on both clouds, and only this sync knows it.
+check "create: project-id" p1 "$(merge_secret agents-rooms-proxy rooms-proxy CID SECRET p1 | jq -r '."project-id"')"
+check "converge: project-id follows the directory" p2 "$(converge_secret rooms-proxy CID2 "$p" p2 | jq -r '."project-id"')"
+check "other consumers: no project-id" null "$(merge_secret k grafana CID SECRET p1 | jq -r '."project-id"')"
+check "project-id is a mirrored field" true "$(printf '%s\n' "${MIRRORED_FIELDS[@]}" | grep -qx project-id && echo true || echo false)"
 
 echo "== 3. The mirror writes agents/data/rooms-proxy (the agents mount, P38; ruling AU) =="
 check "bao-map: agents-rooms-proxy" agents/rooms-proxy "$(bao_target_for agents-rooms-proxy 2>/dev/null)"
@@ -153,6 +159,7 @@ run_cmd_sync
 check "create: cmd_sync succeeds" 0 "$rc"
 check "create: JWT" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType "$T/create" 2>/dev/null)"
 check "create: written to agents-rooms-proxy" NEW "$(jq -r '."client-id"' "$T/written-agents-rooms-proxy" 2>/dev/null)"
+check "create: with the project id" p1 "$(jq -r '."project-id"' "$T/written-agents-rooms-proxy" 2>/dev/null)"
 check "grants: both --grant-admin and --grant" "agents-member dev@x p1
 admin a@x p1" "$(sort -r "$T/grants")"
 
@@ -168,6 +175,10 @@ rm -f "$T/put"
 run_cmd_sync
 check "repair: cmd_sync succeeds" 0 "$rc"
 check "repair: JWT kept" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType "$T/put" 2>/dev/null)"
+rm -f "$T/written-agents-rooms-proxy"
+store_read() { jq -c 'del(."project-id")' <<<"$p"; }
+run_cmd_sync
+check "existing app: the project id is converged in" p1 "$(jq -r '."project-id"' "$T/written-agents-rooms-proxy" 2>/dev/null)"
 
 echo "== 8. --grant is parsed, and a malformed one is refused before any call =="
 mkdir -p "$T/bin"

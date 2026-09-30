@@ -611,7 +611,7 @@ app_set_redirect() {
 # order with `input` -- the same trick jq's own manual gives for slurping more
 # than one value without `--slurp` swallowing the whole stream into an array.
 merge_secret() {
-    local key="$1" name="$2" client_id="$3" client_secret="$4"
+    local key="$1" name="$2" client_id="$3" client_secret="$4" project_id="${5:-}"
     local existing='{}' cookie_secret=''
     store_exists "$key" && existing="$(store_read "$key")"
     [ -z "$existing" ] && existing='{}'
@@ -642,7 +642,7 @@ merge_secret() {
         printf '%s\n' "$existing"
         printf '%s' "$client_secret" | jq -Rs .
         printf '%s' "$cookie_secret" | jq -Rs .
-    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" --arg proj "$project_id" '
         input as $base | input as $sec | input as $ck |
         if $name == "grafana" then
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
@@ -656,8 +656,10 @@ merge_secret() {
             $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
         elif $name == "openbao" then
             $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
-        elif $name == "headlamp-proxy" or $name == "rooms-proxy" then
+        elif $name == "headlamp-proxy" then
             $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
+        elif $name == "rooms-proxy" then
+            $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck, "project-id": $proj}
         else
             empty
         end
@@ -689,9 +691,13 @@ merge_secret() {
 # merge_secret keeps it off jq's argv: it can carry fields this script does
 # not own (grafana's admin credentials), and putting the whole blob on argv
 # would expose those too, not just the OIDC fields being converged here.
+#
+# rooms-proxy also carries the project id (S2): oauth2-proxy's audience scope and
+# the broker's aud check need it on both clouds, aws-0's vars have no such key,
+# and a fresh directory (gcp-0, every build) mints a new one with the client.
 converge_secret() {
-    local name="$1" client_id="$2" existing="$3"
-    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+    local name="$1" client_id="$2" existing="$3" project_id="${4:-}"
+    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" --arg proj "$project_id" '
         input as $base |
         if $name == "grafana" then
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id}
@@ -704,8 +710,10 @@ converge_secret() {
             $base + {client_id: $id, endpoint: $iss}
         elif $name == "openbao" then
             $base + {client_id: $id, endpoint: $iss}
-        elif $name == "headlamp-proxy" or $name == "rooms-proxy" then
+        elif $name == "headlamp-proxy" then
             $base + {"client-id": $id}
+        elif $name == "rooms-proxy" then
+            $base + {"client-id": $id, "project-id": $proj}
         else
             empty
         end
@@ -898,7 +906,7 @@ MIRRORED_FIELDS=(
     OIDC_VALIDATOR_CLIENT_ID OIDC_VALIDATOR_ISSUER_URL
     clientID clientSecret
     client_id client_secret endpoint
-    client-id client-secret cookie-secret
+    client-id client-secret cookie-secret project-id
 )
 
 # Mirror one consumer secret into the OpenBao path its ExternalSecret reads
@@ -1386,7 +1394,7 @@ cmd_sync() {
 
             local existing_secret desired
             existing_secret="$(store_read "$key")"
-            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
+            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret" "$project_id")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
                 # A mirror that failed after its store write leaves the store
@@ -1442,7 +1450,7 @@ cmd_sync() {
         # Built first, so a failed merge stops here instead of feeding the
         # store an empty payload.
         local merged
-        merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret")" || exit 1
+        merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret" "$project_id")" || exit 1
         wrc=0
         printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
         case "$wrc" in
