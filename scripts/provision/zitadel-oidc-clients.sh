@@ -451,22 +451,43 @@ ensure_project() {
     echo "$id"
 }
 
+# Every page of a v1 _search, as one {result: [...]}. ZITADEL returns at most
+# `limit` per call: a user or grant past the first page would be unseen, and a
+# second POST for an existing grant is refused. Bounded, so a server that ignores
+# the offset fails loudly instead of paging forever.
+search_all() {
+    local path="$1" offset=0 pages=0 page n all='[]'
+    while :; do
+        page="$(api_or_fail POST "$path" -d "{\"query\":{\"offset\":\"${offset}\",\"limit\":200,\"asc\":true}}")" || return 1
+        n="$(jq '.result // [] | length' <<< "$page")" || return 1
+        all="$(printf '%s\n%s\n' "$all" "$page" | jq -cs '.[0] + (.[1].result // [])')" || return 1
+        [ "$n" -lt 200 ] && break
+        offset=$((offset + n)); pages=$((pages + 1))
+        if [ "$pages" -ge 50 ]; then
+            echo "[FAILED ] ZITADEL listing ${path} did not end after ${pages} pages" >&2; return 1
+        fi
+    done
+    jq -c '{result: .}' <<< "$all"
+}
+
 # Give an EXISTING user a project role. A user already holding a grant on this
 # project gets the role ADDED to it: ZITADEL refuses a second grant for the same
 # user and project, so POSTing again would fail for anyone who already has one.
+# cmd_sync calls this under `||`, which turns errexit off in here: every call
+# whose failure matters is checked explicitly.
 grant_role() {
     local role="$1" email="$2" project_id="$3" user_id resp grant
     [ -n "$email" ] && [ -n "$project_id" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
         echo "[dry-run] would grant '${role}' to ${email}"; return 0
     fi
-    resp="$(api_or_fail POST /management/v1/users/_search -d '{"query":{"limit":200}}')" || return 1
-    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)"
+    resp="$(search_all /management/v1/users/_search)" || return 1
+    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)" || return 1
     if [ -z "$user_id" ]; then
         echo "[FAILED ] no ZITADEL user for ${email}: they must log in once first" >&2; return 1
     fi
-    resp="$(api_or_fail POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}')" || return 1
-    grant="$(jq -c --arg u "$user_id" --arg p "$project_id" '[.result[]? | select(.userId == $u and .projectId == $p)][0] // empty' <<< "$resp")"
+    resp="$(search_all /management/v1/users/grants/_search)" || return 1
+    grant="$(jq -c --arg u "$user_id" --arg p "$project_id" '[.result[]? | select(.userId == $u and .projectId == $p)][0] // empty' <<< "$resp")" || return 1
     if [ -n "$grant" ] && jq -e --arg r "$role" '.roleKeys | index($r)' <<< "$grant" >/dev/null; then
         echo "[skip   ] ${email} already holds '${role}'"; return 0
     fi
@@ -475,10 +496,12 @@ grant_role() {
     fi
     if [ -n "$grant" ]; then
         jq -c --arg r "$role" '{roleKeys: ((.roleKeys // []) + [$r] | unique)}' <<< "$grant" \
-            | api PUT "/management/v1/users/${user_id}/grants/$(jq -r .id <<< "$grant")" -d @- >/dev/null
+            | api PUT "/management/v1/users/${user_id}/grants/$(jq -r .id <<< "$grant")" -d @- >/dev/null \
+            || { echo "[FAILED ] could not add '${role}' to ${email}'s grant" >&2; return 1; }
     else
         jq -n --arg p "$project_id" --arg r "$role" '{projectId: $p, roleKeys: [$r]}' \
-            | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
+            | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null \
+            || { echo "[FAILED ] could not grant '${role}' to ${email}" >&2; return 1; }
     fi
     echo "[granted] '${role}' to ${email}"
 }
@@ -1344,7 +1367,14 @@ cmd_sync() {
                 grep -Fxq "$have" <<< "${redirect//,/$'\n'}" || extra="${extra}${extra:+ }${have}"
             done <<< "$current"
 
-            if [ -z "$missing" ] && [ -z "$extra" ]; then
+            # The token type drifts independently (an app created as bearer before
+            # rooms-proxy moved to JWT): the same PUT repairs it. ZITADEL omits
+            # the enum's zero value, bearer.
+            local want_type have_type
+            want_type=OIDC_TOKEN_TYPE_BEARER
+            [ "$token" = jwt ] && want_type=OIDC_TOKEN_TYPE_JWT
+            have_type="$(jq -r '.app.oidcConfig.accessTokenType // "OIDC_TOKEN_TYPE_BEARER"' <<< "$app_json")"
+            if [ -z "$missing" ] && [ -z "$extra" ] && [ "$have_type" = "$want_type" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
             else
@@ -1357,6 +1387,7 @@ cmd_sync() {
                 # the two they are looking at before the repair removes it.
                 [ -n "$missing" ] && echo "           missing: ${missing}"
                 [ -n "$extra" ]   && echo "           undeclared (will be removed): ${extra}"
+                [ "$have_type" = "$want_type" ] || echo "           token type: ${have_type} -> ${want_type}"
                 if [ "$APPLY" != "true" ]; then
                     echo "           would update the redirect URI (client secret untouched)"
                 else

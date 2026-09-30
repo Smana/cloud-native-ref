@@ -24,7 +24,7 @@ load_function() {
     [ -n "$body" ] || { echo "could not extract ${1}() from $2" >&2; exit 1; }
     eval "$body"
 }
-for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role \
+for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
          mirror_to_openbao force_sync_mirrored cmd_sync; do
     load_function "$f" "$SRC"
 done
@@ -91,7 +91,8 @@ kubectl() {
     case "$1" in
         get) printf '%s' '{"items":[
           {"metadata":{"namespace":"agent-system","name":"rooms-proxy"},"spec":{"secretStoreRef":{"name":"agents-secrets","kind":"SecretStore"},"dataFrom":[{"extract":{"key":"rooms-proxy"}}]}},
-          {"metadata":{"namespace":"agent-system","name":"other"},"spec":{"secretStoreRef":{"name":"agents-secrets","kind":"SecretStore"},"dataFrom":[{"extract":{"key":"github-app"}}]}}]}' ;;
+          {"metadata":{"namespace":"agent-system","name":"other"},"spec":{"secretStoreRef":{"name":"agents-secrets","kind":"SecretStore"},"dataFrom":[{"extract":{"key":"github-app"}}]}},
+          {"metadata":{"namespace":"agent-system","name":"foreign-store"},"spec":{"secretStoreRef":{"name":"agents","kind":"SecretStore"},"dataFrom":[{"extract":{"key":"rooms-proxy"}}]}}]}' ;;
         annotate) return 0 ;;
     esac
 }
@@ -102,9 +103,10 @@ unset -f kubectl
 
 echo "== 5. --grant: add the role to an existing grant (PUT), else a new grant (POST) =="
 GRANTS_JSON='{"result":[{"id":"g1","userId":"u1","projectId":"p1","roleKeys":["backend"]}]}'
+# xdev@x first: a loosened (contains) email match would grant the wrong human.
 api_or_fail() {
     case "$2" in
-        */users/_search) echo '{"result":[{"id":"u1","userName":"dev@x"}]}' ;;
+        */users/_search) echo '{"result":[{"id":"u0","userName":"xdev@x"},{"id":"u1","userName":"dev@x"}]}' ;;
         */users/grants/_search) echo "$GRANTS_JSON" ;;
     esac
 }
@@ -126,6 +128,37 @@ APPLY=false grant_role agents-admin dev@x p1 >/dev/null
 check "grant: nothing on a dry run" "" "$(cat "$T/api")"
 grant_role agents-admin nobody@x p1 >/dev/null 2>&1
 check "grant: an unknown user fails" 1 "$?"
+
+# I1: cmd_sync calls grant_role under `||`, which turns errexit off inside it, so
+# a refused write must fail on its own rather than print [granted].
+api() { cat >/dev/null; return 22; }
+GRANTS_JSON='{"result":[{"id":"g1","userId":"u1","projectId":"p1","roleKeys":["backend"]}]}'
+o="$(grant_role agents-member dev@x p1 2>&1)"; r=$?
+check "grant: a refused PUT fails" "1 FAILED" "$r $(grep -q '^\[FAILED' <<<"$o" && echo FAILED || echo "$o")"
+GRANTS_JSON='{"result":[]}'
+o="$(grant_role agents-admin dev@x p1 2>&1)"; r=$?
+check "grant: a refused POST fails" "1 FAILED" "$r $(grep -q '^\[FAILED' <<<"$o" && echo FAILED || echo "$o")"
+api() { printf '%s %s %s\n' "$1" "$2" "$(jq -c .)" >> "$T/api"; }
+
+# I1: ZITADEL pages at 200. The user's grant on the second page must be found, or
+# the POST that follows is a duplicate ZITADEL refuses.
+api_or_fail() {
+    local off
+    off="$(jq -r '.query.offset // "0"' <<<"$4")"
+    case "$2:$off" in
+        */users/_search:0) echo '{"result":[{"id":"u1","userName":"dev@x"}]}' ;;
+        */users/grants/_search:0) jq -cn '{result: [range(200) | {id: "o\(.)", userId: "other", projectId: "p1", roleKeys: ["backend"]}]}' ;;
+        */users/grants/_search:200) echo '{"result":[{"id":"g2","userId":"u1","projectId":"p1","roleKeys":["backend"]}]}' ;;
+        *) echo '{"result":[]}' ;;
+    esac
+}
+: > "$T/api"
+grant_role agents-member dev@x p1 >/dev/null
+check "grant: a grant past the first page is found (PUT)" "PUT /management/v1/users/u1/grants/g2" "$(cut -d' ' -f1,2 "$T/api")"
+# A server that ignores the offset would page forever: fail loudly instead.
+api_or_fail() { jq -cn '{result: [range(200) | {id: "u\(.)", userName: "dev@x", userId: "other", projectId: "p1"}]}'; }
+o="$(timeout 20 bash -c "$(declare -f grant_role search_all api_or_fail); api() { cat >/dev/null; }; APPLY=true grant_role agents-member dev@x p1" 2>&1)"; r=$?
+check "grant: an endless listing fails loudly, it does not hang" "1 loud" "$r $(grep -q 'did not end' <<<"$o" && echo loud || echo quiet)"
 unset -f api api_or_fail
 
 echo "== 6. The agent groups exist as project roles =="
@@ -175,6 +208,14 @@ rm -f "$T/put"
 run_cmd_sync
 check "repair: cmd_sync succeeds" 0 "$rc"
 check "repair: JWT kept" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType "$T/put" 2>/dev/null)"
+rm -f "$T/put"
+app_get() { jq -n '{app: {oidcConfig: {redirectUris: ["https://rooms.priv.example/oauth2/callback"], clientId: "CID"}}}'; }
+run_cmd_sync
+check "token drift (bearer, redirect correct): repaired to JWT" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType "$T/put" 2>/dev/null)"
+rm -f "$T/put"
+app_get() { jq -n '{app: {oidcConfig: {redirectUris: ["https://rooms.priv.example/oauth2/callback"], clientId: "CID", accessTokenType: "OIDC_TOKEN_TYPE_JWT"}}}'; }
+run_cmd_sync
+check "no drift: no PUT" absent "$([ -e "$T/put" ] && echo sent || echo absent)"
 rm -f "$T/written-agents-rooms-proxy"
 store_read() { jq -c 'del(."project-id")' <<<"$p"; }
 run_cmd_sync
@@ -186,7 +227,7 @@ for cli in curl gcloud aws kubectl bao; do
     printf '#!/usr/bin/env bash\necho %s >> "%s/cli-calls"\nexit 1\n' "$cli" "$T" > "$T/bin/$cli"
     chmod +x "$T/bin/$cli"
 done
-for bad in agents-admin agents-owner=dev@x =dev@x; do
+for bad in agents-admin agents-owner=dev@x =dev@x agents-admin=; do
     o="$(PATH="$T/bin:$PATH" timeout 10 bash "$SRC" sync --cluster c0 --cloud gcp --grant "$bad" 2>&1)"; r=$?
     check "--grant ${bad}: exit 2, no CLI called" "2 none" "$r $([ -e "$T/cli-calls" ] && echo called || echo none)"
     grep -qF -- '--grant takes' <<<"$o" || { printf '  FAIL --grant %s: no usage message: %s\n' "$bad" "$(head -2 <<<"$o")"; fail=1; }

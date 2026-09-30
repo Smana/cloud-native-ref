@@ -72,18 +72,21 @@ binding; its auth model is Kubernetes RBAC, not room roles.
 
 ### Negative
 
-- `rooms-proxy` is the platform's first ZITADEL client issuing JWT access tokens. The OIDC sync
-  writes its secret to the cloud secret store and mirrors it to OpenBao's `agents` mount
-  (`--mirror-openbao`), the only store `agent-system` reads (SP2 rulings P38, AU). No
-  ExternalSecret reads the cloud copy, so on GCP nothing is ever granted access to it.
+- `rooms-proxy` is the platform's first ZITADEL client issuing JWT access tokens. `agent-system`
+  reads only OpenBao's `agents` mount, which `external-secrets` cannot read. The OIDC sync writes
+  the secret to the cloud secret store like every client, and its existing OpenBao mirror copies
+  it to `agents`, so OpenBao keeps one writer. Only a hosting sync run with `--mirror-openbao`
+  produces that copy: gcp-0's does, aws-0's does not pass the flag today. No ExternalSecret reads
+  the cloud copy, so on GCP nothing is ever granted access to it.
 
 ### Neutral
 
 - WebSockets cross the Tailscale Gateway with `timeouts.request: 0s` and a 30 s ping.
 - The ID token must carry the `rooms-proxy` client as `azp`; ZITADEL's JWT access tokens carry
-  `client_id` instead. Both need the project id and an allowlisted client in `aud`. The broker reads
-  the project id and client ids from files at use, because gcp-0 mints a fresh ZITADEL, and fresh
-  ids, on every build.
+  `client_id` instead. Both need the project id and an allowlisted client in `aud`. ZITADEL adds
+  the project id to `aud` only when oauth2-proxy requests the project audience scope. The broker
+  reads the project id and client ids from files at use, because gcp-0 mints a fresh ZITADEL, and
+  fresh ids, on every build.
 
 ---
 
