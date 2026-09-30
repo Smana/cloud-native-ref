@@ -5,6 +5,14 @@ locals {
     { environment = var.env },
     var.tags
   )
+
+  # Cilium's agent-not-ready taint, renamed into the cluster autoscaler's
+  # startup-taint namespace (agentNotReadyTaintKey in helm_values/cilium.yaml).
+  # The autoscaler strips this prefix from a node group's template, so no pod
+  # has to tolerate it for GKE to scale a pool from zero; the scheduler still
+  # honours it, so nothing lands before the agent is ready (F2). Every pool and
+  # ComputeClass must carry THIS key: cilium-operator removes only its own.
+  cilium_agent_not_ready_taint = "ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready"
 }
 
 # GKE Standard, private, zonal, self-managed Cilium.
@@ -283,13 +291,12 @@ module "gke" {
   # ── THE CILIUM TAINT ──────────────────────────────────────────────────────
   # Without it, pods schedule onto a node before the Cilium agent is ready and
   # fail with FailedCreatePodSandBox. Cilium clears the taint once it is up.
-  # Slice 4 must reproduce this on every ComputeClass's nodePoolConfig.taints[],
-  # which is the single riskiest assumption in the autoscaling design.
+  # Every ComputeClass's nodePoolConfig.taints[] carries the same key.
   node_pools_taints = {
     all = []
     static = [
       {
-        key    = "node.cilium.io/agent-not-ready"
+        key    = local.cilium_agent_not_ready_taint
         value  = "true"
         effect = "NO_SCHEDULE"
       },

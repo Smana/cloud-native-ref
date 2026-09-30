@@ -96,6 +96,13 @@ cni:
 ipam:
   mode: kubernetes
 
+# Must equal local.cilium_agent_not_ready_taint in ../main.tf, which every GKE
+# pool and ComputeClass carries. The default key made GKE's autoscaler refuse to
+# scale a pool from zero unless the pod tolerated it, and a tolerating pod ran
+# unpoliced until the agent was up (F2). aws-0 keeps the default: Karpenter
+# ignores startup taints in its simulation.
+agentNotReadyTaintKey: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
+
 kubeProxyReplacement: true
 
 operator:

@@ -29,22 +29,12 @@ spec:
   whenUnsatisfiable: DoNotScaleUp
 
   nodePoolConfig:
-    # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ WORKLOADS TARGETING THIS CLASS MUST TOLERATE THIS TAINT              │
-    # └──────────────────────────────────────────────────────────────────────┘
-    #
-    #   tolerations:
-    #     - key: node.cilium.io/agent-not-ready
-    #       operator: Exists
-    #       effect: NoSchedule
-    #
-    # Not optional: WITHOUT it nothing scales up at all — the autoscaler judges
-    # an untolerating pod unplaceable on a node that will carry the taint and
-    # never provisions one. Measured 2026-08-24. Full rationale, the trade it
-    # accepts, and the AWS divergence are in ADR-0006 (Negative consequences);
-    # this file states the requirement, the ADR explains it.
+    # Cilium's agent-not-ready taint, under the key cilium-operator clears
+    # (agentNotReadyTaintKey, opentofu/gcp/gke/init). Workloads must NOT
+    # tolerate it: the autoscaler ignores this prefix when it simulates a new
+    # node, and the scheduler holds pods until Cilium is up (ADR-0006).
     taints:
-      - key: node.cilium.io/agent-not-ready
+      - key: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
         value: "true"
         effect: NoSchedule
 

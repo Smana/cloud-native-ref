@@ -136,8 +136,9 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
   differ measurably between the two clouds.
   - *Mitigation*: the autoscaling slice ships an explicit written statement of the gap rather
     than leaving it to be discovered. This is a documented divergence, not an abstraction to be faked.
-- **Every workload targeting a ComputeClass must tolerate `node.cilium.io/agent-not-ready`,
-  or nothing scales up at all.** Added 2026-08-24 from a live measurement, because this was not
+- *Superseded 2026-10-01 by the revision at the end of this bullet: no workload tolerates the
+  taint any more.* ~~**Every workload targeting a ComputeClass must tolerate `node.cilium.io/agent-not-ready`,
+  or nothing scales up at all.**~~ Added 2026-08-24 from a live measurement, because this was not
   anticipated when the ADR was written.
 
   The autoscaler simulates scheduling against a node that *will* carry the class's taint. A pod
@@ -156,6 +157,15 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
     present with its agent still starting, **not** a missing CNI, and it self-heals — measured 0
     restarts, pods reached `Running` unaided. `kube-system/metrics-server` hits the same transient
     on any fresh node, so it is a property of the platform rather than of this decision.
+  - **Revised 2026-10-01: the toleration requirement is gone.** The accepted cost did not hold
+    for gVisor run pods (live finding F2): they ran for up to two minutes with no
+    CiliumEndpoint, so no CiliumNetworkPolicy applied, before cilium-operator restarted them.
+    Cilium's taint key is now `ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready`
+    (`agentNotReadyTaintKey`) on every pool and ComputeClass. The cluster autoscaler strips
+    that prefix from a node group's template before it simulates scheduling, so it scales
+    from zero without a toleration, while the scheduler still keeps pods off until the
+    taint is cleared. Workloads must **not** tolerate it. Chosen over a `schedulingGates`
+    controller, which would keep the toleration and add a component to hold pods.
 - No `min > 0` per auto-created pool, so "always keep N warm" must be expressed differently
   (for example a small static pool alongside the auto-created ones).
 - Karpenter knowledge does not transfer cleanly; operators need to learn a second model.
@@ -172,8 +182,9 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
 
 ## Implementation Notes
 
-Each `ComputeClass` sets `nodePoolConfig.taints[]` to include
-`node.cilium.io/agent-not-ready=true:NoSchedule` and pins `nodePoolConfig.imageType`.
+Each `ComputeClass` sets `nodePoolConfig.taints[]` to include Cilium's agent-not-ready taint
+(`ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready=true:NoSchedule` since
+2026-10-01) and pins `nodePoolConfig.imageType`.
 `priorities[]` is ordered spot-first then on-demand, mirroring the capacity-type preference in
 the existing Karpenter `NodePool`s.
 

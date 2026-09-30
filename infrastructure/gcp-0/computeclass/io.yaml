@@ -51,18 +51,15 @@ spec:
 
   nodePoolConfig:
     # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ WORKLOADS MUST TOLERATE **BOTH** TAINTS BELOW                        │
+    # │ WORKLOADS MUST TOLERATE ogenki/io, AND NOT THE CILIUM TAINT          │
     # └──────────────────────────────────────────────────────────────────────┘
     #
     #   tolerations:
-    #     - key: node.cilium.io/agent-not-ready
-    #       operator: Exists
-    #       effect: NoSchedule
     #     - key: ogenki/io
     #       operator: Exists
     #       effect: NoSchedule
     #
-    # The Cilium taint is not optional — without it nothing scales up. See
+    # The Cilium taint needs no toleration and must not get one; see
     # general-purpose.yaml and ADR-0006.
     #
     # `ogenki/io` is this class's own: it keeps general-purpose workloads off
@@ -70,7 +67,7 @@ spec:
     # Identical key and value to the AWS io NodePool, so a workload's
     # tolerations are portable between clouds.
     taints:
-      - key: node.cilium.io/agent-not-ready
+      - key: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
         value: "true"
         effect: NoSchedule
       - key: ogenki/io
