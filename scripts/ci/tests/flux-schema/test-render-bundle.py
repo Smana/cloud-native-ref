@@ -412,6 +412,18 @@ for path, doc in real:
         f"{error!r}",
     )
 
+# --- A digest-pinned chartRef renders that digest, never a tag ---------------
+# Flux resolves ref.digest before semver and tag. Rendering by tag (or with no
+# --version, i.e. helm's latest) would validate a chart the cluster never pulls.
+oci = {("OCIRepository", "c", "ns"): {"_kind": "OCIRepository", "url": "oci://r/c",
+                                      "ref": {"digest": "sha256:ab", "tag": "1.0.0"}}}
+source, chart, version = rb._resolve_chart({"chartRef": {"kind": "OCIRepository", "name": "c"}}, oci, "ns")
+check("digest-pinned chartRef passes no --version", chart is None and version is None, f"{version!r}")
+check("digest-pinned chartRef renders <url>@<digest>", rb.chartref_path(source) == "oci://r/c@sha256:ab",
+      rb.chartref_path(source))
+check("tag-pinned chartRef renders the bare url",
+      rb.chartref_path({"url": "oci://r/c", "ref": {"tag": "1"}}) == "oci://r/c")
+
 print()
 if FAILURES:
     print(f"FAIL: {len(FAILURES)} case(s): {', '.join(FAILURES)}", file=sys.stderr)

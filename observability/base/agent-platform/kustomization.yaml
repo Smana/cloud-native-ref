@@ -5,6 +5,7 @@ resources:
   - vmrule.yaml
   - vmrule-logs.yaml
   - vmrule-rooms.yaml
+  - vmrule-agent-factory.yaml
   - grafana-folder.yaml
   - grafana-dashboard.yaml
   - grafana-dashboard-agent-run.yaml
