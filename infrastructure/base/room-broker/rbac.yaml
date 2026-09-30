@@ -1,0 +1,67 @@
+---
+# Exactly the verbs the phase-1 broker calls (agent-platform internal/roomctrl and
+# controller-runtime's leader election): the Room controller reads Rooms, updates
+# their finalizer and merge-patches their status. Phase 2's API, which creates and
+# deletes Rooms, adds those verbs with its code (SP2 §9).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: room-broker
+  namespace: agent-system
+rules:
+  - apiGroups: ["agents.ogenki.io"]
+    resources: ["rooms"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["agents.ogenki.io"]
+    resources: ["rooms/status"]
+    verbs: ["patch"]
+  - apiGroups: ["agents.ogenki.io"]
+    resources: ["rooms/finalizers"]
+    verbs: ["update"]
+  # Leader election: a Lease, and the core Events its recorder emits.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: room-broker
+  namespace: agent-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: room-broker
+subjects:
+  - kind: ServiceAccount
+    name: room-broker
+    namespace: agent-system
+---
+# AgentRuns: watch, and delete when their Room is deleted. NEVER create: only the
+# factory creates runs (C3), and SP3's Kyverno rule denies everyone else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: room-broker
+  namespace: agents
+rules:
+  - apiGroups: ["cloud.ogenki.io"]
+    resources: ["agentruns"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: room-broker
+  namespace: agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: room-broker
+subjects:
+  - kind: ServiceAccount
+    name: room-broker
+    namespace: agent-system

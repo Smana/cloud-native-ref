@@ -76,7 +76,9 @@ spec:
     - expression: "object.metadata.namespace == 'agents'"
       message: "AgentRuns live in namespace agents"
 ---
-# agents holds no secret (S9). Blocks the ESO objects that could pull one in.
+# agents holds no secret (S9). Blocks the ESO objects that could pull one in. The one
+# exception is room-broker-ca, the platform CA the run bridges trust (GCP parity GP-18): a
+# certificate, no credential, admitted only in exactly that shape (either cloud's key).
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -97,8 +99,17 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [externalsecrets, pushsecrets, secretstores]
   validations:
-    - expression: "false"
-      message: "namespace agents holds no secret: External Secrets objects are refused (SP1 S9)"  # pragma: allowlist secret
+    - expression: >-
+        object.kind == 'ExternalSecret' && object.metadata.name == 'room-broker-ca' &&
+        object.spec.secretStoreRef.kind == 'ClusterSecretStore' &&
+        object.spec.secretStoreRef.name == 'clustersecretstore' &&
+        !has(object.spec.dataFrom) && size(object.spec.data) == 1 &&
+        'ca.crt' == object.spec.data[0].secretKey &&
+        (object.spec.data[0].remoteRef.key.matches('^certificates/[^/]+/ca-chain$') ||
+          object.spec.data[0].remoteRef.key == 'openbao-priv-gcp-ca-chain') &&
+        (!has(object.spec.data[0].remoteRef.property) || object.spec.data[0].remoteRef.property == 'ca') &&
+        object.spec.target.name == 'room-broker-ca' && !has(object.spec.target.template)
+      message: "namespace agents holds no secret: External Secrets objects are refused, but for the room-broker-ca certificate (SP1 S9)"  # pragma: allowlist secret
 ---
 # Envoy Gateway can neither prefix-match `sub` nor read the kubernetes.io claim,
 # so the audiences agents use are reserved. Cluster-wide, hence Ignore: an

@@ -139,9 +139,13 @@ spec:
 """
 
 
-def secrets(keys=KEYS, ca=CA):
+ROOM_CA = CA.replace("{name: openbao-ca, namespace: agent-system}", "{name: room-broker-ca, namespace: agents}")
+
+
+def secrets(keys=KEYS, ca=CA, room_ca=ROOM_CA):
     return acs.check_gcp0_secrets(bundle({"overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml": keys,
-                                          "overlay-security-gcp-0-agent-secrets.yaml": ca}))
+                                          "overlay-security-gcp-0-agent-secrets.yaml": ca,
+                                          "overlay-infrastructure-gcp-0-room-broker.yaml": room_ca}))
 
 
 if secrets():
@@ -156,6 +160,10 @@ if not secrets(keys=KEYS.replace("metadata: {name: k1,", "metadata: {name: k2,")
     fails.append("gateway keys from a generator the render lacks must fail")
 if not secrets(ca=CA.replace("openbao-priv-gcp-ca-chain", "openbao-priv-gcp-root-token")):
     fails.append("an openbao-ca reading any other entry must fail")
+if not secrets(room_ca=ROOM_CA.replace("{key: openbao-priv-gcp-ca-chain}", "{key: certificates/priv.gcp.cluster.local/ca-chain, property: ca}")):
+    fails.append("a room-broker-ca reading the AWS-shaped entry must fail")
+if not secrets(room_ca=""):
+    fails.append("a room-broker overlay with no room-broker-ca must fail")
 if not secrets(keys="", ca=""):
     fails.append("a render with neither ExternalSecret is vacuous and must fail")
 
