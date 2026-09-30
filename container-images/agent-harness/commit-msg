@@ -1,12 +1,15 @@
 #!/agent-server/.venv/bin/python
-"""Adds the Agent-Run trailer SP3 re-verifies server-side (design §4), and
-Agent-Task when the run has a task (SP3 ruling SW). Guidance, not a control:
-an agent with a shell can skip a hook.
+"""Adds the Agent-Run trailer, and Agent-Task when the run has a task (SP3
+ruling SW). A provenance hint, never authorisation (SP3 ruling TB): an agent
+with a shell can skip or rewrite it, so the merge gate binds commits to a run
+by push identity.
 
-The harness's keys are its own (SP3 ruling SL). `--if-exists replace` removes
-only one existing trailer, and git matches keys case-insensitively, so an
-agent-written `agent-run:` would survive beside the real one. Every such line
-is neutralised first, as in the PR body, then the real values are added.
+Every other `Agent-*` line, in any case, is marked as the model's first, as
+in the PR body, so a reader of the last paragraph finds only the harness's.
+`--if-exists add` then adds the real ones: `replace` would match keys by
+prefix and could silently delete a model line such as `Agent:`.
+`--no-divider`: a `---` line in the message is not the start of a patch, so
+the trailer still lands in the last paragraph.
 """
 import os
 import subprocess
@@ -22,14 +25,16 @@ def main(path: str, env: dict) -> int:
     if not pr_footer.value(env, "RUN_ID"):
         print("commit-msg: RUN_ID is unset", file=sys.stderr)
         return 1
+    real = ["%s: %s" % (key, pr_footer.value(env, var)) for key, var in TRAILERS if pr_footer.value(env, var)]
     with open(path, encoding="utf-8") as f:
-        message = f.read()
+        message = pr_footer.lines(f.read())
+    # This run's own trailers from an earlier pass (an amend) are re-added, not marked.
+    message = "\n".join(line for line in message.split("\n") if line not in real)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(pr_footer.neutralise(message))
-    args = ["git", "interpret-trailers", "--in-place", "--if-exists", "replace"]
-    for key, var in TRAILERS:
-        if pr_footer.value(env, var):
-            args += ["--trailer", "%s: %s" % (key, pr_footer.value(env, var))]
+        f.write(pr_footer.neutralise(message) + "\n")
+    args = ["git", "interpret-trailers", "--in-place", "--no-divider", "--if-exists", "add"]
+    for trailer in real:
+        args += ["--trailer", trailer]
     return subprocess.run(args + [path]).returncode
 
 
