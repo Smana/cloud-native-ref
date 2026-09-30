@@ -1,6 +1,6 @@
 ---
 # Room alerts (SP2 §9). Inside the agent-platform umbrella: suspended, silent.
-# Phase 2 adds RoomRejectedActionsSpike, phase 5 RoomApprovalPendingTooLong.
+# Phase 5 adds RoomApprovalPendingTooLong.
 # The broker's exporter adds no suffix (agent-platform internal/metrics): every name
 # here is exposed byte for byte, counters with their own _total.
 apiVersion: operator.victoriametrics.com/v1beta1
@@ -103,4 +103,25 @@ spec:
             summary: "The broker has not refreshed {{ $labels.issuer }}'s JWKS for 6 hours"
             description: "At 24 hours its held keys stop verifying and every token from that issuer is refused. Check the broker's egress to the issuer: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep jwks"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#decisions"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # The human issuer's verifier is lazy: an IdP unreachable since the broker
+        # started leaves no series at all, which the age alert above cannot see.
+        - alert: RoomAuthnHumanIssuerNeverFetched
+          expr: absent(rooms_authn_jwks_last_refresh_timestamp_seconds{issuer="${identity_provider_url}"}) and on() (sum(up{namespace="agent-system", service="room-broker"}) > 0)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker has never fetched ZITADEL's JWKS"
+            description: "Every human is refused until it does. Check the broker's egress to ${identity_provider_url}: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep jwks"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#decisions"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomRejectedActionsSpike
+          expr: sum(increase(rooms_rejected_actions_total[10m])) > 30
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker refused more than 30 actions in 10 minutes"
+            description: "A client is probing the section 1 matrix, or a UI bug is sending actions a role cannot take. Break down by reason: sum by (reason) (increase(rooms_rejected_actions_total[10m]))"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#1-room-model"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"

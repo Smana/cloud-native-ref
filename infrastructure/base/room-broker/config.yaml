@@ -24,3 +24,14 @@ data:
     # enables it for its probe only, then comments it again.
     systemPrincipals: {}
     #   system:serviceaccount:agent-system:agent-factory: system:factory
+    # Humans, through oauth2-proxy (phase 2). Required by the broker. The ids are
+    # files, never literals: gcp-0 mints a fresh ZITADEL every build (ruling AS-a).
+    human:
+      issuer: ${identity_provider_url}
+      jwksURL: ${identity_provider_url}/oauth/v2/keys
+      clientIDFile: /etc/room-broker/oidc/client-id
+      projectIDFile: /etc/room-broker/oidc/project-id
+      origin: https://rooms.${private_domain_name}
+      groups:
+        admin: agents-admin
+        member: agents-member
