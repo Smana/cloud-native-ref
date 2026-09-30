@@ -40,6 +40,8 @@ spec:
       pass-authorization-header: "true"
       pass-access-token: "true"
       pass-user-headers: "false"
+      # Defaults to true, and would put the user in a Basic Authorization header.
+      pass-basic-auth: "false"
       set-xauthrequest: "false"
       # Anyone outside the two agent groups is rejected here (§1 Groups, SC-9).
       allowed-group: "agents-admin,agents-member"
@@ -49,6 +51,12 @@ spec:
       cookie-secure: "true"
       # oauth2-proxy's default is empty (T9).
       cookie-samesite: strict
+      # The only path on which oauth2-proxy checks the session's expiry. At 0 (the
+      # default) it never does: after ZITADEL's token lifetime the broker refuses
+      # every request until cookie-expire (168 h), and nobody is sent to log in.
+      # rooms-proxy has the refresh_token grant, so with offline_access in the
+      # scope the refresh is silent.
+      cookie-refresh: 1h
       skip-provider-button: "true"
       reverse-proxy: "true"
       # Phase 6 turns this on, with extra-jwt-issuers, for roomctl's bearer tokens.
@@ -64,7 +72,7 @@ spec:
             name: rooms-proxy
             key: project-id
       - name: OAUTH2_PROXY_SCOPE
-        value: "openid profile email urn:zitadel:iam:org:project:id:$(ZITADEL_PROJECT_ID):aud"
+        value: "openid profile email offline_access urn:zitadel:iam:org:project:id:$(ZITADEL_PROJECT_ID):aud"
     # It never calls the API server, and its CNP could not reach it anyway.
     serviceAccount:
       automountServiceAccountToken: false

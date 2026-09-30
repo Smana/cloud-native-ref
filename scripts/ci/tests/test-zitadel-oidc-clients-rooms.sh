@@ -38,6 +38,8 @@ IDP_URL=https://auth.example; HEADLAMP_OIDC_SCOPES=profile; APPLY=true
 echo "== 1. JWT access tokens, on create AND on the redirect repair =="
 check "create: JWT" OIDC_TOKEN_TYPE_JWT "$(oidc_config_payload https://rooms.x/oauth2/callback rooms-proxy jwt | jq -r .accessTokenType)"
 check "update: JWT kept" OIDC_TOKEN_TYPE_JWT "$(oidc_config_payload https://rooms.x/oauth2/callback '' jwt | jq -r .accessTokenType)"
+# rooms oauth2-proxy requests offline_access and refreshes hourly: that needs this grant.
+check "refresh_token grant" true "$(oidc_config_payload https://rooms.x/oauth2/callback rooms-proxy jwt | jq '.grantTypes | index("OIDC_GRANT_TYPE_REFRESH_TOKEN") != null')"
 check "others: bearer" OIDC_TOKEN_TYPE_BEARER "$(oidc_config_payload https://grafana.x/cb grafana | jq -r .accessTokenType)"
 api() { printf '%s' "$4" > "$T/put"; }
 app_set_redirect p1 a1 https://rooms.x/oauth2/callback jwt
