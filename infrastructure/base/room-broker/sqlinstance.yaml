@@ -32,7 +32,8 @@ spec:
     # merges on green (P33 lifted there, 2026-09-29) and deletes merged branches, so its
     # main holds every merged migration. S1's live gate therefore needs AP-1 merged to
     # agent-platform main first. Phase 7 pins the release tag.
-    ref: e335dd32da462752b4aaa17bca3c38b580f1343a  # pragma: allowlist secret
+    # integration only: the AP branch whose migrations match the pinned broker image
+    ref: feat/room-viewers
     path: internal/store/migrations
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
