@@ -69,7 +69,7 @@ promtool = "3.15.0"
 
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
-hugo-extended = "0.166.0"
+hugo-extended = "0.167.0"
 kustomize = "5.8.1"
 
 # Task runner (taskfile.yaml). Pinned here rather than installed separately so
