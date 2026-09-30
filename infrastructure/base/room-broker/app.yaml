@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # AP-2's pre-release (agent-platform#6), by digest (P33). Move it with the
+    # AP-3's pre-release (agent-platform#8), by digest (P33). Move it with the
     # retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr6.e335dd32@sha256:b670e5473c33daf265d5721e409184960b16d671bc72fe4636b33cff8b6ce418"
+    tag: "v0.0.1-pr8.91b25cef@sha256:c4825c4c16fe09ccb7d22d95de1dbf2c3750bcc9a5a5f077f25554b5de5416d4"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2
@@ -26,6 +26,9 @@ spec:
         port: 9090
       - name: human
         port: 8080
+      # Agents' room_* tools, reached only through agent-router's MCPRoutes (§3).
+      - name: mcp
+        port: 8090
   automountServiceAccountToken: true # the Room and AgentRun watches, the leader lease
   resources:
     requests:
@@ -60,6 +63,12 @@ spec:
         secretKeyRef:
           name: xplane-rooms-cnpg-role-rooms-broker
           key: uri
+    # The key agent-router injects on :8090 (ruling P13). Unset, :8090 refuses every call.
+    - name: ROOMS_MCP_KEY
+      valueFrom:
+        secretKeyRef:
+          name: room-broker-mcp-key
+          key: apiKey
   # The config sits beside the TLS pair, not above it: a mount nested in a
   # read-only ConfigMap mount cannot create its mount point.
   extraVolumes:

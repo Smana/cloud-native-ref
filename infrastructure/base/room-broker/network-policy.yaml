@@ -1,6 +1,7 @@
 ---
 # The room broker (SP2 §9). Default deny; one allow per flow. It listens on :8443
-# (bridges, system API), :8080 (humans) and :9090 (metrics, probes).
+# (bridges, system API), :8080 (humans), :8090 (agents' room tools) and :9090
+# (metrics, probes).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -40,6 +41,16 @@ spec:
       toPorts:
         - ports:
             - port: "8080"
+              protocol: TCP
+    # agent-router's MCP proxy, only (§3): identity is the verified x-ar-agent.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "8090"
               protocol: TCP
     # Kubelet's probes.
     - fromEntities:
