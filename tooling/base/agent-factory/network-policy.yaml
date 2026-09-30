@@ -1,0 +1,52 @@
+# agent-factory (SP3 §6.5). Default deny; one allow per flow. Later phases add the RunLore
+# intake, the run-request API, the classifier and VictoriaLogs.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-factory
+  ingress:
+    - fromEntities: [host]  # kubelet probes
+      toPorts:
+        - ports: [{port: "9090", protocol: TCP}]
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports: [{port: "9090", protocol: TCP}]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{port: "443", protocol: TCP}]
+    - toEndpoints:  # the room broker's system API (SP2), TLS on its service port
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker
+      toPorts:
+        - ports: [{port: "8443", protocol: TCP}]
+    - toEndpoints:  # the run meter's source
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmsingle
+      toPorts:
+        - ports: [{port: "8428", protocol: TCP}]
+    - toFQDNs:
+        - matchName: api.github.com
+      toPorts:
+        - ports: [{port: "443", protocol: TCP}]

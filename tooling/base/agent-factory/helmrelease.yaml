@@ -1,0 +1,22 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  interval: 30m
+  releaseName: agent-factory
+  chartRef:
+    kind: OCIRepository
+    name: agent-factory
+    namespace: agent-system
+  # The Task CRD ships in the chart's crds/, which Helm alone never upgrades.
+  install:
+    crds: Create
+    remediation: {retries: 3}
+  upgrade:
+    crds: CreateReplace
+    remediation: {retries: 3, remediateLastFailure: true}
+  valuesFrom:
+    - kind: ConfigMap
+      name: agent-factory-helm-values

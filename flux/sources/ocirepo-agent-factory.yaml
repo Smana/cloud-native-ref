@@ -1,0 +1,21 @@
+# The factory's signed chart (SP3 §4). Signatures: ci.yaml pre-releases until the programme's
+# merge wave, then release.yaml tags only; the wave narrows `subject` (R20).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  interval: 12h
+  url: oci://ghcr.io/smana/charts/agent-factory
+  ref:
+    # agent-platform#7 at 45ecd75, sha256:cf5d16f536b17bfc5d7ec665c7140f9956a7e4ea007d476967a33ba552b7883e
+    tag: "0.0.1-pr7.g45ecd758"
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
+        subject: "^https://github\\.com/Smana/agent-platform/\\.github/workflows/(ci|release)\\.yaml@refs/(tags/v.*|pull/[0-9]+/merge)$"

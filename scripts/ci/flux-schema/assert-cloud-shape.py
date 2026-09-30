@@ -21,7 +21,7 @@ import sys
 
 import yaml
 
-SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
+SCOPED = re.compile(r"^overlay-(infrastructure|security|observability|tooling)-gcp-0-(agent-[a-z-]+|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
 RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp)\.yaml$")
 # By name, so a renamed overlay directory fails instead of silently leaving scope.
@@ -35,6 +35,7 @@ EXPECTED = (
     "overlay-security-gcp-0-octo-sts.yaml",
     "overlay-security-gcp-0-agent-secrets.yaml",
     "overlay-observability-gcp-0-agent-platform.yaml",
+    "overlay-tooling-gcp-0-agent-factory.yaml",
 )
 FORBIDDEN = [
     (re.compile(r"amazonaws\.com"), "an amazonaws.com host"),
