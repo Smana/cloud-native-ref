@@ -136,8 +136,9 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
   differ measurably between the two clouds.
   - *Mitigation*: the autoscaling slice ships an explicit written statement of the gap rather
     than leaving it to be discovered. This is a documented divergence, not an abstraction to be faked.
-- **Every workload targeting a ComputeClass must tolerate `node.cilium.io/agent-not-ready`,
-  or nothing scales up at all.** Added 2026-08-24 from a live measurement, because this was not
+- *Superseded 2026-10-01 by the revision at the end of this bullet: no workload tolerates the
+  taint any more.* ~~**Every workload targeting a ComputeClass must tolerate `node.cilium.io/agent-not-ready`,
+  or nothing scales up at all.**~~ Added 2026-08-24 from a live measurement, because this was not
   anticipated when the ADR was written.
 
   The autoscaler simulates scheduling against a node that *will* carry the class's taint. A pod

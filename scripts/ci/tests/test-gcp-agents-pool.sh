@@ -62,13 +62,8 @@ for p in sorted((root / "infrastructure/gcp-0/computeclass").glob("*.yaml")):
         taints = [t.get("key") for t in (d["spec"].get("nodePoolConfig") or {}).get("taints", [])]
         if taint_key not in taints:
             print(f"FAIL ComputeClass {d['metadata']['name']} does not carry the Cilium taint {taint_key!r}")
-
-# A toleration of that key re-opens F2: the pod lands before Cilium, unpoliced.
-for base in ("clusters/gcp-0", "clusters/gcp-0-agent-platform", "infrastructure", "security",
-             "observability", "tooling", "apps", "scripts/ops"):
-    for p in (root / base).rglob("*.yaml"):
-        if taint_key and taint_key in p.read_text() and "computeclass" not in p.parts:
-            print(f"FAIL {p.relative_to(root)} names the Cilium startup taint; nothing may tolerate it")
+# That no pod tolerates it is judged on the rendered bundle, charts included:
+# assert-cloud-shape.py check_startup_taint.
 
 # The cluster autoscaler's ceiling counts every node, the fixed pools included.
 init = root / "opentofu/gcp/gke/init"

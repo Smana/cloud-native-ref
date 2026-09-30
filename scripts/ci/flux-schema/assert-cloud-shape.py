@@ -12,8 +12,9 @@ gcp-0 overlay so the render never sees gcp-0's values at all.
 Scope is the agent platform and the AI gateway. Other gcp-0 overlays legitimately
 name AWS (the Route53 federation) and are not judged here. Two checks reach past
 that scope because they are GKE-shape too: gcp-0's envoy-gateway must carry the
-rate-limit KVStore once llm-gateway's budgets are deployed, and no gcp-0 chart CNP
-may reach the metadata server through `toEntities: host`.
+rate-limit KVStore once llm-gateway's budgets are deployed, no gcp-0 chart CNP
+may reach the metadata server through `toEntities: host`, and no gcp-0 pod off the
+host network may tolerate Cilium's startup taint (F2).
 """
 import pathlib
 import re
@@ -209,11 +210,57 @@ def check_metadata_egress(bundle_dir):
     return problems
 
 
+POD_KINDS = ("Deployment", "DaemonSet", "StatefulSet", "ReplicaSet", "Job", "CronJob", "Pod")
+CILIUM_VALUES = "opentofu/gcp/gke/init/helm_values/cilium.yaml"
+# Non-hostNetwork pods allowed a blanket toleration anyway. Keep it empty unless one truly must.
+STARTUP_TAINT_ALLOW = set()
+
+
+def _pod_spec(doc):
+    spec = doc.get("spec") or {}
+    if doc["kind"] == "Pod":
+        return spec
+    if doc["kind"] == "CronJob":
+        spec = (spec.get("jobTemplate") or {}).get("spec") or {}
+    return (spec.get("template") or {}).get("spec") or {}
+
+
+def check_startup_taint(bundle_dir, root):
+    """F2: a gcp-0 pod that tolerates Cilium's agent-not-ready taint runs unpoliced until the agent is up.
+
+    GKE's autoscaler ignores the key, so no pod needs the toleration. A hostNetwork
+    pod has no CiliumEndpoint to wait for, so node agents may tolerate everything.
+    """
+    values = _docs(pathlib.Path(root) / CILIUM_VALUES)
+    key = (values[0] if values else {}).get("agentNotReadyTaintKey")
+    if not key:
+        return [f"{CILIUM_VALUES}: no agentNotReadyTaintKey: the startup-taint check has no key to judge"]
+    problems, seen = [], 0
+    for f in sorted(pathlib.Path(bundle_dir).glob("*-gcp-0-*.yaml")):
+        for doc in _docs(f):
+            if doc.get("kind") not in POD_KINDS:
+                continue
+            seen += 1
+            pod = _pod_spec(doc)
+            name = f"{doc['kind']}/{doc['metadata'].get('name')}"
+            if pod.get("hostNetwork") is True or name in STARTUP_TAINT_ALLOW:
+                continue
+            for t in pod.get("tolerations") or []:
+                blanket = not t.get("key") and t.get("operator") == "Exists" and t.get("effect") in (None, "NoSchedule")
+                if blanket or t.get("key") == key:
+                    problems.append(f"{f.name}: {name} tolerates {'every taint' if blanket else key}, so it can "
+                                    "start before Cilium on a fresh node, with no network policy (F2)")
+    if not seen:
+        problems.append("no gcp-0 pod template in the bundle: the startup-taint check would be vacuous")
+    return problems
+
+
 def main():
     bundle_dir = sys.argv[1] if len(sys.argv) > 1 else ".bundle"
     root = sys.argv[2] if len(sys.argv) > 2 else pathlib.Path(__file__).resolve().parents[3]
     problems = (check_bundle(bundle_dir) + check_umbrellas(root) + check_gcp0_secrets(bundle_dir)
-                + check_ratelimit(bundle_dir, root) + check_metadata_egress(bundle_dir))
+                + check_ratelimit(bundle_dir, root) + check_metadata_egress(bundle_dir)
+                + check_startup_taint(bundle_dir, root))
     for p in problems:
         print(f"FAIL: {p}")
     scoped = sum(1 for f in pathlib.Path(bundle_dir).glob("overlay-*.yaml") if SCOPED.match(f.name))

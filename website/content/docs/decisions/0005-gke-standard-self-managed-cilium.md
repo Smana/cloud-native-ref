@@ -73,7 +73,8 @@ stage-2 OpenTofu step, mirroring the existing EKS two-stage bootstrap.
   but it is now on a path with less community traffic).
 - Requires nodes to carry `node.cilium.io/agent-not-ready=true:NoSchedule` so pods do not land
   before the agent is ready — including on autoscaled nodes
-  (see [ADR-0006](0006-nap-computeclass-over-karpenter.md)).
+  (see [ADR-0006](0006-nap-computeclass-over-karpenter.md)). On GKE the key is non-default since
+  2026-10-01, `ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready` (ADR-0006).
 
 ### Option 2: GKE Standard + Dataplane V2
 
