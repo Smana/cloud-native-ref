@@ -19,7 +19,7 @@ metadata:
   name: ai-gateway
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false  # integration branch only: the gcp-0 live test (never merged)
   prune: true
   deletionPolicy: Orphan
   interval: 5m0s
