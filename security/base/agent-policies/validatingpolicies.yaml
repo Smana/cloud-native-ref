@@ -99,16 +99,27 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [externalsecrets, pushsecrets, secretstores]
   validations:
+    # Allowlists, not denylists: an unlisted field (a per-item sourceRef.storeRef, which
+    # overrides secretStoreRef; target.manifest or template; dataFrom; refreshPolicy)
+    # refuses, so a new ESO field cannot reopen the exception. The domain is not pinned:
+    # this Kustomization is not Flux-substituted, and any certificates/*/ca-chain entry
+    # holds only a public chain.
     - expression: >-
         object.kind == 'ExternalSecret' && object.metadata.name == 'room-broker-ca' &&
+        object.spec.all(k, k in ['secretStoreRef', 'target', 'data', 'refreshInterval']) &&
         object.spec.secretStoreRef.kind == 'ClusterSecretStore' &&
         object.spec.secretStoreRef.name == 'clustersecretstore' &&
-        !has(object.spec.dataFrom) && size(object.spec.data) == 1 &&
+        object.spec.target.all(k, k in ['name', 'creationPolicy', 'deletionPolicy']) &&
+        object.spec.target.name == 'room-broker-ca' &&
+        size(object.spec.data) == 1 &&
+        object.spec.data[0].all(k, k in ['secretKey', 'remoteRef']) &&
         'ca.crt' == object.spec.data[0].secretKey &&
-        (object.spec.data[0].remoteRef.key.matches('^certificates/[^/]+/ca-chain$') ||
-          object.spec.data[0].remoteRef.key == 'openbao-priv-gcp-ca-chain') &&
-        (!has(object.spec.data[0].remoteRef.property) || object.spec.data[0].remoteRef.property == 'ca') &&
-        object.spec.target.name == 'room-broker-ca' && !has(object.spec.target.template)
+        object.spec.data[0].remoteRef.all(k, k in ['key', 'property', 'conversionStrategy', 'decodingStrategy', 'metadataPolicy', 'nullBytePolicy']) &&
+        (!has(object.spec.data[0].remoteRef.metadataPolicy) || object.spec.data[0].remoteRef.metadataPolicy == 'None') &&
+        ((object.spec.data[0].remoteRef.key.matches('^certificates/[^/]+/ca-chain$') &&
+            has(object.spec.data[0].remoteRef.property) && object.spec.data[0].remoteRef.property == 'ca') ||
+          (object.spec.data[0].remoteRef.key == 'openbao-priv-gcp-ca-chain' &&
+            !has(object.spec.data[0].remoteRef.property)))
       message: "namespace agents holds no secret: External Secrets objects are refused, but for the room-broker-ca certificate (SP1 S9)"  # pragma: allowlist secret
 ---
 # Envoy Gateway can neither prefix-match `sub` nor read the kubernetes.io claim,
