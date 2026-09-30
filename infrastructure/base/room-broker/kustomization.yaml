@@ -16,3 +16,4 @@ resources:
   - externalsecret-rooms-proxy.yaml
   - oauth2-proxy.yaml
   - network-policy-oauth2-proxy.yaml
+  - httproute.yaml
