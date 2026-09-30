@@ -254,9 +254,16 @@ if taint(extra="tolerations: [{operator: Exists, effect: NoExecute}]"):
     fails.append("a key-less Exists limited to NoExecute does not tolerate a NoSchedule taint and must pass")
 if taint(kind="DaemonSet", extra="hostNetwork: true\n      tolerations: [{operator: Exists}]"):
     fails.append("a hostNetwork DaemonSet tolerating everything has no endpoint to wait for and must pass")
-if taint(extra="tolerations: [{operator: Exists}]", name="chart-observability-aws-0-x-x.yaml").count(
-        "no gcp-0 pod template in the bundle: the startup-taint check would be vacuous") != 1:
-    fails.append("aws-0 renders are not judged, and a bundle with no gcp-0 pod template is vacuous")
+if taint(extra="tolerations: [{operator: Exists}]", name="chart-observability-aws-0-x-x.yaml") != [
+        "no gcp-0 or base pod template in the bundle: the startup-taint check would be vacuous"]:
+    fails.append("aws-0 renders are not judged, and a bundle with no gcp-0 or base pod template is vacuous")
+# gcp-0 applies agent-sandbox and others straight from base: their renders name no cluster.
+# Asserted on the finding itself: the vacuity problem alone would also be non-empty.
+for base_name in ("chart-infrastructure-base-agent-sandbox-agent-system-agent-sandbox.yaml",
+                  "overlay-infrastructure-base-agent-runtime.yaml"):
+    if not any("Deployment/w tolerates every taint" in p
+               for p in taint(extra="tolerations: [{operator: Exists}]", name=base_name)):
+        fails.append(f"{base_name}: a base Deployment with a key-less Exists toleration lands on gcp-0 and must fail")
 if not taint(root=pathlib.Path(tempfile.mkdtemp())):
     fails.append("a missing agentNotReadyTaintKey must fail rather than judge nothing")
 

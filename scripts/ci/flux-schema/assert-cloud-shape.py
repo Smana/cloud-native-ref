@@ -13,8 +13,8 @@ Scope is the agent platform and the AI gateway. Other gcp-0 overlays legitimatel
 name AWS (the Route53 federation) and are not judged here. Two checks reach past
 that scope because they are GKE-shape too: gcp-0's envoy-gateway must carry the
 rate-limit KVStore once llm-gateway's budgets are deployed, no gcp-0 chart CNP
-may reach the metadata server through `toEntities: host`, and no gcp-0 pod off the
-host network may tolerate Cilium's startup taint (F2).
+may reach the metadata server through `toEntities: host`, and no pod off the host
+network in a gcp-0 or base render may tolerate Cilium's startup taint (F2).
 """
 import pathlib
 import re
@@ -230,13 +230,17 @@ def check_startup_taint(bundle_dir, root):
 
     GKE's autoscaler ignores the key, so no pod needs the toleration. A hostNetwork
     pod has no CiliumEndpoint to wait for, so node agents may tolerate everything.
+    Every render except aws-0's is judged: gcp-0 applies several charts and overlays
+    straight from base (agent-sandbox, agent-runtime, ...), whose names carry no cluster.
     """
     values = _docs(pathlib.Path(root) / CILIUM_VALUES)
     key = (values[0] if values else {}).get("agentNotReadyTaintKey")
     if not key:
         return [f"{CILIUM_VALUES}: no agentNotReadyTaintKey: the startup-taint check has no key to judge"]
     problems, seen = [], 0
-    for f in sorted(pathlib.Path(bundle_dir).glob("*-gcp-0-*.yaml")):
+    for f in sorted(pathlib.Path(bundle_dir).glob("*.yaml")):
+        if "-aws-0-" in f.name:
+            continue
         for doc in _docs(f):
             if doc.get("kind") not in POD_KINDS:
                 continue
@@ -251,7 +255,7 @@ def check_startup_taint(bundle_dir, root):
                     problems.append(f"{f.name}: {name} tolerates {'every taint' if blanket else key}, so it can "
                                     "start before Cilium on a fresh node, with no network policy (F2)")
     if not seen:
-        problems.append("no gcp-0 pod template in the bundle: the startup-taint check would be vacuous")
+        problems.append("no gcp-0 or base pod template in the bundle: the startup-taint check would be vacuous")
     return problems
 
 
