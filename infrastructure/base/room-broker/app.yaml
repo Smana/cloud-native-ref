@@ -89,8 +89,8 @@ spec:
         secretName: room-broker-oidc  # pragma: allowlist secret
     # optional: the broker runs before the owner creates the App, and kubelet fills
     # the volume once the key lands. A secretKeyRef env would need a restart (P31).
-    # 0440: the non-root broker reads the key through the pod's fsGroup, which the
-    # App composition sets to its user (1001). Without it every mint fails.
+    # 0440, not the default 0644: readable only through the pod's fsGroup (1001, set
+    # by the App composition), so the key depends on that fsGroup staying set.
     - name: factory-app
       secret:
         secretName: room-broker-factory-app  # pragma: allowlist secret

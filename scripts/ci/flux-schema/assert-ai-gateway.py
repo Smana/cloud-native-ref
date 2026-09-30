@@ -47,8 +47,11 @@ wrong:
       always forwards the validated JWT to the MCP proxy, and the MCPRoute
       API has no field to strip it; the proxy re-originates each backend
       call, so these are the three fields that feed forwarded headers -- any
-      one of them can hand a run's token to an MCP server. At least one such
-      MCPRoute must exist, for the same no-vacuous-pass reason.
+      one of them can hand a run's token to an MCP server. A backend's
+      `securityPolicy.apiKey` must name a header other than Authorization (or
+      a queryParam): without one the key goes out as `Authorization: Bearer`,
+      and no MCP hop carries a bearer. At least one such MCPRoute must exist,
+      for the same no-vacuous-pass reason.
   A7  Every agent-router listener that an AIGatewayRoute attaches to has an
       HTTPRoute on that same Gateway and sectionName which directly responds
       to an Exact `/v1/models` match via an HTTPRouteFilter's directResponse.
@@ -270,6 +273,13 @@ def check_mcp_token_passthrough(objs):
             if any((h.get("name") or "").lower() == "authorization" for h in backend.get("forwardHeaders") or []):
                 errors.append(f"{ref(obj)}: backend {backend.get('name')} forwards Authorization, "
                               "handing the run's token to an MCP server")
+            # An apiKey with neither header nor queryParam is injected as `Authorization: Bearer <key>`.
+            api_key = (backend.get("securityPolicy") or {}).get("apiKey")
+            if api_key is not None and (
+                    (api_key.get("header") or "").lower() == "authorization"
+                    or not (api_key.get("header") or api_key.get("queryParam"))):
+                errors.append(f"{ref(obj)}: backend {backend.get('name')} injects its apiKey as Authorization "
+                              "(set securityPolicy.apiKey.header): no MCP hop carries a bearer")
         security = spec.get("securityPolicy") or {}
         claim_to_headers = (security.get("oauth") or {}).get("claimToHeaders") or []
         if any((c.get("header") or "").lower() == "authorization" for c in claim_to_headers):
