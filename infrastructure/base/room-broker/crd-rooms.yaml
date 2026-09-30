@@ -1,5 +1,5 @@
 # Vendored from Smana/agent-platform config/crd (ruling P16): the stack-tip branch until the merge wave, then the release asset.
-# Source: feat/room-log at f3ac98ceac4d217518639b7b297c0c01d398da3c (2026-09-30, agent-platform#5), the room-broker pin.
+# Source: feat/room-tools at 91b25cef1ea7a0275f5dbf63233cf6178b789c47 (2026-10-01, agent-platform#8), the room-broker pin.
 # Refresh with every AP pin: gh api repos/Smana/agent-platform/contents/config/crd/agents.ogenki.io_rooms.yaml?ref=<branch or tag> --jq .content | base64 -d
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -94,11 +94,17 @@ spec:
                     type: string
                 type: object
               dataClass:
-                description: Runs requested for this room inherit it (C3).
+                description: |-
+                  Runs requested for this room inherit it (C3). Fixed at creation (ruling
+                  TD): a room turned public would publish the summaries of verdicts queued
+                  under its internal class.
                 enum:
                 - public
                 - internal
                 type: string
+                x-kubernetes-validations:
+                - message: dataClass is immutable
+                  rule: self == oldSelf
               driver:
                 description: The initial driver-token holder; afterwards the log decides.
                 maxLength: 261

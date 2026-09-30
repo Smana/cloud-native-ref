@@ -33,6 +33,10 @@ The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
 key written to `github-app` on the `agents` mount. Without the key, `octo-sts` sits in
 `CreateContainerConfigError` and its child fails the health check.
 
+From SP2 phase 3, the factory App `ogenki-agent-factory` (SP3's, created early) is installed on
+`Smana/cloud-native-ref` with its key at `factory-app` on the `agents` mount. Without it, the room broker
+still runs, and reviewers' verdicts stay in the room instead of reaching the pull request.
+
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
 
