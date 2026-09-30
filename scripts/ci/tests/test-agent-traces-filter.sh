@@ -6,7 +6,8 @@
 # stub that stamps the run id a pod label would, and the exporter swapped for `debug`. A
 # span carrying a prompt, a completion, tool input, headers, an exception message and a
 # spoofed run id must come out with metadata only; a span that no run sent is dropped.
-# Links and tracestate are cleared, and names are capped on a UTF-8 boundary (AK5, I1').
+# Links and tracestate are cleared, since no attribute processor walks them, and names are
+# capped on a UTF-8 boundary, since they are free text a run controls.
 # A second run without the HelmRelease's extraArgs proves the link check can fail: on
 # 0.160, set(span.links, nil) is a no-op unless ottl.set.allowNil is on.
 set -uo pipefail

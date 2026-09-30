@@ -41,7 +41,8 @@ CONTENT = re.compile(r"^(gen_ai\.(input|output|prompt|completion|tool\.definitio
                      r"|lmnr\.span\.(input|output)|llm\.headers|exception\.(message|stacktrace))")
 EXPORTERS = ["otlp_http/victoriatraces"]
 # Links and tracestate carry run-controlled text that no attribute processor sees, and names
-# and versions are free text too (AK5, review I1). Substring is byte-based unless told otherwise.
+# and versions are free text too, so they are capped rather than trusted. Substring is byte-based
+# unless told otherwise.
 CAPS = ["truncate_all(resource.attributes, 256)",
         "truncate_all(span.attributes, 256)",
         "truncate_all(spanevent.attributes, 256)",
@@ -93,12 +94,12 @@ def check_collector():
     hr = find(COLLECTOR, "HelmRelease", "agent-traces-collector").get("spec", {})
     values = hr.get("values", {})
     # The chart labels pods instance=<releaseName>, and CI renders with the object name instead
-    # (render-bundle.py), so only this ties the selectors to the real pods (review M5).
+    # (render-bundle.py), so only this ties the selectors to the real pods.
     check(hr.get("releaseName") == CNP_SELECTOR["matchLabels"]["app.kubernetes.io/instance"],
           f"releaseName {hr.get('releaseName')!r} is the instance label the CNP selects")
     check(find(COLLECTOR, "VMServiceScrape", "agent-traces-collector").get("spec", {}).get("selector") == CNP_SELECTOR,
           "the VMServiceScrape selects the same pods as the CNP")
-    # Without it `set(span.links, nil)` is a silent no-op on 0.160 (review I1').
+    # Without it `set(span.links, nil)` is a silent no-op on 0.160, and link attributes reach storage.
     check("--feature-gates=ottl.set.allowNil" in values.get("command", {}).get("extraArgs", []),
           "the collector runs with ottl.set.allowNil, so set(span.links, nil) clears links")
     image = values.get("image", {})

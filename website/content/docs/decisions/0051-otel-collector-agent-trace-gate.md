@@ -87,8 +87,8 @@ by something the sandbox cannot reach.
   until the collector drops it.
 - A handful of allowlisted keys are still free text a run controls — `lmnr.span.path`,
   `gen_ai.response.id`, `lmnr.association.properties.metadata.tool_call_id` and `error.type` — and
-  keep up to 256 characters of it (`transform/cap`'s `truncate_all`). This is the accepted residual
-  (AK5): the keys themselves are metadata (a span path, a response id, a tool-call id, an error
+  keep up to 256 characters of it (`transform/cap`'s `truncate_all`). This residual is accepted
+  because the keys themselves are metadata (a span path, a response id, a tool-call id, an error
   type), never prompt or completion text, but their values are not further constrained.
 - Envoy's own default span tags (`http.url` with its query string, `user_agent`, and the rest of
   Envoy's built-in tracer tags) cannot be turned off from the `EnvoyProxy` CRD on EG 1.9.2 —
@@ -97,14 +97,21 @@ by something the sandbox cannot reach.
   batch`) rather than allowlisted like the sandboxes' `traces/agents` pipeline is, because this
   collector pipeline cannot know Envoy's tag names in advance.
 - Envoy Gateway 1.9.2 does not enforce the `ReferenceGrant` a cross-namespace tracing `backendRef`
-  normally requires (AK2a). The grant is created anyway, for the day EG catches up to its own CRD
-  doc, but the actual control today is the collector's own CNP ingress rule, not the grant.
+  normally requires: its telemetry backendRef processing never looks one up. The grant is created
+  anyway, because the CRD docs require it and a later EG will enforce it, but the actual control
+  today is the collector's own CNP ingress rule, not the grant.
+- SP3's factory sends its spans to `traces/router`, which caps but has no allowlist. The factory
+  handles untrusted issue text, so its code must emit metadata-only attributes.
 
 ### Neutral
 
 - The collector runs only under the opt-in `agent-platform` umbrella.
-- agent-router always samples: `telemetry.tracing.samplingRate` is 100, so a compromised run cannot
-  reduce its own visibility by triggering rarer code paths (AK9).
+- agent-router samples every request (`telemetry.tracing.samplingRate: 100`), so each model call a
+  run makes appears in that run's trace. At a lower rate, calls would be missing at random.
+- The harness always samples its root span, whatever the trigger's flags. lmnr's span context
+  carries no sampled flag, so agent-server exports its spans regardless: an unsampled root would
+  leave them orphaned. SP3's factory must keep 100% sampling for the same reason: the run's root
+  is parented on the factory's task span, and an unsampled task span never exports.
 
 ---
 
@@ -117,7 +124,8 @@ by `scripts/ci/tests/test-agent-traces-filter.sh` and runbook 08.
 Clearing span links needs the ALPHA feature gate `ottl.set.allowNil` (v0.158+, off by default,
 enabled via `command.extraArgs`). Without it, `set(span.links, nil)` is a silent no-op — OTTL
 still runs the statement, but nothing changes — and `set(span.links, [])` is rejected outright,
-because the links setter's type check does not accept an empty slice literal in place of `nil` (AK7).
+because the links setter's type check does not accept an empty slice literal in place of `nil`.
+Dropping spans that carry links would lose the trace, so the gate is the only option.
 
 ---
 

@@ -235,7 +235,7 @@ class StepLogTest(unittest.TestCase):
         self.assertIn("agent-run final message:\nDone: fixed the note.", out.getvalue())
 
     def test_tokens_are_redacted_before_anything_is_printed(self):
-        # M4: an injected agent can print its own installation token into a command or its
+        # An injected agent can print its own installation token into a command or its
         # final message, and stdout reaches VictoriaLogs. The cached value is redacted even
         # when it has no gh*_ shape; any gh*_ token is redacted even when it is not cached.
         cached, other = "tok_" + "C" * 36, "ghs_" + "S" * 36
@@ -381,14 +381,16 @@ class TraceTest(unittest.TestCase):
             agent_run.close_conversation("cid")  # never fails the run
 
     def test_the_run_span_carries_no_attributes(self):
-        # AK8: agent.run_id is the collector's to set; the harness adds nothing to the span.
+        # agent.run_id is stamped by the collector from the pod label, which a run cannot forge;
+        # the harness adds nothing to the span.
         got, _ = self.span({"TRACEPARENT": self.TP})
         self.assertEqual(dict(got.attributes), {})
         self.assertEqual(tuple(got.links), ())
         self.assertEqual(tuple(got.events), ())
 
     def test_an_unsampled_trigger_is_still_sampled(self):
-        # Ruling AK9: agent-server's spans export regardless, so the run's root must land too.
+        # lmnr's span context has no sampled flag, so agent-server's spans export regardless;
+        # the run's root must land too, or they are orphaned.
         got, _ = self.span({"TRACEPARENT": self.TP[:-2] + "00"})
         self.assertEqual(format(got.context.trace_id, "032x"), self.TP.split("-")[1])
         self.assertTrue(got.context.trace_flags.sampled)
