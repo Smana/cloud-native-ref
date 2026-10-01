@@ -59,17 +59,13 @@ spec:
     #       operator: Exists
     #       effect: NoSchedule
     #
-    # The Cilium taint needs no toleration and must not get one; see
-    # general-purpose.yaml and ADR-0006.
+    # No Cilium startup taint: see general-purpose.yaml (F6).
     #
     # `ogenki/io` is this class's own: it keeps general-purpose workloads off
     # nodes provisioned for their local disk, which are fewer and dearer.
     # Identical key and value to the AWS io NodePool, so a workload's
     # tolerations are portable between clouds.
     taints:
-      - key: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
-        value: "true"
-        effect: NoSchedule
       - key: ogenki/io
         value: "true"
         effect: NoSchedule

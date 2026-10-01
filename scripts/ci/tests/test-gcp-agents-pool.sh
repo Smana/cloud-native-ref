@@ -4,9 +4,10 @@
 # GCP parity GP-9..GP-11: gcp-0's runs land on a GKE Sandbox pool through GKE's
 # own `gvisor` RuntimeClass; gVisor needs Cilium's per-packet LB; and every
 # DaemonSet that follows runs onto aws-0's gVisor nodes follows them onto GKE's.
-# F2: every GKE pool and ComputeClass carries Cilium's startup taint under the
-# key Cilium clears, in the autoscaler's startup-taint namespace, so the pool
-# scales from zero with NO toleration and nothing runs before Cilium is ready.
+# F2: every GKE pool carries Cilium's startup taint under the key Cilium clears,
+# in the autoscaler's startup-taint namespace, so the pool scales from zero with
+# NO toleration and nothing runs before Cilium is ready. ComputeClasses carry
+# none: GKE Warden refuses a `kubernetes.io` taint key there (F6).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 F="$ROOT/opentofu/gcp/gke/init/sandbox.tf"
@@ -59,9 +60,9 @@ for p in sorted((root / "infrastructure/gcp-0/computeclass").glob("*.yaml")):
     for d in docs(p):
         if d.get("kind") != "ComputeClass":
             continue
-        taints = [t.get("key") for t in (d["spec"].get("nodePoolConfig") or {}).get("taints", [])]
-        if taint_key not in taints:
-            print(f"FAIL ComputeClass {d['metadata']['name']} does not carry the Cilium taint {taint_key!r}")
+        taints = [str(t.get("key")) for t in (d["spec"].get("nodePoolConfig") or {}).get("taints", [])]
+        if any("kubernetes.io" in k or "agent-not-ready" in k for k in taints):
+            print(f"FAIL ComputeClass {d['metadata']['name']}: GKE Warden refuses a kubernetes.io taint key, and a stale Cilium key is never cleared: {taints}")
 # That no pod tolerates it is judged on the rendered bundle, charts included:
 # assert-cloud-shape.py check_startup_taint.
 

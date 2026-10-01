@@ -182,9 +182,12 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
 
 ## Implementation Notes
 
-Each `ComputeClass` sets `nodePoolConfig.taints[]` to include Cilium's agent-not-ready taint
-(`ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready=true:NoSchedule` since
-2026-10-01) and pins `nodePoolConfig.imageType`.
+Each `ComputeClass` pins `nodePoolConfig.imageType`. It carries **no** Cilium startup taint:
+GKE Warden refuses any ComputeClass taint key containing `kubernetes.io`
+(`custom-compute-class-limitation`, observed on gcp-0 2026-10-01), and Cilium clears only its one
+configured key. Nodes from a ComputeClass get the taint from cilium-operator's `setNodeTaints`,
+which can lose a race with the first pod; the fixed pools (`static`, `agents-gvisor`) carry it
+from creation.
 `priorities[]` is ordered spot-first then on-demand, mirroring the capacity-type preference in
 the existing Karpenter `NodePool`s.
 
