@@ -107,5 +107,18 @@ grep -q 'agent-run: dashboard' "$tmp/err" && fail "no host, no link"
 AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --dry-run 2>"$tmp/err" >/dev/null
 grep -q 'agent-run: dashboard' "$tmp/err" && fail "a dry run creates no run, so it prints no link"
 
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma --dry-run >/dev/null 2>&1 || fail "a --room call exits 0"
+jq -e '.spec.roomRef == "3kq7x2ma" and .spec.branch == "agent/3kq7x2ma"' "$STUB_CLAIM" >/dev/null || fail "--room sets roomRef and the room's shared branch"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma --branch agent/7f3cq2xz --dry-run >/dev/null 2>&1 || fail "--room with --branch exits 0"
+jq -e '.spec.branch == "agent/7f3cq2xz"' "$STUB_CLAIM" >/dev/null || fail "an explicit --branch wins"
+bash "$SUBJECT" --role implementer --class public --task x --room ROOM >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room that is not a C2 id"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a 7-character --room"
+bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2m1 >/dev/null 2>&1; [ $? -eq 2 ] || fail "refuses a --room with a digit outside 2-7"
+bash "$SUBJECT" --role implementer --class public --task x --dry-run >/dev/null 2>&1
+jq -e '.spec | has("roomRef") | not' "$STUB_CLAIM" >/dev/null || fail "no roomRef unless asked"
+AGENT_GRAFANA_URL=https://grafana.example bash "$SUBJECT" --role implementer --class public --task x --room 3kq7x2ma 2>"$tmp/err" >/dev/null
+grep -q 'room=3kq7x2ma branch=agent/3kq7x2ma' "$tmp/err" || fail "stderr echoes the room and its branch"
+grep -q '^agent-run: dashboard https://grafana.example/' "$tmp/err" || fail "a room run still prints its dashboard link"
+
 [ "$fails" -eq 0 ] || exit 1
 echo "PASS"
