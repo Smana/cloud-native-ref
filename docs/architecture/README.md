@@ -30,6 +30,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `openbao-lineage.drawio` | Two pages, embedded on two different pages. Page 1, what persists across a teardown versus what is rebuilt: [Platform → Security → OpenBao](../../website/content/docs/platform/security/openbao.md). Page 2, the cross-cloud fallback and the weekly restore drill: [Guides → OpenBao cross-cloud failover](../../website/content/docs/guides/openbao-cross-cloud-failover.md) |
 | `llm-platform.drawio` | Three pages — request path, one claim rendered, autoscaling and telemetry. [Platform → AI Platform](../../website/content/docs/platform/ai-platform/_index.md) |
 | `agent-factory.drawio` | The Agent Factory's target architecture on one page: triggers, the factory, rooms, the sandboxed runtime, the agent gateway and observability on both clouds, each box marked live on gcp-0, built but not deployed, or planned. [Platform → Agent Factory](../../website/content/docs/platform/agent-factory/_index.md) |
+| `agent-factory-overview.drawio` | The Agent Factory at a glance: one task, end to end, in a dozen boxes and no status. Sits above the detailed diagram on [Platform → Agent Factory](../../website/content/docs/platform/agent-factory/_index.md) |
 
 ## SVG for the site, PNG only where GitHub needs it
 

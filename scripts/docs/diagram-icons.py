@@ -89,6 +89,9 @@ CATALOG = {
     'zitadel': 'local', 'slack': 'local', 'huggingface': 'local',
     'openwebui': 'local',
 
+    'agentgateway': 'local', 'claude': 'local', 'gvisor': 'local',
+    'mcp': 'local', 'octo-sts': 'local', 'openhands': 'local', 'z.ai': 'local',
+
     'terramate': 'brand', 'postgres': 'brand', 'atlas': 'brand',
     'renovate': 'brand', 'nvidia': 'brand', 'wireguard': 'brand',
     'polaris': 'brand', 'checkov': 'brand',

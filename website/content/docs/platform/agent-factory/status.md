@@ -124,10 +124,10 @@ their PR.
 | F9 | `cilium-agent` was OOM-killed twice on new nodes | **Fixed and applied** in #2145 (higher requests and limits); the DaemonSet rolled on gcp-0 |
 | F10 | The bridge-to-broker event stream resets every 10 s (write deadline shorter than the ping interval) | **Fixed** in agent-platform (pre-release `pr9.afb1ed73`); re-pin and live re-verify pending |
 | F11 | Short conversations lose their whole transcript: the harness exits before the bridge's next poll during the gVisor cold start | **Fixed** in agent-platform (pre-release `pr9.afb1ed73`); re-pin and live re-verify pending |
-| F12 | A deleted or evicted run pod is re-created by its Sandbox and the task restarts from scratch | **Fixed, under review**: agent-platform and crossplane-configuration [#35](https://github.com/Smana/crossplane-configuration/pull/35) (pre-release `v0.7.2-pr35.585d33b`); re-pin and live re-verify pending |
+| F12 | A deleted or evicted run pod is re-created by its Sandbox and the task restarts from scratch | **Fix in review (changes requested)**: agent-platform and crossplane-configuration [#35](https://github.com/Smana/crossplane-configuration/pull/35) (pre-release `v0.7.2-pr35.585d33b`); re-pin and live re-verify pending |
 | F13 | The live-gate step greps for `room_busy`, but the broker logs "room busy", so it never matches; busy refusals are not counted in a metric either | **PR open**: [#2155](https://github.com/Smana/cloud-native-ref/pull/2155) (plan text, low) |
 | F14 | `cnpg-promote-seed.sh --cloud gcp` nests the seed one level too deep | **PR open**: [#2154](https://github.com/Smana/cloud-native-ref/pull/2154); recovered by hand meanwhile |
-| F15 | A run refused the room lease still executes its task, unrecorded, on the shared branch, and is reported succeeded | **Fixed, under review**: same change as F12; re-pin and live re-verify pending |
+| F15 | A run refused the room lease still executes its task, unrecorded, on the shared branch, and is reported succeeded | **Fix in review (changes requested)**: same change as F12; re-pin and live re-verify pending |
 | F16 | MCP calls are not joined to the run's trace | Open |
 | F17 | Runbook 08's GCP commands have bugs | **Fixed** on `integration` |
 | F18 | `agentrun_outcome_info` is never emitted for a successful run | **Fixed** on `integration` in #2136 (adds `agentrun_pull_request_info`); live re-check pending |

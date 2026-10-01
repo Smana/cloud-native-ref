@@ -54,7 +54,19 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 
 ## Architecture
 
-The diagram shows the **target** architecture: the whole programme once built. Its legend marks
+### At a glance
+
+One task, end to end. A maintainer labels an issue; the factory starts a sandboxed agent run and
+opens a room; every call the agent makes goes through the gateway under the run's own identity;
+the agent pushes an `agent/**` branch and opens a PR; a human review decides the merge.
+
+![The Agent Factory at a glance: one task, end to end. A maintainer labels a GitHub issue. The Agent Factory turns the issue into a task, starts an agent run and opens a room. The run is a gVisor sandbox holding the coding agent, OpenHands. The maintainer watches and steers through the room, which exchanges events and steering with the run. Every call the agent makes goes through the agent gateway, agentgateway, with per-run identity and budgets, to the models (Z.ai GLM and Claude), the MCP tools, and octo-sts for a GitHub token limited to agent/** branches. The agent pushes a branch and opens a PR on GitHub, where the maintainer's review decides the merge. Traces, logs and metrics go to the Victoria stack and Grafana](/images/diagrams/agent-factory-overview.svg)
+
+*Source: [`docs/architecture/agent-factory-overview.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory-overview.drawio).*
+
+### In detail
+
+The diagram below shows the **target** architecture: the whole programme once built. Its legend marks
 each box as deployed on `gcp-0` (noting where its live gate is pending), built but not yet
 deployed, or planned.
 
@@ -126,7 +138,7 @@ and Agent Router.
 | Logs | [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) | Every run's step log and every gateway call, attributed to the run |
 | Metrics | [VictoriaMetrics](https://victoriametrics.com) | Tokens, cost, latency and errors per run, and each `AgentRun`'s state through kube-state-metrics |
 | Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue ([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): MCP tool calls are not yet joined to the run's trace |
-| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a successful run's page lacks its outcome and PR; the fix is on `integration`, live re-check pending |
+| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): a successful run's page showed no outcome or PR; fixed on `integration` (deployed on gcp-0), live re-check pending |
 
 ## One repository at first
 

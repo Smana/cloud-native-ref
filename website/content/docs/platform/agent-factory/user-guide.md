@@ -223,8 +223,8 @@ and resume it with `--branch`.
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
 `task agent:run` prints the dashboard link (`/d/agent-run/agent-run?var-run=<id>`). Two known
-issues: on the deployed build a successful run's page lacks its outcome and PR ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}}); fixed
-on `integration`, live re-check pending), and MCP tool calls are not yet joined to the run's trace
+issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}}); fixed
+on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls are not yet joined to the run's trace
 ([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
