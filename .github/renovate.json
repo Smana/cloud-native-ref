@@ -43,6 +43,16 @@
   },
   "customManagers": [
     {
+      "description": "The agent factory's image, pinned by tag and digest inside the values ConfigMap's values.yaml string, where the helm-values manager never looks. Grouped with the chart's OCIRepository by the agent-factory package rule.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^tooling/base/agent-factory/helm-values-configmap\\.yaml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*tag:\\s*\"(?<currentValue>v[^\"@]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ]
+    },
+    {
       "description": "OpenBao versions, its KMS seal plugins, and node_exporter, wherever an OpenBao node is configured: both clouds' cluster stacks and the restore drill. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written. The drill and the GCP startup script were added on 2026-09-26: #2095 bumped the clusters to 2.7.0 and left the drill on 2.6.2, because nothing here matched its `BAO_VERSION:` line. Plugin images carry tag and digest, and Renovate updates both.",
       "customType": "regex",
       "managerFilePatterns": [
@@ -114,6 +124,12 @@
         "ghcr.io/victoriametrics/mcp-victorialogs",
         "ghcr.io/octo-sts/app"
       ],
+      "automerge": false
+    },
+    {
+      "description": "Never automerge the agent factory: its chart and image are the orchestrator of unattended agents, and its pin is a gate path. A human reads every bump. One group, because the chart's appVersion names the image: bumping one alone deploys a chart against an image it was not built with (scripts/ci/tests/test-agent-factory-pins.py fails on a mismatch).",
+      "matchPackageNames": ["ghcr.io/smana/charts/agent-factory", "ghcr.io/smana/agent-factory"],
+      "groupName": "agent-factory",
       "automerge": false
     },
     {

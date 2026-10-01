@@ -1,0 +1,13 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-factory
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
