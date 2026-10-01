@@ -206,7 +206,7 @@ to that room.
 ## Frequently asked questions
 
 **Can an agent merge to `main`, or push anywhere else?**
-No. Its GitHub App may push only `agent/**` branches, enforced by a repository ruleset. Merging is
+No. Its GitHub App may push only `agent/**` branches and no tags, enforced by two repository rulesets. Merging is
 the human's, except for the two low-risk classes above, which go through a separate App.
 
 **Can it read our secrets?**

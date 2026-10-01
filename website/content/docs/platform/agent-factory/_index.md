@@ -68,7 +68,7 @@ end: an agent took issue #2112 to PR #2114, which was merged.
 | Harness | [OpenHands](https://github.com/OpenHands/software-agent-sdk) agent-server and SDK, wrapped by a small `agent-run` entrypoint | The agent loop: shell, editor, git, MCP tools. `agent-run` clones the repository, starts the conversation, prints the step log and revokes the GitHub token at the end | Open source, headless (an HTTP API rather than an IDE), model-agnostic, with MCP support |
 | Identity proxy | [Envoy](https://www.envoyproxy.io) sidecar | Attaches the run's own short-lived token to every model, tool and token-exchange call. The harness never sees that token | The agent cannot leak a gateway token it never sees. The one credential it holds is its GitHub token: in memory, one repository, one role, ≤ 1 h, revoked when the run ends |
 | Network policy | [Cilium](https://cilium.io) `CiliumNetworkPolicy` | Default deny, per run: egress only to named hosts (GitHub, the router, optional package registries) | FQDN-aware policy, plus Hubble to see every dropped flow |
-| GitHub access | [octo-sts](https://github.com/octo-sts/app) and a GitHub App, plus a repository ruleset | Exchanges the run's identity for a GitHub token scoped to one repository and its role's permissions, valid ≤ 1 h and revoked when the run ends. The ruleset lets the App push only `agent/**` branches | No long-lived GitHub token anywhere; the rules live in each repository's trust policies |
+| GitHub access | [octo-sts](https://github.com/octo-sts/app) and a GitHub App, plus a repository ruleset | Exchanges the run's identity for a GitHub token scoped to one repository and its role's permissions, valid ≤ 1 h and revoked when the run ends. The rulesets let the App push only `agent/**` branches, and no tags | No long-lived GitHub token anywhere; the rules live in each repository's trust policies |
 | Secrets | [OpenBao](https://openbao.org) and [External Secrets](https://external-secrets.io) | Holds the few platform secrets (App keys, provider keys); none reaches a sandbox | The platform's secret store, nothing agent-specific |
 
 ### Agent router: identity and routing built; budgets and tiers planned
@@ -117,7 +117,7 @@ can take today. It would need:
 
 1. The agents' GitHub App installed on it, and the factory's App for narration.
 2. The octo-sts trust policies for the roles it allows, in that repository.
-3. The `agent/**` branch ruleset applied to it.
+3. The `agent/**` branch ruleset and the tag ruleset applied to it.
 4. Two platform changes: its four audiences added to the gateway's token-exchange listener (at
    most eight per listener), and a factory intake that polls more than one repository.
 
@@ -130,7 +130,7 @@ Runs are per repository: a task never spans two.
 | Code execution | gVisor sandbox, restricted pod security, no service-account token in the harness |
 | Network | Default-deny CNP per run; egress only to named FQDNs and the gateway |
 | Identity | Two projected tokens per run, one for the gateway and one for token exchange; each audience names the run's role and its data class or repository; both live until the run's deadline |
-| GitHub | Short-lived installation tokens from octo-sts, scoped to one repository and the role's permissions; a ruleset lets the agents' App push only `agent/**` |
+| GitHub | Short-lived installation tokens from octo-sts, scoped to one repository and the role's permissions; rulesets let the agents' App push only `agent/**` branches, and no tags |
 | Spend | Per-run deadline; token budgets at the gateway; the factory's run meter enforces `maxTokens` |
 | Merge | Only low-risk classes (`docs-links`, `revert`) auto-merge, through policy-bot and a separate merger App; everything else waits for a human |
 | Stop | One label on a pinned control issue stops intake, refuses new runs and revokes every running one |

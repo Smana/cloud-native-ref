@@ -1,8 +1,8 @@
 ---
-title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
+title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. Two rulesets let that App write only refs/heads/agent/** and no tags, so it cannot merge or tag. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-26
 ---
 
@@ -78,9 +78,9 @@ and returns an installation token with that policy's permissions.
 
 ## Decision Outcome
 
-**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`. The bypass list is
-every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
+**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus two rulesets
+with one bypass list: `agent-branches` confines every non-bypass actor to `refs/heads/agent/**`, and
+`agent-tags` refuses every tag write. The bypass list is every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
 GitHub App is bypassed only when named, never through a role, so the agents' App is the one confined
 actor, and collaborators and App Wizard pushes made with a user's token are not.
 
@@ -109,8 +109,9 @@ repository it grants.
   and neither is set. A push is traced to its run by time against the `sts` access log and by the
   commit's `Agent-Run` trailer
 - `contents: write` also lets the implementer create tags and releases and send `repository_dispatch`,
-  which a branch ruleset does not cover. No workflow triggers on any of them today; one that does
-  needs a tag ruleset first
+  which a branch ruleset does not cover. The `agent-tags` ruleset, with the same bypass list,
+  refuses every tag write, so a release that needs a new tag fails too. A release on an existing tag
+  and `repository_dispatch` remain open; no workflow triggers on either today
 - The App's private key is the strongest credential here: it mints implementer-level tokens for every
   installed repository without octo-sts's per-role scoping, and only the ruleset still bounds its
   pushes to `agent/**`. `openbao-platform` lets any namespace with ExternalSecret rights read it
@@ -141,7 +142,7 @@ repository it grants.
 ## Implementation Notes
 
 `security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
-`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` applied by
+`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` and `.github/rulesets/agent-tags.json`, both applied by
 `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
 it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
 
