@@ -109,8 +109,9 @@ repository it grants.
   and neither is set. A push is traced to its run by time against the `sts` access log and by the
   commit's `Agent-Run` trailer
 - `contents: write` also lets the implementer create tags and releases and send `repository_dispatch`,
-  which a branch ruleset does not cover. No workflow triggers on any of them today; one that does
-  needs a tag ruleset first
+  which a branch ruleset does not cover. The `agent-tags` ruleset, with the same bypass list,
+  refuses every tag write, so a release that needs a new tag fails too. A release on an existing tag
+  and `repository_dispatch` remain open; no workflow triggers on either today
 - The App's private key is the strongest credential here: it mints implementer-level tokens for every
   installed repository without octo-sts's per-role scoping, and only the ruleset still bounds its
   pushes to `agent/**`. `openbao-platform` lets any namespace with ExternalSecret rights read it
@@ -141,7 +142,7 @@ repository it grants.
 ## Implementation Notes
 
 `security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
-`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` applied by
+`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` and `.github/rulesets/agent-tags.json`, both applied by
 `task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
 it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
 
