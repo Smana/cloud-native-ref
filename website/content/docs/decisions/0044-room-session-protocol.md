@@ -106,7 +106,7 @@ uses the database that already holds the log rather than adding Valkey: one depe
 
 ### Positive
 
-- The transcript and the end reason of every run survive the pod (UX finding H3).
+- The transcript and the end reason of every run survive the pod.
 - Reviewers, testers and triagers have a destination for their output.
 - `UPDATE events` as the broker's role fails: history is append-only by grant and trigger (the
   schema also refuses `UPDATE` and `TRUNCATE` from its owner), not by convention.
@@ -120,8 +120,9 @@ uses the database that already holds the log rather than adding Valkey: one depe
 
 ### Neutral
 
-- Next re-check of ax and Substrate: 2026-12-15, or when EKS ships 1.37 and Substrate closes #1898,
-  lifts its no-spot rule (#1528) and fixes #1657.
+- Next re-check of ax and Substrate: 2026-12-15, or sooner when the cluster the platform runs on
+  serves v1 `ClusterTrustBundle` and `PodCertificateRequest` (gcp-0's GKE version first; EKS 1.37
+  if aws-0 hosts again) and Substrate closes #1898, lifts its no-spot rule (#1528) and fixes #1657.
 
 ---
 
