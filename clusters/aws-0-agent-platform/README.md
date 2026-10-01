@@ -28,7 +28,7 @@ On an **existing** cluster, first apply `opentofu/aws/openbao/management` then
 `SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `eks/configure` needs
 `TF_VAR_flux_git_ref=refs/heads/<branch>`.
 
-The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
+The owner prerequisites come next, in this order (ADR-0043): the branch and tag rulesets
 (`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its
 key written to `github-app` on the `agents` mount. Without the key, `octo-sts` sits in
 `CreateContainerConfigError` and its child fails the health check.
