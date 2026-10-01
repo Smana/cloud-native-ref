@@ -3,7 +3,7 @@ title: An OpenTelemetry Collector is the agent trace gate
 linkTitle: 0051 · OTel Collector as the agent trace gate
 weight: 510
 description: Agent runs send spans to an OpenTelemetry Collector outside the sandbox. It stamps the run id from the sending pod's label and keeps only an allowlist of metadata attributes before VictoriaTraces, because the OpenHands SDK records prompts and tool output and cannot be configured not to.
-lastVerified: 2026-09-27
+lastVerified: 2026-10-01
 ---
 
 **Status**: Accepted
@@ -82,9 +82,8 @@ by something the sandbox cannot reach.
 ### Negative
 
 - A new metadata attribute is invisible until someone adds it to the allowlist.
-- Content still crosses the pod network to the collector (WireGuard on aws-0) before it is dropped.
-  gcp-0 has no WireGuard (ADR-0005): the same content crosses its pod network unencrypted by Cilium
-  until the collector drops it.
+- Content still crosses the pod network to the collector before it is dropped. On gcp-0, which has
+  no WireGuard (ADR-0005), it crosses unencrypted by Cilium; on aws-0, WireGuard encrypts it.
 - A handful of allowlisted keys are still free text a run controls — `lmnr.span.path`,
   `gen_ai.response.id`, `lmnr.association.properties.metadata.tool_call_id` and `error.type` — and
   keep up to 256 characters of it (`transform/cap`'s `truncate_all`). This residual is accepted
@@ -108,6 +107,9 @@ by something the sandbox cannot reach.
 - The collector runs only under the opt-in `agent-platform` umbrella.
 - agent-router samples every request (`telemetry.tracing.samplingRate: 100`), so each model call a
   run makes appears in that run's trace. At a lower rate, calls would be missing at random.
+  Known issue (round 9, F16): MCP tool calls through agent-router are not joined to the run's trace
+  yet. Each `/mcp` call opens its own root trace, because the harness's MCP client sends no
+  `traceparent`; find those traces by the agent principal (`x_ar_agent`).
 - The harness always samples its root span, whatever the trigger's flags. lmnr's span context
   carries no sampled flag, so agent-server exports its spans regardless: an unsampled root would
   leave them orphaned. SP3's factory must keep 100% sampling for the same reason: the run's root
@@ -119,7 +121,9 @@ by something the sandbox cannot reach.
 
 `observability/base/agent-platform/agent-traces-collector.yaml`. The run CNP, composed by the
 `AgentRun` composition in crossplane-configuration, admits `POST /v1/traces` on :4318 only. Proved
-by `scripts/ci/tests/test-agent-traces-filter.sh` and runbook 08.
+by `scripts/ci/tests/test-agent-traces-filter.sh` and the
+[observability live-test runbook](https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/08-observability.md),
+and live on gcp-0 on 2026-09-30: no attribute key outside the allowlist reached VictoriaTraces.
 
 Clearing span links needs the ALPHA feature gate `ottl.set.allowNil` (v0.158+, off by default,
 enabled via `command.extraArgs`). Without it, `set(span.links, nil)` is a silent no-op — OTTL
@@ -131,6 +135,6 @@ Dropping spans that carry links would lose the trace, so the gate is the only op
 
 ## References
 
-- `docs/superpowers/plans/2026-09-27-agent-observability-plan.md` (rulings O1–O6)
+- `docs/superpowers/plans/2026-09-27-agent-observability-plan.md` (the trace-gate rulings)
 - [ADR-0030]({{< relref "/docs/decisions/0030-vector-as-log-shipper.md" >}})
 - [ADR-0005]({{< relref "/docs/decisions/0005-gke-standard-self-managed-cilium.md" >}})
