@@ -3,10 +3,16 @@ title: Agent Router is the agents' identity gateway, with role and data class en
 linkTitle: 0042 · Agent identity gateway
 weight: 420
 description: Agent runs reach models and MCP tools only through a dedicated agent-router Gateway, one listener per data class, validating the run's projected ServiceAccount token offline. Role and data class travel in the audience because Envoy Gateway matches claims exactly. An Envoy sidecar in each sandbox holds the run-long tokens (R2) and injects them, so the harness never does. agentgateway, per-route policies and a run-long harness key were rejected.
-lastVerified: 2026-09-26
+lastVerified: 2026-10-01
 ---
 
-**Status**: Accepted
+**Status**: Accepted; Option 1 superseded for the agent router by [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})
+
+> **Superseded for the agent router, 2026-10-01.** [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})
+> moves the `agent-router` Gateway to agentgateway after a passing PoC, which also verified Option 2's
+> `sub`-prefix claim live. The audiences, the three listeners, the Kyverno reservation and the in-pod
+> identity-proxy below still hold; Option 1's Envoy Gateway mechanism does not.
+
 **Date**: 2026-09-26
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [SP1 — Agent runtime & identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md)
