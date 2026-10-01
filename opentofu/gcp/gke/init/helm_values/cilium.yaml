@@ -127,10 +127,15 @@ prometheus:
   serviceMonitor:
     enabled: false
 
+# The agent sits at ~170-240Mi at rest on gcp-0, and a fresh node's startup burst
+# OOM-killed it at 256Mi (twice, F9 2026-10-01), holding Cilium's startup taint ~50 s.
 resources:
-  limits:
-    cpu: 300m
+  requests:
+    cpu: 100m
     memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 routingMode: native
 
