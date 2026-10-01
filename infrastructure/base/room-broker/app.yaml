@@ -10,16 +10,22 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # AP-1's pre-release (agent-platform#5), by digest (P33). Move it with the
+    # AP-2's pre-release (agent-platform#6), by digest (P33). Move it with the
     # retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr5.f3ac98ce@sha256:c99e8d8ba4d910822a3314fc69b2de8afaaa6e5e8b290e427751b244972b33cb"
-  # One replica in phase 1; phase 2 moves to two with a PDB.
-  replicas: 1
+    tag: "v0.0.1-pr6.e335dd32@sha256:b670e5473c33daf265d5721e409184960b16d671bc72fe4636b33cff8b6ce418"
+  # Two from phase 2 (§9): the leader lease picks the controller, and every
+  # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
+  replicas: 2
+  pdb:
+    enabled: true
+    minAvailable: 1
   service:
     port: 8443
     extraPorts:
       - name: metrics
         port: 9090
+      - name: human
+        port: 8080
   automountServiceAccountToken: true # the Room and AgentRun watches, the leader lease
   resources:
     requests:
@@ -28,6 +34,8 @@ spec:
     limits:
       cpu: 500m
       memory: 256Mi
+  # Explicit, not the default: the broker's shutdown drains fit 23 s of it.
+  terminationGracePeriodSeconds: 30
   healthProbes:
     liveness:
       type: http
@@ -61,12 +69,20 @@ spec:
     - name: tls
       secret:
         secretName: room-broker-tls  # pragma: allowlist secret
+    # rooms-proxy's client id and the ZITADEL project id, re-read at use (ruling
+    # AS-a): a whole-Secret mount, so a refresh reaches the files without a restart.
+    - name: oidc
+      secret:
+        secretName: room-broker-oidc  # pragma: allowlist secret
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
       readOnly: true
     - name: tls
       mountPath: /etc/room-broker/tls
+      readOnly: true
+    - name: oidc
+      mountPath: /etc/room-broker/oidc
       readOnly: true
   networkPolicies:
     enabled: false
