@@ -1049,13 +1049,14 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id stored_client_id; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
 done
 # Tested in test-zitadel-oidc-clients-mirror.sh; stubbed so no kubectl runs.
 force_sync_mirrored() { :; }
+restart_rotated_consumers() { :; }   # test-zitadel-oidc-clients-restart.sh
 
 # Every OTHER thing cmd_sync calls, stubbed: this section is about the ONE new
 # call, not a restatement of the redirect/convergence suites' own coverage.
