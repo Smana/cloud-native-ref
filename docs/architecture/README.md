@@ -29,7 +29,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `openbao-architecture.drawio` | The whole OpenBao design on one page — both clouds, the seal key, snapshots and their mirror, the PKI, and where the bootstrap secrets live. Deliberately sparse; the detail lives in prose. [Platform → Security → OpenBao Architecture](../../website/content/docs/platform/security/openbao-architecture.md) |
 | `openbao-lineage.drawio` | Two pages, embedded on two different pages. Page 1, what persists across a teardown versus what is rebuilt: [Platform → Security → OpenBao](../../website/content/docs/platform/security/openbao.md). Page 2, the cross-cloud fallback and the weekly restore drill: [Guides → OpenBao cross-cloud failover](../../website/content/docs/guides/openbao-cross-cloud-failover.md) |
 | `llm-platform.drawio` | Three pages — request path, one claim rendered, autoscaling and telemetry. [Platform → AI Platform](../../website/content/docs/platform/ai-platform/_index.md) |
-| `agent-factory.drawio` | The Agent Factory on one page: triggers, the factory, rooms, the sandboxed runtime and the agent-router, each marked built or planned. [Platform → Agent Factory](../../website/content/docs/platform/agent-factory/_index.md) |
+| `agent-factory.drawio` | The Agent Factory's target architecture on one page: triggers, the factory, rooms, the sandboxed runtime, the agent gateway and observability on both clouds, each box marked live on gcp-0, built, planned or under evaluation. [Platform → Agent Factory](../../website/content/docs/platform/agent-factory/_index.md) |
 
 ## SVG for the site, PNG only where GitHub needs it
 
