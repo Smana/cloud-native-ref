@@ -67,8 +67,8 @@ for v in CLOUD BUCKET; do
 done
 
 case "$CLOUD" in
-  aws) URI="s3://$BUCKET"; CP="aws s3 cp" ;;
-  gcp) URI="gs://$BUCKET"; CP="gcloud storage cp" ;;
+  aws) URI="s3://$BUCKET" ;;
+  gcp) URI="gs://$BUCKET" ;;
   *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
 esac
 
@@ -407,7 +407,12 @@ echo "[ok    ] end_wal $END_WAL archived"
 
 # 6. Copy. The destination-empty check in step 2 is what makes this safe to
 #    run unconditionally.
-$CP --recursive "$URI/$SERVER_NAME/" "$URI/$SEED/" >/dev/null \
+# `gcloud storage cp -r gs://b/X/ gs://b/SEED/` nests X under SEED/ (SEED/X/...), where
+# `aws s3 cp --recursive` copies the contents; rsync copies contents, so the layouts match.
+case "$CLOUD" in
+  aws) aws s3 cp --recursive "$URI/$SERVER_NAME/" "$URI/$SEED/" ;;
+  gcp) gcloud storage rsync --recursive "$URI/$SERVER_NAME" "$URI/$SEED" ;;
+esac >/dev/null \
   || { echo "[fail] copy failed" >&2; exit 1; }
 echo "[ok    ] copied $SERVER_NAME/ -> $SEED/"
 
