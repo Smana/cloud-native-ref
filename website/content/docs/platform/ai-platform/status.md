@@ -3,6 +3,9 @@ title: Programme status
 weight: 20
 description: "Where each agent-factory sub-project stands: what is built, reviewed and proven live, which PRs carry it, and what waits on the owner."
 lastVerified: 2026-10-01
+aliases:
+  - /docs/platform/agent-factory/status/
+  - /docs/platform/ai-platform/roadmap/
 ---
 
 {{< callout type="warning" >}}

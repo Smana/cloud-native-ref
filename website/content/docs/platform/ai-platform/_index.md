@@ -8,7 +8,7 @@ lastVerified: 2026-08-30
 An OpenAI-compatible inference platform on EKS: vLLM on L4 spot GPUs, fronted
 by Envoy AI Gateway, scaled by KEDA on vLLM saturation signals, and declared
 as a single Crossplane
-[`InferenceService` claim]({{< relref "/docs/platform/ai-platform/inference-service.md" >}})
+[`InferenceService` claim]({{< relref "/docs/platform/ai-platform/serving/inference-service.md" >}})
 per model.
 
 {{< callout type="warning" >}}
@@ -51,7 +51,7 @@ platform exists for the things a hosted API cannot give you:
   web app never touches.
 
 And the honest side of the ledger: there is **no scale-to-zero** — see
-[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}})
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/serving/autoscaling-and-gpu.md" >}})
 for the four-GPU cost floor that implies, and why it is a deadlock rather
 than a missing feature.
 
@@ -139,9 +139,9 @@ for the full failure-order watch list before the next resume.
   written but not enabled, pending verification against VictoriaTraces.
 
 {{< cards >}}
-  {{< card link="/docs/platform/ai-platform/inference-service/" title="The InferenceService claim" icon="document-text" subtitle="One model, one YAML file — a complete claim with its reasoning intact, what it renders, and every field it accepts." >}}
-  {{< card link="/docs/platform/ai-platform/gateway-and-routing/" title="Gateway & routing" icon="switch-horizontal" subtitle="A worked request, the two gateways and two filters it crosses, API-key auth, and what `model: MoM` does." >}}
-  {{< card link="/docs/platform/ai-platform/autoscaling-and-gpu/" title="Autoscaling & GPUs" icon="chip" subtitle="Three KEDA triggers on leading vLLM signals, the scale-to-zero deadlock, the gpu-l4 NodePool and S3 Files weights." >}}
+  {{< card link="/docs/platform/ai-platform/serving/inference-service/" title="The InferenceService claim" icon="document-text" subtitle="One model, one YAML file — a complete claim with its reasoning intact, what it renders, and every field it accepts." >}}
+  {{< card link="/docs/platform/ai-platform/gateways/" title="Gateway & routing" icon="switch-horizontal" subtitle="A worked request, the two gateways and two filters it crosses, API-key auth, and what `model: MoM` does." >}}
+  {{< card link="/docs/platform/ai-platform/serving/autoscaling-and-gpu/" title="Autoscaling & GPUs" icon="chip" subtitle="Three KEDA triggers on leading vLLM signals, the scale-to-zero deadlock, the gpu-l4 NodePool and S3 Files weights." >}}
   {{< card link="/docs/platform/ai-platform/coding-clients/" title="Coding clients" icon="terminal" subtitle="Connecting OpenCode, Continue and OpenWebUI to the gateway — authentication, model IDs, and troubleshooting." >}}
-  {{< card link="/docs/platform/ai-platform/roadmap/" title="Roadmap" icon="map" subtitle="What's still open on the upgrade path — bigger models, multi-replica serving, and per-tenant cost attribution." >}}
+  {{< card link="/docs/platform/ai-platform/status/" title="Roadmap" icon="map" subtitle="What's still open on the upgrade path — bigger models, multi-replica serving, and per-tenant cost attribution." >}}
 {{< /cards >}}

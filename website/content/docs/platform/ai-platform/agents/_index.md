@@ -3,6 +3,8 @@ title: Agent Factory
 weight: 55
 description: "Work in progress. Autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes end to end."
 lastVerified: 2026-10-01
+aliases:
+  - /docs/platform/agent-factory/
 ---
 
 {{< callout type="warning" >}}
@@ -18,7 +20,7 @@ pair and revise flow (built, not deployed), then approvals, `roomctl`, Kueue, th
 gateway budgets, the keyless Anthropic models and the move to agentgateway (planned). Only these pages, the design documents
 and the repository's trust policies are on `main`: the code merges once everything is built and its
 user experience is signed off after a live walkthrough. The
-[programme status]({{< relref "/docs/platform/agent-factory/status.md" >}}) has the detail.
+[programme status]({{< relref "/docs/platform/ai-platform/status.md" >}}) has the detail.
 {{< /callout >}}
 
 ## What it is
@@ -137,8 +139,8 @@ and Agent Router.
 |---|---|---|
 | Logs | [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) | Every run's step log and every gateway call, attributed to the run |
 | Metrics | [VictoriaMetrics](https://victoriametrics.com) | Tokens, cost, latency and errors per run, and each `AgentRun`'s state through kube-state-metrics |
-| Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue ([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): MCP tool calls are not yet joined to the run's trace |
-| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): a successful run's page showed no outcome or PR; fixed on `integration` (deployed on gcp-0), live re-check pending |
+| Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue ([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): MCP tool calls are not yet joined to the run's trace |
+| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): a successful run's page showed no outcome or PR; fixed on `integration` (deployed on gcp-0), live re-check pending |
 
 ## One repository at first
 
@@ -171,5 +173,5 @@ Runs are per repository: a task never spans two.
 
 - [Programme design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-factory-design.md): the contracts between the sub-projects, and the owner decisions.
 - [Runtime and identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md) · [Rooms](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md) · [Factory](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md) · [Model routing and budgets](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md) · [Observability](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-27-agent-observability-design.md)
-- [User guide]({{< relref "/docs/platform/agent-factory/user-guide.md" >}}): what a developer does with it.
-- [Programme status]({{< relref "/docs/platform/agent-factory/status.md" >}}): what is built, reviewed and proven live, and what waits on the owner.
+- [User guide]({{< relref "/docs/platform/ai-platform/agents/user-guide.md" >}}): what a developer does with it.
+- [Programme status]({{< relref "/docs/platform/ai-platform/status.md" >}}): what is built, reviewed and proven live, and what waits on the owner.

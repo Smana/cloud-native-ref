@@ -3,6 +3,8 @@ title: User guide
 weight: 10
 description: "Work in progress. How a developer gives work to agents, follows it, steers it and stops it, today and in the target design."
 lastVerified: 2026-10-01
+aliases:
+  - /docs/platform/agent-factory/user-guide/
 ---
 
 {{< callout type="warning" >}}
@@ -14,7 +16,7 @@ by hand, which also works today. Nothing here is on `main` yet.
 {{< /callout >}}
 
 New to the vocabulary (run, role, sandbox, room)? Read
-[the overview]({{< relref "/docs/platform/agent-factory/_index.md" >}}) first; it takes two minutes.
+[the overview]({{< relref "/docs/platform/ai-platform/agents/_index.md" >}}) first; it takes two minutes.
 
 ## Before you start
 
@@ -206,7 +208,7 @@ task agent:run -- --role implementer --class public --branch agent/<id> --task-u
 A run that loses its pod (a node going away, for example) **fails** rather than silently
 restarting. Resuming with `--branch` continues from what it already pushed.
 
-Known issue ([F12]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
+Known issue ([F12]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
 the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
 fix is under review. Until it is deployed, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
 and resume it with `--branch`.
@@ -223,12 +225,12 @@ and resume it with `--branch`.
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
 `task agent:run` prints the dashboard link (`/d/agent-run/agent-run?var-run=<id>`). Two known
-issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}}); fixed
+issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}); fixed
 on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls are not yet joined to the run's trace
-([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})).
+([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
-that room. Known issue ([F11]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
+that room. Known issue ([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
 transcript, because the harness exits before the room-bridge's next poll. The fix is built, not yet
 deployed.
 

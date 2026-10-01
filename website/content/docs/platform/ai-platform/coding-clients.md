@@ -121,7 +121,7 @@ extension sends CodeLlama-format prompts and the model can't parse them.
 Claude Code speaks the Anthropic API, not the OpenAI API. Pointing it at this
 gateway needs a translator sidecar exposing Anthropic-style endpoints and
 proxying to the OpenAI gateway — filed as an open item on the
-[roadmap]({{< relref "/docs/platform/ai-platform/roadmap.md" >}}), not
+[roadmap]({{< relref "/docs/platform/ai-platform/status.md" >}}), not
 implemented today. OpenCode covers the same agentic-CLI workflow and works
 out of the box.
 
@@ -136,7 +136,7 @@ reflects what actually served the request.
 
 All four models default to `minReplicas: 1` (always warm); KEDA scales
 `1→max` on the three leading saturation signals described in
-[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}}).
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/serving/autoscaling-and-gpu.md" >}}).
 On `MoM`, first-request latency is dominated by the ~250–300 ms classifier
 round-trip rather than cold start; on a directly-named model there is no
 classifier cost at all.

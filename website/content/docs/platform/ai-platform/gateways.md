@@ -3,6 +3,8 @@ title: Gateway & routing
 weight: 30
 description: "How one OpenAI-compatible request crosses two gateways and up to two filters before it reaches a GPU — and what `model: MoM` does."
 lastVerified: 2026-08-27
+aliases:
+  - /docs/platform/ai-platform/gateway-and-routing/
 ---
 
 The platform speaks the OpenAI API. A client points at one endpoint, names a
@@ -120,7 +122,7 @@ rather than a validation error.
 Canaries are mutually exclusive with the Gateway API Inference Extension's
 endpoint picker: the EPP is implemented but enabled on zero claims, because the
 only gateway-enabled claim uses a canary. See the
-[roadmap]({{< relref "/docs/platform/ai-platform/roadmap.md" >}}) for what
+[roadmap]({{< relref "/docs/platform/ai-platform/status.md" >}}) for what
 turning it on would take.
 
 ## Known gaps
