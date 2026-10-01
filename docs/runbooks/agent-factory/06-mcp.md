@@ -1,8 +1,9 @@
 # 06 — MCP tools
 
 Proves that the two `MCPRoute`s (`public`, `internal`) expose exactly the tools each role/class
-combination should see — `public` is documentation-only for every role, `internal` adds real
-cluster-read tools but keeps logs off-limits to the implementer role — and that the backing
+combination should see — `public` carries no cluster-read tool for any role (documentation plus the
+role's `room_*` tools), `internal` adds real cluster-read tools but keeps logs off-limits to the
+implementer role — and that the backing
 `flux-operator-mcp` ServiceAccount's own Kubernetes RBAC excludes secrets, independent of what the
 MCPRoute authorization allows. See [README.md](README.md) for prerequisites; run
 [00](README.md#runbook-00-one-time-cluster-setup) first.
@@ -13,7 +14,7 @@ MCPRoute authorization allows. See [README.md](README.md) for prerequisites; run
 
 ## Steps
 
-### Step 0 — the MCP session seed is the generated one (review M7)
+### Step 0 — the MCP session seed is the generated one
 
 ```bash
 kubectl get pods -n envoy-ai-gateway-system -l app.kubernetes.io/instance=envoy-ai-gateway,app.kubernetes.io/name=ai-gateway-helm -o json \
@@ -41,7 +42,7 @@ continuing.
 ### Step 2 — SC-08 (no API route from a run), quick recheck
 
 ```bash
-RUN=$(task agent:run -- --role implementer --class public --task "Idle. Do nothing." --minutes 15 | tail -1)
+RUN=$(task agent:run -- --role implementer --class public --minutes 15 --task "Run 'sleep 300' in the terminal, then finish. Change nothing." | tail -1)
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl exec -n agents $RUN -c harness -- ls /var/run/secrets/kubernetes.io ; echo "exit=$?"
 kubectl delete agentrun -n agents $RUN --wait
@@ -50,7 +51,7 @@ kubectl delete agentrun -n agents $RUN --wait
 Expected: `No such file or directory`, `exit=2` (already proven in runbook 01; kept here since it
 gates whether the rest of this runbook's tool checks mean anything).
 
-### Step 3 — SC-17 (MCP half): `public` is documentation-only
+### Step 3 — SC-17 (MCP half): `public` has no cluster-read tool
 
 ```bash
 kubectl apply -f scripts/ops/k8s/agent-probe.yaml
@@ -59,13 +60,14 @@ kubectl cp scripts/ops/k8s/agent-probe-mcp.sh agents/agent-probe:/tmp/mcp.sh -c 
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh public tools/list | grep -o '"name":"[^"]*"'
 ```
 
-Expected: exactly three tool names — `search_flux_docs`, and one `documentation` tool from each of
-`mcp-victoriametrics` and `mcp-victorialogs`. No `get_kubernetes_*`, no `query`, no mutating tool of
-any kind.
+Expected: the three documentation tools `flux-operator-mcp__search_flux_docs`,
+`mcp-victoriametrics__documentation` and `mcp-victorialogs__documentation`, plus the implementer's
+room tools `room-broker__room_read`, `room-broker__room_post` and `room-broker__room_handoff` (on both
+routes since c6a56f78). No `get_kubernetes_*`, no `query`, no other tool. Tool names are namespaced by
+backend.
 
-> Corrected 2026-09-27: tool names are namespaced by backend, e.g.
-> `flux-operator-mcp__search_flux_docs`, not the bare `search_flux_docs` — verified live. Match on
-> the suffix.
+Not yet observed live: whether the room broker lists its tools for a caller with no room, such as
+`agent-probe`. Three documentation tools and no `room_*` tool is also a pass; record which you saw.
 
 ### Step 4 — `internal` adds real read tools, gated by role
 
@@ -73,29 +75,36 @@ any kind.
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/list | grep -o '"name":"[^"]*"'
 ```
 
-Expected (the probe is an `implementer`): Flux's `search_flux_docs`,
-`get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics`: **no**
-`get_kubernetes_logs` and **no** `get_kubernetes_resources`. Thirteen `mcp-victoriametrics` tools,
-none of `tsdb_status`, `active_queries`, `top_queries`. Only `mcp-victorialogs`'s `documentation`.
-Reviewer, tester and triager also get `get_kubernetes_resources`, `get_kubernetes_logs` and the
-VictoriaLogs query tools.
+Expected (the probe is an `implementer`):
+
+| Backend | Implementer sees | Never |
+|---|---|---|
+| `flux-operator-mcp` | `search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics` | `get_kubernetes_logs`, `get_kubernetes_resources` |
+| `mcp-victoriametrics` | 13 tools | `tsdb_status`, `active_queries`, `top_queries` |
+| `mcp-victorialogs` | `documentation` only | the query tools |
+| `room-broker` | `room_read`, `room_post`, `room_handoff` (same caveat as Step 3) | `room_verdict` |
+
+Other roles, from `infrastructure/base/agent-mcp/mcproutes.yaml`: reviewer, tester and triager also
+get `get_kubernetes_resources`, `get_kubernetes_logs` and the VictoriaLogs query tools. Room tools:
+reviewer `room_read`, `room_post`, `room_verdict`; tester all four; triager `room_read`, `room_post`,
+`room_handoff`.
 
 ### Step 5 — SC-12: an implementer is denied the logs tool by the MCPRoute, and the backend SA has no secrets access
 
 ```bash
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"flux-operator-mcp__get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -A
-kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
-kubectl auth can-i get pods/log --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
+kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
+kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
 kubectl auth can-i get configmaps --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
 kubectl auth can-i list nodes --as=system:serviceaccount:agent-system:flux-operator-mcp
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
 ```
 
-> Corrected 2026-09-27: the tool name must be the namespaced form
-> (`flux-operator-mcp__get_kubernetes_logs`, per Step 3's correction above) — the bare
-> `get_kubernetes_logs` used previously here fails with a generic `400 invalid tool name` before
-> authorization is ever evaluated, which looks like a pass but proves nothing about SC-12.
+The tool name must be the namespaced form: a bare `get_kubernetes_logs` fails with a generic
+`400 invalid tool name` before authorization is evaluated, which looks like a pass but proves
+nothing. `kubectl auth can-i get pods/log` would check a pod *named* `log`; `--subresource=log` asks
+the real question.
 
 Expected: the call is refused (HTTP 403, or a JSON-RPC error naming authorization — the MCPRoute's
 `defaultAction: Deny` plus per-role rules never grant `implementer` this tool on `internal`); `no`;
@@ -111,7 +120,7 @@ layer, and the backend's own RBAC is a second, independent, namespace-scoped flo
 every role.
 
 **What Step 3–4 together prove:** SC-17 (MCP half) — cluster-read tools (metrics, resources, logs)
-are `internal`-only; `public` sees documentation tools regardless of role.
+are `internal`-only; `public` sees documentation and room tools regardless of role.
 
 ### Cleanup
 

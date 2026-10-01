@@ -1,42 +1,53 @@
 # Agent Factory live test session — gcp-0
 
-Exercises SP1 (agent runtime and identity) and SP4 PR 1 (AI gateway: frontier route and token budgets) on
-the live test cluster `gcp-0`. Every command is copy-paste, and every step names its expected output.
+Exercises SP1 (agent runtime and identity), SP4 PR 1 (AI gateway: frontier route and token budgets)
+and the agent observability work on the live test cluster `gcp-0`. Every command is copy-paste, and every step names its expected output.
 Start with [Runbook 00](#runbook-00-one-time-cluster-setup): the cluster is already deployed, but four
 owner actions gate most runbooks.
 
-## Status (2026-09-27)
+## Status (2026-10-01)
 
-Retargeted to gcp-0 on 2026-09-29 (GCP parity plan); rounds 1–6 below ran on aws-0.
+gcp-0 is the live target since 2026-09-29. Rounds 1–6 ran on aws-0, which was destroyed on 2026-09-29.
 
-Round 6 covered runbooks 07 and 02:
-- **SC-04 passes end to end:** an agent took issue #2112 to PR #2114 on the repo-built harness, and
-  the owner merged it.
-- **SC-06 passes:** a 58-minute run saw no `401`.
-- **B.2 (runbook 02) found a real SC-07 defect:** a deleted run's CNP went before its pod. It is
-  fixed and verified live (see Platform findings), and the owner's re-run is pending.
+| Runbook | Round 7, gcp-0 (PASS/FAIL/OWNER) | Round 9, gcp-0 (PASS/FAIL/OWNER) | Still open |
+|---|---|---|---|
+| [01](01-runtime-sandbox.md) | 7 / 1 / 1 | 1 / 1 / 0 | Step 2's FAIL (F2) is fixed (d9d75413, 5b77d0db) and passed from zero in round 9. Step 7: F12. Step 4 (SC-02) is aws-0 only |
+| [02](02-identity-tokens.md) | 8 / 0 / 1 | — | B.2 GitHub-token timing needs the owner's interactive session (credential capture) |
+| [03](03-egress.md) | 6 / 0 / 0 | — | — |
+| [04](04-gateway-secrets-budgets.md) | 10 / 0 / 1 | — | A.3's OpenBao half mints a token: owner |
+| [05](05-github-octo-sts.md) | 12 / 0 / 0 | — | — |
+| [06](06-mcp.md) | 7 / 0 / 0 | — | The `room_*` tools (since c6a56f78) are not yet observed live in Steps 3–4 |
+| [07](07-end-to-end.md) | 1 / 0 / 0 | — | Only SC-04 is recorded on gcp-0 (issue #2140 → PR #2141) |
+| [08](08-observability.md) | 5 / 0 / 1 | 9 / 1 / 2 | Step 10's FAIL (F18) is fixed in 60e02d9a; re-run pending. F16 |
+| **Total** | **56 / 1 / 4** | **10 / 2 / 2** | |
 
-Rounds 1–5 are recorded below.
+Round 7 ran on `integration/agent-factory` @ `a2c645ba`, round 9 on `147819ff`. Round 9 re-ran only 01
+Steps 2 and 7 (as the F2 smoke probe and a room run) and 08 Steps 6–10.
 
-Round 4, executed against `aws-0` on `integration/agent-factory` @ `580042e6`. Runbook 05's octo-sts
-422 (round 3) is fixed — the App was missing `pull_requests: read & write` and the installation
-hadn't accepted the change; both corrected, re-verified live with two real runs (implementer push
-to its own branch and rejection on `main`; reviewer push rejected; the audience-mismatch case in
-both directions). Runbook 05 is now fully PASS, all tokens revoked, all runs and the one `agent/**`
-branch pushed during testing deleted. 01–04, 06, 08 carried over unchanged; 07 unchanged this round
-(still gated on the harness-image task-bootstrap gap, #2110).
+Open bugs the runbooks keep their intended expectation for, with a "Known issue" note at the step:
+
+| Bug | What you see today | Runbook |
+|---|---|---|
+| F12 | A deleted run pod is re-created within ~1 s, the run stays `Running`, and the harness re-runs the task | 01 Step 7 |
+| F15 | A run refused the room's lease still executes its task, unmirrored, on the room's branch | rooms only, no step here |
+| F16 | Each MCP call through `agent-router` opens its own root trace instead of joining the run's | 08 Step 8 |
+
+### Latest aws-0 result per runbook (history)
+
+Mixes rounds 4 to 6 (from `580042e6` on). Round 6 took issue #2112 to PR #2114 (SC-04) and ran a
+58-minute run with no `401` (SC-06).
 
 | Runbook | PASS | FAIL | BLOCKED | Notes |
 |---|---|---|---|---|
 | [01](01-runtime-sandbox.md) | 9 | 0 | 0 | R7 fails closed by design and resumes via `--branch` (see Platform findings) |
-| [02](02-identity-tokens.md) | 5 | 1 | 1 | The 1 FAIL (`/v1/models` auth bypass) is FIXED in #2108 and verified live; GitHub-token timing waits for the harness image |
-| [03](03-egress.md) | 6 | 0 | 0 | Fully clean |
-| [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Fully PASS — run to completion by the coordinator directly, not re-verified in this session |
-| [05](05-github-octo-sts.md) | 12 | 0 | 0 | Fully PASS — the round-3 octo-sts 422 is fixed (see Platform findings); implementer push/reject, reviewer reject, and both wrong-role/audience directions all verified live with real runs |
-| [06](06-mcp.md) | 6 | 0 | 0 | Fully clean — `agent-mcp` and both MCPRoutes are `Ready`/`Accepted` now that `agent-router` is up |
-| [07](07-end-to-end.md) | 7 | 0 | 0 | Round 6: **SC-04 PASS** (issue #2112 became PR #2114 in 68 s, and the owner merged it). **SC-06 PASS**: 58 min, 44 × `200`, 0 × `401` |
-| [08](08-observability.md) | 5 | 0 | 0 | Dashboard data verified via the same VM/VL proxy calls; UI render itself is SSO-gated, not exercised headlessly |
-| **Total** | **60** | **1** | **1** | The one FAIL is 02's `/v1/models`, fixed in #2108. The one open item is 02's GitHub-token timing (B.2): its first owner run found the CNP-ordering defect (Platform findings), fixed in round 6, and the re-run is pending |
+| [02](02-identity-tokens.md) | 5 | 1 | 1 | The FAIL (`/v1/models` auth bypass) is fixed in #2108 and verified live. GitHub-token timing needs the owner's interactive session (credential capture) |
+| [03](03-egress.md) | 6 | 0 | 0 | — |
+| [04](04-gateway-secrets-budgets.md) | 10 | 0 | 0 | Run by the coordinator directly |
+| [05](05-github-octo-sts.md) | 12 | 0 | 0 | The round-3 octo-sts 422 is fixed (see Platform findings) |
+| [06](06-mcp.md) | 6 | 0 | 0 | — |
+| [07](07-end-to-end.md) | 7 | 0 | 0 | Round 6: SC-04 (68 s to a PR the owner merged), SC-06 (58 min, 44 × `200`, 0 × `401`) |
+| [08](08-observability.md) | 5 | 0 | 0 | Data verified through the VM/VL proxy calls. The UI is SSO-gated |
+| **Total** | **60** | **1** | **1** | |
 
 ## What each runbook proves
 
@@ -50,49 +61,64 @@ branch pushed during testing deleted. 01–04, 06, 08 carried over unchanged; 07
 | [05-github-octo-sts.md](05-github-octo-sts.md) | SC-11, sts listener end to end | Yes — 1, 3, 4 | ~25 min |
 | [06-mcp.md](06-mcp.md) | SC-12, SC-17 (MCP half) | Yes — 1 | ~15 min |
 | [07-end-to-end.md](07-end-to-end.md) | SC-04, SC-06, SC-13, SC-14 | Yes — 1–5 | ~2 h |
-| [08-observability.md](08-observability.md) | Agent-platform VMRules, dashboard, SP4 gateway metrics | No | ~15 min |
+| [08-observability.md](08-observability.md) | Agent-platform VMRules, dashboard, SP4 gateway metrics, the per-run view (SO-1…SO-5) | No | ~15 min |
 
-**Out of scope tonight:** SC-15/SC-16 (gVisor overhead ratio and `validate-manifests.sh`/`task check`
+**Out of scope:** SC-15/SC-16 (gVisor overhead ratio and `validate-manifests.sh`/`task check`
 exit codes) are already closed by the phase-0 spike and by CI — no live step adds evidence.
 
 ## Prerequisites (all runbooks)
 
-- Tailscale up, on the tailnet that reaches `*.priv.gcp.ogenki.io`.
-- gcloud ADC (`gcloud auth application-default print-access-token >/dev/null && echo ADC-OK`
-  succeeds) plus AWS credentials for the shared stacks only (`aws sts get-caller-identity`
-  succeeds) — Route53 (external-dns) and the shared ECR images stay AWS-hosted; no command below
-  needs them directly (GP-24: gcp-0's own gateway client keys, e.g. runbook 04 Part B's promptfoo
-  key, are generated in-cluster, not read from AWS Secrets Manager).
-- The kubeconfig context `gke_ogenki-435905_europe-west4-a_gcp-0` (`kubectl config current-context`).
-- OpenBao CLI, with `VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200` and
-  `VAULT_CACERT=opentofu/gcp/openbao/management/.tls/ca.pem`.
+Every runbook starts from the repository root with `CLOUD` set. gcp-0 is the live target; the aws
+variants are kept for the next aws-0 rebuild.
+
+```bash
+CLOUD=gcp    # or aws
+```
+
+| | gcp-0 | aws-0 |
+|---|---|---|
+| kube context | `gke_ogenki-435905_europe-west4-a_gcp-0` | the EKS context of `aws-0` |
+| Tailnet reaches | `*.priv.gcp.ogenki.io` | `*.priv.aws.ogenki.io` |
+| Cloud credentials | gcloud ADC (`gcloud auth application-default print-access-token >/dev/null && echo ADC-OK`) | `aws sts get-caller-identity` |
+| gVisor node label | `sandbox.gke.io/runtime=gvisor` (GKE Sandbox pool) | `agents.ogenki.io/runtime=gvisor` (Karpenter pool) |
+
+- No command here needs AWS credentials on gcp-0: gcp-0 generates its own gateway client keys
+  in-cluster (runbook 04 Part B's promptfoo key).
+- OpenBao CLI, with `VAULT_ADDR=https://bao.priv.$CLOUD.ogenki.io:8200` and
+  `VAULT_CACERT=opentofu/$CLOUD/openbao/management/.tls/ca.pem`.
 - `gh` CLI authenticated as an account that can call the GitHub API for `Smana/cloud-native-ref`.
-- **VictoriaMetrics has no trusted-CA path for MCP tools.** Every VM query in these runbooks goes
-  through the API server proxy, never a direct URL or an `mcp__victoriametrics__*` tool call:
+- **VictoriaMetrics: through the API server proxy only**, never a direct URL or an
+  `mcp__victoriametrics__*` tool call (no trusted-CA path):
 
   ```bash
   kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=<url-encoded-promql>"
   ```
 
-  VictoriaLogs is at `https://vl.priv.gcp.ogenki.io`; it has no such workaround in scope here — its
-  runbooks use `curl https://vl.priv.gcp.ogenki.io/select/logsql/query` directly.
+- **Every curl to a private host carries the private CA:**
+  `--cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem`. Without it, `curl -s` prints nothing.
 - **Never put a token or API key on a command line.** Read it into a shell variable from a file,
   `kubectl create token`, or `bao ... -field=token`, and never `echo`/`print` the variable itself —
   only curl's `%{http_code}` or a redacted prefix (`token[:4]`).
+- **A run that must still exist later needs a paced task.** An "Idle. Do nothing" task now finishes in
+  about a minute, and the pod goes with it. Use `Run 'sleep N' in the terminal, then finish.`
 
 ## Runbook 00: one-time cluster setup
 
 ### What is already in place
 
-gcp-0 tracks `integration/agent-factory` (the parity plan's first deploy). That branch is never
-merged. It is the union of:
+gcp-0 tracks `integration/agent-factory`. That branch is never merged. It is the union of:
 
-- every PR of the programme (SP4 PR 1, PRs 2–6);
-- the design docs (#2092);
-- the Envoy Gateway CRD chore;
-- the CC-1 pre-release pin (`v0.7.2-pr27.66f6a76`, which carries the `AgentRun` XRD);
+- SP1 PRs 2–6 and SP4 PR 1;
+- SP2's collaboration rooms (room-broker, room log), SP3's factory (`tooling-agent-factory`) and the
+  agent observability work;
+- the GCP parity work and its gcp-0 fixes;
+- the design docs (#2092) and the Envoy Gateway CRD chore;
+- the crossplane-configuration pre-release pin (`v0.7.2-pr35.465e19f`, PR #35), which carries the
+  `AgentRun` XRD and the room-bridge sidecar;
 - one test-only commit that sets `spec.suspend: false` on the `ai-gateway` and `agent-platform`
   umbrellas.
+
+The branch's own log is the authoritative list.
 
 Because the umbrellas are unsuspended **in git**, there is nothing to `flux resume`. A live resume
 would be reverted on the next `flux-system` reconcile.
@@ -109,7 +135,7 @@ flux get kustomizations -n flux-system | grep -E '^(ai-gateway|agent-platform)[[
 
 Expected: `refs/heads/integration/agent-factory`; both `Ready=True`, `Suspended=False`.
 
-> **Footgun.** Deploy `*/openbao/management` and `gke/configure` only from an
+> **Footgun.** Deploy `*/openbao/management` and the cluster's `configure` stack only from an
 > `integration/agent-factory` checkout, with `TF_VAR_flux_git_ref`: from `main`, the `agents` mount
 > is destroyed and the agent platform pruned.
 
@@ -117,17 +143,17 @@ Expected: `refs/heads/integration/agent-factory`; both `Ready=True`, `Suspended=
 
 | # | Action | Unblocks | Command |
 |---|---|---|---|
-| 1 | OpenBao policy `agents-secrets` + JWT role `agents-secrets` — done by G-5, already in the stacks | `agent-secrets` → `agent-router` → `agent-mcp`, `octo-sts` (runbooks 02, 04–07) | see below |
+| 1 | OpenBao policy `agents-secrets` + JWT role `agents-secrets` on `jwt/<cluster>` — applied by the `opentofu/$CLOUD/openbao/management` stack | `agent-secrets` → `agent-router` → `agent-mcp`, `octo-sts` (runbooks 02, 04–07) | see below |
 | 2 | The agents' Z.ai key | runbook 04 (frontier route), 07 | `bao kv put -mount=agents zai api_key=-` (key on stdin, never as an argument) |
 | 3 | Branch ruleset, **before** the App exists | runbook 05 | `task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref` |
 | 4 | GitHub App `ogenki-agents` on `Smana`, installed on `Smana/cloud-native-ref` only | runbook 05, 07 | `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>` |
-| 4b | The `factory-app` GitHub App key — no consumer on gcp-0 until SP2/SP3, written now so their gates find it | future SP2/SP3 | `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem file>` |
+| 4b | The `factory-app` GitHub App key, read by SP3's ExternalSecret `agent-factory-github` | the `agent-factory` Kustomization | `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem file>` |
 | 5 | A trivial issue URL (e.g. a broken relative link) | runbook 07 SC-04 | — |
 
 These three keys (2, 4, 4b) are the platform's one owner-written exception: GitHub and Z.ai issue
 them, and the AWS snapshot cannot be restored across KMS seals (GCP parity). Once per GCP lineage.
 
-Action 1 is already applied (G-5). See
+Action 1 is already applied by the management stack. See
 [`clusters/gcp-0-agent-platform/README.md`](../../../clusters/gcp-0-agent-platform/README.md#resume)
 for the full resume sequence (`opentofu/gcp/openbao/management` then `opentofu/gcp/gke/configure`,
 the latter needing `TF_VAR_flux_git_ref` on a feature-branch cluster) if it ever needs re-applying on
@@ -144,14 +170,13 @@ After actions 2 and 4, force the ExternalSecrets to re-read rather than waiting 
 
 ```bash
 kubectl annotate externalsecret -n agent-system --all force-sync=$(date +%s) --overwrite
-flux get kustomizations -n flux-system | grep -E '^(agent-router|agent-mcp|octo-sts)[[:space:]]'
+flux get kustomizations -n flux-system | grep -E '^(agent-router|agent-mcp|octo-sts|agent-factory)[[:space:]]'
 ```
 
-Expected: all three `Ready=True`.
+Expected: all four `Ready=True`.
 
-Not needed tonight, and not blocking any runbook: #2092, CC-1 (#27), then the `v0.8.0` tag
-and the harness image. Until the image is published, runbook 07 runs on the upstream `agent-server`
-image. Note that substitution in its results table.
+Runs use the repo-built harness, pinned by the composition as a pre-release
+(`agent-harness:v0.2.0-pr2142.10c062c2`) until its plain tag ships.
 
 ### Cleanup and teardown
 
@@ -162,7 +187,7 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml --ignore-not-found
 
 To take the agent platform down while keeping the cluster, revert the test-only unsuspend commit on
 `integration/agent-factory` and push. Pointing the cluster back at `main` needs a `TF_VAR_flux_git_ref`
-deploy of `gke/configure`, which prunes everything above. Destroying the cluster is a separate owner
+deploy of the cluster's `configure` stack, which prunes everything above. Destroying the cluster is a separate owner
 call.
 
 ## Recording results
@@ -191,15 +216,15 @@ The consequences: once the CNP was gone, the namespace `default-deny` cut the po
 | After: `hb545ti2` | 10:38:37.1 | 10:38:40.3, **3 s after the pod** |
 
 The fix:
-- CC-2 `4857e3f` adds the `preStop` revoke.
-- CC-2 `c304bbf` keys the Usage on the **Pod**, which stays in the API until kubelet has finished
+- crossplane-configuration PR #29 `4857e3f` adds the `preStop` revoke.
+- crossplane-configuration PR #29 `c304bbf` keys the Usage on the **Pod**, which stays in the API until kubelet has finished
   `preStop` and the SIGTERM cleanup.
 - #2110 `17ec1f97` grants Crossplane `get pods` in `agents` only. Checked with `kubectl auth can-i`:
   `get` yes; `list`, and `get` in any other namespace, no. Without it the Usage could never release,
   and run deletion would hang.
 
-Rolled out as `v0.7.2-pr29.3ad168a`. The CC-1 round's `usage_order_live.sh` had passed only because
-the upstream image died within its 2 s poll.
+Rolled out as `v0.7.2-pr29.3ad168a`. The earlier round's `usage_order_live.sh` (on the PR #27 pin) had
+passed only because the upstream image died within its 2 s poll.
 
 **FIXED for round 4 (owner) — octo-sts's installation-token mint returned 422 for every trust
 policy, both roles tested (round 3).** Cause confirmed by the owner: the `ogenki-agents` App was
@@ -237,7 +262,8 @@ every push-capable path in runbooks 05 and 07 until the round-4 fix above.
 
 </details>
 
-**New, round 5 (2026-09-27, live on `c1691cee`, real harness `v0.1.0-pr2110.d8134ede`) — the
+**FIXED in round 6, by OpenHands 1.49.6 with litellm `<1.95.1` (software-agent-sdk#5213) in the
+harness. Round 5 (2026-09-27, live on `c1691cee`, real harness `v0.1.0-pr2110.d8134ede`) — the
 OpenHands SDK crashes on the first model response, every time, before any git operation.** Everything
 up to and including the model call works: the run clones the repo, checks out `agent/<id>`, starts a
 conversation, and `agent-router` proxies one `POST /api/paas/v4/chat/completions` → `200` in 4539ms
@@ -261,9 +287,9 @@ branch ever reaches GitHub, no PR is possible. This blocks every real end-to-end
 until either the SDK is patched/pinned past this bug or the gateway advertises a model name LiteLLM
 maps to a provider whose usage shape it expects. Not fixed here (no code changed).
 
-**New, round 3 (2026-09-27, live on `580042e6`) — the upstream `agent-server` image never submits a
-task; an `AgentRun` idles at `Running` doing nothing.** With CC-2/#2110 (the repo-built harness image)
-not yet published, the Sandbox's only app container runs the bare OpenHands image with
+**FIXED by #2110 (the repo-built harness). Round 3 (2026-09-27, live on `580042e6`) — the upstream
+`agent-server` image never submits a task; an `AgentRun` idles at `Running` doing nothing.** With the
+repo-built harness image (#2110) not yet published, the Sandbox's only app container runs the bare OpenHands image with
 `command: ["--port","8000"]` — no wrapper reads the composition's `TASK_FILE`/`CONVERSATION_ID` env
 vars and calls `POST /api/conversations`. Verified on `xplane-run-n7tfcziv` (issue `#2112`): phase
 reached `Running`, `status.conversationId` was allocated, but after 8+ minutes: zero rows for
@@ -277,7 +303,7 @@ harder block than "no git credential helper" — the agent loop itself never sta
 > `ext_proc/aigateway → custom_response → jwt_authn → …`, and AI Gateway enables its ext_proc only on
 > the `agent-models` routes, where it answers `/v1/models` itself before `jwt_authn` runs.
 > A dedicated Exact-path `/v1/models` route with no ext_proc now answers 404 behind the
-> listener's JWT policy. CI gate A7 requires that guard on every agent-router listener carrying an
+> listener's JWT policy. Check A7 in `scripts/ci/flux-schema/assert-ai-gateway.py` requires that guard on every agent-router listener carrying an
 > AIGatewayRoute. Live after the fix:
 > - `/v1/models`: no token 401, forged 401, valid 404;
 > - chat: no token 401, valid 200, served by `glm-5.3`.
@@ -321,8 +347,8 @@ no credential. Not fixed here per this session's scope (no code changes); use
   upgrade. The HelmRelease had no upgrade remediation, so it stalled. It now retries.
 
 **R7: a lost pod ends its run as `Failed` and is not recreated.** Runbook 01, Step 7. This is by
-design, and Step 7 now tests it that way. The composition's F2b lock withholds the ServiceAccount
-once a run is terminal. agent-sandbox v1.0.3 reports `Finished=PodFailed` for every pod that ends in
+design, and Step 7 now tests it that way. The composition withholds the run's ServiceAccount once
+the run is terminal. agent-sandbox v1.0.3 reports `Finished=PodFailed` for every pod that ends in
 phase `Failed`, a deleted or evicted pod included. So the composition latches `Failed` before the
 Sandbox controller's recreate, which the missing ServiceAccount then refuses:
 
@@ -333,9 +359,13 @@ Sandbox controller's recreate, which the missing ServiceAccount then refuses:
 
 Recovery is the spec's documented mitigation: a new run on the same branch
 (`task agent:run -- … --branch agent/<id>`). The spike's "recreated at once, same name" held for the
-Sandbox controller alone, before the F2b and M2 locks existed. The spec's R7 text is corrected on
-#2092.
+Sandbox controller alone, before the composition withheld the ServiceAccount and suspended a finished
+Sandbox. The spec's R7 text is corrected on #2092.
+
+> Known issue (F12, round 9): on `147819ff`, a deleted run pod was re-created within ~1 s, the run
+> stayed `Running`, and the harness re-ran the task in a fresh conversation. That run had a
+> `roomRef`; round 7 on a run without one still saw `Failed PodFailed`.
 
 Transparent resume would need the composition to see the pod itself (`deletionTimestamp` or a
-`DisruptionTarget` condition), so it could tell pod loss from a crash. That is a CC-1 follow-up
-for the owner to decide.
+`DisruptionTarget` condition), so it could tell pod loss from a crash. That is a crossplane-configuration
+follow-up for the owner to decide.
