@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - crds-cert-manager.yaml # These CRDs have been installed from https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml
-  - crds-envoy-gateway.yaml # downloaded from https://github.com/envoyproxy/gateway/releases/download/v1.9.1/envoy-gateway-crds.yaml — version pinned by flux/sources/ocirepo-envoy-gateway.yaml (see .doc-claims.yaml: envoy-gateway-crds-version)
+  - crds-envoy-gateway.yaml # downloaded from https://github.com/envoyproxy/gateway/releases/download/v1.9.2/envoy-gateway-crds.yaml — version pinned by flux/sources/ocirepo-envoy-gateway.yaml (see .doc-claims.yaml: envoy-gateway-crds-version)
   - helmrelease-prometheus-operator.yaml
   - kustomization-actions-runner-controller.yaml
   - kustomization-external-secrets.yaml
