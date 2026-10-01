@@ -75,9 +75,10 @@ spike Q2), so each token lives until its run's deadline (R2, C3).
 **Chosen option**: "Agent Router on a dedicated `agent-router` Gateway, one listener per class", with
 audiences `agent-router.<role>.<dataClass>` and an in-pod Envoy `identity-proxy` (`credential_injector`
 fed by file SDS) as the only token holder. A third listener, `sts` (:8082), fronts octo-sts and accepts
-exactly the four `octo-sts/<owner>/<repo>/<role>` audiences from this cluster's issuer: octo-sts's
-trust policies can only match the EKS issuer by pattern, since it changes on every rebuild, and the
-pattern admits any EKS cluster in the region (owner decision, 2026-09-26).
+exactly the four `octo-sts/<owner>/<repo>/<role>` audiences from this cluster's issuer, on both
+clouds. octo-sts's trust policies can match aws-0's EKS issuer only by pattern, since it changes on
+every rebuild, and that pattern admits any EKS cluster in the region; gcp-0's GKE issuer is matched
+exactly (owner decision, 2026-09-26).
 
 **Rationale**: It is the only shape where the class boundary and the key boundary are both
 structural, using controllers the platform already runs.

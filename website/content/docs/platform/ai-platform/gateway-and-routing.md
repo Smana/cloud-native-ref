@@ -130,7 +130,8 @@ holds. It needs no GPU, so it answers with `llm-platform` suspended, once the `a
 umbrella is resumed (it is suspended by default).
 
 ```bash
-curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
+LLM=https://llm.priv.gcp.ogenki.io   # gcp-0; on aws-0, https://llm.priv.aws.ogenki.io
+curl -s "$LLM/v1/chat/completions" \
   -H "Authorization: Bearer $LLM_API_KEY" -H "Content-Type: application/json" \
   -d '{"model": "tier-frontier", "messages": [{"role": "user", "content": "Say hi"}]}'
 ```

@@ -91,8 +91,9 @@ list input price.
 ### Positive
 
 - Separate keys per Gateway (the platform key under `platform/llm/zai`, the agents' key under
-  `platform/agents/zai`) split both spend and blast radius. Until PR 6, the platform key is read
-  from `platform/runlore/credentials`, where it already lives, so no bootstrap has to copy it.
+  `platform/agents/zai`) split both spend and blast radius. Until SP4 PR 6 (not built) moves it
+  to `platform/llm/zai`, the platform key is read from `platform/runlore/credentials`, where it
+  already lives, so no bootstrap has to copy it.
 - Bedrock credentials rotate themselves and cannot be exfiltrated as a string.
 
 ### Negative
@@ -110,8 +111,15 @@ list input price.
 
 ## Implementation Notes
 
-- SP4 PR 1: the platform Z.ai backend and `tier-frontier` on `ai-gateway`.
-- SP4 PR 2: the Bedrock EPIs, `claude-*` on `ai-gateway`, and the agent tiers on `agent-router`.
+| Step | Scope | State |
+|---|---|---|
+| SP4 PR 1 | The platform Z.ai backend and `tier-frontier` on `ai-gateway` | Built |
+| SP4 PR 2 | The Bedrock EPIs, `claude-*` on `ai-gateway`, and the agent tiers on `agent-router` | Not built |
+| Follow-up | Vertex (`GCPAnthropic`) on gcp-0 | Not started |
+
+So the keyless Anthropic path does not exist yet on either cloud. Agents reach one model,
+`agent-default` → Z.ai GLM-5.3, on the `public` listener; the `internal` listener has no model
+backend, so `internal` work has no model to call until PR 2 or the Vertex follow-up lands.
 
 ---
 
