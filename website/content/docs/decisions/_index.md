@@ -88,7 +88,7 @@ single-file fixes never need one.
 | [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags | Accepted | 2026-09-26 |
 | [0044]({{< relref "/docs/decisions/0044-room-session-protocol.md" >}}) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
 | 0045 | Reserved, not yet written: the merge policy gate (SP3) | Reserved | — |
-| [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
+| [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted; internal-data provider superseded by [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}) | 2026-09-25 |
 | 0047 | Reserved, not yet written: how a request's complexity is classified for routing (SP4) | Reserved | — |
 | [0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}}) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
@@ -96,5 +96,6 @@ single-file fixes never need one.
 | [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
 | [0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}}) | GCP is the primary cloud; AWS keeps the essentials | Proposed | 2026-09-29 |
 | [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) | The agent router runs on agentgateway; ai-gateway stays on Envoy Gateway | Accepted | 2026-10-01 |
+| [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

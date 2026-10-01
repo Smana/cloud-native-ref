@@ -155,7 +155,8 @@ together, and the PoC proved each on the cluster.
 [The plan](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/plans/2026-10-01-agent-router-agentgateway-plan.md)
 runs agentgateway beside the Envoy agent-router, switches new runs by changing the identity-proxy's
 upstream, and deletes the Envoy agent-router only after the live gates pass. SP4 PR 2's agent half
-(tiers, Bedrock on aws-0, B1–B2) is built on agentgateway; its `ai-gateway` half is unchanged.
+(tiers and B1–B2) is built on agentgateway; its `ai-gateway` half is unchanged. Which providers
+serve each listener is [ADR-0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}).
 
 ---
 
