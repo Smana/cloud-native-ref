@@ -204,7 +204,7 @@ While B is `Running`:
 
 ```bash
 COLL=$(kubectl get svc -n observability agent-traces-collector -o jsonpath='{.spec.clusterIP}')
-VTIP=$(kubectl get svc -n observability victoria-traces-vt-single-server -o jsonpath='{.spec.clusterIP}')
+VTIP=$(kubectl get endpointslices -n observability -l kubernetes.io/service-name=victoria-traces-vt-single-server -o jsonpath='{.items[0].endpoints[0].addresses[0]}')  # headless Service: no clusterIP
 kubectl exec -i -n agents xplane-run-$B -c harness -- /usr/local/bin/python - "$COLL" "$VTIP" <<'PY'
 import socket, sys, urllib.error, urllib.request
 coll, vt = sys.argv[1], sys.argv[2]
@@ -251,10 +251,10 @@ never gRPC, and never VictoriaTraces directly.
 ### Step 10 — SO-1, SO-2, and the printer columns
 
 ```bash
-kubectl annotate agentrun -n agents xplane-run-$A agents.ogenki.io/pull-request=https://github.com/Smana/cloud-native-ref/pull/<O-1 number> agents.ogenki.io/usage-tokens=12345
+kubectl annotate --overwrite agentrun -n agents xplane-run-$A agents.ogenki.io/pull-request=https://github.com/Smana/cloud-native-ref/pull/<O-1 number> agents.ogenki.io/usage-tokens=12345
 kubectl get agentrun -n agents
-vmq "topk by (run_id) (1, tlast_over_time(agentrun_outcome_info{run_id=\"$A\"}[1h]))"
-vmq "sum(increase(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:xplane-run-$A\", gen_ai_token_type=~\"input|output\"}[2h]))"
+vmq "topk by (run_id) (1, tlast_over_time(agentrun_pull_request_info{run_id=\"$A\"}[1h]))"
+vmq "sum(max_over_time(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:xplane-run-$A\", gen_ai_token_type=~\"input|output\"}[2h]))"
 vmq "max(agentrun_budget_max_tokens{run_id=\"$A\"})"
 curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$A\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\"" | jq -r '."kubernetes.pod_name"' | sort | uniq -c
 curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$A\"" | jq -r '."log.x_ar_agent"' | sort | uniq -c
@@ -263,7 +263,7 @@ curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h ku
 Expected:
 - The header row reads `NAME ROLE CLASS PHASE BRANCH PRINCIPAL PR TOKENS REASON`. A's row shows the PR
   URL and `12345`.
-- The outcome series carries the `pull_request` label.
+- `agentrun_pull_request_info` carries the `pull_request` label.
 - Gateway tokens are > 0, and the budget is `2000000`.
 - Each `uniq -c` output has exactly one line: A's pod, then A's principal. B ran at the same time
   (SO-2).
