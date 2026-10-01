@@ -10,8 +10,9 @@ our own rate-limit server, and the Envoy agent-router is deleted once verified.
 `agent-gateway` namespace) runs beside the Envoy agent-router. Routes, backends and Secrets stay in
 `agent-system`. New runs switch by one FQDN change in the shared identity-proxy ConfigMap, after a
 crossplane-configuration release lets the run CNP reach both gateways. After the live gates pass, a
-second release drops the old egress and the Envoy objects go. SP4 PR 2's agent half lands last, on
-agentgateway.
+second release drops the old egress and the Envoy objects go. Last, phase I gives `internal` the
+Anthropic API (ADR-0054) and per-provider budgets, provable on gcp-0; optional backends (OpenRouter,
+Bedrock, Vertex) sit in an appendix, off by default.
 
 **Tech Stack:**
 - agentgateway v1.5.0: charts `oci://cr.agentgateway.dev/charts/agentgateway{,-crds}` (CRDs `agentgateway.dev/v1alpha1`: `AgentgatewayBackend`, `AgentgatewayPolicy`, `AgentgatewayParameters`, `AgentgatewayModel`);
@@ -21,8 +22,9 @@ agentgateway.
 - Python 3 + PyYAML for the gates.
 
 **Spec:** [`docs/superpowers/specs/2026-10-01-agent-router-agentgateway-design.md`](../specs/2026-10-01-agent-router-agentgateway-design.md)
-(binding; read it whole, rulings D1–D8 included) and
-[ADR-0053](../../../website/content/docs/decisions/0053-agent-router-on-agentgateway.md). Evidence:
+(binding; read it whole, rulings D1–D8 and the providers table included),
+[ADR-0053](../../../website/content/docs/decisions/0053-agent-router-on-agentgateway.md) and
+[ADR-0054](../../../website/content/docs/decisions/0054-agent-model-providers-anthropic-direct.md). Evidence:
 the [gap matrix and PoC result](../specs/2026-10-01-agentgateway-gap-matrix-research.md). The PoC
 manifests on `integration/agent-factory` (`infrastructure/gcp-0/agentgateway{,-poc}/`) are the
 starting point for most YAML below.
@@ -43,7 +45,8 @@ starting point for most YAML below.
   | Budgets | Deployment/Service `agent-ratelimit`, ConfigMap `agent-ratelimit-config`, domain `agent-router`, `KVStore xplane-agent-ratelimit`, Secret `agent-ratelimit-valkey` (key `REDIS_PASSWORD`), all in `agent-gateway` |
   | Gate | `scripts/ci/flux-schema/assert-agent-gateway.py`, checks AG1–AG9 |
   | MCP tool names | `<target>_<tool>`, targets `flux-operator-mcp`, `mcp-victoriametrics`, `mcp-victorialogs`, `room-broker` |
-  | ADR | **0053** |
+  | Providers (ADR-0054) | `public` → `AgentgatewayBackend zai`; `internal` → `AgentgatewayBackend anthropic`, Secret `agents-anthropic-api-key` from OpenBao `agents/anthropic` field `api_key`; optional `openrouter` (public only), `bedrock`/`vertexai` (internal), all off by default <!-- pragma: allowlist secret --> |
+  | ADRs | **0053** (gateway), **0054** (providers) |
 
 - **Pins** (resolved 2026-10-01 from the PoC; re-resolve on the day of Task B.2 with
   `helm show chart` and `crane digest`, and stop if they moved):
@@ -58,8 +61,8 @@ starting point for most YAML below.
   gateway is valid on the other (D2).
 - **Both clouds.** Bases are cloud-neutral; render roots `infrastructure/{aws-0,gcp-0}/{agentgateway,agent-gateway}`;
   Flux children in both `clusters/aws-0-agent-platform/` and `clusters/gcp-0-agent-platform/`, substituting
-  `eks-aws-0-vars` and `gke-gcp-0-vars`. Only Bedrock (phase I) is aws-0-specific. aws-0 is
-  destroyed: CI renders it; its live proof waits for the next rebuild.
+  `eks-aws-0-vars` and `gke-gcp-0-vars`. Nothing on the default path is cloud-specific (Z.ai and
+  Anthropic serve both clouds); only the optional Bedrock/Vertex backends are. aws-0 is destroyed: CI renders it.
 - **No merge, no release tag before the owner's UX sign-off** (SP2 ruling P33, which binds this
   plan).
   - One stack per repo, merge-only, never rebased. Each PR is based on its *Base* (PR map).
@@ -112,6 +115,7 @@ The design's D1–D8 bind. These are the plan's own:
 | R6 | The run CNP and the MCP/octo-sts/room-broker/collector ingress CNPs gain **additive** selectors for the new proxies (phases C, E, F) and lose the Envoy ones only in phase H | Run-beside needs both paths; removing early breaks rollback | A wider window, bounded by the namespace + label pins |
 | R7 | `test-agent-mcp-scope.sh` keeps its MCPRoute checks until phase H and gains an agentgateway check in phase C, both against the same `EXPECTED_ROLE_TOOLS` | One source of truth for per-role tool sets across the overlap | — |
 | R8 | The drain ships at `{min: 120, max: 660}`; Task G.4 tries `min: 10` and phase H lowers it only if a stream survives two rollouts | PoC N1: 120/660 is proven, `max`-alone is not | 120 s per pod on every rollout until then |
+| R9 | Anthropic is pinned to `internal`, Z.ai and OpenRouter to `public` (gate AG5, Task I.1) | B6 can then be a listener-scoped policy, and no provider sees the other class's data | If a team wants Anthropic on `public`, B6 needs the CEL fallback of Task I.4 Step 4 |
 
 ## PR map
 
@@ -131,7 +135,7 @@ The design's D1–D8 bind. These are the plan's own:
 | AGW-6 | this · `feat/agw-cutover` | AGW-5 | F | CC-AGW1 pin; identity-proxy → agentgateway | phase G |
 | CC-AGW2 | crossplane-configuration · `feat/agentrun-agentgateway-only` | CC-AGW1 | H | run CNP reaches agentgateway only | H.4 |
 | AGW-7 | this · `feat/agw-remove-envoy-router` | AGW-6 | H | Envoy agent-router deleted; A5–A7 retired; docs | H.4 |
-| AGW-8 | this · `feat/agent-frontier-tiers` | AGW-7 | I | SP4 PR 2's agent half on agentgateway | I.5 (tiers on gcp-0; Bedrock on the next aws-0 rebuild) |
+| AGW-8 | this · `feat/agent-frontier-tiers` | AGW-7 | I | Anthropic backend on `internal`, tiers, B6, budget alerts (SP4 PR 2's agent half) | I.2, I.4, I.6 on gcp-0 |
 
 **Live-check routine** (each [LIVE] step): merge the PR into `integration/agent-factory` with a merge
 commit; if it pins a crossplane-configuration pre-release, hand-patch the core package (Global
@@ -170,7 +174,8 @@ re-pinned to the release.
 | `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml`, `infrastructure/base/crossplane/configuration-{aws,gcp}/configuration-packages.yaml` | F | The switch; CC-AGW1 pin |
 | `infrastructure/base/agent-router/*` (Envoy objects), `infrastructure/base/agent-mcp/mcproutes.yaml`, `scripts/ci/flux-schema/assert-ai-gateway.py` A5–A7 | H | Removal |
 | `docs/runbooks/agent-factory/{02,04,06,08}-*.md`, `website/content/docs/platform/ai-platform/gateways.md`, `website/content/docs/platform/ai-platform/agents/*.md`, `website/content/docs/platform/ai-platform/observability.md`, `website/content/docs/platform/ai-platform/status.md` | H | Docs (the restructured AI Platform section, on `main` first) |
-| `infrastructure/base/agent-router/agentgateway-llm.yaml`, `infrastructure/aws-0/agent-model-routing/`, `security/base/epis-agent-gateway/` | I | Tiers, Bedrock, EPI |
+| `infrastructure/base/agent-router/{externalsecret-anthropic,agentgateway-anthropic,agentgateway-llm}.yaml`, `infrastructure/base/agent-gateway/policy-budgets-providers.yaml`, `infrastructure/base/agent-model-routing/` | I | Anthropic backend, tiers, B6, alerts and prices |
+| `infrastructure/base/agent-router/optional/openrouter/` (unreferenced), Bedrock/Vertex overlays | Appendix | Optional backends, off by default |
 
 **crossplane-configuration**: `apis/agentrun/kcl/main.k` (`_ROUTER_FQDNS`, `_ROUTER_ENDPOINTS`, `_BRIDGE_IMAGE`),
 `apis/agentrun/kcl/main_test.k`, `tests/golden/agentrun-{basic,complete}.yaml`, `apis/agentrun/kcl/README.md`.
@@ -192,14 +197,33 @@ re-pinned to the release.
 | SC-9 trace joined, no `http.path` | E.1 | G.3 |
 | SC-10 rollback drill | — | G.4 |
 | SC-11 no Envoy agent-router left | H.2 | H.4 |
+| SC-12 internal on Claude, never Z.ai | I.1 (AG5) | I.2, I.6 |
+| SC-13 B6 counts Anthropic tokens, B1–B2 too | I.4 | I.4 |
 
 ## Owner actions
 
 | Marker | Task | What |
 |---|---|---|
 | [OWNER] | G.5 | Decide phase H after the evidence table (the exit criterion: every gate + 10 clean real runs) |
-| [OWNER] | I.5 | The next aws-0 rebuild, for Bedrock's live gate (design open question 1) |
+| [OWNER] | I.2 | Prerequisite P1: store the Anthropic API key (below) |
+| [OWNER] | I.6 | Rotate the Anthropic key once (drill), and revoke the old one |
 | [OWNER] | — | The programme's UX sign-off (P33) before any merge |
+
+## Owner prerequisites
+
+| # | Before | Action |
+|---|---|---|
+| P1 | Task I.2 Step 6 | **Store the Anthropic API key at OpenBao mount `agents`, secret `anthropic`, field `api_key`** (KV v2: API path `agents/data/anthropic`). The `agents-secrets` policy already reads `agents/data/*`; nothing else changes. The key comes from stdin, never argv: <!-- pragma: allowlist secret --> |
+
+```bash
+# Paste the key, then Ctrl-D (or pipe it from a password manager). `api_key=-` reads stdin,
+# so the key never appears in argv, shell history or `ps`.
+bao kv put -mount=agents anthropic api_key=-
+bao kv get -mount=agents -field=api_key anthropic | wc -c     # > 1, without printing the key
+```
+
+The key belongs to an Anthropic workspace used only by agents; set a monthly spend limit on that
+workspace as B6's provider-side backstop.
 
 ---
 
@@ -3351,83 +3375,487 @@ one real run end to end → `Succeeded`. Paste into AGW-7.
 
 ---
 
-## Phase I — AGW-8: SP4 PR 2, re-scoped onto agentgateway
+## Phase I — AGW-8: Anthropic API backend for the internal listener, and budgets
+
+Provable on gcp-0 at once: the providers are the same on both clouds (ADR-0054). Needs the owner
+prerequisite [P1](#owner-prerequisites) before Task I.2's live step.
 
 SP4 PR 2 (`2026-09-25-llm-frontier-backends-plan.md`, Tasks 9–15) splits:
 
 | SP4 task | Fate |
 |---|---|
-| 9 gate A4–A5 (agent pinning, Z.ai public-only) | **Here**: AG5 already enforces Z.ai public-only; agent pinning becomes I.2's check |
-| 10 Bedrock EPIs | **Split**: `xplane-agent-router-bedrock` here (I.3), binding the agentgateway proxies' ServiceAccount; `xplane-ai-gateway-bedrock` stays in SP4 |
-| 11 `claude-*` on `ai-gateway` | **SP4, unchanged** |
-| 12 agent tiers on `agent-router` | **Here** (I.2, I.3) |
-| 13 B1–B2, run-token rule, budget alerts | B1–B2 **done in phase D**; the rule and alerts **here** (I.4) |
+| 9 gate A4–A5 (agent pinning, Z.ai public-only) | **Here**: AG5 already enforces Z.ai public-only and gains Anthropic internal-only and OpenRouter public-only (I.1); agent pinning is I.1's check |
+| 10 Bedrock EPIs | **Optional**: both EPIs move to the [appendix](#appendix--optional-backends-off-by-default) (OB.2) |
+| 11 `claude-*` on `ai-gateway` | **SP4**, re-targeted to the Anthropic API with a platform key (ADR-0054); not in this plan |
+| 12 agent tiers on `agent-router` | **Here** (I.2 public, I.3 internal) |
+| 13 B1–B2, run-token rule, budget alerts | B1–B2 **done in phase D**; per-provider B6 here (I.4); rule and alerts here (I.5) |
 | 14 `oidc` listener on `ai-gateway`, `/anthropic` | **SP4, unchanged** |
-| 15 live verification | Split: agent half here (I.5), `ai-gateway` half in SP4 |
+| 15 live verification | Agent half here (I.6, gcp-0); `ai-gateway` half in SP4 |
 
-### Task I.1: Spike, how logical names route (D8)
+### Task I.1: The gate pins each provider to its listener, and names to one backend
 
-- [ ] **Step 1:** On integration only, add an `AgentgatewayModel` `agent-default` in `agent-system`
-(`parentRefs` the `public` listener, `match.model: agent-default`, provider openai → `zai`'s host,
-model `glm-5.3`) beside the fixed-model route, and probe: `agent-default` → `200` from `glm-5.3`;
-`gpt-4o` → refused before any upstream call (no `api.z.ai` client span); `/v1/models` still `404`.
-- [ ] **Step 2:** Decide: if all three hold, tiers use one `AgentgatewayModel` per C5 name; otherwise
-one `AgentgatewayBackend` per provider model and an HTTPRoute header match per name. Record the
-outcome as a ruling in AGW-8's body and revert the spike commit.
+**Files:**
+- Modify: `scripts/ci/flux-schema/assert-agent-gateway.py`, `scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
 
-### Task I.2: Tiers on `public`, both clouds
+**Interfaces:**
+- Produces: `PROVIDER_LISTENERS = {"zai": {"public"}, "openrouter": {"public"}, "anthropic": {"internal"}}`
+  used by `check_routes`; AG5 messages `… reaches <backend> from [...]; it is <listeners>-only`.
 
-**Files:** Modify `infrastructure/base/agent-router/agentgateway-llm.yaml`; `scripts/ci/flux-schema/assert-agent-gateway.py` + test (agent pinning).
+- [ ] **Step 1: Write the failing tests.** Append to the test file, before `print("main")`:
 
-- [ ] **Step 1: Failing test.** Add to the gate test: a model or route mapping any C5 name to a
-weighted or multi-target backend fails with `AG5: … agent names map 100 % to one backend`. Run → FAIL.
-- [ ] **Step 2:** Implement the check in `check_routes` (every `backendRefs` list on an agent-router
-LLM route has exactly one entry with no `weight` or `weight: 100`; every `AgentgatewayModel` has no
-`virtualModel`), then the C5 map from SP4's Global Constraints on `public`: `tier-light` →
-`glm-5.3-flash`, `tier-standard` → `glm-5.3-flashx`, `tier-frontier` and `agent-default` → `glm-5.2`,
-in I.1's shape. Before writing, confirm the two Flash API IDs against Z.ai's model list (SP4 marks
-them UNVERIFIED) and use the IDs found.
-- [ ] **Step 3:** Gate + test pass; commit `feat(agent-router): agent tiers on public (SP4 PR 2 on agentgateway)`.
+```python
+print("AG5 providers per listener (ADR-0054)")
 
-### Task I.3: Bedrock EU on `internal`, aws-0
 
-**Files:** Create `infrastructure/aws-0/agent-model-routing/{kustomization.yaml,bedrock.yaml}`,
-`security/base/epis-agent-gateway/{kustomization.yaml,epi.yaml}`,
-`clusters/aws-0-agent-platform/infrastructure-agent-model-routing.yaml`; modify
-`clusters/aws-0-agent-platform/kustomization.yaml`, `infrastructure/base/agent-gateway/network-policy.yaml`
-(aws-0 overlay patch, not the base).
+def add_backend_route(o, backend, section, spec):
+    o.append(obj("AgentgatewayBackend", "agent-system", backend, spec))
+    o.append(route(f"{backend}-route", section, backend))
 
-- [ ] **Step 1:** The EPI: SP4 Task 10's `xplane-agent-router-bedrock` claim, with its subject the
-ServiceAccount B.6 Step 3 recorded in namespace `agent-gateway` (not `envoy-gateway-system`). Same
-policy: `bedrock:InvokeModel*` on the three `eu.anthropic.*` profiles and their EU destinations.
-- [ ] **Step 2:** `bedrock.yaml`: an `AgentgatewayBackend bedrock` (`ai.provider.bedrock`, region
-`eu-west-3`, no credentials: default AWS chain = Pod Identity) in `agent-system`, and the internal
-tiers (`tier-light` → `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, `tier-standard` →
-`eu.anthropic.claude-sonnet-5`, `tier-frontier` and `agent-default` → `eu.anthropic.claude-opus-5-5`)
-on `sectionName: internal`, plus an `agent-models-list-internal` 404 route (AG7).
-- [ ] **Step 3:** An aws-0 overlay patch on `agent-router-data-plane` adds egress to
-`bedrock-runtime.eu-west-3.amazonaws.com:443` and the EKS Pod Identity agent (`169.254.170.23:80`,
-as SP4 Task 12 specifies).
-- [ ] **Step 4:** `kustomize build infrastructure/aws-0/agent-model-routing` renders; the aws-0 bundle
-passes the gate; `assert-cloud-shape.py` still passes for gcp-0 (no `amazonaws.com` there). Commit
-`feat(agent-router): Bedrock EU on internal, keyless, on aws-0`.
 
-### Task I.4: Run-token rule and budget alerts
+expect("anthropic on public fails", lambda o: add_backend_route(
+    o, "anthropic", "public", {"ai": {"provider": {"anthropic": {}}}}), "AG5")
+expect("openrouter on internal fails", lambda o: add_backend_route(
+    o, "openrouter", "internal", {"ai": {"provider": {"openai": {}}, "host": "openrouter.ai"}}), "AG5")
+expect("a weighted agent route fails", lambda o: find(o, "HTTPRoute", "agent-models")["spec"]["rules"][0]
+       ["backendRefs"].append({"group": "agentgateway.dev", "kind": "AgentgatewayBackend", "name": "zai", "weight": 10}), "AG5")
+v = violations_after(lambda o: add_backend_route(o, "anthropic", "internal", {"ai": {"provider": {"anthropic": {}}}})
+                     or o.append(route("anthropic-list", "internal", None, {"type": "Exact", "value": "/v1/models"}))
+                     or o.append(obj("AgentgatewayPolicy", "agent-system", "anthropic-list", {
+                         "targetRefs": [{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "anthropic-list"}],
+                         "traffic": {"directResponse": {"status": 404}}})))
+check("anthropic on internal with its /v1/models answer passes", v == [], f"got {v}")
+```
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+Expected: FAIL on the first three.
+
+- [ ] **Step 2: Implement.** In `assert-agent-gateway.py`, add after `ROUTE_KINDS`:
+
+```python
+# ADR-0054: which listener each provider may serve. Anthropic is internal-only so
+# B6 can be scoped to that listener; Z.ai and OpenRouter never see internal data.
+PROVIDER_LISTENERS = {"zai": {"public"}, "openrouter": {"public"}, "anthropic": {"internal"}}
+```
+
+In `check_routes`, replace the `names_zai` block with:
+
+```python
+        for rule in spec_of(r).get("rules") or []:
+            refs = [b for b in rule.get("backendRefs") or [] if b.get("kind") == "AgentgatewayBackend"]
+            for b in refs:
+                allowed = PROVIDER_LISTENERS.get(b.get("name"))
+                if allowed and not route_listeners(r) <= allowed:
+                    out.append(f"AG5: {ref(r)} reaches {b.get('name')} from {sorted(route_listeners(r))}; "
+                               f"it is {'/'.join(sorted(allowed))}-only")
+            if len(refs) > 1 or any(b.get("weight") not in (None, 100) for b in refs):
+                out.append(f"AG5: {ref(r)} splits traffic; agent names map 100 % to one backend")
+```
+
+and update the AG5 docstring line to "the zai and openrouter backends are public-only, anthropic
+internal-only, and no agent route splits traffic".
+
+- [ ] **Step 3: Run, commit**
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+Expected: every check `ok`, `all passed` (35 checks; verified 2026-10-01 against this code in a
+scratch tree).
+
+```bash
+git add scripts/ci/flux-schema/assert-agent-gateway.py scripts/ci/tests/flux-schema/test-assert-agent-gateway.py
+git commit -m "ci(flux-schema): pin each model provider to its listener (ADR-0054)"
+```
+
+### Task I.2: The Anthropic backend on `internal`
+
+**Files:**
+- Create: `infrastructure/base/agent-router/externalsecret-anthropic.yaml`, `infrastructure/base/agent-router/agentgateway-anthropic.yaml`
+- Modify: `infrastructure/base/agent-router/kustomization.yaml`, `infrastructure/base/agent-gateway/network-policy.yaml`
+
+**Interfaces:**
+- Consumes: OpenBao `agents` mount, secret `anthropic`, field `api_key` (owner prerequisite P1); SecretStore `agents-secrets` in `agent-system`.
+- Produces: Secret `agents-anthropic-api-key` (key `apiKey`); `AgentgatewayBackend agent-system/anthropic`; <!-- pragma: allowlist secret -->
+  `HTTPRoute agent-models-internal` and `agent-models-list-internal` on `internal`.
+
+- [ ] **Step 1: The failing check**
+
+Run: `kustomize build infrastructure/gcp-0/agent-router | grep -c 'name: anthropic$'`
+Expected: `0`.
+
+- [ ] **Step 2: Write `externalsecret-anthropic.yaml`:**
+
+```yaml
+---
+# The agents' Anthropic key (ADR-0054): internal data goes to the Anthropic API
+# directly. Same store and mount as the Z.ai key; never the platform's key.
+# The gateway injects it; no run ever holds it.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: agents-anthropic-api-key
+  namespace: agent-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: SecretStore
+    name: agents-secrets
+  target:
+    name: agents-anthropic-api-key
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: apiKey  # pragma: allowlist secret
+      remoteRef:
+        key: anthropic
+        property: api_key  # pragma: allowlist secret
+```
+
+- [ ] **Step 3: Write `agentgateway-anthropic.yaml`** (the model map; I.3 extends it):
+
+```yaml
+# internal → the Anthropic API (ADR-0054), the same on both clouds. Native
+# provider: AgentgatewayBackend.spec.ai.provider.anthropic (agentgateway v1.5.0).
+# The key goes in x-api-key: agentgateway's default location is
+# Authorization: Bearer, which Anthropic API keys do not use.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: anthropic
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      anthropic:
+        model: claude-opus-5-5
+  policies:
+    auth:
+      secretRef:
+        name: agents-anthropic-api-key
+        key: apiKey
+      location:
+        header:
+          name: x-api-key
+---
+# `internal` only (gate AG5): Anthropic is internal's provider, and B6 counts
+# it by listener.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models-internal
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: internal
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+        - path:
+            type: PathPrefix
+            value: /anthropic
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: anthropic
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models-list-internal
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: internal
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /v1/models
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agent-models-list-internal
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agent-models-list-internal
+  traffic:
+    directResponse:
+      status: 404
+      body: '{"error":"model listing is not served on agent-router"}'
+```
+
+If the provider rejects an explicit `location` (an `Invalid` from `flux schema validate`, or a 401
+`authentication_error` in Step 6), remove `location` and record that the anthropic provider maps
+the key to `x-api-key` itself.
+
+Add both files to `infrastructure/base/agent-router/kustomization.yaml`. Append to the data plane's
+egress in `infrastructure/base/agent-gateway/network-policy.yaml`:
+
+```yaml
+    - toFQDNs:
+        - matchName: api.anthropic.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+```
+
+- [ ] **Step 4: Gate**
+
+Run: `mkdir -p /tmp/claude-agwi && kustomize build infrastructure/gcp-0/agent-gateway > /tmp/claude-agwi/a.yaml && kustomize build infrastructure/gcp-0/agent-router > /tmp/claude-agwi/b.yaml && python3 scripts/ci/flux-schema/assert-agent-gateway.py /tmp/claude-agwi; rm -rf /tmp/claude-agwi`
+Expected: `0 violations` (AG5 and AG7 both satisfied on `internal`).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add infrastructure/base/agent-router infrastructure/base/agent-gateway/network-policy.yaml
+git commit -m "feat(agent-router): internal runs reach the Anthropic API directly (ADR-0054)"
+```
+
+- [ ] **Step 6: [LIVE] SC-12 on gcp-0.** Owner prerequisite P1 done. Merge into integration; wait for
+`agent-router` Ready and `kubectl get externalsecret -n agent-system agents-anthropic-api-key` `SecretSynced`.
+From the probe with its `internal` token: `POST http://agent-router.agent-gateway.svc.cluster.local:8081/v1/chat/completions`
+model `agent-default` → `200`; `gen_ai_client_token_usage_sum{namespace="agent-gateway", gen_ai_request_model="claude-opus-5-5"}`
+rises; `hubble observe --from-pod agent-gateway/<proxy> --to-fqdn api.anthropic.com` shows the flow
+and `--to-fqdn api.z.ai` none for it; `kubectl get secret -n agents -o name | grep -ci anthropic` → `0`.
+
+### Task I.3: Tiers on both listeners
+
+**Files:** Modify `infrastructure/base/agent-router/agentgateway-llm.yaml`, `infrastructure/base/agent-router/agentgateway-anthropic.yaml`.
+
+- [ ] **Step 1: Spike, how names route (D8).** On integration only, add an `AgentgatewayModel`
+`agent-default` in `agent-system` (`parentRefs` the `public` listener, `match.model: agent-default`,
+openai provider at `zai`'s host, model `glm-5.3`) and probe: `agent-default` → `200` from `glm-5.3`;
+`gpt-4o` → refused with no `api.z.ai` client span; `/v1/models` still `404`. If all three hold,
+names use one `AgentgatewayModel` each; otherwise one backend per provider model and an HTTPRoute
+header match per name. Record the ruling in AGW-8's body; revert the spike.
+
+- [ ] **Step 2: The map**, in Step 1's shape. Before writing, confirm the two Z.ai Flash API IDs
+against Z.ai's model list (SP4 marks them UNVERIFIED) and use what it says.
+
+| Name | `public` (Z.ai) | `internal` (Anthropic) |
+|---|---|---|
+| `tier-light` | `glm-5.3-flash` | `claude-haiku-4-5` |
+| `tier-standard` | `glm-5.3-flashx` | `claude-sonnet-5-5` |
+| `tier-frontier` | `glm-5.2` | `claude-opus-5-5` |
+| `agent-default` | `glm-5.2` | `claude-opus-5-5` |
+
+- [ ] **Step 3: Gate, commit.** Task I.2 Step 4's command → `0 violations`. Commit
+`feat(agent-router): agent tiers on both listeners (SP4 PR 2 on agentgateway)`.
+
+### Task I.4: B6, the Anthropic fleet budget
+
+**Files:** Create `infrastructure/base/agent-gateway/policy-budgets-providers.yaml`; modify
+`infrastructure/base/agent-gateway/ratelimit.yaml` (ConfigMap), `infrastructure/base/agent-gateway/kustomization.yaml`.
+
+- [ ] **Step 1: The failing check**
+
+Run: `kustomize build infrastructure/gcp-0/agent-gateway | grep -c 'key: provider'`
+Expected: `0`.
+
+- [ ] **Step 2: Implement.** Append to the ConfigMap's descriptors:
+
+```yaml
+      # B6: Anthropic tokens, all runs (ADR-0054). Opus costs ~3-5x GLM per
+      # token, so the shared B2 bucket alone would let internal spend run hot.
+      - key: provider
+        value: anthropic
+        rate_limit:
+          unit: day
+          requests_per_unit: 10000000
+        shadow_mode: true
+```
+
+Create `policy-budgets-providers.yaml`:
+
+```yaml
+# Per-provider budgets (ADR-0054). Scoped to the internal listener because
+# Anthropic is its only provider (gate AG5 pins it there).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: token-budgets-anthropic
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: internal
+  traffic:
+    rateLimit:
+      global:
+        backendRef:
+          name: agent-ratelimit
+          port: 8081
+        domain: agent-router
+        failureMode: FailOpen
+        descriptors:
+          - entries:
+              - name: provider
+                expression: '"anthropic"'
+            unit: Tokens
+```
+
+Add it to the kustomization. Gate: `0 violations` (AG8 sees a shadowed `provider` descriptor).
+
+- [ ] **Step 3: Commit** `feat(agent-gateway): an Anthropic fleet budget, in shadow`.
+
+- [ ] **Step 4: [LIVE] SC-13 and the merge question.** After two `internal` probe completions:
+`ratelimit_service_rate_limit_total_hits{domain="agent-router",key1="provider"}` and `{key1="agent"}`
+**both** rise by the calls' exact token totals. If `key1="agent"` does not rise, the listener policy
+replaced the Gateway-level one: move the `provider` descriptor into `token-budgets` with a CEL value
+that is `"anthropic"` only for internal requests (find the listener/backend variable in
+agentgateway's CEL reference for v1.5.0), delete `policy-budgets-providers.yaml`, extend AG8's
+allowed entries to exactly that expression, and re-run this step.
+
+### Task I.5: Run-token rule and budget alerts
 
 - [ ] Port SP4 Task 13's `vmrule-agent-budgets.yaml` (recording rule
 `agent_router:run_tokens:total{principal="agent:<runId>"}`, alerts `AgentRunNearCeiling`,
 `FleetBudgetNearCap`) into `infrastructure/base/agent-model-routing/` unchanged: the relabel keeps
-`gen_ai_client_token_usage_sum{ar_agent}` (D5). Its "B1/B2 rules" references now point at
-`infrastructure/base/agent-gateway/policy-budgets.yaml`. `validate-vmrules.sh` → exit 0. Commit.
+`gen_ai_client_token_usage_sum{ar_agent}` (D5). Add `AnthropicFleetNearCap`:
 
-### Task I.5: SP4 cross-edit, gates, AGW-8, live
+```yaml
+        - alert: AnthropicFleetNearCap
+          expr: sum(increase(gen_ai_client_token_usage_sum{namespace="agent-gateway", gen_ai_request_model=~"claude-.*", gen_ai_token_type=~"input|output"}[24h])) > 8e6
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agents spent more than 80 % of B6 (10M Anthropic tokens) in 24h"
+            description: "B6 is in shadow until SP4 PR 7: nothing is refused yet. Find the noisiest run on the fleet dashboard and revoke it if needed."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-fleet"
+```
+
+Add `llm_gateway:price_usd_per_mtoken` rows for the three Claude IDs (input/output: Opus 5.5 4.00/20.00,
+Sonnet 5.5 2.00/10.00, Haiku 4.5 1.00/5.00 USD per MTok, Anthropic list prices on 2026-10-01) in the same
+file, so the run page's cost panel covers internal runs. `./scripts/ci/validate-vmrules.sh` → exit 0.
+Commit `feat(observability): agent budget alerts and Claude prices`.
+
+### Task I.6: SP4 cross-edit, gates, AGW-8, live, key rotation drill
 
 - [ ] **Step 1:** In `docs/superpowers/plans/2026-09-25-llm-frontier-backends-plan.md`, under
-`## PR 2 — …`, add one dated note: "2026-10-01: the agent half (Tasks 9, 10's agent EPI, 12, 13,
-15's agent checks) moved to `2026-10-01-agent-router-agentgateway-plan.md` phase I, on agentgateway
-(ADR-0053). Tasks 10's ai-gateway EPI, 11 and 14 stay here unchanged."
+`## PR 2 — …`, add: "2026-10-01: the agent half (Tasks 9, 12, 13, 15's agent checks) moved to
+`2026-10-01-agent-router-agentgateway-plan.md` phase I, on agentgateway, with internal on the Anthropic
+API (ADR-0053, ADR-0054). Task 10's EPIs are optional (that plan's appendix). Task 11 targets the
+Anthropic API with a platform key. Task 14 is unchanged."
 - [ ] **Step 2:** Every gate; AGW-8 as a draft on `feat/agw-remove-envoy-router`, P33 hold line.
-- [ ] **Step 3: [LIVE] gcp-0:** each tier name on `public` answers from its mapped model
-(`gen_ai_request_model`), an unknown name is refused (I.1's shape), B1/B2 count them.
-- [ ] **Step 4: [OWNER] [LIVE] aws-0** (next rebuild): SP4's SC-11: an `.internal` token gets 401 on
-`public`, and on `internal` reaches Bedrock and never `api.z.ai` (Hubble: no flow to `api.z.ai`).
+- [ ] **Step 3: [LIVE] gcp-0.** Each tier name on each listener answers from its mapped model
+(`gen_ai_request_model`); an unknown name is refused (I.3's shape); a real `internal` reviewer run
+completes on Claude; B1, B2 and B6 count it.
+- [ ] **Step 4: [LIVE] rotation drill.** [OWNER] writes a new key with prerequisite P1's command;
+`kubectl annotate externalsecret -n agent-system agents-anthropic-api-key force-sync=$(date +%s) --overwrite`;
+the next `internal` call → `200`; the owner revokes the old key in the Anthropic console.
+
+---
+
+## Appendix — optional backends, off by default
+
+None of these is required, and none blocks a phase. Each lands only when someone asks for it, as its
+own PR on top of AGW-8, with the P33 hold line.
+
+### Task OB.1: OpenRouter on `public` (model breadth, experiments)
+
+Never on `internal` (ADR-0054: a second data processor, and the upstream is not ours to pick). Gate
+AG5 already refuses it there.
+
+**Files:** Create `infrastructure/base/agent-router/optional/openrouter/{kustomization.yaml,externalsecret.yaml,backend.yaml,policy-budget.yaml}`.
+Off by default means **no kustomization references this directory**; enabling it is adding
+`- optional/openrouter` to `infrastructure/base/agent-router/kustomization.yaml` in a reviewed PR.
+
+- [ ] **Step 1: Owner prerequisite.** `bao kv put -mount=agents openrouter api_key=-` (key on stdin),
+and a credit limit on that key in OpenRouter's settings (the provider-side half of B7).
+- [ ] **Step 2: Write the files.** `externalsecret.yaml` mirrors Task I.2's with `name: agents-openrouter-api-key`
+and `remoteRef.key: openrouter`. `backend.yaml`:
+
+```yaml
+# Optional, public only (ADR-0054). OpenAI-compatible; OpenRouter picks the
+# upstream that serves each request, which is why internal data never comes here.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: openrouter
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      openai: {}
+      host: openrouter.ai
+      port: 443
+      pathPrefix: /api/v1
+  policies:
+    auth:
+      secretRef:
+        name: agents-openrouter-api-key
+        key: apiKey
+    tls:
+      sni: openrouter.ai
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models-openrouter
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: public
+  rules:
+    # Opt-in per request: only an `x-agent-provider: openrouter` header reaches it.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+          headers:
+            - name: x-agent-provider
+              value: openrouter
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: openrouter
+```
+
+The identity-proxy forwards client headers, so a harness opts in per request. `policy-budget.yaml` is
+a route-level `AgentgatewayPolicy` on `agent-models-openrouter` with descriptor `provider` =
+`'"openrouter"'`, `unit: Tokens`; the ConfigMap gains `key: provider, value: openrouter`, 5 000 000/day,
+`shadow_mode: true` (B7). Task I.4 Step 4's merge result decides whether that route policy must also
+carry B1–B2. The data plane's egress gains `openrouter.ai:443`, in the same directory as a CNP patch.
+- [ ] **Step 3: Verify.** `kustomize build infrastructure/base/agent-router/optional/openrouter` renders;
+the default render has no `openrouter` (`kustomize build infrastructure/gcp-0/agent-router | grep -c openrouter` → `0`);
+with the directory enabled in a scratch copy, the gate passes, and moving the route to `internal`
+fails AG5.
+- [ ] **Step 4: Commit** `feat(agent-router): optional OpenRouter backend for public work, off by default`.
+
+### Task OB.2: Bedrock on `internal`, per cloud (aws-0)
+
+For a team whose internal data must stay in its AWS account. Carries SP4 Task 10's
+`xplane-agent-router-bedrock` EPI, re-pointed at the agentgateway proxies' ServiceAccount (B.6 Step 3
+records its name) in `agent-gateway`, granting `bedrock:InvokeModel*` on the EU Claude profiles only.
+An aws-0 overlay adds an `AgentgatewayBackend` with `spec.ai.provider.bedrock` (region `eu-west-3`,
+default AWS credential chain = Pod Identity), egress to `bedrock-runtime.eu-west-3.amazonaws.com:443`
+and the Pod Identity agent `169.254.170.23:80`, and swaps the internal route's backend. Gate AG5's
+`PROVIDER_LISTENERS` gains `"bedrock": {"internal"}`. Live proof needs an aws-0 cluster.
+
+### Task OB.3: Vertex on `internal`, per cloud (gcp-0)
+
+Same shape for GCP: `spec.ai.provider.vertexai` (project and region from `gke-gcp-0-vars`), keyless
+through Workload Identity on the proxies' ServiceAccount (an `AgentgatewayParameters.spec.serviceAccount`
+annotation if the binding needs one), egress to `${region}-aiplatform.googleapis.com:443`.
+`PROVIDER_LISTENERS` gains `"vertexai": {"internal"}`.
