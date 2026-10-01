@@ -34,14 +34,14 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 | S7 | agentgateway (D11) | **Not needed** | agentgateway as an A2A/agent proxy | Nothing speaks A2A. Revisit only if an agent outside the cluster must join a room |
 | S8 | Storage | Standalone `SQLInstance` (CNPG, log of record) + standalone `KVStore` with `auth` (pub/sub hints) | Valkey Streams as the log; NATS JetStream; one broker replica | KVStore is cache semantics by its XRD. JetStream is new infrastructure. Spot interruptions make one replica an outage for every open approval |
 | S9 | Approvals vs security | Approvals are **oversight UX**. A run's profile is immutable; widening means forking | Approvals that widen a live run | A harness confirmation is "advice to the model, not a boundary" (SP1). Boundaries are octo-sts, the ruleset, the `agent-router` Gateway and CNP |
+| S10 | Who approves | Humans with the approver flag; `system:policy` for deterministic rules. **Never an agent** | A reviewer agent approving an implementer's action | One injected transcript would otherwise approve another |
+| S11 | Deployment | `App` claim for the broker, with its own route off; HTTPRoute and oauth2-proxy beside it | Raw manifests | Dogfoods the golden path. The App XRD takes custom CNP rules and extra ports |
+| S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for the `AgentRun` and `Room` watches |
 
 > **2026-10-01 note on S7.** agentgateway is no longer the only A2A path: Agent Router ships an A2A
 > capability in Preview on Envoy's native A2A filter, and an `A2ARoute` CRD is proposed upstream
 > ([agent-router#2070](https://github.com/theagentrouter/agent-router/issues/2070)). If an outside
 > agent must join a room, try that first ([ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md)).
-| S10 | Who approves | Humans with the approver flag; `system:policy` for deterministic rules. **Never an agent** | A reviewer agent approving an implementer's action | One injected transcript would otherwise approve another |
-| S11 | Deployment | `App` claim for the broker, with its own route off; HTTPRoute and oauth2-proxy beside it | Raw manifests | Dogfoods the golden path. The App XRD takes custom CNP rules and extra ports |
-| S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for the `AgentRun` and `Room` watches |
 
 ## Target architecture
 

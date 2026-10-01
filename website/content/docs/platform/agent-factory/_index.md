@@ -6,10 +6,13 @@ lastVerified: 2026-10-01
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** This section describes the target design. Running live on `gcp-0` from the
+**Work in progress.** This section describes the target design. Running on `gcp-0` from the
 `integration/agent-factory` branch: the runtime and identity layer, the agent router's per-run
 identity and model route, rooms (log, live view, room tools, steering), the factory's first phase
-(intake, triage, one implementer per task, the run meter, the stop) and the per-run observability.
+(intake from a fixed template, one implementer per task, the run meter, the stop) and the per-run
+observability. Running is not proven: live gates have proven the runtime and identity layer, are
+partly passed for rooms and observability, and have not run for the factory, the room tools or
+steering.
 `aws-0` proved the runtime first; it is destroyed but still supported. Not live yet: the reviewer
 pair and revise flow (built, not deployed), then approvals, `roomctl`, Kueue, the merge gate,
 gateway budgets, the keyless Anthropic models and the move to agentgateway (planned). Only these pages, the design documents
@@ -52,9 +55,10 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 ## Architecture
 
 The diagram shows the **target** architecture: the whole programme once built. Its legend marks
-each box as live on `gcp-0`, built but not yet deployed, or planned.
+each box as deployed on `gcp-0` (noting where its live gate is pending), built but not yet
+deployed, or planned.
 
-![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels, a PR review asking for changes), RunLore findings (planned), the task agent:run CLI, a developer in a browser, and roomctl (planned). The factory turns a labelled issue into a task: intake, triage and narration, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all live. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are live; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (live) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0, live and being replaced by agentgateway, planned), which routes to Z.ai GLM-5.3 (live), Claude on Bedrock for aws-0 and on Vertex AI for gcp-0 (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
+![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels; a PR review asking for changes, built but not deployed), RunLore findings (planned), the task agent:run CLI, a developer in a browser (approving is planned), and roomctl (planned). The factory turns a labelled issue into a task: intake and narration from a fixed template, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all deployed on gcp-0, live gate pending. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are deployed, with the steering, room tools and verdicts still awaiting their live gate; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (deployed) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0, deployed and being replaced by agentgateway, selected on 2026-10-01, with a PoC instance on gcp-0), which routes to Z.ai GLM-5.3 (deployed), Claude on Bedrock for aws-0 and on Vertex AI for gcp-0 (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
 
 *Source: [`docs/architecture/agent-factory.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory.drawio).*
 
@@ -90,8 +94,9 @@ end on both clouds: an agent took issue #2112 to PR #2114 on `aws-0`, which was 
 
 *Decided 2026-10-01:* [agentgateway](https://agentgateway.dev) was selected after its proof of
 concept on `gcp-0` to replace Agent Router as the agents' gateway (models, MCP and the `sts`
-listener). An ADR superseding ADR-0042, and ADR-0050's Option 1 for the agent router, follows. The
-`ai-gateway` stays on Envoy Gateway and Agent Router.
+listener). An ADR superseding programme ADR-0042 and ADR-0050's Option 1 (on the programme
+branches, not yet on main) for the agent router follows. The `ai-gateway` stays on Envoy Gateway
+and Agent Router.
 
 ### Rooms: built (log, live view, room tools, steering); approvals and `roomctl` planned
 
@@ -104,11 +109,11 @@ listener). An ADR superseding ADR-0042, and ADR-0050's Option 1 for the agent ro
 | Room tools | MCP tools served by the broker, through the agent router | Let agents read the room, post, hand over to another role, or record a verdict | Agents collaborate through the log, never by prompting each other |
 | `roomctl` | *(planned)* A CLI | The same room from a terminal | For people who live in the shell |
 
-### Agent factory: intake, triage, run meter and stop built; teams and the merge gate to come
+### Agent factory: intake, run meter and stop built; triage, teams and the merge gate to come
 
 | Component | Software | What it does | Why this software |
 |---|---|---|---|
-| Task controller | A Go controller (controller-runtime) | Turns a labelled issue into a task: snapshot, triage, a room, an implementer run on its branch; narrates on the issue. *(Built, not deployed)* a reviewer after the implementer, and "Request changes" turned into a new run | The only component that creates runs, so every run has a task and a budget |
+| Task controller | A Go controller (controller-runtime) | Turns a labelled issue into a task: snapshot, a room, an implementer run on its branch from a fixed template (triage arrives in phase 4); narrates on the issue. *(Built, not deployed)* a reviewer after the implementer, and "Request changes" turned into a new run | The only component that creates runs, so every run has a task and a budget |
 | Admission | *(planned)* [Kueue](https://kueue.sigs.k8s.io) | Queues sandboxes so a burst of tasks waits instead of overloading the node pool. Until it lands, the factory's own caps bound concurrency | The Kubernetes-native job queue, with quotas |
 | Run meter and kill switch | Part of the controller | The run meter revokes any run, hand-launched ones included, at its token cap. The `agent-factory-stop` ConfigMap pauses intake and stops every task; *(planned)* a label on a pinned control issue | Controls that act from outside the sandbox |
 | Merge gate | *(planned)* [policy-bot](https://github.com/palantir/policy-bot) and a merger GitHub App | Decides which agent PRs may merge themselves (only low-risk classes, green CI), then arms GitHub's auto-merge. A separate App holds that right, and only it | The policy lives in the repository and is reviewable; the right to merge is isolated from everything else |
@@ -120,8 +125,8 @@ listener). An ADR superseding ADR-0042, and ADR-0050's Option 1 for the agent ro
 |---|---|---|
 | Logs | [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) | Every run's step log and every gateway call, attributed to the run |
 | Metrics | [VictoriaMetrics](https://victoriametrics.com) | Tokens, cost, latency and errors per run, and each `AgentRun`'s state through kube-state-metrics |
-| Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue (round 9, F16): MCP tool calls are not yet joined to the run's trace |
-| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue (round 9, F18): a successful run's page lacks its outcome and PR |
+| Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue ([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): MCP tool calls are not yet joined to the run's trace |
+| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a successful run's page lacks its outcome and PR; the fix is on `integration`, live re-check pending |
 
 ## One repository at first
 

@@ -530,6 +530,10 @@ authorization and `toolSelector`, and API-key injection. agentgateway's extra OS
 > **2026-10-01 note.** Now **verified from source**: agentgateway v1.5.0's CEL registers
 > `startsWith` and its RBAC tests match on `jwt.sub`; a live check is part of the agentgateway PoC
 > running on gcp-0. The Envoy Gateway pin is 1.9.2, not 1.9.1. See the [gap matrix](2026-10-01-agentgateway-gap-matrix-research.md).
+>
+> **2026-10-01 outcome.** The PoC's check P1 passed on gcp-0, so the `sub` prefix is now **verified
+> live**: a correct-audience token from another namespace got 403. PoC GO; the owner selected
+> agentgateway for agent-router, and an ADR superseding ADR-0042 and ADR-0050 Option 1 follows.
 
 ## gcp-0 follow-up
 

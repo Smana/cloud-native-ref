@@ -6,8 +6,9 @@ lastVerified: 2026-10-01
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** Part 1 describes the **target experience**, and marks what already works on
-`gcp-0`, which runs the programme from the `integration/agent-factory` branch. It exists so the
+**Work in progress.** Part 1 describes the **target experience**, and marks what is already
+deployed on `gcp-0`, which runs the programme from the `integration/agent-factory` branch, and
+whether its live gate has run. It exists so the
 experience can be agreed *before* the rest is built, and it will change. Part 2 is the run you start
 by hand, which also works today. Nothing here is on `main` yet.
 {{< /callout >}}
@@ -30,7 +31,8 @@ New to the vocabulary (run, role, sandbox, room)? Read
 
 | State on `gcp-0` | Steps |
 |---|---|
-| Works today | The `factory/ready` label, the snapshot and triage, the started / PR / end comments, the room's *watch* link, posting or queuing a message, steering the running agent, `factory/stop` on one task, the stop ConfigMap, the run meter and the daily cap |
+| Deployed, live gate partly passed | The room's *watch* link, posting or queuing a message |
+| Deployed, live gate pending | The `factory/ready` label, the snapshot (a fixed template; triage arrives in phase 4), the started / PR / end comments, `factory/stop` on one task, the stop ConfigMap, the run meter and the daily cap (factory gate 1.13); steering the running agent (gate 4.8: owner steps pending); a hand-started reviewer's verdict on the PR (gate 3.11) |
 | Built, not yet deployed | The reviewer run after the implementer, "Request changes" turned into a new run, `/factory retry`, the PR provenance footer |
 | Planned | Approvals in the room, the merge gate, the pinned control issue |
 
@@ -65,7 +67,8 @@ Write the issue the way you would for a colleague: what is wrong, where, and wha
 Then add the label **`factory/ready`** and walk away.
 
 The factory takes a **snapshot** of the issue at that moment. The agents work from that snapshot,
-so an edit made later does not change a task already under way. It then triages the task once:
+so an edit made later does not change a task already under way. *(Phase 4, not started; today a
+fixed template)* It then triages the task once:
 - which class the task is, for example `docs-links`;
 - which team of roles works it;
 - how big a budget it gets.
@@ -101,8 +104,8 @@ Agent-Model: agent-default
 run; a run started from an issue or PR URL also carries `Agent-Task-URL: <url>`.
 
 A reviewer run records its **verdict** in the room, which posts it on the PR as one comment. That
-works today for a reviewer you start by hand; the factory starts one itself once the reviewer pair is
-deployed. The comment is advice only: it neither approves nor blocks. The decision stays yours.
+is deployed for a reviewer you start by hand, with its live gate (3.11) pending; the factory starts
+one itself once the reviewer pair is deployed. The comment is advice only: it neither approves nor blocks. The decision stays yours.
 
 ### 4. Steer it
 
@@ -130,7 +133,8 @@ An interrupted run keeps its branch. Its work resumes from there.
 
 ### Budgets and costs
 
-Three limits keep a task from running away, all enforced today:
+Three limits keep a task from running away, all deployed on `gcp-0` (the run meter and the daily
+cap with their live gate pending):
 - **Each run has a deadline.** The sandbox is stopped when it expires.
 - **Each run has a token budget.** The factory's run meter revokes the run when it is spent, runs
   started by hand included.
@@ -202,9 +206,9 @@ task agent:run -- --role implementer --class public --branch agent/<id> --task-u
 A run that loses its pod (a node going away, for example) **fails** rather than silently
 restarting. Resuming with `--branch` continues from what it already pushed.
 
-Known issue (round 9, F12): today a lost pod is re-created within about a second, the run stays
-`Running`, and the task starts over in a fresh conversation, which can push twice. Until the fix
-lands, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
+Known issue ([F12]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
+the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
+fix is under review. Until it is deployed, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
 and resume it with `--branch`.
 
 ---
@@ -219,12 +223,14 @@ and resume it with `--branch`.
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
 `task agent:run` prints the dashboard link (`/d/agent-run/agent-run?var-run=<id>`). Two known
-issues from round 9: a successful run's page lacks its outcome and PR (F18), and MCP tool calls
-are not yet joined to the run's trace (F16).
+issues: on the deployed build a successful run's page lacks its outcome and PR ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}}); fixed
+on `integration`, live re-check pending), and MCP tool calls are not yet joined to the run's trace
+([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
-that room. Known issue (round 9, F11): a very short run can lose its whole transcript, because the
-harness exits before the room-bridge's next poll.
+that room. Known issue ([F11]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
+transcript, because the harness exits before the room-bridge's next poll. The fix is built, not yet
+deployed.
 
 ## Frequently asked questions
 
