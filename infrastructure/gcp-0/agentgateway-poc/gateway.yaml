@@ -43,6 +43,11 @@ spec:
     digest: sha256:bf2f339ef326d32def2aaeb44b1b4549801293c19b89e764a4228667d97d9896
   logging:
     format: json
+  # Default 10s/60s: a deleted replica cut an in-flight 195s Z.ai stream ~18s after
+  # SIGTERM (PoC P3/P5), well before 60s. Testing whether a longer minimum holds it.
+  shutdown:
+    min: 120
+    max: 660
   resources:
     requests:
       cpu: 100m
