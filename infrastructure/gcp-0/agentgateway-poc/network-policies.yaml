@@ -1,0 +1,336 @@
+# Default deny in every PoC namespace, then one allow set per workload.
+# Clients reach the Gateway's ClusterIP, translated at the socket, so the
+# port-scoped rules below hold; a port-scoped rule could never reach an L7-LB
+# VIP of our own (GCP hairpin), which is why the proxy Service is ClusterIP.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agw-poc
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agw-poc-clients
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agentgateway-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+# The PoC data plane, selected by Gateway name in the Gateway's own namespace.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-router-agw-data-plane
+  namespace: agw-poc
+spec:
+  endpointSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: agent-router-agw
+  ingress:
+    # The test clients, and the wrong-namespace caller that P1 expects a 403 for.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc-clients
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc
+            app.kubernetes.io/name: agw-rogue
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "15021"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # xDS from the controller (its own CNP admits only this Gateway's pods).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agentgateway-system
+            app.kubernetes.io/name: agentgateway
+      toPorts:
+        - ports:
+            - port: "9978"
+              protocol: TCP
+    # Only the provider: the JWKS is fetched by the controller, not here.
+    - toFQDNs:
+        - matchName: api.z.ai
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victoriametrics
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victorialogs
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: agw-echo
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: agw-ratelimit
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-echo
+  namespace: agw-poc
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agw-echo
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-ratelimit
+  namespace: agw-poc
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agw-ratelimit
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: agw-ratelimit-valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-ratelimit-valkey
+  namespace: agw-poc
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agw-ratelimit-valkey
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: agw-ratelimit
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-rogue
+  namespace: agw-poc
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agw-rogue
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-poc-clients
+  namespace: agw-poc-clients
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+---
+# Additive allows on two existing workloads, PoC proxies only: Cilium policies
+# only add, so the agent-router allows on these pods are untouched.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-poc-mcp-ingress
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - mcp-victoriametrics
+          - mcp-victorialogs
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agw-poc-traces-ingress
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-traces-collector
+      app.kubernetes.io/instance: agent-traces
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP

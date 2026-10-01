@@ -1,0 +1,56 @@
+# Spans to the agent trace collector's router receiver (OTLP/gRPC, as agent-router's
+# EnvoyProxy), with the request path and user agent removed: the residual
+# ADR-0051 records against Envoy Gateway. Metric and access-log labels carry the
+# verified sub, as agent-router's x_ar_agent / ar_agent do.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: telemetry
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+  frontend:
+    tracing:
+      backendRef:
+        name: agent-traces-collector
+        namespace: observability
+        port: 4317
+      protocol: GRPC
+      randomSampling: "true"
+      attributes:
+        remove:
+          - http.path
+          - user_agent.name
+        add:
+          - name: agent.principal
+            expression: jwt.sub
+    accessLog:
+      attributes:
+        add:
+          - name: x_ar_agent
+            expression: jwt.sub
+    metrics:
+      attributes:
+        add:
+          - name: ar_agent
+            expression: jwt.sub
+---
+# The collector's namespace grants the cross-namespace backendRef (enforced by
+# agentgateway since 1.5.0, unlike EG 1.9.2: referencegrant-agent-traces.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: agw-poc-traces
+  namespace: observability
+spec:
+  from:
+    - group: agentgateway.dev
+      kind: AgentgatewayPolicy
+      namespace: agw-poc
+  to:
+    - group: ""
+      kind: Service
+      name: agent-traces-collector

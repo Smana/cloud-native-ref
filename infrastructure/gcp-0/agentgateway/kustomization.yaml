@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# agentgateway PoC, gcp-0 only (ADR-0042 Option 1 challenger). Beside agent-router,
+# never instead of it: own controller, own GatewayClass, own namespaces.
+resources:
+  - namespaces.yaml
+  - ocirepositories.yaml
+  - helmrelease-crds.yaml
+  - helmrelease.yaml
+  - network-policy-controller.yaml

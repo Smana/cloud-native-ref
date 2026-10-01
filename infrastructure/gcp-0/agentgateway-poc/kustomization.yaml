@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The PoC Gateway `agent-router-agw` and what it routes to. Writes into
+# agent-system and observability only additive objects: a backend, two
+# ReferenceGrants and two ingress CNPs (llm.yaml, policy-telemetry.yaml,
+# network-policies.yaml).
+resources:
+  - gateway.yaml
+  - policies-identity.yaml
+  - policy-telemetry.yaml
+  - llm.yaml
+  - mcp.yaml
+  - echo.yaml
+  - ratelimit.yaml
+  - network-policies.yaml
+  - clients.yaml
+
+configMapGenerator:
+  - name: agw-echo
+    namespace: agw-poc
+    files:
+      - echo-server.py

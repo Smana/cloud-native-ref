@@ -16,3 +16,4 @@ resources:
   - infrastructure-room-broker.yaml
   - tooling-agent-factory.yaml
   - observability-agent-platform.yaml
+  - infrastructure-agentgateway-poc.yaml

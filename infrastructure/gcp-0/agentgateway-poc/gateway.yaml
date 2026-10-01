@@ -1,0 +1,87 @@
+# The PoC twin of agent-router (infrastructure/base/agent-router/gateway.yaml):
+# same listeners minus `sts`, class agentgateway. Proxies run HERE, in the
+# Gateway's namespace, not in a controller namespace (gap G4).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agent-router-agw
+  namespace: agw-poc
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+    - name: public
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: internal
+      protocol: HTTP
+      port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Same
+  infrastructure:
+    parametersRef:
+      group: agentgateway.dev
+      kind: AgentgatewayParameters
+      name: agent-router-agw
+---
+# Gap G3: the generated proxy has no seccomp profile, no liveness probe, no
+# limits and a LoadBalancer Service. `deployment`, `service` and
+# `podDisruptionBudget` are strategic-merge overlays on what the controller renders.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: agent-router-agw
+  namespace: agw-poc
+spec:
+  image:
+    registry: cr.agentgateway.dev
+    repository: agentgateway
+    tag: v1.5.0
+    digest: sha256:bf2f339ef326d32def2aaeb44b1b4549801293c19b89e764a4228667d97d9896
+  logging:
+    format: json
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  deployment:
+    spec:
+      # Two replicas: P5 deletes one mid-session.
+      replicas: 2
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  gateway.networking.k8s.io/gateway-name: agent-router-agw
+          containers:
+            - name: agentgateway
+              securityContext:
+                seccompProfile:
+                  type: RuntimeDefault
+              livenessProbe:
+                httpGet:
+                  path: /healthz/ready
+                  port: 15021
+                periodSeconds: 10
+                failureThreshold: 6
+  service:
+    spec:
+      # A LoadBalancer here would hand the agents' boundary a GCP L4 address.
+      type: ClusterIP
+  podDisruptionBudget:
+    spec:
+      minAvailable: 1
