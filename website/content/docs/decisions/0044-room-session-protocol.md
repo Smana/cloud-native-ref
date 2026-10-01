@@ -62,6 +62,12 @@ infrastructure beyond the platform's own claims.
 
 **Cons**: ACP is 1:1 editor-to-agent. Nothing here speaks A2A, and A2A has no humans.
 
+**Note (2026-10-01)**: agentgateway is no longer the only A2A path. Agent Router ships an A2A
+capability in **Preview**, on Envoy's native A2A filter, and an `A2ARoute` CRD is proposed upstream
+([agent-router#2070](https://github.com/theagentrouter/agent-router/issues/2070)). If an agent
+outside the cluster must join a room, try it on the gateway the platform already runs first
+([ecosystem re-check](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agent-ecosystem-recheck-research.md)).
+
 ### Option 5: Valkey Streams, NATS JetStream, or one in-memory broker as the log
 
 **Cons**: KVStore is cache semantics by its XRD; JetStream is new infrastructure; one replica makes a
