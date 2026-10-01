@@ -1,8 +1,8 @@
 ---
-title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
+title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. Two rulesets let that App write only refs/heads/agent/** and no tags, so it cannot merge or tag. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-26
 ---
 
@@ -79,9 +79,9 @@ and returns an installation token with that policy's permissions.
 
 ## Decision Outcome
 
-**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`. The bypass list is
-every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
+**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus two rulesets
+with one bypass list: `agent-branches` confines every non-bypass actor to `refs/heads/agent/**`, and
+`agent-tags` refuses every tag write. The bypass list is every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
 GitHub App is bypassed only when named, never through a role, so the agents' App is the one confined
 actor, and collaborators and App Wizard pushes made with a user's token are not.
 
