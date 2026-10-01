@@ -1,0 +1,26 @@
+# Here rather than flux/sources: flux-sources applies to aws-0 too, where
+# agentgateway-system does not exist. This child sets no commonMetadata, so the
+# sources stay on Flux's default shard, beside the HelmCharts they feed.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agentgateway-crds
+  namespace: agentgateway-system
+spec:
+  interval: 24h
+  url: oci://cr.agentgateway.dev/charts/agentgateway-crds
+  ref:
+    tag: "v1.5.0"
+    digest: sha256:3a6cf44559c612ac8afb7f867aace69bbd4cdba765f1def6377b7a3186c603e3
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agentgateway
+  namespace: agentgateway-system
+spec:
+  interval: 24h
+  url: oci://cr.agentgateway.dev/charts/agentgateway
+  ref:
+    tag: "v1.5.0"
+    digest: sha256:9216ce83965ad2ce0888014d14aac5e71333fd9d4057cd167da92b37630fbee1

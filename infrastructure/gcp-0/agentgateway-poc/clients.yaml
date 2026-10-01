@@ -1,0 +1,23 @@
+# Identities for the throwaway test pods. The pods are created by hand during
+# the PoC run, with projected tokens for the agw-poc.* audiences.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: implementer
+  namespace: agw-poc-clients
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reviewer
+  namespace: agw-poc-clients
+automountServiceAccountToken: false
+---
+# Right audience, wrong namespace: the `sub` prefix check must refuse it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rogue
+  namespace: agw-poc
+automountServiceAccountToken: false

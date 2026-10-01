@@ -1,0 +1,65 @@
+# agentgateway PoC (ADR-0042 Option 1 challenger), gcp-0 integration branch only.
+# Beside agent-router, never instead of it: nothing in `agents` routes through it.
+# Remove both children to tear it down; prune deletes everything they created.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agentgateway
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 10m0s
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/gcp-0/agentgateway
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agentgateway-crds
+      namespace: agentgateway-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agentgateway
+      namespace: agentgateway-system
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agentgateway-poc
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 10m0s
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/gcp-0/agentgateway-poc
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  # agent-router's child creates the Z.ai key the PoC backend references;
+  # agent-mcp runs the MCP servers it federates.
+  dependsOn:
+    - name: agentgateway
+    - name: agent-router
+    - name: agent-mcp
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: agent-router-agw
+      namespace: agw-poc
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      current: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'True')
+      failed: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'False')

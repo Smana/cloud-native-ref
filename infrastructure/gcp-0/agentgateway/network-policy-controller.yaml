@@ -1,0 +1,53 @@
+# The controller serves xDS to the proxies and fetches the JWKS itself: proxies
+# receive the keyset over xDS and never call the issuer (jwks/fetcher.go, v1.5.0).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agentgateway-controller
+  namespace: agentgateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentgateway
+      app.kubernetes.io/instance: agentgateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agw-poc
+            gateway.networking.k8s.io/gateway-name: agent-router-agw
+      toPorts:
+        - ports:
+            - port: "9978"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "9093"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: ${oidc_jwks_host}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

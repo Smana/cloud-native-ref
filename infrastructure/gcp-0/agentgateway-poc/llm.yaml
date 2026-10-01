@@ -1,0 +1,89 @@
+# The agents' Z.ai backend, on agentgateway. It sits in agent-system because its
+# secretRef is namespace-local and the key (agents-zai-api-key, from the
+# agent-router child) must not be copied: the PoC route reaches it through the
+# ReferenceGrant below. Same model mapping as agent-router's agent-models.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: zai-agw-poc
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      openai:
+        model: glm-5.3
+      host: api.z.ai
+      port: 443
+      pathPrefix: /api/paas/v4
+  policies:
+    auth:
+      secretRef:
+        name: agents-zai-api-key
+        key: apiKey
+    tls:
+      sni: api.z.ai
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: agw-poc-zai
+  namespace: agent-system
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: agw-poc
+  to:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: zai-agw-poc
+---
+# No /v1/models guard: jwtAuthentication runs before the AI backend (A7, P8).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models
+  namespace: agw-poc
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: public
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: zai-agw-poc
+          namespace: agent-system
+---
+# Gap G1: token budgets in shadow mode. The shadow flag is not in this CRD; it
+# lives in the rate-limit server's own config (ratelimit.yaml). Descriptor = the
+# verified sub (B1), cost = total tokens once the response completes.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agent-models-budget
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agent-models
+  traffic:
+    rateLimit:
+      global:
+        backendRef:
+          name: agw-ratelimit
+          port: 8081
+        domain: agw-poc
+        failureMode: FailOpen
+        descriptors:
+          - entries:
+              - name: agent
+                expression: jwt.sub
+            unit: Tokens

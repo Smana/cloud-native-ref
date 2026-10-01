@@ -1,0 +1,30 @@
+# Here rather than namespaces/base: the PoC is gcp-0 only, and namespaces/base
+# applies to both clusters.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentgateway-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# The PoC Gateway, its proxies (they run in the Gateway's namespace) and probes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agw-poc
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# Test clients: the only namespace whose ServiceAccount `sub` the PoC listeners accept.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agw-poc-clients
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

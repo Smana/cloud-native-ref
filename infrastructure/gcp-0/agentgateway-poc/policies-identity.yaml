@@ -1,0 +1,97 @@
+# ADR-0042 on agentgateway: one policy per listener validates the projected
+# ServiceAccount token offline, requires the caller's `sub` prefix (which Envoy
+# Gateway cannot express), and REPLACES x-ar-agent with the verified sub. The
+# validated JWT is removed before any backend sees it (preserveToken defaults off).
+#
+# PoC audiences `agw-poc.*`: `agent-router.*` is reserved for namespace agents by
+# Kyverno (security/base/agent-policies), and no agent may use this Gateway.
+#
+# Defense in depth for A3: callers' identity headers are dropped before routing,
+# so no route or backend ever sees a forged one even where `set` does not run.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: strip-identity-headers
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+  traffic:
+    phase: PreRouting
+    transformation:
+      request:
+        remove:
+          - x-ar-agent
+          - x-ar-human
+          - x-ar-client
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-public
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: public
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agw-poc.implementer.public
+            - agw-poc.reviewer.public
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agw-poc-clients:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
+    # agent-router's agent-models rule: a long completion must not 504.
+    timeouts:
+      request: 600s
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-internal
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: internal
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agw-poc.implementer.internal
+            - agw-poc.reviewer.internal
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agw-poc-clients:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
