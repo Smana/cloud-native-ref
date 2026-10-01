@@ -83,6 +83,6 @@ single-file fixes never need one.
 | [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
-| [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on AL2023 spot nodes, with OpenHands as the harness profile | Accepted | 2026-09-26 |
+| [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on a dedicated spot pool per cloud, with OpenHands as the harness profile | Accepted | 2026-09-26 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).
