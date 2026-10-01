@@ -57,15 +57,10 @@ front of the fleet.
 The cost is explicit rather than hidden: four models at `min=1` hold four
 GPUs continuously, whether or not anyone sends a request.
 
-{{< callout type="warning" >}}
-A fourth, opt-in trigger on the Gateway API Inference Extension's
-InferencePool saturation gauge is specified
-(`docs/specs/done/2026-Q3/011-inferencepool-saturation-keda/spec.md`) but
-**could not be verified**: the pinned KCL module renders only the three
-triggers above, and that spec's own task and review checklists are almost
-entirely unchecked. Treat it as not shipped despite living under the `done`
-archive, and re-verify before citing it as delivered.
-{{< /callout >}}
+A fourth, opt-in trigger on the InferencePool saturation gauge is specified but **not
+shipped**; see the
+[serving roadmap]({{< relref "/docs/platform/ai-platform/status.md#serving-roadmap" >}}) before
+citing it as delivered.
 
 ## The GPU foundation
 

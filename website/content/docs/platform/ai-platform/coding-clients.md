@@ -10,7 +10,7 @@ The cluster exposes an OpenAI-compatible endpoint at
 [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}})).
 Any client that speaks the OpenAI chat-completions API, or the OpenAI
 completions API for FIM, can talk to it — once both
-[opt-in gates]({{< relref "/docs/platform/ai-platform/_index.md#turning-it-on" >}})
+[opt-in gates]({{< relref "/docs/platform/ai-platform/serving/_index.md#turning-it-on" >}})
 are released.
 
 ## Authentication
@@ -121,7 +121,7 @@ extension sends CodeLlama-format prompts and the model can't parse them.
 Claude Code speaks the Anthropic API, not the OpenAI API. Pointing it at this
 gateway needs a translator sidecar exposing Anthropic-style endpoints and
 proxying to the OpenAI gateway — filed as an open item on the
-[roadmap]({{< relref "/docs/platform/ai-platform/status.md" >}}), not
+[roadmap]({{< relref "/docs/platform/ai-platform/status.md#serving-roadmap" >}}), not
 implemented today. OpenCode covers the same agentic-CLI workflow and works
 out of the box.
 

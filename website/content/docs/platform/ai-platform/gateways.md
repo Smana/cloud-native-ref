@@ -1,17 +1,36 @@
 ---
-title: Gateway & routing
+title: Gateways
 weight: 30
-description: "How one OpenAI-compatible request crosses two gateways and up to two filters before it reaches a GPU — and what `model: MoM` does."
-lastVerified: 2026-08-27
+description: "Two gateways, one per kind of caller: ai-gateway for humans and coding clients, the agent gateway for agent runs — identity, routing, and what they share."
+lastVerified: 2026-10-01
 aliases:
   - /docs/platform/ai-platform/gateway-and-routing/
 ---
+
+Every model call on this platform crosses one of two gateways, chosen by who is calling. Both speak
+the OpenAI API; they differ in how they know the caller and in what they let it do. What runs
+today, and the planned move to agentgateway, is on the
+[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-gateway" >}}).
+
+| | `ai-gateway` | Agent gateway |
+|---|---|---|
+| **Callers** | Humans and coding clients: OpenCode, Continue, OpenWebUI, the nightly Promptfoo eval | Agent runs, through each run's identity-proxy sidecar |
+| **Identity** | An API key per client, from AWS Secrets Manager | A projected token per run (JWT), verified on every call |
+| **Model choice** | Named by the client, or picked from the prompt by the Semantic Router (`model: MoM`) | An alias, mapped statically to one backend; nothing selects per request |
+| **Also carries** | — | MCP tool calls, the room tools, and the token exchange (`sts`) with octo-sts |
+| **Software** | Envoy Gateway + Envoy AI Gateway (Agent Router) `1.1.0` | Agent Router `1.1.0` on Envoy Gateway; [agentgateway](https://agentgateway.dev) selected to replace it |
+
+![The two gateways side by side. Top: humans and coding clients reach ai-gateway over the tailnet with an API key; the Semantic Router may pick the model, and the request lands on a vLLM model in the serving fleet. Bottom: an agent run's identity-proxy sidecar attaches the run's own token; the agent gateway verifies it, meters the run's tokens and routes the model alias to a frontier provider (Z.ai GLM, Claude), the MCP tools, or octo-sts for a GitHub token. Both gateways write access logs and gen_ai metrics to the Victoria stack](/images/diagrams/ai-platform-2.svg)
+
+*Source: [`docs/architecture/ai-platform.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/ai-platform.drawio), page 2.*
+
+## `ai-gateway`: humans and coding clients
 
 The platform speaks the OpenAI API. A client points at one endpoint, names a
 model — or asks the platform to choose one — and never learns which pod
 answered.
 
-## Sending a request
+### Sending a request
 
 ```bash
 # What's available
@@ -43,9 +62,10 @@ model suits the prompt, wasted when it can. See
 [Coding Clients]({{< relref "/docs/platform/ai-platform/coding-clients.md" >}})
 for which client pins which model, and why.
 
-## The request path
+### The request path
 
-![One OpenAI-compatible request from a laptop to a GPU: the client reaches the Cilium Gateway over Tailscale, the Envoy AI Gateway authenticates it with an API key from AWS Secrets Manager, strips the Authorization header, and routes it through the semantic-router and rate-limit filters onto the vLLM Service backing the requested model](/images/diagrams/llm-platform-1.svg)
+The [hop-by-hop request path](/images/diagrams/llm-platform-1.svg) shows each stage below in
+one picture.
 
 **Ingress.** External clients arrive over Tailscale at the Cilium Gateway
 `platform-tailscale-general` and are forwarded to the Envoy AI Gateway data
@@ -71,15 +91,10 @@ only when the client sent `model: MoM` (or the literal `auto`); an explicit
 matches that header and forwards through an `AIServiceBackend` → `Backend` →
 the model's Service on port 8000.
 
-{{< callout type="warning" >}}
-**Gateway routing is half-migrated** — only `xplane-qwen-coder` is
-composition-owned (`spec.gateway.enabled: true`); the other three claims
-route through the hand-written `apps/base/ai/llm/ai-gateway-routes/route.yaml`,
-so adding a model means adding its route by hand unless the claim opts in
-(see [Known gaps]({{< relref "/docs/platform/ai-platform/_index.md#known-gaps" >}})).
-{{< /callout >}}
+Not every claim routes this way yet: three of the four still use a hand-written route, listed
+under [known gaps]({{< relref "/docs/platform/ai-platform/status.md#known-gaps" >}}).
 
-## Semantic routing — `model: MoM`
+### Semantic routing — `model: MoM`
 
 Sending `model: MoM` lets the Semantic Router pick from the prompt. Its
 decision list, highest priority first
@@ -98,11 +113,11 @@ decision list, highest priority first
 appear in **no** rule above. They hold serving capacity and are reachable only
 by naming them directly. The router's own in-pod `prompt_guard` classifier
 blocks jailbreak attempts, but that is a filter, not a routing decision —
-there is no automatic guardrail dispatch, so the always-warm LlamaGuard
-replica holds a GPU and serves no automatic traffic.
+there is no automatic guardrail dispatch (see
+[known gaps]({{< relref "/docs/platform/ai-platform/status.md#known-gaps" >}})).
 {{< /callout >}}
 
-## LoRA canaries
+### LoRA canaries
 
 `xplane-qwen-coder` carries two LoRA adapters, each addressable as a model name
 of its own, and sends 10% of its traffic to one of them:
@@ -120,14 +135,39 @@ not derived from the base model's name, so a typo produces a route to nothing
 rather than a validation error.
 
 Canaries are mutually exclusive with the Gateway API Inference Extension's
-endpoint picker: the EPP is implemented but enabled on zero claims, because the
-only gateway-enabled claim uses a canary. See the
-[roadmap]({{< relref "/docs/platform/ai-platform/status.md" >}}) for what
-turning it on would take.
+endpoint picker. See the
+[roadmap]({{< relref "/docs/platform/ai-platform/status.md#serving-roadmap" >}}) for where the
+endpoint picker stands and what turning it on would take.
 
-## Known gaps
+## The agent gateway: agent runs
 
-The platform-wide list lives at
-[AI Platform → Known gaps]({{< relref "/docs/platform/ai-platform/_index.md#known-gaps" >}});
-the two that touch this page are the split route ownership above and the
-unshipped OTLP tracing from the AI Gateway extproc.
+Every call an agent makes, to a model, a tool or the token exchange, goes through this gateway
+under the run's own identity. The harness never sees that token: the run's identity-proxy sidecar
+attaches it (see [Agent runtime]({{< relref "/docs/platform/ai-platform/agents/runtime.md" >}})).
+
+| Component | Software | What it does | Why this software |
+|---|---|---|---|
+| Gateway | [Agent Router](https://theagentrouter.ai) 1.1.0 (Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) | Verifies each run's token (JWT), attributes and meters every request to its run, routes the model alias to a provider. Per-run and fleet token budgets, and routing by tier | One gateway for models, tools and token exchange, with per-run identity in every access-log line |
+| Models | Z.ai GLM-5.3 for `public` runs; Anthropic Claude for `internal` runs, through Amazon Bedrock on `aws-0` and Vertex AI on `gcp-0` | The providers the router sends model calls to. Agents ask for an alias, never for a provider | Swapping or adding a provider changes the router, not the agents |
+| Tool servers | [MCP](https://modelcontextprotocol.io) servers for Flux Operator, VictoriaMetrics and VictoriaLogs, read-only, and the room-broker's `room_*` tools | `public` runs get documentation tools only; cluster, metric and log reads are for `internal` runs. The room tools are routed per role | Agents investigate with the data humans use, under the same identity checks |
+
+The token-exchange listener names each repository's audiences, at most eight per listener; adding
+a repository is described on the [agents overview]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}}).
+
+*Decided 2026-10-01:* [agentgateway](https://agentgateway.dev) was selected after its proof of
+concept on `gcp-0` to replace Agent Router as the agents' gateway (models, MCP and the `sts`
+listener). An ADR superseding programme ADR-0042 and ADR-0050's Option 1 (on the programme
+branches, not yet on main) for the agent router follows. The `ai-gateway` stays on Envoy Gateway
+and Agent Router.
+
+## What the two share, and what they keep apart
+
+From the [model routing and budgets design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md)
+(SP4):
+
+| Concern | Decision | Why |
+|---|---|---|
+| Semantic Router | On `ai-gateway` only; agents use their own Gateway | The router can be neither a single point of failure nor a prompt reader for agents |
+| Agent model choice | Every agent alias maps to one backend: no weights, canaries or fallback | Nothing re-routes a trajectory mid-run; escalation is a new run at the next tier |
+| Backends | One set per gateway, each with its own provider key | Revoking the agents' key never breaks chat or RunLore, and provider spend splits by key |
+| Budgets | Token budgets at both gateways, in token units, through one global rate limit backed by Valkey | One mechanism for every principal; the factory still revokes a run at its exact cap |

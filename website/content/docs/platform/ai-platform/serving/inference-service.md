@@ -189,5 +189,5 @@ Two things to check before merging: the fleet fits within the four-GPU cap
 with the new model at `minReplicas`, and — if the model should be reachable
 through `model: MoM` rather than only by name — that a Semantic Router
 decision rule targets it. See
-[Gateway & routing]({{< relref "/docs/platform/ai-platform/gateways.md" >}});
+[Gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}});
 two of the four models today are reachable only by naming them explicitly.
