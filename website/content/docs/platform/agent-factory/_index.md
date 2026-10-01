@@ -126,7 +126,7 @@ and Agent Router.
 | Logs | [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) | Every run's step log and every gateway call, attributed to the run |
 | Metrics | [VictoriaMetrics](https://victoriametrics.com) | Tokens, cost, latency and errors per run, and each `AgentRun`'s state through kube-state-metrics |
 | Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs. Known issue ([F16]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): MCP tool calls are not yet joined to the run's trace |
-| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): on the deployed build a successful run's page lacks its outcome and PR; the fix is on `integration`, live re-check pending |
+| Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview. Known issue ([F18]({{< relref "/docs/platform/agent-factory/status.md#live-findings-on-gcp-0" >}})): a successful run's page showed no outcome or PR; fixed on `integration` (deployed on gcp-0), live re-check pending |
 
 ## One repository at first
 
