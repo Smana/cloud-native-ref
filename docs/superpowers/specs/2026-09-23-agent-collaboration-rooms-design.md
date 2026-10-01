@@ -111,7 +111,9 @@ stateDiagram-v2
   Closed --> [*]: retention elapsed, log purged
 ```
 
-**One Running run per room** (SP3's sequential roles, D7). Deleting a Room runs a finalizer that deletes its runs
+**One Running run per room** (SP3's sequential roles, D7). A run starts only once its bridge holds the room's lease,
+and the lease passes to another run only when the holder's run is no longer live (plan rulings P17, SBB). A run the
+room refuses never starts, and ends `room_busy`. Deleting a Room runs a finalizer that deletes its runs
 and seals the log. The log keeps its own retention clock.
 
 **Roles.** Room roles are cumulative (watcher < collaborator < owner). **Approver** is an independent flag.
