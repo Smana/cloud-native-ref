@@ -90,10 +90,11 @@ list input price.
 
 ### Positive
 
-- Separate keys per Gateway (the platform key under `platform/llm/zai`, the agents' key under
-  `platform/agents/zai`) split both spend and blast radius. Until SP4 PR 6 (not built) moves it
-  to `platform/llm/zai`, the platform key is read from `platform/runlore/credentials`, where it
-  already lives, so no bootstrap has to copy it.
+- Separate keys per Gateway split both spend and blast radius: the platform key under
+  `platform/llm/zai`, and the agents' own key, read only through their `agents-secrets` store
+  (since 2026-09-29 at `zai` on the dedicated `agents` kv-v2 mount, as for ADR-0043's App key).
+  Until SP4 PR 6 (not built) moves the platform key to `platform/llm/zai`, it is read from
+  `platform/runlore/credentials`, where it already lives, so no bootstrap has to copy it.
 - Bedrock credentials rotate themselves and cannot be exfiltrated as a string.
 
 ### Negative
