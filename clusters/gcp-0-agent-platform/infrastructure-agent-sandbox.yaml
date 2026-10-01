@@ -1,0 +1,31 @@
+---
+# agent-sandbox controller and its Sandbox CRD (SP1 S1, S2).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-sandbox
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 5m0s
+  path: ./infrastructure/base/agent-sandbox
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  # ServiceMonitor comes from the prometheus-operator CRDs in `crds`.
+  #
+  # Departs from aws-0 on purpose: also wait for security-sandbox-policies.
+  # Its Kyverno mutate is CREATE-only with background: false, so a run pod
+  # admitted before the toleration policy exists never gets it and stays
+  # Pending forever (the agents-gvisor pool keeps Cilium's startup taint).
+  # Karpenter has no such ordering hazard, so aws-0's agent-sandbox has no
+  # equivalent dependsOn.
+  dependsOn:
+    - name: crds
+    - name: security-sandbox-policies
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agent-sandbox
+      namespace: agent-system

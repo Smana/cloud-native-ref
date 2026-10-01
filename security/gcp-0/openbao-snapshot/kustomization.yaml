@@ -18,3 +18,8 @@ patches:
       group: batch
       kind: CronJob
       name: openbao-snapshot
+  - path: network-policy-patch.yaml
+    target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: openbao-snapshot

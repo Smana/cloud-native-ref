@@ -12,7 +12,7 @@ spec:
   # soon rather than holding dependents back a whole interval (mirrors agent-secrets).
   retryInterval: 30s
   timeout: 5m0s
-  path: ./infrastructure/base/agent-mcp
+  path: ./infrastructure/aws-0/agent-mcp
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact

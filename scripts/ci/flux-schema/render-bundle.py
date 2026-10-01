@@ -130,6 +130,8 @@ FIXTURE_VARS = {
     # validate while invalid.
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
+    "oidc_jwks_uri": "https://oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF/keys",
+    "oidc_jwks_host": "oidc.eks.eu-west-3.amazonaws.com",
     "cluster_endpoint_full": "https://example.eks.amazonaws.com",
     "karpenter_queue_name": "karpenter-foobar",
     # GCP. Without these, VAR_RE.sub passes the name through verbatim and CI
@@ -267,6 +269,12 @@ CLUSTER_FIXTURE_VARS = {
         # is the AWS region hint the Route53 solver needs, and gcp-0 really does
         # substitute an AWS region there. See opentofu/gcp/gke/configure's
         # var.route53_region, and the comment on route53_region above.
+        #
+        # GKE's issuer and JWKS (GCP parity GP-12): a gcp-0 overlay that still
+        # rendered EKS values would look right here and fail on the cluster.
+        "oidc_issuer_url": "https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0",
+        "oidc_jwks_uri": "https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0/jwks",
+        "oidc_jwks_host": "container.googleapis.com",
     },
 }
 

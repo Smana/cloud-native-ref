@@ -63,7 +63,7 @@ spec:
         - agent-router.triager.public
       jwks:
         remoteJWKS:
-          uri: ${oidc_issuer_url}/keys
+          uri: ${oidc_jwks_uri}
       claimToHeaders:
         - {claim: sub, header: x-ar-agent}
       protectedResourceMetadata:
@@ -258,7 +258,7 @@ spec:
         - agent-router.triager.internal
       jwks:
         remoteJWKS:
-          uri: ${oidc_issuer_url}/keys
+          uri: ${oidc_jwks_uri}
       claimToHeaders:
         - {claim: sub, header: x-ar-agent}
       protectedResourceMetadata:
