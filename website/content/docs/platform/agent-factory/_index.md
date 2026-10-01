@@ -60,35 +60,9 @@ One task, end to end. A maintainer labels an issue; the factory starts a sandbox
 opens a room; every call the agent makes goes through the gateway under the run's own identity;
 the agent pushes an `agent/**` branch and opens a PR; a human review decides the merge.
 
-```mermaid
-flowchart LR
-    human([Maintainer])
-    gh[GitHub<br/>issue · PR]
-    factory[Factory<br/>issue → task]
-    room[Room<br/>shared log · steering]
-    subgraph sandbox[Agent run · gVisor sandbox]
-        agent[Coding agent]
-    end
-    gw[Agent gateway<br/>per-run identity · budgets]
-    llm[Models]
-    mcp[MCP tools]
-    sts[GitHub token<br/>agent/** only]
-    obs[(Traces · logs<br/>metrics)]
+![The Agent Factory at a glance: one task, end to end. A maintainer labels a GitHub issue. The Agent Factory turns the issue into a task, starts an agent run and opens a room. The run is a gVisor sandbox holding the coding agent, OpenHands. The maintainer watches and steers through the room, which exchanges events and steering with the run. Every call the agent makes goes through the agent gateway, agentgateway, with per-run identity and budgets, to the models (Z.ai GLM and Claude), the MCP tools, and octo-sts for a GitHub token limited to agent/** branches. The agent pushes a branch and opens a PR on GitHub, where the maintainer's review decides the merge. Traces, logs and metrics go to the Victoria stack and Grafana](/images/diagrams/agent-factory-overview.svg)
 
-    human -- labels an issue --> gh
-    gh --> factory
-    factory -- starts a run --> agent
-    factory -- opens --> room
-    human -- watches · steers --> room
-    agent <-- events · steering --> room
-    agent -- every call --> gw
-    gw --> llm
-    gw --> mcp
-    gw --> sts
-    agent -- pushes branch · opens PR --> gh
-    gh -- review decides the merge --> human
-    agent -.-> obs
-```
+*Source: [`docs/architecture/agent-factory-overview.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory-overview.drawio).*
 
 ### In detail
 
