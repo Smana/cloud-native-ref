@@ -34,8 +34,9 @@ On an **existing** cluster, first apply `opentofu/gcp/openbao/management` then
 `SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `gke/configure` needs
 `TF_VAR_flux_git_ref=refs/heads/<branch>`.
 
-The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
-(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the GitHub App installed
+The owner prerequisites come next, in this order (ADR-0043): the agents' rulesets
+(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref` applies every ruleset this
+repository ships), then the GitHub App installed
 and its key written to `github-app` on gcp-0's `agents` mount:
 
     bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>
