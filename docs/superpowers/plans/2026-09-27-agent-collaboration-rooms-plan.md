@@ -12127,7 +12127,7 @@ Expected: both pages show `reconnecting`, then `live` again within seconds. Thei
 
 With both broker replicas Ready, start two runs in a fresh room, one right after the other, as in
 Task 1.22 Step 7. Expected: the same single `limit`/`concurrent_run` row, whichever replica each
-bridge's `hello` reached. `kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker --prefix | grep room_busy`
+bridge's `hello` reached. `kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker --prefix | grep 'room busy'`
 names the replica that refused it. Delete both runs.
 
 - [ ] **Step 5: SC-9, the run side**
