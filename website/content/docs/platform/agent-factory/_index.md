@@ -12,7 +12,7 @@ identity and model route, rooms (log, live view, room tools, steering), the fact
 (intake, triage, one implementer per task, the run meter, the stop) and the per-run observability.
 `aws-0` proved the runtime first; it is destroyed but still supported. Not live yet: the reviewer
 pair and revise flow (built, not deployed), then approvals, `roomctl`, Kueue, the merge gate,
-gateway budgets and the keyless Anthropic models (planned). Only these pages, the design documents
+gateway budgets, the keyless Anthropic models and the move to agentgateway (planned). Only these pages, the design documents
 and the repository's trust policies are on `main`: the code merges once everything is built and its
 user experience is signed off after a live walkthrough. The
 [programme status]({{< relref "/docs/platform/agent-factory/status.md" >}}) has the detail.
@@ -52,9 +52,9 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 ## Architecture
 
 The diagram shows the **target** architecture: the whole programme once built. Its legend marks
-each box as live on `gcp-0`, built but not yet deployed, planned, or under evaluation.
+each box as live on `gcp-0`, built but not yet deployed, or planned.
 
-![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels, a PR review asking for changes), RunLore findings (planned), the task agent:run CLI, a developer in a browser, and roomctl (planned). The factory turns a labelled issue into a task: intake, triage and narration, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all live. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are live; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (live) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0), which routes to Z.ai GLM-5.3 (live), Claude on Bedrock for aws-0 and on Vertex AI for gcp-0 (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned, and an agentgateway PoC is under evaluation beside it. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
+![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels, a PR review asking for changes), RunLore findings (planned), the task agent:run CLI, a developer in a browser, and roomctl (planned). The factory turns a labelled issue into a task: intake, triage and narration, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all live. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are live; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (live) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0, live and being replaced by agentgateway, planned), which routes to Z.ai GLM-5.3 (live), Claude on Bedrock for aws-0 and on Vertex AI for gcp-0 (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
 
 *Source: [`docs/architecture/agent-factory.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory.drawio).*
 
@@ -80,7 +80,7 @@ end on both clouds: an agent took issue #2112 to PR #2114 on `aws-0`, which was 
 | GitHub access | [octo-sts](https://github.com/octo-sts/app) and a GitHub App, plus a repository ruleset | Exchanges the run's identity for a GitHub token scoped to one repository and its role's permissions, valid ≤ 1 h and revoked when the run ends. The rulesets let the App push only `agent/**` branches, and no tags | No long-lived GitHub token anywhere; the rules live in each repository's trust policies |
 | Secrets | [OpenBao](https://openbao.org) and [External Secrets](https://external-secrets.io) | Holds the few platform secrets (App keys, provider keys); none reaches a sandbox | The platform's secret store, nothing agent-specific |
 
-### Agent router: identity and routing built; budgets and tiers planned
+### Agent router: identity and routing built; budgets, tiers and agentgateway planned
 
 | Component | Software | What it does | Why this software |
 |---|---|---|---|
@@ -88,8 +88,10 @@ end on both clouds: an agent took issue #2112 to PR #2114 on `aws-0`, which was 
 | Models | Z.ai GLM-5.3 for `public` runs today; *(planned)* Anthropic Claude for `internal` runs, through Amazon Bedrock on `aws-0` and Vertex AI on `gcp-0` | The providers the router sends model calls to. Agents ask for an alias, never for a provider | Swapping or adding a provider changes the router, not the agents |
 | Tool servers | [MCP](https://modelcontextprotocol.io) servers for Flux Operator, VictoriaMetrics and VictoriaLogs, read-only, and the room-broker's `room_*` tools | `public` runs get documentation tools only; cluster, metric and log reads are for `internal` runs (planned: they await a model route). The room tools are routed per role | Agents investigate with the data humans use, under the same identity checks |
 
-*Under evaluation:* an [agentgateway](https://agentgateway.dev) proof of concept runs beside Agent
-Router on `gcp-0`; its result decides whether it replaces Agent Router.
+*Decided 2026-10-01:* [agentgateway](https://agentgateway.dev) was selected after its proof of
+concept on `gcp-0` to replace Agent Router as the agents' gateway (models, MCP and the `sts`
+listener). An ADR superseding ADR-0042, and ADR-0050's Option 1 for the agent router, follows. The
+`ai-gateway` stays on Envoy Gateway and Agent Router.
 
 ### Rooms: built (log, live view, room tools, steering); approvals and `roomctl` planned
 

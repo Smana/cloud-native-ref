@@ -134,13 +134,17 @@ One more gap closed live on 2026-10-01: the agents' GitHub App could create `ref
 since the ruleset covered branches only. The `agent-tags` ruleset ([#2151](https://github.com/Smana/cloud-native-ref/pull/2151))
 is now active.
 
+**agentgateway is selected (2026-10-01).** Its PoC passed on gcp-0, so it replaces the agent
+router's Envoy AI Gateway for models, MCP and the `sts` listener; `ai-gateway` stays on Envoy Gateway
+and Agent Router. An ADR superseding ADR-0042, and ADR-0050's Option 1 for the agent router, follows
+([gap matrix](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agentgateway-gap-matrix-research.md)).
+
 ## Waiting on the owner
 
 | Decision | Why it matters |
 |---|---|
 | UX sign-off (P33) after the end-to-end walkthrough | Unblocks the merge wave for every programme PR |
 | CI on stacked PRs | Workflows run only for PRs based on `main`, so the stacked PRs get no GitHub CI; local `validate-manifests.sh` stands in |
-| agentgateway: the [open questions](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agentgateway-gap-matrix-research.md#open-questions-for-the-owner) after the PoC | The PoC replacing the agent router is running on gcp-0; its result decides whether ADR-0042 is superseded |
 | Rooms UX: invite and close in the UI; re-fetching a recorded run's claim | Raised for SP2's UX checkpoint |
 | Factory UX: a time limit for escalated tasks | Escalated tasks poll GitHub every 5 minutes until closed |
 | Owner-only live steps | Steps that need the owner's tokens or a literal write probe (for example the room log's `UPDATE` refusal) |
