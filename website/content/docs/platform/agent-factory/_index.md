@@ -54,7 +54,45 @@ The agent in the loop is not a trusted component. Every control sits **outside t
 
 ## Architecture
 
-The diagram shows the **target** architecture: the whole programme once built. Its legend marks
+### At a glance
+
+One task, end to end. A maintainer labels an issue; the factory starts a sandboxed agent run and
+opens a room; every call the agent makes goes through the gateway under the run's own identity;
+the agent pushes an `agent/**` branch and opens a PR; a human review decides the merge.
+
+```mermaid
+flowchart LR
+    human([Maintainer])
+    gh[GitHub<br/>issue · PR]
+    factory[Factory<br/>issue → task]
+    room[Room<br/>shared log · steering]
+    subgraph sandbox[Agent run · gVisor sandbox]
+        agent[Coding agent]
+    end
+    gw[Agent gateway<br/>per-run identity · budgets]
+    llm[Models]
+    mcp[MCP tools]
+    sts[GitHub token<br/>agent/** only]
+    obs[(Traces · logs<br/>metrics)]
+
+    human -- labels an issue --> gh
+    gh --> factory
+    factory -- starts a run --> agent
+    factory -- opens --> room
+    human -- watches · steers --> room
+    agent <-- events · steering --> room
+    agent -- every call --> gw
+    gw --> llm
+    gw --> mcp
+    gw --> sts
+    agent -- pushes branch · opens PR --> gh
+    gh -- review decides the merge --> human
+    agent -.-> obs
+```
+
+### In detail
+
+The diagram below shows the **target** architecture: the whole programme once built. Its legend marks
 each box as deployed on `gcp-0` (noting where its live gate is pending), built but not yet
 deployed, or planned.
 
