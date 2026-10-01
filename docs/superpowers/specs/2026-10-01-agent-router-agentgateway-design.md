@@ -1,14 +1,15 @@
 # Design: the agent router on agentgateway
 
 **Date**: 2026-10-01 · **Status**: Proposed · **Owner decision**: 2026-10-01, after the PoC ·
-**ADR**: [ADR-0053](../../../website/content/docs/decisions/0053-agent-router-on-agentgateway.md) ·
+**ADRs**: [ADR-0053](../../../website/content/docs/decisions/0053-agent-router-on-agentgateway.md) (gateway), [ADR-0054](../../../website/content/docs/decisions/0054-agent-model-providers-anthropic-direct.md) (providers) ·
 **Plan**: [2026-10-01-agent-router-agentgateway-plan.md](../plans/2026-10-01-agent-router-agentgateway-plan.md)
 
 **The agent router moves to agentgateway v1.5.x: one Gateway, still named `agent-router`, of class
 `agentgateway`, in a new namespace `agent-gateway`, serving the same three listeners with the same
 audiences.** It runs beside the Envoy agent-router until verified. Cutover is one FQDN switch in the
 identity-proxy, made safe by a run CNP that admits both gateways for the duration. `ai-gateway`
-(humans, Semantic Router, GPU fleet) stays on Envoy Gateway and Agent Router.
+(humans, Semantic Router, GPU fleet) stays on Envoy Gateway and Agent Router. `public` keeps Z.ai;
+`internal` calls the Anthropic API directly, the same on both clouds (ADR-0054).
 
 Evidence this design argues from:
 [gap matrix and PoC result](2026-10-01-agentgateway-gap-matrix-research.md#poc-result-2026-10-01-gcp-0)
@@ -24,11 +25,12 @@ composition on `Smana/crossplane-configuration@chore/room-bridge-v0.4.0`.
 | The class boundary gains the `sub` prefix check Envoy Gateway could not express | P1: a correct-audience token from another namespace gets 403 |
 | B1–B2 budgets count in shadow on our own rate-limit server | PC6 |
 | Dashboards and alerts keep working across the switch | PC8 |
-| aws-0 renders and deploys the same shape; only Bedrock is cloud-specific | `validate-manifests.sh` renders both clouds; aws-0 live proof waits for its next rebuild |
+| `internal` runs reach Claude through the Anthropic API on both clouds, never Z.ai | PC12 on gcp-0 |
+| aws-0 renders and deploys the same shape; nothing on the default path is cloud-specific | `validate-manifests.sh` renders both clouds |
 | The Envoy agent-router, its MCPRoutes and its gates are deleted once verified | Phase H; `kubectl get gateway -A` shows no `envoy-ai-gateway` Gateway in `agent-system` |
 
 **Non-goals**: moving `ai-gateway` (G5 stays UNVERIFIED and out of scope); budget enforcement (SP4
-PR 7); Vertex on gcp-0 (ADR-0046's follow-up, unchanged); A2A; agentgateway's cost metric replacing
+PR 7); the optional OpenRouter, Bedrock and Vertex backends (documented, off by default); A2A; agentgateway's cost metric replacing
 our price rules.
 
 ## Target topology
@@ -66,7 +68,8 @@ flowchart LR
   GW -->|OTLP gRPC| COL
   VM -->|":15020 + relabel"| GW
   C -. xDS + keyset .-> GW
-  GW -.->|"aws-0 only, phase I"| BR["Bedrock EU<br/>EKS Pod Identity"]
+  GW -->|"internal only, phase I"| ANT["api.anthropic.com<br/>key from OpenBao"]
+  GW -.->|"optional, public only"| OR["openrouter.ai<br/>off by default"]
 ```
 
 **Rulings behind the shape** (each a default this design takes; the cost column is what changes if
@@ -102,12 +105,53 @@ it proves wrong):
 | `VMPodScrape envoy-ai-gateway-genai` (extproc `:1064`) | `infrastructure/base/envoy-ai-gateway/vmscrape.yaml` | `VMPodScrape agent-router` on `:15020` with `metricRelabelConfigs` | `agent-gateway` |
 | `ReferenceGrant agent-router-traces` (from `EnvoyProxy`) | `observability/base/agent-platform/` | same grant, from `AgentgatewayPolicy` in `agent-gateway` (enforced by agentgateway) | `observability` |
 | Controller | Envoy Gateway + Agent Router (shared with `ai-gateway`) | `agentgateway` + `agentgateway-crds` HelmReleases | `agentgateway-system` |
+| — (internal had no model) | — | `AgentgatewayBackend anthropic` + ExternalSecret `agents-anthropic-api-key` + internal routes (phase I) | `agent-system` |
+
+## Providers and keys (ADR-0054)
+
+**`public` → Z.ai, `internal` → the Anthropic API directly, the same on both clouds.** OpenRouter is an
+optional `public` backend, off by default. Bedrock and Vertex are optional per-cloud backends for
+teams whose data must stay in their cloud account; nothing depends on them.
+
+| Backend | Listener | agentgateway provider (v1.5.0 CRD field) | Key | Egress | Default |
+|---|---|---|---|---|---|
+| `zai` | `public` | `AgentgatewayBackend.spec.ai.provider.openai`, host `api.z.ai`, `pathPrefix: /api/paas/v4` | OpenBao `agents` mount, secret `zai`, field `api_key` → Secret `agents-zai-api-key` | `api.z.ai:443` | on |
+| `anthropic` | `internal` | `AgentgatewayBackend.spec.ai.provider.anthropic` (`model` override optional; host defaults to the provider's) | OpenBao `agents` mount, secret `anthropic`, field `api_key` → ExternalSecret/Secret `agents-anthropic-api-key` (key `apiKey`), injected as `x-api-key` | `api.anthropic.com:443` | on |
+| `openrouter` | `public` only | `spec.ai.provider.openai`, host `openrouter.ai`, `pathPrefix: /api/v1` | OpenBao `agents` mount, secret `openrouter`, field `api_key` → Secret `agents-openrouter-api-key` | `openrouter.ai:443` | **off** |
+| `bedrock`, `vertexai` | `internal` | `spec.ai.provider.{bedrock,vertexai}`, keyless (EKS Pod Identity / Workload Identity) | none | per cloud | **off**, per team |
+
+- **Keys never reach a run.** The `agents-secrets` store already reads `agents/data/*`, so no OpenBao
+  policy changes; the gateway reads each Secret by reference and injects it; runs hold only their
+  gateway token. The Anthropic key goes in `x-api-key` (`policies.auth.location.header`), because
+  agentgateway's default location is `Authorization: Bearer`.
+- **Internal model map** (same IDs on both clouds): `tier-light` → `claude-haiku-4-5`,
+  `tier-standard` → `claude-sonnet-5-5`, `tier-frontier` and `agent-default` → `claude-opus-5-5`.
+- **OpenRouter is never internal**: a second data processor, and we do not control which upstream
+  serves a request. Gate AG5 extends to it: the `openrouter` backend may attach to `public` only.
+- **Data terms**: standard Anthropic commercial API terms (API data not used for training); zero
+  data retention is an option, not a precondition (ADR-0054).
+
+**Budgets per provider.** B1 (per run, 5M tokens/day) and B2 (fleet, 40M/day) count every provider
+together. A provider's tokens cost very differently (Opus at $4/$20 per MTok, GLM at $1.40/$4.40),
+so each paid provider also gets a fleet bucket, in shadow until SP4 PR 7:
+
+| Rule | Bucket | Limit/day | Mechanism |
+|---|---|---|---|
+| B6 | Anthropic, all runs | 10 000 000 tokens | descriptor `provider` = `"anthropic"` on a policy scoped to the `internal` listener (Anthropic is its only default backend) |
+| B7 | OpenRouter, all runs (only when enabled) | 5 000 000 tokens | descriptor `provider` = `"openrouter"`; plus a credit limit on the OpenRouter key itself |
+
+Whether a listener-scoped `rateLimit` merges with the Gateway-level B1–B2 policy or replaces it is
+UNVERIFIED (the gap matrix flagged rate-limit merge across levels). Plan Task I.4 proves it live; if
+it replaces, B6 moves into the Gateway-level policy keyed on a provider CEL value, and AG8 allows
+exactly that one entry. A spend limit on the Anthropic workspace that owns the key is the backstop
+either way.
+
 
 ## How each gap closes
 
 | Gap | Closure | Proved by |
 |---|---|---|
-| **G1** budgets | `envoyproxy/ratelimit` (the image Envoy Gateway runs, digest-pinned) in `agent-gateway`, store = D4's KVStore, `REDIS_AUTH` from its Secret. Domain `agent-router`. Descriptors: **B1** key `agent` = CEL `jwt.sub`, 5 000 000/day; **B2** key `fleet` = CEL `"agents"`, 40 000 000/day; both `shadow_mode: true` until SP4 PR 7. `unit: Tokens` (cost = total tokens after completion; a zero-cost check runs before). `failureMode: FailOpen`. One Gateway-level policy, no route-identifying entry, so buckets are shared across listeners | P6 (PoC) + PC6 on the KVStore |
+| **G1** budgets | `envoyproxy/ratelimit` (the image Envoy Gateway runs, digest-pinned) in `agent-gateway`, store = D4's KVStore, `REDIS_AUTH` from its Secret. Domain `agent-router`. Descriptors: **B1** key `agent` = CEL `jwt.sub`, 5 000 000/day; **B2** key `fleet` = CEL `"agents"`, 40 000 000/day; both `shadow_mode: true` until SP4 PR 7. `unit: Tokens` (cost = total tokens after completion; a zero-cost check runs before). `failureMode: FailOpen`. One Gateway-level policy, no route-identifying entry, so buckets are shared across listeners. Per-provider buckets B6 (Anthropic) and B7 (OpenRouter): see Providers and keys | P6 (PoC) + PC6 on the KVStore; SC-13 |
 | **G2** metrics | Scrape relabel: `agentgateway_gen_ai_(.+)` → `gen_ai_$1`; `gen_ai_server_request_duration_(bucket\|sum\|count)` → `gen_ai_server_request_duration_seconds_$1` once Task E.1 confirms the unit is seconds. No `error_type` exists: the run page's error ratio and the unauthorized-burst alert move to `agentgateway_requests_total` (`status`, `reason` labels). Guard alert `AgentRouterMetricContractBroken` fires when LLM requests flow but no `gen_ai_client_token_usage_sum{namespace="agent-gateway"}` series exists | PC8 |
 | **G3** PSS | `AgentgatewayParameters.spec`: `deployment` overlay (`seccompProfile: RuntimeDefault` on pod and container, liveness on `:15021/healthz/ready`, 2 replicas, zone and host spread), `resources` 100m/128Mi → 1/512Mi, `service.spec.type: ClusterIP`, `podDisruptionBudget.minAvailable: 1`, image by digest | Gate AG9; `kubectl get svc -n agent-gateway agent-router` type ClusterIP |
 | **G4** topology | Every selector on `gateway.envoyproxy.io/owning-gateway-*` in `envoy-gateway-system` gains, then is replaced by, `io.kubernetes.pod.namespace: agent-gateway` + `gateway.networking.k8s.io/gateway-name: agent-router`. In this repo: identity-proxy upstreams, the data-plane CNP, ingress CNPs of the 3 MCP servers, room-broker, octo-sts and the trace collector, the probe CNP, dashboards' LogsQL and the logs VMRule. In crossplane-configuration: `_ROUTER_FQDN` and the run CNP egress selector (two releases: dual, then new-only). The namespace pin keeps F1's guarantee: a tenant Gateway named `agent-router` elsewhere never matches | PC1; Hubble shows the run pod → `agent-gateway` FORWARDED |
@@ -133,7 +177,7 @@ it), N11 (access logs have no `msg`: LogsQL selects by pod labels and `log.*` fi
 | AG2 | A listener lacks exactly one listener-scoped `jwtAuthentication` (mode `Strict`) whose audiences equal its class set, or lacks `authorization: Require` on `jwt.sub.startsWith("system:serviceaccount:agents:")` |
 | AG3 | No Gateway-scoped `PreRouting` removal of `x-ar-agent`, `x-ar-human`, `x-ai-gateway-client-id`, `agent-session-id`, or a listener does not `set` `x-ar-agent` from `jwt.sub` |
 | AG4 | `preserveToken: true` appears anywhere but the `sts` listener (or is missing there), or an MCP target's credential lands in `Authorization` |
-| AG5 | A route on `agent-router` omits `sectionName`, the `zai` backend is reachable from a non-`public` listener, or a route-level policy carries `jwtAuthentication` |
+| AG5 | A route on `agent-router` omits `sectionName`, the `zai` or `openrouter` backend is reachable from a non-`public` listener, or a route-level policy carries `jwtAuthentication` |
 | AG6 | An MCP `Allow` expression is not one complete alternative (N7), or grants another class's audience. `test-agent-mcp-scope.sh` recomputes the per-role tool sets from the same grammar and compares them with its expectations |
 | AG7 | An LLM listener has no Exact `/v1/models` direct response |
 | AG8 | A `rateLimit.global` lacks `unit: Tokens` or `failureMode: FailOpen`, names a route or backend in a descriptor, or its domain's ConfigMap lacks a matching descriptor with `shadow_mode: true` |
@@ -145,8 +189,8 @@ Bases are cloud-neutral; each cloud gets a render root (`infrastructure/{aws-0,g
 `…/agentgateway`) and a Flux child in `clusters/{aws-0,gcp-0}-agent-platform/`. The only per-cloud
 values are `${oidc_issuer_url}`, `${oidc_jwks_uri}` and `${oidc_jwks_host}`, which already exist. The
 controller fetches the JWKS, so only its CNP needs the JWKS host; the proxies get the keyset over
-xDS. Bedrock (phase I) lives in an aws-0 overlay and binds the proxies' ServiceAccount through an EPI.
-aws-0 is destroyed: CI renders it, and its live proof waits for the next rebuild. `assert-cloud-shape.py`
+xDS. The default providers (Z.ai, Anthropic) are the same on both clouds, so gcp-0 proves everything;
+aws-0 is destroyed and CI renders it. Bedrock and Vertex, if a team enables one, live in a per-cloud overlay. `assert-cloud-shape.py`
 learns the new overlay names so gcp-0's render stays GKE-shaped.
 
 ## Cutover and rollback
@@ -183,7 +227,9 @@ flowchart TD
 | `unit: Tokens` on non-LLM requests (MCP, sts) | PC6: MCP and sts calls stay 200 with zero hits added |
 | MCP session key falls back to base64 | `kubectl get secret -n agent-gateway agent-router-session-key` exists |
 | Controller reads Secrets cluster-wide | Accepted, same class as Envoy Gateway; writes confined (D1) |
-| Bedrock with Pod Identity unproven on either product | Phase I live gate on the next aws-0 rebuild |
+| The Anthropic key leaks from its Secret | Only the `agents-secrets` store and the agentgateway controller read `agent-system` Secrets; `kubectl get secret -n agents` lists no provider key; rotation drill in plan Task I.6 (`bao kv put`, ExternalSecret refresh, next call 200) |
+| A listener-scoped budget replaces B1–B2 instead of merging | Task I.4: after B6 lands, `total_hits{key1="agent"}` still rises on an `internal` call |
+| OpenRouter enabled on `internal` by mistake | Gate AG5 fails the build |
 | Dual egress window widens the run CNP | Bounded by namespace + label pins; gone after H (`grep -c envoy-gateway-system` in the rendered run CNP = 0) |
 
 ## Success criteria
@@ -201,12 +247,11 @@ flowchart TD
 | SC-9 | A run's trace contains the gateway's server span with the run's parent, no `http.path` |
 | SC-10 | Rollback drill: after the revert, the next run's calls appear in Envoy's logs |
 | SC-11 | After H, no `envoy-ai-gateway` Gateway, MCPRoute or `owning-gateway-name: agent-router` selector remains (rendered bundle grep = 0) |
+| SC-12 | An `internal` run on gcp-0 gets completions from `claude-opus-5-5` (`gen_ai_request_model`); Hubble shows its proxy flows to `api.anthropic.com` and none to `api.z.ai` for that request |
+| SC-13 | B6's shadow counter rises by the Anthropic calls' exact token totals; B1–B2 rise too |
 
 ## Open questions for the owner
 
-1. **Bedrock's live gate needs aws-0.** Phase I keeps Bedrock EU (ADR-0046) and proves it on the
-   next aws-0 rebuild; until then it is render-proven only. The alternative is to pull Vertex
-   (`vertexai` provider, Workload Identity) into phase I so `internal` has a provider on gcp-0.
-   Default: keep the scope, wait for the rebuild.
-
-Everything else is decided above (D1–D8, N1, the exit criterion for H).
+None blocking. The data-terms default (standard Anthropic commercial terms, zero data retention as an
+option) is the owner's to revisit (ADR-0054). Everything else is decided above (D1–D8, N1, the
+providers table, the exit criterion for H).
