@@ -421,7 +421,7 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | `scripts/ops/github/factory-canaries.sh`, `scripts/ops/k8s/{factory-canary-check.sh,gate-path-hits.py}`, `scripts/ci/tests/test-factory-canaries.sh` | 8 | The injection-canary regression suite (G2) |
 | `docs/superpowers/specs/2026-09-23-agent-dark-factory-verification.md` | 8, 9, 10 | `/verify-spec` output, re-run after the wave |
 | `scripts/ops/github/factory-walkthrough.sh`, `scripts/docs/factory-journey.py`, `scripts/ci/tests/test-factory-{walkthrough.sh,journey.py}`, `scripts/ops/tasks.yaml` | 10 | The scripted developer journey, its transcript, and the timeline and diagram rendered from it |
-| `website/content/docs/platform/agent-factory/{_index.md,user-guide.md}` (WIP since #2092), `website/content/docs/platform/_index.md` | 10 | The user-facing pages and the diagram, rewritten from the walkthrough's transcript |
+| `website/content/docs/platform/ai-platform/agents/{_index.md,user-guide.md}` (WIP since #2092; moved from `agent-factory/`), `website/content/docs/platform/ai-platform/status.md` | 10 | The user-facing pages and the diagram, rewritten from the walkthrough's transcript |
 
 ## Success criteria → proving task
 
@@ -17320,8 +17320,9 @@ issue's comments read, in order: started (run, branch, budget, room link), PR op
 ### Task 10.3: FR-10 — the docs and the diagram, from that run
 
 **Files:**
-- Modify: `website/content/docs/platform/agent-factory/_index.md` (the callout, the statuses) and
-  `website/content/docs/platform/agent-factory/user-guide.md` (Part 1 rewritten from the
+- Modify: `website/content/docs/platform/ai-platform/agents/_index.md` (the callout),
+  `website/content/docs/platform/ai-platform/status.md` (the statuses, which live only there) and
+  `website/content/docs/platform/ai-platform/agents/user-guide.md` (Part 1 rewritten from the
   walkthrough's transcript, Part 2 retired). Both exist since #2092 merged; the steps below that
   write `what-happens-to-a-task.md` write Part 1 of `user-guide.md` instead.
 - Modify: `website/content/docs/platform/_index.md` (a card)
@@ -17560,7 +17561,7 @@ This plan does not edit the spec; "Built" says whether the plan already works th
 | SD6 | **Kueue: two ClusterQueues** `agents-factory` and `agents-interactive` in cohort `agents`, one per LocalQueue | R10 (LocalQueues carry no quota) | §4 line 178 | Yes |
 | SD7 | **RunLore issues**: `factory/proposed` only, never `factory/ready`; the public issue carries no finding text | R18, R33 | §1 line 124 | Yes |
 | SD8 | **Human "Request changes" loops** are bounded by the task token cap, not `maxReviewRounds` | R27, with Δ5 | §3 | Yes |
-| SD9 | **User-facing pages** `website/content/docs/platform/agent-factory/{_index,user-guide}.md` (WIP since #2092), rewritten from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
+| SD9 | **User-facing pages** `website/content/docs/platform/ai-platform/agents/{_index,user-guide}.md` (WIP since #2092), rewritten from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
 | SD10 | **The merge gate runs in shadow until the wave**: before it nothing auto-merges, seeded or not; the factory narrates "would auto-merge". SC-2's and SC-14's live halves, the revert and SC-11's count start after the wave (owner, 2026-09-27) | R32 | §5.1, §9 lines 472, 481; implementation outline | Yes (Task 10.7) |
 | SD11 | **`PolicyBotUnavailable`** keeps its no-ready-pod half; the webhook-5xx half has no metric on the Cilium Gateway route, so webhook failures are read from the App's delivery log | T9 | §7 | No-pod half only |
 | SD12 | **A second approver**: the policy names the owner three times (`users: [Smana]`). A user-owned repo has no teams, so name one YAML anchor `maintainers` listing users, used by the human rule, the approval requirement and the labeller check | Developer M7 | §5 lines 275, 305 | **Declined** (owner, 2026-09-27: a single-owner repository) |
