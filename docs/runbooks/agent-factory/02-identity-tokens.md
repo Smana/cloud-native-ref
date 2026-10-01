@@ -11,18 +11,15 @@ pod, the GitHub token and a copied gateway token on the documented timescales (S
 ## Prerequisites
 
 - Runbook 00 done.
-- Owner action 1 done (OpenBao/EKS config applied) — the identity-proxy's tokens and `agent-router`'s
-  JWT validation both depend on the per-cluster `jwt/<cluster>` issuer being wired, but this runbook
-  itself only needs the EKS OIDC issuer, which exists on any cluster; no Z.ai key is needed here.
-
-> Corrected 2026-09-27: this was numbered "owner action 2" — README's numbering (action 1 =
-> OpenBao policy/JWT role, action 2 = the Z.ai key) makes this action 1, which the text's own "no
-> Z.ai key is needed here" already implied.
+- Owner action 1 done (OpenBao policy and JWT role applied). The identity-proxy's tokens and
+  `agent-router`'s JWT validation depend on the per-cluster `jwt/<cluster>` issuer being wired, but
+  this runbook itself only needs the cluster's own OIDC issuer (GKE on gcp-0, EKS on aws-0). No Z.ai
+  key is needed here.
 
 ## Part A — SC-05 and Q8, through the identity probe
 
-`scripts/ops/k8s/agent-probe.yaml` is a throwaway `Sandbox` in `agents` that projects all three token
-audiences into one pod (`agent-router.implementer.{public,internal}`,
+`scripts/ops/k8s/agent-probe.yaml` is a throwaway `Sandbox` in `agents` that projects four token
+audiences into one pod (`agent-router.implementer.{public,internal}`, `agent-router.reviewer.internal`,
 `octo-sts/Smana/cloud-native-ref/implementer`) without running a real agent — exactly what a run's
 harness never gets to see directly.
 
@@ -54,40 +51,27 @@ p "curl -s -o /dev/null -w 'self-signed→public %{http_code}\n' -H 'Authorizati
 p "curl -s -o /dev/null -w 'forged-header %{http_code}\n' -H 'x-ar-agent: agent:forged' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/public/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}]}' $R:8080/v1/chat/completions"
 ```
 
-Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 403`,
-`public→public 200`, `self-signed→public 401`, `forged-header 200`.
+Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 404`,
+`public→public 404`, `self-signed→public 401`, `forged-header 200`.
 
-> Corrected 2026-09-27: **`GET /v1/models` bypasses JWT authentication entirely** — verified live,
-> every token combination (none, wrong-audience, self-signed-forged) returns `200` on this path. See
-> the README's Platform findings. The same matrix run against `POST /v1/chat/completions` instead
-> (same headers, plus a JSON body and `content-type`) gives the expected
-> `401,403,403,404(structural, see runbook 04 SC-17),200` — the underlying SecurityPolicy/JWT
-> mechanism is sound; only the `/v1/models` path is unprotected. Use `/v1/chat/completions` for this
-> matrix until the bug is fixed.
->
-> Fixed later on 2026-09-27 (#2108, live on `980b789f`). `/v1/models` now gives 401 without a valid
-> token, and 404 with one. Either path works for this matrix.
+A valid token gets `404` on `/v1/models`: the list route attaches only to the `public` listener and
+answers 404 behind its JWT policy (#2108), and the `internal` listener has no such route. The
+round-2 auth bypass on this path is history (README, Platform findings).
 
 Then confirm the forged `x-ar-agent` header never survives (it is stripped before authentication and
 re-set from the verified `sub`):
 
 ```bash
-curl -s https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode \
-  'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.path:"/v1/chat/completions" | fields log.x_ar_agent, log.response_code, log.upstream_cluster'
+curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
+  'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.path:~"chat/completions" | fields log.path, log.x_ar_agent, log.response_code, log.upstream_cluster'
 ```
 
-> Corrected 2026-09-27: the access log records the **post-rewrite** path. A rejected call (401/403)
-> logs `path:"/v1/chat/completions"` (rewrite never reached), but the one call that succeeds logs
-> `path:"/api/paas/v4/chat/completions"` — the exact-match filter above only ever returns the
-> rejected rows (`x_ar_agent` empty, as expected for a rejected call) and silently misses the one row
-> this step is actually meant to check. Drop the `log.path` filter (or match `*chat/completions`) to
-> catch the accepted request too. Verified live: with the filter dropped, the accepted request logs
-> `log.x_ar_agent:"system:serviceaccount:agents:agent-probe"`, `log.upstream_cluster` is
-> `httproute/agent-system/agent-models/rule/0` (names the route, not a bare `zai` string).
+The access log records the post-rewrite path: rejected calls log `/v1/chat/completions`, the accepted
+one `/api/paas/v4/chat/completions`. Hence the regex match.
 
-Expected: `log.x_ar_agent` is exactly `system:serviceaccount:agents:agent-probe` — never
-`agent:forged`, never both. Upstream cluster names the `zai` backend (in practice, the HTTPRoute
-that backs it — see correction above).
+Expected: the accepted row's `log.x_ar_agent` is exactly `system:serviceaccount:agents:agent-probe`,
+never `agent:forged`; rejected rows carry no `x_ar_agent`. `log.upstream_cluster` names the route
+that backs Z.ai, `httproute/agent-system/agent-models/rule/0`.
 
 **What this proves:** SC-05 — 401 for missing/self-signed tokens, 403 for a valid token of the wrong
 audience, and the identity header is always server-derived, never client-supplied.
@@ -129,7 +113,7 @@ Uses a short, real run so its tokens' TTL is small enough to observe expiry with
 ### Step 1 — start a 10-minute run and capture a token of each kind
 
 ```bash
-REV=$(task agent:run -- --role implementer --class public --minutes 10 --task "Wait: list the files under docs/ slowly, one per minute. Change nothing." | tail -1); echo "$REV"
+REV=$(task agent:run -- --role implementer --class public --minutes 10 --task "Run 'sleep 500' in the terminal, then finish. Change nothing." | tail -1); echo "$REV"
 kubectl wait -n agents agentrun/$REV --for=jsonpath='{.status.phase}'=Running --timeout=15m
 GHT=$(kubectl exec -n agents $REV -c harness -- /usr/local/bin/git-credential-agent token)
 GWT=$(kubectl create token $REV -n agents --audience agent-router.implementer.public --duration 10m); ISSUED=$(date +%s)

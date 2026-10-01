@@ -1,10 +1,11 @@
 # 01 — Runtime and sandbox
 
-Proves that an `AgentRun` actually boots a gVisor-sandboxed pod on the dedicated `agents-gvisor`
-Karpenter pool, that the pinned `runsc` release is installed correctly on the node, that admission
-control rejects a malformed pod or claim before it can run, that the harness has no Kubernetes API
-access, and that a deleted sandbox pod comes back under its own name. See [README.md](README.md) for
-prerequisites and the owner actions; run [00](README.md#runbook-00-one-time-cluster-setup) first.
+Proves that an `AgentRun` boots a gVisor-sandboxed pod on the dedicated `agents-gvisor` pool (a GKE
+Sandbox node pool on gcp-0, a Karpenter pool on aws-0), that admission control rejects a malformed
+pod or claim before it can run, that the harness has no Kubernetes API access, and that a lost pod
+fails its run closed (R7). On aws-0 it also proves the pinned `runsc` release is installed correctly;
+on gcp-0 Google manages `runsc`. See [README.md](README.md) for prerequisites and `CLOUD`; run
+[00](README.md#runbook-00-one-time-cluster-setup) first.
 
 ## Prerequisites
 
@@ -16,15 +17,16 @@ prerequisites and the owner actions; run [00](README.md#runbook-00-one-time-clus
 ### Step 1 — confirm the platform is up
 
 ```bash
-flux get kustomizations -n flux-system | grep -E '^(agent-platform|agent-sandbox|agents-nodepool|runtimeclass-gvisor|agent-runtime|agent-policies)[[:space:]]'
+KS='agent-platform|agent-sandbox|agent-runtime|agent-policies'
+[ "$CLOUD" = aws ] && KS="$KS|agents-nodepool|runtimeclass-gvisor"   # GKE provides both on gcp-0
+flux get kustomizations -n flux-system | grep -E "^($KS)[[:space:]]"
+kubectl get runtimeclass gvisor -o jsonpath='{.handler}{"\n"}'
 kubectl get xrd agentruns.cloud.ogenki.io -o jsonpath='{.status.conditions[?(@.type=="Established")].status}{"\n"}'
 kubectl auth can-i --as=system:serviceaccount:crossplane-system:crossplane create sandboxes.agents.x-k8s.io -n agents
 ```
 
-> Corrected 2026-09-27: `flux get kustomization` only reads the first positional name (flux CLI
-> 2.9.5); list-then-grep instead.
-
-Expected: every listed Kustomization `Ready=True`; `True`; `yes`.
+Expected: every listed Kustomization `Ready=True` (4 on gcp-0, 6 on aws-0); `gvisor`
+on gcp-0 or `runsc` on aws-0; `True`; `yes`.
 
 **What this proves:** the umbrella and its children reconciled, the `AgentRun` XRD is installed, and
 Crossplane's aggregate ClusterRole (`agent-sandbox:aggregate-to-crossplane`) actually grants it
@@ -34,7 +36,7 @@ Crossplane's aggregate ClusterRole (`agent-sandbox:aggregate-to-crossplane`) act
 
 ```bash
 T0=$(date +%s)
-RUN=$(task agent:run -- --role implementer --class public --minutes 15 --task "Idle. Do nothing, change nothing." | tail -1); echo "$RUN"
+RUN=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 NODE=$(kubectl get pod -n agents $RUN -o jsonpath='{.spec.nodeName}')
 kubectl get node "$NODE" -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{.lastTransitionTime}{"\n"}{end}'
@@ -48,14 +50,15 @@ Expected: `Running`; a node Ready timestamp shortly before the pod's `startTime`
 later. The phase-0 spike measured ~34 s node-Ready-to-container-start and ~90 s submission-to-start
 on a fresh node — a first run on an empty pool should land in the same range, not minutes longer.
 
-**What this proves:** Q1 — no unresolved race between kubelet coming up and gVisor/user-data
-finishing on a freshly launched `agents-gvisor` node.
+**What this proves:** Q1 — no unresolved race between kubelet coming up and the node's gVisor and
+Cilium setup finishing on a freshly launched `agents-gvisor` node.
 
 ### Step 3 — SC-01: the pod is actually sandboxed
 
 ```bash
 kubectl get pod -n agents $RUN -o jsonpath='{.spec.runtimeClassName} {.spec.nodeName}{"\n"}'
-kubectl get node "$NODE" -o jsonpath='{.metadata.labels.agents\.ogenki\.io/runtime}{"\n"}'
+LABEL='sandbox\.gke\.io/runtime'; [ "$CLOUD" = aws ] && LABEL='agents\.ogenki\.io/runtime'
+kubectl get node "$NODE" -o jsonpath="{.metadata.labels.$LABEL}"; echo
 kubectl exec -n agents $RUN -c harness -- dmesg | head -3
 kubectl exec -n agents $RUN -c harness -- grep Seccomp /proc/self/status
 ```
@@ -66,7 +69,10 @@ glibc ≥ 2.34 thread start; see gvisor#14688).
 
 **What this proves:** SC-01.
 
-### Step 4 — SC-02: runsc is registered correctly on the node
+### Step 4 — SC-02: runsc is registered correctly on the node (aws-0 only)
+
+On gcp-0 this step is N/A: GKE Sandbox installs and versions `runsc` itself, and Step 1's
+RuntimeClass plus Step 3's node label and gVisor banner are the evidence. On aws-0:
 
 ```bash
 kubectl debug node/"$NODE" -n default --profile=general --image=public.ecr.aws/amazonlinux/amazonlinux:2023 -- chroot /host bash -c '
@@ -168,7 +174,7 @@ each denial message.
 A lost pod (spot interruption, eviction, `kubectl delete`) ends its run as `Failed`. It does not come
 back. The Sandbox controller does try to recreate it, but first the pod passes through phase `Failed`.
 agent-sandbox v1.0.3 then reports `Finished=PodFailed`, the same as for a crash. The composition
-latches `Failed` and withholds the ServiceAccount (F2b), so the recreate is refused. That is the
+latches `Failed` and withholds the run's ServiceAccount, so the recreate is refused. That is the
 fail-closed design. Recovery is a new run on the same branch.
 
 ```bash
@@ -177,7 +183,7 @@ kubectl delete pod -n agents $RUN --wait=true
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Failed --timeout=2m
 kubectl get agentrun -n agents $RUN -o jsonpath='{.status.phase} {.status.reason}{"\n"}'
 kubectl get sa -n agents $RUN 2>&1 | tail -1
-RUN2=$(task agent:run -- --role implementer --class public --minutes 15 --branch "$BRANCH" --task "Idle. Do nothing, change nothing." | tail -1)
+RUN2=$(task agent:run -- --role implementer --class public --minutes 20 --branch "$BRANCH" --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1)
 kubectl wait -n agents agentrun/$RUN2 --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl get agentrun -n agents $RUN2 -o jsonpath='{.status.branch}{"\n"}'
 ```
@@ -187,12 +193,13 @@ Expected:
 - `Error from server (NotFound)` for the old run's ServiceAccount;
 - the new run `Running` on the same `$BRANCH`.
 
-The controller's `serviceaccount "xplane-run-<id>" not found` log line is the F2b lock working, not
-an error.
+The controller's `serviceaccount "xplane-run-<id>" not found` log line is the withheld ServiceAccount
+refusing the recreate, not an error.
 
-> Corrected 2026-09-27: this step used to expect the pod to be recreated under the same name. The
-> spike proved that for the Sandbox controller alone, before the F2b and M2 locks existed. Live
-> evidence: README "Platform findings".
+> Known issue (F12, round 9): a deleted pod can come back within ~1 s while the run stays `Running`,
+> and the harness re-runs the task; the `kubectl wait … Failed` then times out. Seen on a run with a
+> `roomRef` on `147819ff`; round 7 on a run without one still passed. Delete the run rather than
+> waiting it out, and record the step as FAIL (F12).
 
 **What this proves:** R7 as built. A lost pod fails closed, and `agent-run --branch` resumes the work.
 
@@ -211,8 +218,8 @@ Expected: `No resources found` (this doubles as an early look at SC-14, fully pr
 
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
-| 1 — platform up | All `Ready=True`; XRD `True`; `yes` | `agent-platform`, `agent-sandbox`, `agent-runtime`, `agent-policies` `Ready=True`. `agents-nodepool` and `runtimeclass-gvisor` do not exist on gcp-0: the pool and the RuntimeClass are GKE-managed (GP-9, GP-10). XRD `Established=True`; `can-i` = `yes` | PASS |
-| 2 — Q1 timing | Node Ready ≤ pod start; small `FailedCreatePodSandBox` count | `xplane-run-6qnowwxl`: node Ready `20:25:32Z`, pod start `20:27:57Z`, harness started `20:28:33Z`, 0 × `FailedCreatePodSandBox`, but submission to `Running` took 343 s. **The race Q1 asks about exists on gcp-0.** On a freshly scaled gVisor node, cilium-operator logged `Restarting unmanaged pod` for six of the ten run pods this round created (`4iv2rpdq`, `j2qh5avm`, `x5hf55tr`, `6qnowwxl`, `pttpamhs`, `x6jexfi4`), 53 s to 2 min 31 s after they started. Each of the six had landed on a node that was minutes old; the four that landed on a warm node were left alone. The pods tolerate `node.cilium.io/agent-not-ready` (Ruling Z1), so they land before the Cilium agent is ready. A run whose pod is still Pending survives, because the Sandbox recreates the pod. A run that already reached `Running` fails for good, as R7 designs: `xplane-run-j2qh5avm` was `Running` at 20:19:12, its pod was deleted at 20:19:19, and the run ended `Failed PodFailed`. `xplane-run-pttpamhs` (the first SC-06 attempt) ended the same way. On a warm node, `zt7vyyi6` went from `Pending` to `Running` in 29 s | **FAIL** (see `results-gcp-0-2026-09-30.md`, F2) |
+| 1 — platform up | All `Ready=True`; XRD `True`; `yes` | `agent-platform`, `agent-sandbox`, `agent-runtime`, `agent-policies` `Ready=True`. `agents-nodepool` and `runtimeclass-gvisor` do not exist on gcp-0: the pool and the RuntimeClass are GKE-managed (`opentofu/gcp/gke/init/sandbox.tf`). XRD `Established=True`; `can-i` = `yes` | PASS |
+| 2 — Q1 timing | Node Ready ≤ pod start; small `FailedCreatePodSandBox` count | `xplane-run-6qnowwxl`: node Ready `20:25:32Z`, pod start `20:27:57Z`, harness started `20:28:33Z`, 0 × `FailedCreatePodSandBox`, but submission to `Running` took 343 s. **The race Q1 asks about exists on gcp-0.** On a freshly scaled gVisor node, cilium-operator logged `Restarting unmanaged pod` for six of the ten run pods this round created (`4iv2rpdq`, `j2qh5avm`, `x5hf55tr`, `6qnowwxl`, `pttpamhs`, `x6jexfi4`), 53 s to 2 min 31 s after they started. Each of the six had landed on a node that was minutes old; the four that landed on a warm node were left alone. The pods tolerated `node.cilium.io/agent-not-ready` (a Kyverno mutate, since removed), so they landed before the Cilium agent was ready. A run whose pod is still Pending survives, because the Sandbox recreates the pod. A run that already reached `Running` fails for good, as R7 designs: `xplane-run-j2qh5avm` was `Running` at 20:19:12, its pod was deleted at 20:19:19, and the run ended `Failed PodFailed`. `xplane-run-pttpamhs` (the first SC-06 attempt) ended the same way. On a warm node, `zt7vyyi6` went from `Pending` to `Running` in 29 s | **FAIL** (F2 in `results-gcp-0-2026-09-30.md`; fixed by d9d75413 and 5b77d0db, passed in round 9) |
 | 3 — SC-01 | `gvisor`/`gvisor`/gVisor banner/`Seccomp: 0` | `gvisor gke-gcp-0-nap-e2-standard-4-1h1w69k1-…`; node label `sandbox.gke.io/runtime=gvisor` (gcp-0 has no `agents.ogenki.io/runtime` label); `Starting gVisor...`; `Seccomp:\t0`; `uname -r` = `4.4.0` | PASS |
 | 4 — SC-02 | pinned `runsc`, v3 plugin id, `oci-seccomp = "false"` | Not run. The step is AWS-shaped: its `amazonlinux` image, `/usr/local/bin/runsc` and `/etc/containerd/runsc.toml` do not apply to GKE Sandbox, where Google manages `runsc`. The privileged `kubectl debug node/…` adapted for GKE was refused by this session's permission classifier | [OWNER] |
 | 5 — SC-08 | No `kubernetes.io` dir; API call fails | `ls: cannot access '/var/run/secrets/kubernetes.io': No such file or directory` exit=2; `urlopen('https://kubernetes.default.svc')` exit=1 | PASS |
@@ -222,6 +229,15 @@ Expected: `No resources found` (this doubles as an early look at SC-14, fully pr
 | Cleanup | `No resources found` | `6qnowwxl`: `No resources found`. `peiuqflu`: CNP, pod (`Terminating`) and Usage still present right after `delete --wait` returned, which is the SC-07 ordering at work. All three were gone by the final sweep (see runbook 07, SC-14) | PASS |
 
 Round 7 notes: the runbook's "Idle. Do nothing" task now finishes in about a minute (`x5hf55tr` `Succeeded` after 106 s), so runs that must stay up used `Run 'sleep N' in the terminal …`.
+
+### Round 9 — gcp-0, 2026-10-01 (`integration/agent-factory` @ `147819ff`)
+
+Not a full pass: Step 2's race was re-checked with the gVisor smoke probe, and Step 7 on a room run.
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 2 — F2 from zero | The pod waits for Cilium; no `Restarting unmanaged pod` | `agents-gvisor` resized to 0, then `scripts/ops/k8s/gvisor-smoke.yaml` (no Cilium toleration): scale-up 0→1, node Ready 07:40:45Z, operator cleared the `ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready` taint at 07:41:38Z, pod started 07:41:38Z and `Succeeded`. `grep -c 'Restarting unmanaged pod'` → `0` on both operators. Side effect: `cilium-agent` OOM-killed at startup (F9, since fixed: 512Mi) | PASS |
+| 7 — R7 | `Failed PodFailed` | `xplane-run-5sxrpflg` (room `crkdu3gx`): pod deleted at ~08:40:56, a new pod at 08:40:57Z, the run stayed `Running`, the harness re-ran the task. `kubectl wait … Failed --timeout=5m` timed out | **FAIL** (F12) |
 
 ### Earlier rounds — aws-0
 

@@ -15,7 +15,7 @@ than merely dropped at L4. See [README.md](README.md) for prerequisites; run
 ### Step 1 — start a run
 
 ```bash
-RUN=$(task agent:run -- --role implementer --class public --minutes 20 --task "Idle. Do nothing, change nothing." | tail -1); echo "$RUN"
+RUN=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
 
@@ -49,9 +49,9 @@ Expected: DNS entries show `github.com`/`api.github.com` FORWARDED and `example.
 `example.com`'s IPs only if something got far enough to try — a clean setup shows the drop already
 happening at DNS, before any TCP attempt.
 
-**What this proves:** Q3 — the FQDN allowlist and the DNS L7 rule work correctly under gVisor, ENI
-mode and kube-proxy-replacement (KPR); a denied name never resolves, so nothing downstream ever
-reaches L4.
+**What this proves:** Q3 — the FQDN allowlist and the DNS L7 rule work correctly under gVisor and
+kube-proxy replacement (ENI IPAM on aws-0, kubernetes IPAM with native routing on gcp-0); a denied
+name never resolves, so nothing downstream ever reaches L4.
 
 ### Cleanup
 
