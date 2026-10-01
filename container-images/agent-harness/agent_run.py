@@ -39,7 +39,7 @@ DEFAULT_OUTPUT_USD_PER_MTOK = "4.40"
 MAX_POLL_ERRORS = 5
 # The run's installation token as git-credential-agent caches it (T3), and every GitHub
 # token shape. An injected agent can print its token into a command or its final message,
-# and these lines reach VictoriaLogs (review M4), so both are redacted before any print.
+# and these lines reach VictoriaLogs, so both are redacted before any print.
 TOKEN_CACHE = os.environ.get("GIT_TOKEN_CACHE", "/run/agent/git/token.json")
 GITHUB_TOKEN = re.compile(r"gh[posu]_[A-Za-z0-9_]{20,}")
 REDACTED = "[REDACTED:github-token]"
@@ -54,6 +54,66 @@ def redact(text: str) -> str:
     if cached:
         text = text.replace(cached, REDACTED)
     return GITHUB_TOKEN.sub(REDACTED, text)
+
+
+# A W3C traceparent from the factory's task span (SP3 R46), handed over by the composition.
+TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
+# agent-server exports on a 5 s batch and nothing at exit, and its root span ends only when
+# the conversation closes (observability plan, Task 0.5): a 1 s batch, a close, then a wait.
+BSP_DELAY_MS = "1000"
+FLUSH_WAIT_S = 2
+
+
+def start_run_span(env: dict, exporter=None):
+    """The run's root span and the env that makes agent-server's root span its child.
+
+    Parented on TRACEPARENT when it is a valid W3C header, a fresh trace otherwise (the
+    `task agent:run` path). (None, None, {}) when tracing is off or cannot start. The trace id
+    is correlation only: the collector stamps the run id from the connection (observability
+    plan O22).
+    """
+    endpoint = env.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint and exporter is None:
+        return None, None, {}
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+        if exporter is None:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            # The root span exports after the revoke; a collector that drops packets must
+            # not hold the pod past its grace period.
+            exporter = OTLPSpanExporter(endpoint=endpoint.rstrip("/") + "/v1/traces", timeout=5)
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        parent = None
+        m = TRACEPARENT.match(env.get("TRACEPARENT", ""))
+        if m:
+            # Always sampled, whatever the trigger's flags: lmnr's span context has
+            # no flags field, so agent-server's spans export regardless, and an unsampled trigger
+            # would leave them under a harness span that never lands. The factory samples 100%.
+            remote = trace.SpanContext(int(m[1], 16), int(m[2], 16), is_remote=True,
+                                       trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED))
+            parent = trace.set_span_in_context(trace.NonRecordingSpan(remote))
+        span = provider.get_tracer("agent-run").start_span("agent-run", context=parent)
+    except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run
+        print("agent-run: tracing off: %s" % exc, file=sys.stderr, flush=True)
+        return None, None, {}
+    sc = span.get_span_context()
+    # lmnr's LaminarSpanContext: UUID-shaped ids; agent-server's spans parent on it.
+    ctx = {"trace_id": str(uuid.UUID(int=sc.trace_id)), "span_id": str(uuid.UUID(int=sc.span_id)), "is_remote": True}
+    return span, provider, {"LMNR_SPAN_CONTEXT": json.dumps(ctx), "OTEL_BSP_SCHEDULE_DELAY": BSP_DELAY_MS}
+
+
+def close_conversation(cid: str) -> None:
+    """Close the conversation, which ends the SDK's root span, and let the 1 s batch export it."""
+    try:
+        # Bounded: closing a running conversation first waits out its in-flight LLM call.
+        http("DELETE", "/api/conversations/" + cid, timeout=5)
+    except Exception as exc:  # noqa: BLE001 -- tracing must never fail the run
+        print("agent-run: conversation not closed: %s" % exc, file=sys.stderr, flush=True)
+    time.sleep(FLUSH_WAIT_S)
 
 
 def build_request(env: dict, task: str, rules: str) -> dict:
@@ -167,10 +227,11 @@ class StepLog:
     pod is gone. The final agent message is printed in full: for a read-only
     role it is the report. Actions are printed, their outputs never are. Best
     effort: a failure here is logged and never fails the run. Agent-written
-    text is redacted first (M4)."""
+    text is redacted first."""
 
-    def __init__(self, cid: str):
+    def __init__(self, cid: str, trace_id: str = ""):
         self.cid = cid
+        self.trace_id = trace_id
         self.page = None
         self.seen = set()
         self.steps = 0
@@ -204,7 +265,9 @@ class StepLog:
             action = event.get("action") or {}
             target = action.get("command") or action.get("path") or ""
             tool = event.get("tool_name") or action.get("kind")
-            return "agent-run step %d: %s | %s | %s" % (self.steps, tool, _short(event.get("summary"), 120), _short(target, 200))
+            line = "agent-run step %d: %s | %s | %s" % (self.steps, tool, _short(event.get("summary"), 120), _short(target, 200))
+            # Correlation only (O22): links the line to its trace in Grafana, attributes nothing.
+            return line + (" | trace_id=" + self.trace_id if self.trace_id else "")
         if kind == "MessageEvent" and event.get("source") == "agent":
             self.last_message = redact(_text(event.get("llm_message")))
             return "agent-run message: " + _short(self.last_message, 400)
@@ -258,19 +321,25 @@ def main() -> int:
     # its cwd; pin it to "/" so its state lands in the intended paths
     # whatever workingDir the pod sets, rather than wherever agent-run itself
     # happens to be launched from.
-    server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env(env))
+    span, provider, trace_env = start_run_span(env)
+    trace_id = format(span.get_span_context().trace_id, "032x") if span else ""
+    server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env({**env, **trace_env}))
     try:
         wait_ready()
         clone(env)
         with open(env["TASK_FILE"]) as t, open(env["RULES_FILE"]) as r:
             request = build_request(env, t.read(), r.read())
         conversation = http("POST", "/api/conversations", request)
-        steps = StepLog(conversation["id"])
+        steps = StepLog(conversation["id"], trace_id)
         try:
-            return poll(conversation["id"], on_tick=steps)
+            code = poll(conversation["id"], on_tick=steps)
         finally:
             steps()
             steps.summary()
+        # Never on SIGTERM: the close can outlast the grace period and the revoke must not wait.
+        if span:
+            close_conversation(conversation["id"])
+        return code
     finally:
         # A second SIGTERM during cleanup must not abort the revoke, and
         # agent-server must be stopped BEFORE the token is revoked so it
@@ -282,6 +351,9 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             server.kill()
         subprocess.run(["/usr/local/bin/git-credential-agent", "revoke"], check=False)
+        if span:
+            span.end()
+            provider.shutdown()
 
 
 if __name__ == "__main__":

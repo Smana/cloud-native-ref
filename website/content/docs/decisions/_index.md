@@ -88,5 +88,6 @@ single-file fixes never need one.
 | [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches | Accepted | 2026-09-26 |
 | [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
+| [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).
