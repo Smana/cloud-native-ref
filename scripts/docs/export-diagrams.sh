@@ -126,6 +126,14 @@ for i in 1 2; do
         -o "$OUT/openbao-lineage-$i.svg" "$SRC/openbao-lineage.drawio"
 done
 
+# ai-platform is five pages, one per role page of the AI Platform section:
+# overview, gateways, agent runtime, rooms, factory. Same 1-based indexing.
+for i in 1 2 3 4 5; do
+    echo "==> ai-platform page $i"
+    drawio "${SVGOPTS[@]}" --page-index "$i" \
+        -o "$OUT/ai-platform-$i.svg" "$SRC/ai-platform.drawio"
+done
+
 # drawio ends its SVG output without a trailing newline; pre-commit's
 # end-of-file-fixer adds one. Without this, every export leaves the tree dirty
 # by exactly one byte per file and the script is never idempotent.
