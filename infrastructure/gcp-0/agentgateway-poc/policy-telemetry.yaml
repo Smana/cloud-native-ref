@@ -13,6 +13,10 @@ spec:
       kind: Gateway
       name: agent-router-agw
   frontend:
+    # agent-router buffers 8Mi (clienttrafficpolicy.yaml). The 2mb default also caps
+    # MCP fan-out responses: VictoriaMetrics' resources/list exceeds it (PoC P4).
+    http:
+      maxBufferSize: 8Mi
     tracing:
       backendRef:
         name: agent-traces-collector
