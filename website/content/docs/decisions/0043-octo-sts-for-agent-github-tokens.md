@@ -115,8 +115,8 @@ repository it grants.
   and `repository_dispatch` remain open; no workflow triggers on either today
 - The App's private key is the strongest credential here: it mints implementer-level tokens for every
   installed repository without octo-sts's per-role scoping, and only the ruleset still bounds its
-  pushes to `agent/**`. `openbao-platform` lets any namespace with ExternalSecret rights read it
-  (design T14, fix deferred as O1)
+  pushes to `agent/**`. It sits on the `agents` mount, which `openbao-platform` cannot read (see
+  the 2026-09-29 amendment below)
 - Dependabot is off on this repository (no `dependabot.yml`, security updates disabled, checked
   2026-09-26). Enabling it means adding its App to the bypass list, or its branches are refused
 - The trust policies' EKS alternative is a pattern (any EKS cluster in eu-west-3, because aws-0's
@@ -144,10 +144,10 @@ repository it grants.
 
 `security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
 `.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` and `.github/rulesets/agent-tags.json`, both applied by
-`task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
+`task ops:github:agent-branch-ruleset`. The App key is `github-app` on the `agents` kv-v2 mount. octo-sts reads
 it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
 
-*Amended 2026-09-29 (SP2 ruling P38).* The App key now lives at `github-app` on the `agents` kv-v2
+*Amended 2026-09-29.* The App key moved from `platform/agents/github-app` to `github-app` on the `agents` kv-v2
 mount, which only `agents-secrets` and `secrets-admin` name. A mount of its own was chosen over a
 `namespaceSelector` on `openbao-platform`: `external-secrets` reads all of `platform/`, and a
 selector would still let every namespace it admits read the key.
