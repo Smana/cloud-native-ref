@@ -14,20 +14,10 @@ repository or role. See [README.md](README.md) for prerequisites; run
   Smana/cloud-native-ref`. If the App was installed before the ruleset exists, nothing stops it
   merging its own PR — this order is load-bearing, not a convenience.
 - **Owner action 4, done**: the `ogenki-agents` GitHub App created on `Smana`, installed on
-  `Smana/cloud-native-ref` only, and its `app_id`/`private_key` written to `github-app` on gcp-0's
+  `Smana/cloud-native-ref` only, and its `app_id`/`private_key` written to `github-app` on the cluster's
   `agents` mount.
 
 ## Steps
-
-> Corrected 2026-09-27, round 3: runs still use the upstream `agent-server` image (no
-> `git-credential-agent`, no `gh` wrapper — CC-2/#2110 not yet published), so Steps 3-6 below were
-> **not run as written**. Instead: the throwaway `agent-probe` Sandbox's `sts`-audience token
-> (`/var/run/secrets/probe/sts/token`) was used directly against `agent-router`'s `sts` listener
-> (`:8082`) for every check that only needs a *rejection* (cross-repo, subject-pattern, direct-CNP);
-> a real, minimal implementer/reviewer `AgentRun` (whose ServiceAccount name actually matches octo-sts's
-> `xplane-run-[a-z2-7]{8}` subject pattern) was used for the one check that needs a *successful*
-> exchange, calling `curl 127.0.0.1:4001/sts/exchange` from inside the harness directly (no git, no
-> `gh` needed for this). See the Results table and Platform findings for what that found.
 
 ### Step 1 — the ruleset is active
 
@@ -48,10 +38,13 @@ Expected: `Ready=True`.
 ### Step 3 — start two runs, one per role
 
 ```bash
-IMPL=$(task agent:run -- --role implementer --class public --task "SC-11 probe, idle." | tail -1); echo "$IMPL"
-REVW=$(task agent:run -- --role reviewer --class public --task-url "https://github.com/Smana/cloud-native-ref/pull/1" | tail -1); echo "$REVW"
+IMPL=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1); echo "$IMPL"
+REVW=$(task agent:run -- --role reviewer --class public --minutes 20 --task-url "https://github.com/Smana/cloud-native-ref/pull/1" | tail -1); echo "$REVW"
 kubectl wait -n agents agentrun/$IMPL agentrun/$REVW --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
+
+A reviewer run refuses `--task` text, so it cannot be paced: it ends when its review does. Run
+Step 5's reviewer lines soon after this wait; if `$REVW`'s pod is gone, start another reviewer run.
 
 ### Step 4 — implementer pushes `spec.branch`, and only `spec.branch`
 
@@ -85,11 +78,6 @@ Expected: `-> token ghs_…`; `push HEAD:refs/heads/<branch> -> ok`; `push HEAD:
 rejection (`GH013`/protected branch); `push HEAD:refs/heads/sc11-not-agent ->` a rejection
 (`GH013: Repository rule violations`).
 
-> Corrected 2026-09-27, round 3: **the exchange itself never succeeded, for any role** — the App was
-> missing `pull_requests: read & write` and the installation had not accepted a prior permission
-> change. **Fixed for round 4**: both corrected, and the exchange now succeeds end to end — see the
-> Results table below for the live implementer/reviewer/wrong-role runs.
-
 **What this proves:** SC-11 (the push half) — an implementer's token is scoped to `contents: write`,
 but the branch ruleset (`agent/**` only, every other actor confined) is what actually stops it from
 touching `main` or any non-`agent/**` branch, since the token permission alone would allow both.
@@ -105,45 +93,21 @@ kubectl exec -n agents $IMPL -c harness -- /usr/local/bin/python -c "import urll
 ```
 
 Expected: the reviewer gets a token but every push is rejected (`403`/permission — its trust policy
-grants only `contents: read`); the other repository's exchange fails (`HTTP Error 403`/
-`PermissionDenied`: no trust policy there, App not installed); the reviewer asking for
-`agent-implementer` fails (audience mismatch — its projected token's audience is
-`octo-sts/Smana/cloud-native-ref/reviewer`, not `.../implementer`); the direct call to octo-sts's
-Service exits 1 — a run's CNP opens no path to octo-sts except through `agent-router`'s `sts`
-listener (`http://octo-sts.agent-system.svc.cluster.local:8080` is not in the allowlist at all).
+grants only `contents: read`, so `remote: Permission to Smana/cloud-native-ref.git denied to
+ogenki-agents[bot]`); the other repository's exchange fails with `HTTP Error 404`
+`{"code":5,"message":"unable to find trust policy for \"agent-implementer\""}` (no trust policy
+there); the reviewer asking for `agent-implementer` fails with a `403` `code 7` audience mismatch (its
+projected token's audience is `octo-sts/Smana/cloud-native-ref/reviewer`, not `.../implementer`);
+the direct call to octo-sts's Service exits 1 — a run's CNP opens no path to octo-sts except through
+`agent-router`'s `sts` listener.
 
-> Corrected 2026-09-27, round 3, verified live with the `agent-probe`'s `sts` token
-> (audience `octo-sts/Smana/cloud-native-ref/implementer`, subject `agent-probe` — not a real run):
-> - **cross-repo exchange:** `scope=Smana/crossplane-configuration&identity=agent-implementer` →
->   `{"code":5,"message":"unable to find trust policy for \"agent-implementer\""}`, **HTTP 404** — not
->   `403`/`PermissionDenied` as written; correct the expectation to this exact message and code.
-> - **probe's own subject rejected (new, not in the original text):**
->   `{"code":7,"message":"trust policy: subject \"system:serviceaccount:agents:agent-probe\" did not
->   match pattern \"system:serviceaccount:agents:xplane-run-[a-z2-7]{8}\"}"`, HTTP 403 — proves no
->   pod other than a real run's own projected identity can mint anything, regardless of role.
-> - **direct octo-sts call:** the runbook's `python3` check doesn't apply (`agent-probe`'s `curl`
->   image has no `python3` — same gap as runbook 02). `curl --max-time 5
->   http://octo-sts.agent-system.svc.cluster.local:8080/` times out (`exit=28`), confirming the CNP
->   silently drops the packet rather than erroring — same shape as the original `exit=1`, different
->   command.
->
-> Round 4, with the App fixed and two real runs (their own SA subject matches octo-sts's pattern):
-> - **reviewer push rejected:** PASS — reviewer's token pushes with `returncode 128`,
->   `remote: Permission to Smana/cloud-native-ref.git denied to ogenki-agents[bot]` (HTTP 403). The
->   App-token permission (`contents: read`) refuses the push before the ruleset is ever consulted.
-> - **wrong-role/audience exchange:** now provable both directions with two real runs' own tokens.
->   Implementer run requesting `identity=agent-reviewer`:
->   `{"code":7,"message":"trust policy: audience \"octo-sts/.../reviewer\" did not match any of
->   [\"octo-sts/.../implementer\"]"}`, HTTP 403. Reviewer run requesting `identity=agent-implementer`:
->   the symmetric message. Exactly the audience-mismatch case the original text describes, not the
->   subject-mismatch the probe was masked by in round 3.
-
-**What this proves:** SC-11 (the rest) and the `sts`-listener-only path — the trust policy accepts
-gcp-0's GKE issuer (G-0), fixed by project, location and cluster name, alongside aws-0's EKS issuer
-matched by *pattern* (`OD-5`, needed because that ID changes on every rebuild); on its own either
-alternative would accept a token minted by any cluster matching it, and it is safe only because every
-token that reaches octo-sts has already been verified against *this* cluster's exact issuer and JWKS
-by the `sts` listener, and nothing in `agents` can route around it.
+**What this proves:** SC-11 (the rest) and the `sts`-listener-only path. The trust policy's issuer
+has two alternatives: gcp-0's GKE issuer, fixed by project, location and cluster name (#2122), and
+aws-0's EKS issuer, matched by *pattern* because its ID changes on every aws-0 rebuild. The EKS
+alternative is dormant while aws-0 is down. Either alternative alone would accept a token minted by
+any cluster matching it; it is safe only because every token that reaches octo-sts has already been
+verified against *this* cluster's exact issuer and JWKS by the `sts` listener, and nothing in
+`agents` can route around it.
 
 ### Step 6 — clean up and record
 
@@ -154,26 +118,15 @@ gh api --method DELETE "repos/Smana/cloud-native-ref/git/refs/heads/${IMPL_BRANC
 kubectl logs -n agent-system deploy/octo-sts | grep -iE 'exchange|subject' | tail -5
 ```
 
-Expected: the branch deleted; octo-sts log lines naming the run subjects
-(`system:serviceaccount:agents:xplane-run-<id>`).
-
-> Corrected 2026-09-27, round 3: no branch was ever created (no working exchange, see above), so
-> nothing to delete. octo-sts's logs name the subject only on a **rejected** exchange (the WARN
-> line); a request that clears the subject/issuer check logs `exchange request: "agent-implementer"`
-> and `found trust policy in cache for {Smana cloud-native-ref agent-implementer}` — no
-> `system:serviceaccount:agents:xplane-run-<id>` string appears anywhere for a passing check.
->
-> Round 4: with a working exchange, the implementer's push to its own branch (`agent/c4cnkg6r`)
-> succeeded, so it existed to delete — `gh api --method DELETE
-> repos/Smana/cloud-native-ref/git/refs/heads/agent/c4cnkg6r` (`204`). Every token minted this round
-> was also explicitly revoked (`DELETE /installation/token` → `204`), belt-and-braces alongside the
-> run's own teardown.
+Expected: the branch deleted (`204`); octo-sts logs `exchange request: "agent-implementer"` for
+each exchange, and names the subject (`system:serviceaccount:agents:xplane-run-<id>`) only on a
+rejected one (`WARN token does not match trust policy`).
 
 ## Results
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 
-G-0 is on `main` (#2122): the implementer trust policy's `issuer_pattern` carries
+The gcp-0 issuer alternative is on `main` (#2122): the implementer trust policy's `issuer_pattern` carries
 `https://container\.googleapis\.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0`.
 Runs: implementer `xplane-run-6qnowwxl`, reviewer `xplane-run-x6jexfi4` (task URL `pull/1`; a reviewer run
 refuses `--task` text: `a reviewer run needs a pull request URL as its task`).
@@ -221,5 +174,6 @@ rows from round 3 are now PASS; nothing in this runbook remains blocked or faili
 `.github/chainguard/agent-implementer.sts.yaml` — `permissions.contents: write`;
 `agent-reviewer.sts.yaml` — `permissions.contents: read`. Both `subject_pattern:
 'system:serviceaccount:agents:xplane-run-[a-z2-7]{8}'`, matching the run's real ServiceAccount name.
-Both also request `checks: read` and `actions: read` — see Platform findings for why every live
-exchange against these policies 422s regardless of role.
+Both also request `checks: read` and `actions: read`. Round 3's 422 on every exchange came from the
+App missing `pull_requests: read & write`, not from these; fixed in round 4 (README, Platform
+findings).
