@@ -84,5 +84,8 @@ single-file fixes never need one.
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
 | [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on AL2023 spot nodes, with OpenHands as the harness profile | Accepted | 2026-09-26 |
+| [0042]({{< relref "/docs/decisions/0042-agent-router-identity-gateway.md" >}}) | Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens | Accepted | 2026-09-26 |
+| [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
+| [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

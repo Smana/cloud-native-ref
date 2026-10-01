@@ -13,7 +13,7 @@ spec:
   prune: true
   interval: 5m0s
   timeout: 5m0s
-  path: ./infrastructure/base/envoy-gateway
+  path: ./infrastructure/aws-0/envoy-gateway
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact
@@ -27,6 +27,8 @@ spec:
   # "no matches for kind <Backend|EnvoyProxy|...>" on first reconcile.
   dependsOn:
     - name: crds
+    # The KVStore claim needs its XRD.
+    - name: crossplane-configuration
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
