@@ -38,6 +38,11 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 | S11 | Deployment | `App` claim for the broker, with its own route off; HTTPRoute and oauth2-proxy beside it | Raw manifests | Dogfoods the golden path. The App XRD takes custom CNP rules and extra ports |
 | S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for the `AgentRun` and `Room` watches |
 
+> **2026-10-01 note on S7.** agentgateway is no longer the only A2A path: Agent Router ships an A2A
+> capability in Preview on Envoy's native A2A filter, and an `A2ARoute` CRD is proposed upstream
+> ([agent-router#2070](https://github.com/theagentrouter/agent-router/issues/2070)). If an outside
+> agent must join a room, try that first ([ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md)).
+
 ## Target architecture
 
 ```mermaid

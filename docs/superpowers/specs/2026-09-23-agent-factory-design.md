@@ -38,6 +38,15 @@ from the 2026-05 LLM designs, which were scoped "solo experimental".
 | D10 | Agent loop placement | Agent loop **inside** the sandbox *(default; OD-1)* | Trusted shared host + tool-only sandboxes | A shared host holds every run's context — one compromise exposes all runs |
 | D11 | Identity enforcement point | **Agent Router** (Envoy AI Gateway) *(default; OD-2)* | agentgateway at the agent boundary; consolidating on agentgateway | Agent Router v1.1 already validates JWTs, filters MCP tools per caller and injects credentials; agentgateway's distinct OSS feature (RFC 8693 client) is not needed by autonomous agents. Re-evaluate at SP2 if A2A or on-behalf-of becomes necessary |
 
+> **2026-10-01 note on D11.** Agent Router 1.1.0 speaks MCP 2025-06-18 only; agentgateway speaks
+> 2026-07-28. Reopen D11 if an MCP server or harness on the platform drops 2025-06-18, or if Agent
+> Router has not added 2025-11-25 support by 2026-12-15. A gap matrix found no blocker to replacing
+> the agent router, and a time-boxed PoC is running on gcp-0. See the
+> [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md) and the [gap matrix](2026-10-01-agentgateway-gap-matrix-research.md).
+>
+> **2026-10-01 outcome.** PoC GO on gcp-0; the owner selected agentgateway for agent-router, and an
+> ADR superseding ADR-0042 and ADR-0050 Option 1 follows. The note above is kept as the record.
+
 ## Verified during design (supersedes the raw research notes)
 
 Several subagent claims were overstated and corrected against primary sources. Where the research
