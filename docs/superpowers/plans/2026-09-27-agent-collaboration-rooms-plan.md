@@ -461,6 +461,7 @@ tags and merges it.
 | [OWNER] | 3.6 | Only if the session's gh token lacks `write:packages`: push H-S3's harness pre-release (four commands, given in the task) |
 | [OWNER] | 2.14 | Grant `agents-admin` to yourself and `agents-member` to each developer: `scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --grant agents-admin=<email> --grant agents-member=<email> --apply` (each user must have logged in once) |
 | [OWNER] | 7.1 | Sign off the whole programme's UX (ruling P33). Nothing merges before it |
+| [OWNER] | before the first `internal` run | Re-confirm `agents-member` watches everywhere (spec §1, D1) for `internal` rooms before the first internal run, or ask for a follow-up gating `Read`/`Fork` on `dataClass` (external review R12) |
 | [OWNER] | 7.2–7.6 | The merge wave: turn off auto-delete, retarget and merge each PR (a ruleset bypass here), push each release tag, delete the branches last |
 
 One GitHub App: SP3's factory App, created early (Task 3.9), so the owner creates one App for both
@@ -16702,8 +16703,10 @@ Expected: `20261001120000`.
 
 - [ ] **Step 2: SC-3**
 
-The owner creates a room from the UI ("new room", public), then invites the developer as a
-collaborator from the UI's owner menu (the `invite` action). The developer sends "steer now: use
+The owner creates a room from the UI ("new room", public), then adds the developer to
+`spec.members` as collaborator (`kubectl edit room`; there is no invite UI before Phase 7, ledger
+D10), and the developer reloads the page; once Task 7.0 B3 ships, no reload is needed *(external
+review R10)*. The developer sends "steer now: use
 the v2 API". Expected: footer `rejected: not_permitted`. The owner gives the token to the developer
 ("give…", `human:<developer sub>`). Expected: a `driver` event with `epoch` one higher, and the
 developer's page shows the steer controls. The developer steers again. Expected: accepted.
@@ -18762,6 +18765,7 @@ Gate: SC-13 on `main`, and `integration/agent-factory` reconciling on release ta
 
 ```mermaid
 flowchart LR
+  FIX["7.0 UX fixes A1–C3"] --> UX
   UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: AP-0…AP-6, one release"]
   UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1; then O-1"]
   H1 --> H["7.3 H-S3 after H-1: harness v0.2.0"]
@@ -18771,11 +18775,38 @@ flowchart LR
   S --> DEL["7.6 integration on tags, then delete branches"]
 ```
 
+### Task 7.0: UX fixes the sign-off would re-find (external reviews R09–R11)
+
+On AP-5's branch (`feat/room-approvals`), all in `web/` plus one guide line; no broker or schema
+change. Each item lands test-first. **Task 7.1 does not start until A1–C3 are checked.**
+
+| Item | File | Change | Test |
+|---|---|---|---|
+| **A1** (R09) | `web/src/controls.ts` | Option labels "post to the room (no agent is prompted)", "queue for the next run's brief", "steer the running agent now". Chat stays the default: queued text enters an LLM prompt. On token loss with steering selected, `delivery.value = ""` (a disabled placeholder "choose where this goes"); send refuses an empty delivery; `say("You no longer hold the driver token: choose where this message goes.")`. Reverses 4.5 review I3 / mutant B's expected value | `controls.test.ts`: `toBe("none")` becomes `toBe("")`; send emits no frame and the notice is set |
+| **A2** (R09) | `web/src/render.ts` | A `message` row shows a badge `chat \| queued \| steering → <to>`; a `state_changed{delivered}` row names `#<ref>` | `render.test.ts`: one row per delivery value |
+| **A3** (R09) | `website/content/docs/platform/ai-platform/agents/user-guide.md` §4 | The default is the room, not the next run (done on `main` with the review's amendment PR) | — |
+| **B1** (R10) | `web/src/room-state.ts`, `main.ts` | `RoomState.phase`, set by `reset` and `state_changed{room_phase}`; the header renders it | `room-state.test.ts` |
+| **B2** (R10) | `web/src/render.ts` | A `handoff` case, `handoff <fromRole> → <toRole> @ <commit[:7]>` + `markdown(summary)` (untrusted, T10); short text for `driver` (`from → to · reason`) and `participant` (`principal · change · role`) | No `pre.raw` for these three types |
+| **B3** (R10) | `web/src/main.ts` | A `participant` event naming you closes the socket; the reconnect's state frame re-resolves `you`. No client projection; the broker re-resolves standing on every act | FakeSocket sees a close after that event |
+| **B4** (R10) | `web/src/controls.ts` | `refresh()` never calls `root.replaceChildren`: sections mount once and toggle `hidden`; `renderDriver` keeps `giveTo`/`takeReason` attached | Focus a field, `refresh()` twice, `document.activeElement` unchanged (fails today) |
+| **B5** (R10) | `controls.ts`, `view.ts`, `main.ts` | `aria-label` on every `select`/`input`/`textarea`; `role="status" aria-live="polite"` on the footer notice | A scan test: every form control has an accessible name |
+| **C1** (R11) | `web/src/view.ts` `newRoomForm` | A disabled, selected placeholder "choose a data class", `required`, and a hint: immutable, governs model route, tools and egress, does not change who can read the room (R12). Never default to `public` | `view.test.ts`: submit without a choice sends no POST |
+| **C2** (R11) | `web/src/conn.ts`, `main.ts` | `onRefused` returns whether to retry; when `/api/rooms` lacks the id, `conn.stop()` (no further `setTimeout`) and "No such room, or you cannot read it" with a link to `/`. Same answer for both cases: no existence oracle | `conn.test.ts`: refused + `stop()` → no reconnect |
+| **C3** (R11) | `web/src/controls.ts` | `expiresAt.toLocaleString()` when the date is not today | One case |
+
+- [ ] **Step 1:** A1–C3 test-first, `task check` green on AP-5, pre-release re-pinned on integration.
+
 ### Task 7.1: [OWNER] UX sign-off
 
 - [ ] **Step 1:** The owner reviews the whole programme's UX on aws-0: the rooms UI, `roomctl`, the
   verdict comment and PR footer, approvals, fork. Record their written sign-off here, as a comment
   on a tracking issue (#2092, the design PR, merged on 2026-09-27 by the owner's decision). **Nothing below starts before it.**
+  The owner decides each of these, accept or defer, not pre-built *(external reviews R10, R11)*:
+  a summary panel (`snap.runs`, PR, outcome, needs-you); older-history paging; an identity picker
+  for give; controls placement; keyboard-only use; the approval card's initiator and prompter,
+  "Allow action" wording plus the S9 "oversight, never widens" line, and a countdown; D10's
+  invite/close UI; and "a first-time member creates a public room and recovers from a mistyped room
+  URL unaided".
 - [ ] **Step 2:** [OWNER] turns off "Automatically delete head branches" on `Smana/agent-platform`,
   `Smana/crossplane-configuration` and this repo for the wave. A deleted branch 404s every Git
   source still tracking it, `atlasSchema.ref` first. Task 7.6 deletes the branches, once nothing

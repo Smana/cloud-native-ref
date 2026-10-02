@@ -509,6 +509,10 @@ Each phase is one PR here plus a release of `Smana/agent-platform` (OD-4). aws-0
 | **0049** · Room client and human auth | Web UI served by the broker behind oauth2-proxy (OD-15) | Headlamp plugin, CLI only, AHP facade, browser PKCE app |
 
 Owner decisions are consolidated in the programme: client OD-15, four-eyes OD-16, retention OD-17, code location OD-4.
+Open before the first `internal` run is admitted *(external review R12)*: re-confirm that
+`agents-member` watches everywhere (§1, D1) for `internal` rooms, whose transcripts carry cluster
+logs and pod specs. Yes → record "re-confirmed for internal, <date>" beside §1's group rule. No → a
+follow-up task gates `Read`/`Fork` on `dataClass` plus membership, with a policy-matrix test.
 
 ## Appendix
 
