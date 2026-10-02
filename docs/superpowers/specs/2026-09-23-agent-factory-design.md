@@ -130,7 +130,7 @@ flowchart LR
 | SP4 | Complexity routing | The right model per task and session, frontier included, with per-identity budgets | — (its frontier slice unblocks SP1's agents) |
 
 Order: SP1 → SP2 → SP3, with SP4 in parallel. Each sub-project gets its own plan and PR.
-Until SP4's Bedrock slice lands, only `public` runs have a model backend: `internal` runs — and
+Until the agentgateway plan's phase I (Task I.2) lands, only `public` runs have a model backend: `internal` runs — and
 therefore RunLore-triggered tasks — wait for it.
 **aws-0 first** (primary cloud, ADR-0027); gcp-0 is a follow-up workstream per sub-project.
 
@@ -333,7 +333,13 @@ SP4 owns the model mapping and budget enforcement.
   *(Resolves SP1's `x-agent-sub` in favour of SP4's names.)*
 - **Logical model names:** `tier-light`, `tier-standard`, `tier-frontier`, and the alias
   `agent-default` (initially → GLM-5.2 via Z.ai). The **data class** decides the backend behind a
-  name: `public` runs may reach Z.ai, `internal` runs only Bedrock EU or self-hosted models (OD-13).
+  name: `public` runs may reach Z.ai. `internal` runs reach only the providers ADR-0054 admits for
+  internal data. The default is the Anthropic API; Bedrock, Vertex and self-hosted models are
+  optional. They never reach Z.ai or OpenRouter (OD-13, gate AG5). `internal` is a processing, tool
+  and egress class: it picks the provider, the MCP tool set (OD-13's consequence) and the run's
+  egress. Processing location, retention and residency are properties of the provider, recorded in
+  ADR-0054, and not implied by the class. Who may *read* a room is SP2's rule (D1), not the data
+  class *(external review R13, 2026-10-02)*.
   **Enforced per listener:** `agent-router` has one listener per data class, each accepting only its
   class's audiences (C2); Z.ai routes attach to the `public` listener only, so an `internal` token
   has no path to Z.ai by construction. Whether a run can additionally be bound to *one* logical name
@@ -416,9 +422,9 @@ owner does not override it.
 | OD-9 | RunLore findings start work unattended | When actionable with confidence ≥ 0.75, max 5 a day | SP3 |
 | OD-10 | Budget defaults: per run 2M (ceiling 5M); factory 25M tokens/day; each human 5M/day for the runs they launch; agent fleet cap ≥ the sum of those (SP3 sets the admission caps, SP4 the gateway buckets) | Accept; run in shadow for a week before enforcing | SP3, SP4 |
 | OD-11 | Jev | Shadow only, on `dataClass: public` text; never selects a tier | SP3, SP4 |
-| OD-12 | Anthropic access | Bedrock via EKS Pod Identity (keyless), not a native API key | SP4 |
-| OD-13 | Which frontier gets which data | Public-repo agent work → Z.ai; internal ops data (RunLore, cluster reads) → Bedrock EU. **Consequence:** cluster reads are internal data, so `public` runs get documentation-only MCP tools; D5's read-only cluster access applies to `internal` runs only | SP4, SP1 |
-| OD-14 | Control group | 10% of agent tasks run at `tier-frontier` regardless of classification — the unbiased baseline for comparing classifiers | SP4 (implemented in SP3's triage) |
+| OD-12 | Anthropic access | Anthropic API with a gateway-held key from OpenBao `agents/anthropic` (ADR-0054; supersedes the keyless Bedrock choice). Bedrock and Vertex are optional per cloud | SP4 |
+| OD-13 | Which frontier gets which data | Public-repo agent work → Z.ai; internal ops data (RunLore, cluster reads) → the Anthropic API (ADR-0054). **Consequence:** cluster reads are internal data, so `public` runs get documentation-only MCP tools; D5's read-only cluster access applies to `internal` runs only | SP4, SP1 |
+| OD-14 | Control group | 10% of agent tasks run at `tier-frontier` regardless of classification — a budget-fit baseline (heuristic) for comparing classifiers (external review R15) | SP4 (implemented in SP3's triage) |
 | OD-15 | Room client for the demo | Web UI served by the broker (behind oauth2-proxy); `roomctl` CLI later. Claude Code is never an approving client | SP2 |
 | OD-16 | Four-eyes rule (approver ≠ prompter) | Off by default, per-room switch | SP2 |
 | OD-17 | Transcript retention | 90 days after a room closes | SP2 |
@@ -435,11 +441,13 @@ sub-project so parallel drafts cannot collide (0039 and 0040 are already taken o
 | 0043 | GitHub credentials for agents | octo-sts | PATs, ESO GitHub generator, git proxy | SP1 |
 | 0044 | Session protocol | AHP-shaped room log we own | OpenHands shared conversations, ACP-only | SP2 |
 | 0045 | Merge policy gate | palantir/policy-bot, its status required through a repository ruleset | Required reviews, rulesets alone, a custom check, Prow/tide, Mergify, Kodiak | SP3 |
-| 0046 | Frontier providers | Z.ai for public data; Anthropic keyless per cloud — Bedrock EU with Pod Identity on aws-0, Vertex with Workload Identity on gcp-0 | A native Anthropic API key; one provider for both clouds (Vertex-only); aggregators; self-hosted only | SP4 |
+| 0046 | Frontier providers *(internal data superseded by 0054)* | Z.ai for public data; Anthropic keyless per cloud — Bedrock EU with Pod Identity on aws-0, Vertex with Workload Identity on gcp-0 | A native Anthropic API key; one provider for both clouds (Vertex-only); aggregators; self-hosted only | SP4 |
 | 0047 | Complexity classification | SR complexity signal default, Jev pluggable in shadow | Jev in the request path, LiteLLM complexity router | SP4 |
 | 0048 | Factory orchestrator | Custom `Task` controller + Kueue admission | Argo Workflows, Tekton, Temporal, a Crossplane Task XR, gh-aw | SP3 |
 | 0049 | Room client and human auth | Web UI served by the broker, behind oauth2-proxy *(OD-15)* | Headlamp plugin, CLI only, AHP facade, browser PKCE app | SP2 |
 | 0050 | Token budgets | Envoy Gateway global rate limit backed by Valkey | Agent Router `QuotaPolicy`, a custom ext_proc, LiteLLM budgets | SP4 |
+| 0053 | Agent router gateway | agentgateway for the agents' Gateway (LLM, MCP, `sts`); ai-gateway stays on Envoy Gateway | Agent Router 1.1.0 on Envoy Gateway (0042 Option 1), Envoy Gateway rate limit for agent budgets (0050 Option 1) | agentgateway migration |
+| 0054 | Agent model providers | `internal`: the Anthropic API, key held by the gateway; `public`: Z.ai, OpenRouter optional; Bedrock and Vertex optional per cloud *(supersedes 0046 for internal data; external review R13)* | Bedrock or Vertex per cloud (0046); OpenRouter for internal data | agentgateway migration |
 
 ## Non-goals (programme level)
 

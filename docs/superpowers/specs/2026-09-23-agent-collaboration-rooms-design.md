@@ -284,7 +284,26 @@ sequenceDiagram
 | Claim (`agent-system`) | Settings | Why standalone |
 |---|---|---|
 | `SQLInstance xplane-rooms` | 1 instance, 20 Gi, daily backup to `${region}-ogenki-cnpg-backups`, `objectStoreRecovery`, `atlasSchema` | Only the standalone XRD has `objectStoreRecovery`, which lets the log survive routine rebuilds |
-| `KVStore xplane-rooms` | nano, `auth.existingSecret` from the `agents-secrets` store (the dedicated `agents` mount (`agents/*`, SP2 plan P38), C1) | The App sub-block has no `auth`, and the KVStore CNP admits the whole namespace |
+
+No `KVStore`: fan-out is Postgres `LISTEN/NOTIFY` as built (ledger ruling AT). Where this section says
+Valkey, read the notify channel *(external review, component check, 2026-10-02)*.
+
+`atlasSchema.ref` names a frozen branch `pin/room-broker-<sha8>`, cut at the commit of the pinned
+broker image and protected by an agent-platform ruleset (no update, no deletion on `pin/**`), so a
+push elsewhere cannot migrate the deployment. It is applied at the next integration re-pin; a
+re-pin cuts a new pin branch and moves image, CRD and ref together. Never a SHA; the wave pins the
+release tag *(external review R16; SP2 plan P41)*.
+
+**Recovery objectives (single instance, deliberate)** *(external review R08 and component check)*.
+
+| Failure | RPO | RTO |
+| --- | --- | --- |
+| Pod or node loss | 0. The PVC survives | Minutes: CNPG restarts the instance on the volume. Rooms are read-only meanwhile and agents' posts retry |
+| Volume or zone loss | WAL archive lag: CNPG `archive_timeout` (default 5 min, not yet checked live) | Restore from the bucket |
+| Cluster rebuild | The last promoted seed (plan P8). Not WAL | The rebuild, plus the restore |
+
+HA is not planned; the log is an audit trail, not the run's control state. That rests on F12 and
+F15 (the room lease) being proven.
 
 **Append.** One transaction: `UPDATE rooms SET last_seq = last_seq + 1 RETURNING`, `INSERT`, `COMMIT`. The row lock
 serialises writers per room, and a rollback also undoes the counter, so `seq` stays gapless. The broker's database
@@ -490,6 +509,10 @@ Each phase is one PR here plus a release of `Smana/agent-platform` (OD-4). aws-0
 | **0049** · Room client and human auth | Web UI served by the broker behind oauth2-proxy (OD-15) | Headlamp plugin, CLI only, AHP facade, browser PKCE app |
 
 Owner decisions are consolidated in the programme: client OD-15, four-eyes OD-16, retention OD-17, code location OD-4.
+Open before the first `internal` run is admitted *(external review R12)*: re-confirm that
+`agents-member` watches everywhere (§1, D1) for `internal` rooms, whose transcripts carry cluster
+logs and pod specs. Yes → record "re-confirmed for internal, <date>" beside §1's group rule. No → a
+follow-up task gates `Read`/`Fork` on `dataClass` plus membership, with a policy-matrix test.
 
 ## Appendix
 

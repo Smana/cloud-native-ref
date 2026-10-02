@@ -116,7 +116,7 @@ one itself once the reviewer pair is deployed. The comment is advice only: it ne
 | Ask for changes | *(Built, not yet deployed)* A normal GitHub review with **"Request changes"**. Your review becomes the input of a new run on the same branch |
 | Accept the work | Approve and merge as usual |
 | Try again after a failure | *(Built, not yet deployed)* Comment **`/factory retry`** |
-| Add context while it runs | If you are a collaborator in the room, post a message there: it is queued for the next run, or steers the running one |
+| Add context while it runs | If you are a collaborator in the room, post a message there. Messages default to the room (no agent prompted, though a running agent may read them); choose *queue* for the next run's brief, or *steer* while you hold the driver token |
 
 *(Planned)* The **merge gate** merges nothing but two low-risk classes, and only once CI and the
 policy agree: `docs-links` (fixing broken links) and `revert` (the factory's revert of an
@@ -239,6 +239,10 @@ deployed.
 **Can an agent merge to `main`, or push anywhere else?**
 No. Its GitHub App may push only `agent/**` branches and no tags, enforced by two repository rulesets. Merging is
 the human's, except for the two low-risk classes above, which go through a separate App.
+That confinement is per repository, not per run: every run pushes as the same App, so one run can
+push to another's `agent/**` branch. The footer is provenance, never authorisation: the merge gate
+merges only the commit the task's own run reported in its room, with every reviewer approval naming
+that commit.
 
 **Can it read our secrets?**
 The sandbox holds no long-lived credential. Its GitHub token is minted per run, scoped to one

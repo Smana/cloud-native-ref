@@ -148,7 +148,7 @@ attaches it (see [Agent runtime]({{< relref "/docs/platform/ai-platform/agents/r
 | Component | Software | What it does | Why this software |
 |---|---|---|---|
 | Gateway | [Agent Router](https://theagentrouter.ai) 1.1.0 (Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) | Verifies each run's token (JWT), attributes and meters every request to its run, routes the model alias to a provider. Per-run and fleet token budgets, and routing by tier | One gateway for models, tools and token exchange, with per-run identity in every access-log line |
-| Models | Z.ai GLM-5.3 for `public` runs; Anthropic Claude for `internal` runs, through Amazon Bedrock on `aws-0` and Vertex AI on `gcp-0` | The providers the router sends model calls to. Agents ask for an alias, never for a provider | Swapping or adding a provider changes the router, not the agents |
+| Models | Z.ai GLM-5.3 for `public` runs; Anthropic Claude for `internal` runs, through the Anthropic API (Bedrock or Vertex optional per cloud; ADR-0054, accepted on the programme branches) | The providers the router sends model calls to. Agents ask for an alias, never for a provider | Swapping or adding a provider changes the router, not the agents |
 | Tool servers | [MCP](https://modelcontextprotocol.io) servers for Flux Operator, VictoriaMetrics and VictoriaLogs, read-only, and the room-broker's `room_*` tools | `public` runs get documentation tools only; cluster, metric and log reads are for `internal` runs. The room tools are routed per role | Agents investigate with the data humans use, under the same identity checks |
 
 The token-exchange listener names each repository's audiences, at most eight per listener; adding

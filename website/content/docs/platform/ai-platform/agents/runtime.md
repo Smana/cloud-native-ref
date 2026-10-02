@@ -33,7 +33,7 @@ what runs today is on the [status page]({{< relref "/docs/platform/ai-platform/s
 | Code execution | gVisor sandbox, restricted pod security, no service-account token in the harness |
 | Network | Default-deny CNP per run; egress only to named FQDNs and the gateway |
 | Identity | Two projected tokens per run, for the gateway and for token exchange, valid until the deadline; each audience names the run's role and its data class or repository. A room run adds a third, audience `room-broker`, refreshed every 600 s and held only by the room-bridge sidecar |
-| GitHub | Short-lived installation tokens from octo-sts, scoped to one repository and the role's permissions; rulesets let the agents' App push only `agent/**` branches, and no tags |
+| GitHub | Short-lived installation tokens from octo-sts, scoped to one repository and the role's permissions; rulesets let the agents' App push only `agent/**` branches, and no tags. Confinement is per repository: any run may push any `agent/**` branch, with no per-run branch isolation |
 
 Spend, merge and stop are the factory's controls: see
 [Factory → Controls]({{< relref "/docs/platform/ai-platform/agents/factory.md#controls" >}}).

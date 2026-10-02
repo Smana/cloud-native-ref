@@ -207,7 +207,7 @@ for `aws-0` (Karpenter). The `agent-branches` and `agent-tags` rulesets are acti
 | Planned | Note |
 |---|---|
 | Per-run and fleet token budgets, routing by tier | SP4 PR 2, not built |
-| Anthropic Claude for `internal` runs, through Bedrock on `aws-0` and Vertex AI on `gcp-0` | The keyless Anthropic models |
+| Anthropic Claude for `internal` runs, through the Anthropic API (Bedrock or Vertex optional per cloud) | ADR-0054, accepted on the programme branches; a gateway-held key, not keyless |
 | Cluster, metric and log MCP reads for `internal` runs | Await a model route; `public` runs get documentation tools only |
 | agentgateway replacing Agent Router | Selected 2026-10-01, see [below](#agentgateway-is-selected) |
 
