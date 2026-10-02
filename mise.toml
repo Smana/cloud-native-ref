@@ -9,7 +9,7 @@ min_version = "2024.11.1"
 go = "1.27.1"
 "aqua:golangci/golangci-lint" = "2.14.0"
 nodejs = "24.21.0"
-opentofu = "1.13.0"
+opentofu = "1.13.1"
 pre-commit = "4.6.2"
 trivy = "0.74.0"
 
