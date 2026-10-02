@@ -44,7 +44,7 @@ permissions:
 
 env:
   # renovate: datasource=github-releases depName=openbao/openbao
-  BAO_VERSION: 2.7.0
+  BAO_VERSION: 2.7.1
   AWS_REGION: eu-west-3
   SNAPSHOT_BUCKET: eu-west-3-ogenki-openbao-snapshot
   MIRROR_BUCKET: ogenki-435905-ogenki-openbao-snapshot
