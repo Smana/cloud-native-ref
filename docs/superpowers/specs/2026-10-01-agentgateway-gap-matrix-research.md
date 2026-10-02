@@ -8,21 +8,44 @@ line by line.
 
 | Side | Read at |
 |---|---|
-| Ours | `integration/agent-factory` = `147819ff`: Agent Router (ex-Envoy AI Gateway) **1.1.0** on Envoy Gateway **1.9.2**. Paths are relative to that branch; most are not on `main`. A `cc:` prefix means `Smana/crossplane-configuration@main` |
+| Ours | `integration/agent-factory` = `147819ff`: Agent Router (ex-Envoy AI Gateway) **1.1.0** on Envoy Gateway **1.9.2**. Paths are relative to that branch; most are not on `main`. ADR-0041 to ADR-0052 are programme ADRs (on the programme branches, not yet on main). A `cc:` prefix means `Smana/crossplane-configuration@main` |
 | Theirs | `agentgateway/agentgateway` **v1.5.0** = `fe6732474a96` (latest GA, 2026-08-27). `POL`, `BE`, `MOD` = the `agentgatewaypolicies`, `agentgatewaybackends`, `agentgatewaymodels` CRDs under `controller/install/helm/agentgateway-crds/templates/`; `SRC` = `crates/agentgateway/src/` |
 
 Status legend: **native** (a CRD field or behaviour at v1.5.0) · **via extension** (needs a
 component we run) · **not supported** · **UNVERIFIED** (not proven from source or docs).
 
-## Status
+## PoC result (2026-10-01, gcp-0)
 
-**PoC in progress on gcp-0.** The owner approved the time-boxed PoC below on 2026-10-01, on gcp-0
-rather than aws-0. Its pass/fail result is not recorded yet; ADR-0042 stands until it is.
+**GO, and agentgateway is selected for the agent router only.** agentgateway v1.5.0 ran beside
+agent-router on gcp-0 (branch `feat/agentgateway-poc`, merged into `integration/agent-factory`);
+agent-router was untouched throughout. The owner chose agentgateway for `agent-router` on
+2026-10-01; `ai-gateway` stays on Envoy Gateway. An ADR superseding ADR-0042 Option 1 and ADR-0050
+Option 1 for the agent router follows.
+
+| Item | Result |
+|---|---|
+| Live checks | **P1–P8 all pass**, including the four gating ones (P1, P2, P4, P6). Caveats: P4's room-broker leg (`x-room-mcp-key`) was untested, though the same per-target header injection was proven on a probe target. P6 ran on a throwaway Valkey, not the KVStore, so `REDIS_AUTH` wiring is untested. P5 used a stdlib MCP client, not the OpenHands SDK |
+| N1: drain cuts streams | The default drain (10 s min, 60 s max) cut in-flight streams about 18 s after SIGTERM, twice. `AgentgatewayParameters.shutdown: {min: 120, max: 660}` held a 200 s stream through both replicas' deletion. **Fix**: set the drain explicitly; one run with `min: 10, max: 660` settles whether `max` alone is enough |
+| N2: cut streams uncharged | A stream cut before completion is never charged to the budget: the token cost is evaluated only at completion. **Fix**: mostly closed by N1; record the residual in the budgets ADR |
+| N3: `/v1/models` | With a valid token, `GET /v1/models` returns 400: the AI backend parses every request as a completion. **Fix**: a `directResponse` policy on a `/v1/models` match, which now runs after JWT |
+| N5: tool renames | Federation renames tools `<target>_<tool>` (`victoriametrics_documentation`) and resources `<target>+<uri>`. **Fix**: rename in the harness, its skills and the gates, or change `prefixMode` |
+| N7: Allow is OR | The CRD text says `matchExpressions` "must all evaluate to true", but `Allow` expressions are OR-ed at runtime; `Require` is the AND. Writing AND intent as a list widens access. **Fix**: the rewritten gate enforces one alternative per expression and `Require` for conjunctions |
+| N10: CI gate vacuous | `assert-ai-gateway.py` passes ("5 checks, 0 violations") without looking at agentgateway objects, and their schemas come from the hosted ecosystem catalog, not pinned to v1.5.0. **Fix**: render the CRDs from the pinned OCIRepository into the local catalog and rewrite the gate, including N7 |
+| Proxy memory | 6–8 MiB per replica idle, against 69–84 MiB for agent-router's Envoy and ext_proc pods |
+| Migration effort | About **2.5–3 weeks**, unchanged overall: the PoC moved effort between rows (drain behaviour +0.5 d, telemetry and gate rewrite up, install, identity and MCP down) |
+| Decision | agentgateway for `agent-router` only (owner, 2026-10-01). `ai-gateway` stays on Envoy Gateway and Agent Router |
+
+Smaller gaps from the same run, each 0–S: the 2 MiB default buffer capped a federated
+`resources/list` (fixed at 8 MiB); a denied MCP item answers `Unknown tool` rather than a permission
+error; `gen_ai_request_model` carries the upstream model, not the logical name; the controller
+creates the `agentgateway` GatewayClass outside Flux; proxy access logs have no `msg` field.
 
 ## TL;DR
 
 **No hard blocker.** Every requirement is met natively or through a workaround we control. Three
-gaps cost real work, and four of the five classes our CI gates police disappear by construction.
+gaps cost real work, and four of the five classes our CI gates police disappear by construction,
+provided the gate is rewritten for agentgateway kinds: the PoC found today's gate passes vacuously on
+them (N10).
 
 ### What it lacks that we rely on
 
@@ -234,7 +257,7 @@ flowchart LR
 |---|---|---|
 | Gateway, 3 listeners | `infrastructure/base/agent-router/gateway.yaml` (class `envoy-ai-gateway`) | same name, class `agentgateway`, plus `AgentgatewayParameters` (ClusterIP, PSS, PDB, spread) |
 | JWT per listener, strip and set | 3 SecurityPolicies + ClientTrafficPolicy | 3 listener-scoped `AgentgatewayPolicy` (`jwtAuthentication` + CEL `authorization` on the `sub` prefix + `transformation`); `preserveToken` on `sts` only |
-| Z.ai and model names | backend, route and `/v1/models` guard | `AgentgatewayBackend` or `AgentgatewayModel` + HTTPRoute; the guard goes (P8 stays as a test) |
+| Z.ai and model names | backend, route and `/v1/models` guard | `AgentgatewayBackend` or `AgentgatewayModel` + HTTPRoute; the ordering guard goes (P8 stays as a test), but `/v1/models` needs a `directResponse` after JWT (N3) |
 | MCP | `mcproutes.yaml` (618 lines) | 2 `AgentgatewayBackend` + 2 `AgentgatewayPolicy`, roughly 120 lines |
 | Per-run and fleet budgets | planned BackendTrafficPolicy | `rateLimit.global` descriptors + **our** `envoyproxy/ratelimit` with `shadow_mode` |
 | Telemetry | `envoyproxy.yaml` | `frontend.{tracing,accessLog,metrics}` policy; VMPodScrape `:15020` + relabel |
@@ -253,10 +276,12 @@ router and the Envoy Gateway checks kept for `ai-gateway`:
 | Merge type | no route-level `AgentgatewayPolicy` with `strategy.inheritance: Override` carrying `rateLimit`/`jwtAuthentication` |
 | `sectionName` | unchanged |
 | No `Authorization` to MCP | no `preserveToken: true` or passthrough outside `sts`; MCP target credentials use `credentials[].location.header`, never `auth.key` |
-| `/v1/models` ordering | deleted; live test P8 replaces it |
+| `/v1/models` ordering | the ordering check goes (live test P8 covers it); a new check requires the `/v1/models` `directResponse` (N3) |
+| Gate coverage | the gate selects agentgateway kinds and their schemas come from the pinned CRDs, so a pass is not vacuous (N10); `Allow` lists carry one alternative per expression (N7) |
 | New | `AgentgatewayParameters` carries `seccompProfile: RuntimeDefault`, a liveness probe, a memory limit, `service.type: ClusterIP` |
 
-**Effort**: about 2–3 weeks, one owner-reviewed PR per group: PoC 2–3 days; base install, PSS,
+**Effort**: about 2–3 weeks before the PoC, about 2.5–3 weeks after it (see the PoC result), one
+owner-reviewed PR per group: PoC 2–3 days; base install, PSS,
 CNP and Flux 2; identity and LLM 2; MCP 1–2; RLS and budgets 2–3; telemetry and dashboard relabel
 2; gate rewrite and tests 2; crossplane-configuration release 1; ADR 0.5.
 
@@ -267,11 +292,15 @@ CNP and Flux 2; identity and LLM 2; MCP 1–2; RLS and budgets 2–3; telemetry 
 - Metric renames break dashboards silently: a VMRule `absent()` on the renamed series guards it.
 - Two AI gateways with different policy languages for humans and agents (a cognitive cost).
 - MCP sessions fall back to base64 if `SESSION_KEY` is unset (`SRC/config.rs:353`): check the
-  generated Secret exists and is not public.
+  generated Secret exists and is not public. The PoC found the controller generates it.
+- **The default drain cuts long streams (N1)**: every proxy rollout or node drain kills an agent
+  completion about 18 s after SIGTERM unless `shutdown` is set explicitly.
+- **Cut streams are never charged (N2)**: a run whose stream is cut spends uncounted tokens.
 
 ## Open questions for the owner
 
-Settled on 2026-10-01: run the PoC, on gcp-0. Still open:
+Settled on 2026-10-01: run the PoC, on gcp-0; PoC GO, agentgateway selected for the agent router
+only. Still open:
 
 1. **Scope.** Is "becoming a standard" a reason to move `ai-gateway` too, eventually? That brings
    G5 and an InferenceService composition rewrite into scope (size L).

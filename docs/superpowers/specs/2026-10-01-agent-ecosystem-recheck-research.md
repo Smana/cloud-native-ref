@@ -5,7 +5,7 @@
 A fact-check of an outside critique that proposed all three. Upstream was read with `gh api`
 (release notes, CRD schemas at tag) and the projects' docs. The platform was read at
 `integration/agent-factory` = `147819ff`: most repository paths below exist only on the programme
-branches, not on `main`. Anything not confirmed is marked **UNVERIFIED**. The capability-level
+branches, not on `main`, and so are ADR-0041 to ADR-0052 (programme ADRs). Anything not confirmed is marked **UNVERIFIED**. The capability-level
 comparison of agentgateway against the agent router is in the
 [companion gap matrix](2026-10-01-agentgateway-gap-matrix-research.md).
 
@@ -16,6 +16,11 @@ comparison of agentgateway against the agent router is in the
 | agentgateway | **Revisit at a trigger** (PoC in progress on gcp-0) | Nothing it does is both unused and needed today. Its one real edge over our pin is MCP spec currency: it supports 2026-07-28, while Agent Router 1.1.0 stops at 2025-06-18. The owner approved a time-boxed PoC on 2026-10-01 after the gap matrix found no blocker; it is running on gcp-0 |
 | agentregistry | **Reject** | A Postgres-backed developer catalog for IDEs, mid-pivot: v0.4.0 and `main` removed its own Kubernetes runtime and now target kagent. Nothing in the design consumes a catalog, and packaging is already an OCI digest plus a Crossplane profile |
 | Agent Substrate | **Revisit on 2026-12-15 (unchanged)** | v0.3.0 (2026-09-30) made real progress (per-actor JWT, authorization part 1, egress policy work), but none of ADR-0044's re-check triggers is met. The critique's "loses per-run identity and token limits" is mostly false under the issuer-agnostic run identity of [contract C2](2026-09-23-agent-factory-design.md) |
+
+> **2026-10-01 outcome.** PoC GO on gcp-0; the owner selected agentgateway for agent-router, and an
+> ADR superseding ADR-0042 and ADR-0050 Option 1 follows. That decision supersedes the ADR-0042
+> re-check trigger proposed below (gap 1 and the agentgateway section). Result:
+> [gap matrix](2026-10-01-agentgateway-gap-matrix-research.md#poc-result-2026-10-01-gcp-0).
 
 What the research surfaced that the design does not record:
 
@@ -73,7 +78,7 @@ fact that sharpens the comparison is MCP spec currency.
 catalog; re-implementing ADR-0042's three listeners, the audience encoding and the CI gates;
 monthly breaking minors; budgets that need a database.
 
-**Re-check trigger** (proposed for ADR-0042): reopen if **either** an MCP server or harness on the
+**Re-check trigger** (proposed for ADR-0042; superseded on 2026-10-01, see the outcome above): reopen if **either** an MCP server or harness on the
 platform stops negotiating 2025-06-18, **or** Agent Router has not shipped 2025-11-25 support by
 **2026-12-15**. For A2A, try Agent Router's filter first.
 
