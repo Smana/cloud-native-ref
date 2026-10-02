@@ -129,7 +129,8 @@ files to exist, and the real certificates are never in Git.
 
 ### `security-scan` 🔒
 
-Three scanners, all uploading SARIF to the GitHub Security tab:
+Three scanners. Trivy and Checkov write SARIF, which the `sarif-upload` job
+sends to the GitHub Security tab (see [Token scopes](#token-scopes)):
 
 | Scanner | Scope | Failure mode |
 |---|---|---|
@@ -178,6 +179,19 @@ The same job then runs `./scripts/ci/validate-doc-claims.sh`, which checks the
 specific claims pinned in `.doc-claims.yaml` against the configuration they
 describe — it lives in this job rather than its own so the required-check
 list on `main` does not have to change.
+
+### Token scopes
+
+Every job that checks out the PR runs PR code, so the workflow token is
+`contents: read`. Write scopes sit only in jobs that never check out or run PR
+code: each one downloads an artifact and hands it to a pinned action. Neither
+is a required check.
+
+| Job | Write scope | Consumes |
+|---|---|---|
+| `sarif-upload` | `security-events` | `security-scan`'s SARIF |
+| `render-diff-comment` | `pull-requests` (same-repo PRs) | `render-diff`'s comment body |
+| `notify-main-broken` | `issues` | nothing; runs on pushes to `main` only |
 
 ## Path-filtered workflows
 
