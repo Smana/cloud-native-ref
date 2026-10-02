@@ -265,6 +265,10 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R45 | R18: the RunLore intake token is "one value, read by the factory from `platform/agents/*` and by RunLore from its own store" | **Written twice from one value (Task 9.3): `agents/runlore-intake` for the factory, `platform/runlore/factory-intake` for RunLore's `openbao-platform`** | After M1 no store reads both mounts, and C1 keeps agent-system off the ClusterSecretStore | RunLore's copy stays readable from any namespace through `openbao-platform` (T14), as before M1: a thief can post at most `runlore.dailyCap` (5) findings a day, each a triager-only task ending on a proposal a maintainer reads (R38). A rotation writes both paths |
 | R46 | Further review (2026-09-29): "a trigger-rooted trace per task" | **One root span per accepted task (Task 1.10b).** When `received` admits a task, it mints a trace id and a span id into `status.trace`. It passes W3C `traceparent` `00-<trace>-<span>-01` to every run it creates, as the claim annotation `agents.ogenki.io/traceparent` (Task 1.5a). The composition hands that to the harness as `TRACEPARENT`, and the harness's `agent-run` span parents on it (observability plan Tasks 1.3a, 2.8a, O21). When `end()` reaches a terminal phase, the factory exports the task span once, to the collector's platform port :4317 (observability plan O20). The span runs from the Task's creation, when the label was accepted, to now. Its only attributes are `agent.task_id`, `agent.tier`, `agent.task.phase` and `agent.task.reason`, never issue text. Export is best effort, and an empty `tracing.otlpEndpoint` turns tracing off | A span held in memory would not survive a restart or a leader change over a task's hours; recorded ids and a span built at the end do. The annotation is set at CREATE, and the patch-limit policy (Task 5.5) governs UPDATEs only. It clashes with no SP1 annotation (`revoked`, `usage-tokens`, `pull-request`, `finished-phase`, `principal`) and no SP3 one (`stop`, `revert`). The trace id is correlation only (observability plan O22) | The task span arrives only when the task ends, so Grafana shows a live task's runs under a missing parent until then. An escalated task that never closes has no task span. An export that succeeds before a lost status write is repeated once, with the same ids |
 | R47 | Further review (2026-09-29): "routing tier vs spend"; triage already decides the tier (§2, tier fit) | **A run's tier is recorded, and fixed.** `runs.Build` writes the label `agents.ogenki.io/tier` (Task 1.5a): an implementer carries the task's triaged tier, a reviewer the other tier it runs on (Task 4.2a). **Agents are never re-routed per request within a run.** The tier becomes `spec.model` (R11), which the XRD's CEL makes immutable, and agent-router routes on the model name only. The observability plan exposes the label as `agentrun_info{tier}` and draws tier against tokens and steps (its O23, O24) | A mid-run switch would split one conversation across models and discard the provider's prompt cache, and it would make tier fit (SC-10) unmeasurable. It is a label, not `spec.model`, because every tier maps to `agent-default` until SP4 PR 2 (R11) | An under-tiered run cannot be rescued mid-flight: it ends at its budget, and the task's next run can take another tier. The label is set at CREATE and never patched (Task 5.5's patch-limit forbids label changes). Runs requested through `POST /v1/runs` (Task 5.2) belong to no task, so they carry no tier and start their own trace |
+| R48 | External review R05 (2026-10-02): run created before its intent is persisted | **A run's id is derived, not random: `taskid.Name(<task>:run:<len(status.runs)>)`.** CREATE writes `agents.ogenki.io/start-seq` and `agents.ogenki.io/head` (CREATE-only, like the traceparent). `queued` first Gets the next id: a claim that exists, in any phase, is recorded from the claim (role, start seq, head, tokens) and the task moves to its phase; `startRun` treats `AlreadyExists` the same way. `adopt()` is removed (Task 3.4). Closes ledger M4 (TL) | The name is the idempotency key; a persist-first write would add a status write per run that can itself conflict | A deleted, unrecorded claim is re-created under the same id; its room events are read from the stamped start seq, so nothing earlier is mixed in |
+| R49 | External review R06: late meter updates miss task totals | **`observe` refreshes every record**: one `Runs.List` per step; each record takes max(record, claim) tokens; the sum is the task's. `queued` observes too. **A terminal task settles for `settleWindow = 2 × poll.meter + 30 s`** after its end: Reconcile keeps stepping it (observe only) and records `agent_factory_task_tokens` once, when the window closes (`status.usageSettled`) (Task 3.4) | The meter keeps annotating ended runs; nothing says "final", so a fixed window is the bound | Usage written after `settleWindow` (a VM outage longer than it) is not in the task's total; the run's own annotation still has it, and the daily budget reads that |
+| R50 | External review R07: admission is list-check-create on two replicas; daily spend is summed from live runs | **One ledger object per UTC day, `agent-system` ConfigMap `agent-factory-ledger-<YYYYMMDD>`, written with optimistic concurrency.** Admission (API and reconciler alike): Get the ledger → check `spent[p] + Σ reserved[p] + maxTokens ≤ cap`, no reservation on the room, live runs < cap → Update adding `reserved.<runId> = {principal, room, maxTokens}` (a 409 re-reads and re-checks) → Create the run (id from R48, so a retry is idempotent). The leader-only meter appends each tick's increase to `spent.<principal>` of the day it observed it and drops the reservation when the run is terminal. Deleting a run refunds nothing. Ledgers older than 35 days are deleted (Tasks 5.2, 5.3, 4.2) | No new store: the apiserver's `resourceVersion` is the transaction, and 1 MiB holds a day's counters many times over. The room log's Postgres belongs to SP2 | A rebuild loses the ledger with etcd (R51). The backstop is a provider-side monthly spend limit, set by the owner on the Anthropic workspace (ADR-0054) and recorded in the runbook. Token budgets stay approximate by one meter tick per run (R12); the docs say which caps are exact (runs, rooms) and which approximate (tokens) |
+| R51 | External review R08: a rebuild forgets accepted work and breaker state | **GitHub is the durable store across rebuilds.** An open `agent/<id>` PR of this repository with no Task is labelled `factory/orphaned` and narrated once, never re-adopted (R52) (Task 3.4). From the wave, `paused()` builds the breaker window from GitHub (merged `factory/class:<c>` PRs merged by the merger App, and their `factory/revert` reverts), so a demotion survives a rebuild (narrows R41's residual) (Task 7.3a) | No new database (the review's own constraint); everything else a rebuild loses is in shadow until the wave | A task in flight at teardown is not resumed: a maintainer re-labels it. Spend: R50's residual |
 | R52 | External review R02: the arming trusts the `Agent-Run` trailer, which any run can write, and the verdict is not bound to a SHA. SP2 ledger ruling TB's "push identity" was never folded into this plan | **Supersedes TB's mechanism, not its intent.** All runs push as one App, so GitHub cannot tell runs apart. Arming binds a head to the task by the room log: `pr.HeadSHA` must equal, in full 40 characters, the `commit` of the latest `handoff` (or final) event whose broker-stamped actor is one of the task's implementer runs. When the template has verifiers, every verifier role's latest `approve` must carry `RunRecord.HeadSHA == pr.HeadSHA`. Trailers stay claims: a foreign or absent trailer still refuses, but a matching trailer is never sufficient. The merger merges with `mergePullRequest(expectedHeadOid)`, not auto-merge (Tasks 7.2, 7.3). Confinement is repo-level (`agent/**`); per-run branch isolation is not provided | Room events carry the broker-stamped actor (SP2 C4) and `handoff`/`review_verdict` already carry `commit`. `enablePullRequestAutoMerge`'s `expectedHeadOid` is checked at enable time only, and the disarm-by-polling path fails open while the factory is down; `mergePullRequest`'s is checked at merge time | Solo templates (`docs-links`) need a final room event naming the head: a `done` MCP tool with `commit`, or `handoff.toRole` widened to `factory` (SP2). A run that never reports its head always goes to a human |
 
 ## Interfaces with other sub-projects
@@ -458,6 +462,7 @@ after it, FR-11.
 | [OWNER] | 6.8 | Approve the publication of the pre-wave policy copy to `Smana/.github` (it decides `main`'s status); the executor runs the command |
 | [OWNER] | 6.9, 10.6 | Only if the session lacks the deploy credentials: apply the `openbao/management` and `eks/configure` stacks from the integration checkout (the merge gate's OpenBao policy and JWT role) |
 | [OWNER] | 7.8 | Create the merger App `ogenki-agent-merger` (Contents write, Checks read, Statuses read, Pull requests write, Metadata read; webhook off), install it on `Smana/cloud-native-ref` only, `bao kv put -mount=agents merger-app`. The factory App is not touched, and no ruleset changes (R16) |
+| [OWNER] | 5.9 | Set a provider-side monthly spend limit on the Anthropic workspace (ADR-0054) and record it in the runbook: R50's backstop when a rebuild loses the ledger (external review R07) |
 | [OWNER] | 8.4 | Suspend, then unsuspend, the agents' App installation for the drill |
 | [OWNER] | 8.5a | Label the four injection canaries `factory/ready` |
 | [OWNER] | 9.3 | Only if the session's OpenBao token cannot write both mounts: Task 9.3 Step 1's two writes of one value, once (R18, R45) |
@@ -8575,8 +8580,8 @@ git commit -m "feat(factory): pair template: reviewer runs, verdicts, bounded ro
 - Modify (this repo): `tooling/base/agent-factory/helm-values-configmap.yaml` (image,
   `defaults.template: pair`), `flux/sources/ocirepo-agent-factory.yaml`
 
-- [ ] **Step 1: Push FA-3** as in Task 2.5 Step 1 (branch `feat/factory-pair`, draft PR "feat: pair
-  template (SP3 phase 3)"). Record the pre-releases.
+- [ ] **Step 1: Push FA-3**, Task 3.4's recovery fixes included, as in Task 2.5 Step 1 (branch
+  `feat/factory-pair`, draft PR "feat: pair template (SP3 phase 3)"). Record the pre-releases.
 
 - [ ] **Step 2: Pin FR-3.** Write the pre-releases and `defaults: {template: pair, …}` (until phase
   4's triage picks templates, every task gets a reviewer). Gates:
@@ -8600,6 +8605,55 @@ second reviewer run. Record which happened; to force the `changes` path, label a
 needs a test the implementer is unlikely to write unprompted, and repeat.
 
 - [ ] **Step 4: Tear down** as in Task 2.5 Step 5. FR-3 stays a draft.
+
+### Task 3.4: Recovery fixes before the live reviewer (external reviews R05, R06, R08; rulings R48, R49, R51)
+
+Lands on FA-3 **before Task 3.3 pushes it**; numbered 3.4 so later task numbers stay stable. Gate:
+Task 3.3 [LIVE] and daily use. Step R06 must land before Task 4.2's `budget-task` check, which reads
+the total it fixes. Every step is test-first, and each mutant must fail its test.
+
+**Files:**
+- Modify: `internal/factory/reconciler/{implement.go,reconciler.go,team.go}`, `internal/factory/runs/runs.go`,
+  `internal/app/factory.go`, `internal/factory/config/config.go`, `api/factory/v1alpha1/task_types.go`
+  (regenerate the CRD and the chart copy)
+- Create: `internal/factory/intake/orphans.go`
+- Test: `internal/factory/reconciler/recovery_test.go`, `internal/factory/intake/orphans_test.go`
+
+- [ ] **Step R05: Deterministic run ids (R48).** `RunID = taskid.Name(t.Name + ":run:" + strconv.Itoa(len(t.Status.Runs)))`
+  (`[a-z2-7]{8}`, a valid C2 id). `runs.Build` stamps `AnnStartSeq` and `AnnHead` as CREATE-only
+  annotations, as it does `AnnTraceparent`; `FromUnstructured` reads them back. `queued` starts with
+  one `Get` of the next id instead of `adopt`'s `List`; `startRun` maps `AlreadyExists` to the same
+  `recordExisting`, which records the existing claim's role, start seq, head and tokens in any phase,
+  never the replay's spec. `adopt` is removed; `internal/app/factory.go` drops `NewRunID: taskid.Random`
+  for the reconciler. Check that Task 5.5's patch limit admits the two CREATE-only annotations.
+  Tests: `TestLostWriteTerminalOrphanRecordedOnce` (Create succeeds, the status write fails, the run
+  goes `Failed` with 900 tokens, the reconcile replays: one claim, one `RunRecord` with `Tokens == 900`,
+  the original `StartSeq`); `TestLostWriteThenPRMergedStillRecords` (the replay takes the
+  `lateReviews` path, and the record and its tokens are present). Mutant: restore the random id.
+- [ ] **Step R06: Every record refreshed, then a bounded settle (R49).** `observe` lists runs once per
+  step and gives each record max(record, claim) tokens; `queued` observes too. `Reconcile`'s early
+  return for terminal tasks gains `!r.settling(&t)`; `end` no longer records `TaskTokens`: the settle
+  records it once, at `settleWindow = 2 × poll.meter + 30 s`, and sets `status.usageSettled`.
+  Test `TestLateUsageSettles`: the implementer ends at 1000 tokens and the reviewer starts; the meter
+  annotates the implementer to 1300 and, after the task ends, the reviewer from 200 to 260. Expect
+  `Usage.Tokens == 1560` and `TaskTokens` recorded once, with 1560. Mutants: `observe` current-only;
+  no settle.
+- [ ] **Step P: A Pending run is bounded** *(review, operational check)*. No layer bounds `Pending`:
+  `activeDeadlineSeconds` counts from the pod's start, and Kueue queues unadmitted work forever. In
+  `implementing` and `reviewing`, a run `Pending` for `caps.maxPendingMinutes` (default 30, validated
+  5..RunMinutes) is deleted (it never ran, so no usage is lost), the task records
+  `reason: run_unschedulable` and escalates; `/factory retry` restarts it. Test
+  `TestPendingRunEscalatesAndFreesSlot`: Pending for 31 min, the claim is deleted, the task is
+  `Escalated` with `run_unschedulable`, and the next task gets the slot.
+- [ ] **Step R08a: Orphaned PRs (R51).** On leader start and every issues poll, list open PRs whose
+  head is `agent/[a-z2-7]{8}` in this repository (never a fork), that carry `factory/class:*`, and that
+  have no Task of that name. Label each `factory/orphaned` and narrate once: "this PR's task was lost
+  in a cluster rebuild; it is human-only now; re-label the issue `factory/ready` to restart". Never
+  re-adopt it (R52: the footer and branch are forgeable hints). Test: a fork PR named
+  `agent/abcdefgh` is ignored; an own-repo one with no Task is labelled once (the narration marker
+  dedups).
+- [ ] **Step 5: Run the tests; commit.** `go test -race ./internal/factory/...` → `ok`;
+  `git commit -m "fix(factory): idempotent run ids, settled usage, bounded Pending, orphaned PRs"`.
 
 ---
 
@@ -9029,6 +9083,10 @@ git commit -m "feat(factory): triage: C7 with static fallback, class labels, mat
     sums today's `system:factory` runs; past `budgets.factoryDaily` the task stays `Queued` with
     reason `waiting_daily_budget` when `budgets.enforcePrincipal`, else it is counted as
     `budget-principal-shadow`.
+  - *External reviews R06, R07 (R49, R50):* `t.Status.Usage.Tokens` is the total Task 3.4's
+    `observe` refreshes, so that step lands first. Until Task 5.3 lands, `factorySpentToday` is
+    shadow only: it sums live runs, and a stop's deletions drop out of it. From Task 5.3 it reads
+    `spent["system:factory"]` from the day's ledger, and the factory's admission reserves in it (R50).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -9990,6 +10048,15 @@ The factory derives `branch` (`agent/<roomRef>`, else `agent/<runId>`) and never
 (C3); the only caller-named branch is R35's `resumeBranch`, checked against tasks, rooms and live
 runs.
 
+**Amendment (external review R07, ruling R50).** The list → check → create sequence is not atomic
+across two serving replicas, and the live-run sum forgets deleted runs. Replace `admitBudget`'s
+live-run sum, and the room check, with the day's ledger: Get `agent-factory-ledger-<YYYYMMDD>` →
+check `spent[p] + Σ reserved[p] + maxTokens ≤ cap`, no reservation on the room, live runs < cap →
+Update with `reserved.<runId>` (a 409 re-reads and re-checks) → Create (R48's id). The reconciler
+admits through the same ledger. Tests: `TestTwoAdmissionsOneSlot` (two `Server`s on one fake
+apiserver, each with a stale `resourceVersion`: exactly one 201, the other `over_budget` or
+`room_busy`); `TestDeleteDoesNotRefund`.
+
 - [ ] **Step 1: Write the failing test**
 
 `internal/factory/api/server_test.go`:
@@ -10569,6 +10636,10 @@ git commit -m "feat(factory): POST /v1/runs with room, repository and daily-budg
   - Revocation reasons written: `budget-run` (own cap, or a 429 at or above B1), `budget-fleet`
     (a 429 below B1: the only other agent-router bucket, R13), `budget-principal` (the principal's
     day, when `budgets.enforcePrincipal`).
+  - *External review R07 (R50):* the leader-only meter appends each tick's increase to
+    `spent.<principal>` of the day it observed it, in that day's ledger ConfigMap, drops a run's
+    reservation once it is terminal, and deletes ledgers older than 35 days. `budget-principal`
+    reads the ledger, not the live runs. Test `TestMidnightCrossingSplitsSpend`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -11518,6 +11589,10 @@ when it is on the cluster, set the B2 fleet cap to 1 token in SP4's policy on th
 branch, run one task, and expect `revoked=budget-fleet`, `BudgetExhausted`, the task `Escalated`
 with "the agent fleet's daily token budget is spent"; restore the cap. Until then record the leg as
 deferred to SP4 PR 7 in FR-5's body.
+
+- [ ] **Step 5b: Atomic admission** *(external review R07, R50)*. Two concurrent `roomctl` requests
+  for one room: exactly one `201`. **Do not set `budgets.enforcePrincipal: true`, or admit a second
+  human principal, before this passes.**
 
 - [ ] **Step 6: Tear down** the test rooms' runs; FR-5 stays a draft.
 
@@ -14335,6 +14410,10 @@ control issue.
   - `reconciler.Demoted(merged []*v1alpha1.Task, b config.Breaker) (bool, int)`; `paused` returns it.
   - A human merge seen by `awaitingCI` records `status.pullRequest.mergedAt`, so it counts.
   - `narrate.ClassDemoted(t *v1alpha1.Task, window, maxReverts int) Event`, keyed per task.
+  - *External review R08 (R51):* `paused` builds the window from GitHub, not only from Tasks:
+    merged PRs labelled `factory/class:<c>` that the merger App merged, and their `factory/revert`
+    reverts. A demotion then survives a rebuild. Test: the Task list is empty and GitHub holds 1
+    revert in the last 10 merges, so `paused` returns true. Gate: Task 10.7 (the wave), not daily use.
 
 - [ ] **Step 1: Write the failing tests**
 
