@@ -79,7 +79,7 @@ independently of the base/overlay mechanism above:
   for `gcp-0`, gated by `clusters/gcp-0/llm-platform.yaml`.
 - **`opentofu/<lane>/**`** — the directory *is* the cloud selector. Stacks
   under `aws/` and `gcp/` run only when `TM_CLOUD` names their lane (it defaults
-  to `aws`); anything under `shared/` is owned by neither cloud and always runs.
+  to `aws`, and is required while GCP is primary); anything under `shared/` is owned by neither cloud and always runs.
   So an AWS deploy from `opentofu/` never builds GCP as a side effect, and a GCP
   one never rebuilds `aws-0`.
 

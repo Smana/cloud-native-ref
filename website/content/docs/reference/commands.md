@@ -24,12 +24,14 @@ tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
 ```
 
-**`TM_CLOUD` picks the cloud**, and defaults to `aws`. Both clouds share one
+**`TM_CLOUD` picks the cloud**, and defaults to `aws`, except while `primary_cloud`
+is not `aws`: then an unset `TM_CLOUD` fails every job with exit 3
+([ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})). Both clouds share one
 Terramate run order; this is what stops an AWS deploy building GCP as a side
 effect, and a GCP deploy rebuilding `aws-0`:
 
 ```bash
-terramate script run deploy                    # aws alone (the default)
+terramate script run deploy                    # aws alone; exit 3 while GCP is primary
 TM_CLOUD=gcp     terramate script run deploy   # gcp alone; AWS stacks echo [skip]
 TM_CLOUD=aws,gcp terramate script run deploy   # both
 TM_CLOUD=all     terramate script run deploy   # every lane there is
