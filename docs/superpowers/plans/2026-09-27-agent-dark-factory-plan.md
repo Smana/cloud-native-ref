@@ -11878,6 +11878,8 @@ echo PASS
 #
 # T8: a pull_request workflow may reference GITHUB_TOKEN and no other secret; agent branches
 # live in this repo, so their PRs run with its secrets.
+# External review R01: such a workflow also grants no write permission, at workflow level
+# or in a job outside the script's allowlist.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/../check-workflow-secrets.sh"
@@ -11901,6 +11903,20 @@ jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.SLACK_WEBHOOK }}"}]}}
 EOF
 out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request_target workflow with a secret fails"
 grep -q 'bad.yml.*SLACK_WEBHOOK' <<<"$out" || fail "the failure names the file and the secret"
+cat >"$d/wf-write.yml" <<'EOF'
+on: {pull_request: {}}
+permissions: {contents: write}
+jobs: {a: {runs-on: x, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with a workflow-level write permission fails"
+grep -q 'wf-write.yml.*contents' <<<"$out" || fail "the failure names the file and the permission"
+cat >"$d/job-write.yml" <<'EOF'
+on: {pull_request: {}}
+jobs:
+  upload: {runs-on: x, permissions: {security-events: write}, steps: [{run: "echo ok"}]}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with an unlisted job holding write fails"
+grep -q 'job-write.yml.*upload' <<<"$out" || fail "the failure names the file and the job"
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
 ```
