@@ -210,8 +210,16 @@ flowchart TD
   runs only. Both gateways accept the same tokens (D2), and the run CNP admits both until H.
 - **Rollback**: one revert of the ConfigMap commit, effective for the next run. The Envoy agent-router
   stays deployed and gated until H.
-- **Exit criterion for H**: every live gate passes, and 10 real AgentRuns (at least one per role,
-  one room run, one internal) complete through agentgateway with no gateway-attributable failure.
+- **Exit criterion for H**: every live gate passes, 10 real AgentRuns (at least one per role,
+  one room run) complete through agentgateway with no gateway-attributable failure, and the
+  `internal` listener's served surface is proven by probe: PC2's per-role MCP tool set with an
+  `.internal` token, and P1's 401 for it on `:8080`.
+- **Why no internal run gates H**: H proves parity with what Envoy serves, and rollback to it.
+  Envoy's `internal` listener has no model route today (its model routes attach to `public`
+  only), so an internal model run is neither a parity item nor a rollback item: rolling back would
+  return it to a gateway with no backend. MCP and the audience split are what `internal` serves,
+  and the probe proves both. The first real `internal` run is phase I's gate (plan I.6 Step 3),
+  after the Anthropic backend lands (I.2).
 
 ## Risks
 

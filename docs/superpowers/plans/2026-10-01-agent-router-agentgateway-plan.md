@@ -74,7 +74,7 @@ starting point for most YAML below.
     by hand: `kubectl patch configuration.pkg.crossplane.io smana-crossplane-configuration-core --type merge -p '{"spec":{"package":"ghcr.io/smana/crossplane-configuration-core:<pre-release>"}}'`.
 - **Never merge `feat/agent-router-agentgateway` or `feat/agentgateway-poc` into a stack branch.**
   Both are cut from `integration/agent-factory` and carry its do-not-merge content (`feat/gcp-primary`).
-  AGW-1 cherry-picks this design's three commits instead.
+  AGW-1 cherry-picks every `docs(...)` commit of the design branch instead (Task A.1 Step 2).
 - **Flux substitution.** Every directory below is applied with `postBuild.substituteFrom`: a literal
   `${…}` that is not a cluster var is written `$${…}`. Bare `$1` in relabel replacements passes Flux
   untouched. `python3 scripts/ci/flux-schema/check-substitution.py` fails otherwise.
@@ -124,7 +124,7 @@ The design's D1–D8 bind. These are the plan's own:
 
 | # | Repo · branch | Base (stack parent) | Phase | Carries | Live gate (gcp-0) |
 |---|---|---|---|---|---|
-| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053 (cherry-picked); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
+| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053, ADR-0054, programme-spec alignment (cherry-picked); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
 | AGW-2 | this · `feat/agw-platform` | AGW-1 | B | controller, Gateway, parameters, listener identity, CNPs, both clouds; gate wired | B.6 |
 | — | this · `feat/agentgateway-poc` | (existing) | B | PoC teardown commit (R5) | B.6 |
 | AGW-3 | this · `feat/agw-routes` | AGW-2 | C | LLM, `/v1/models`, MCP, octo-sts route, additive ingress CNPs, probe | C.5 |
@@ -240,13 +240,25 @@ exits 0, AGW-1 open as a draft on `feat/rooms-driver`.
 the first commit (the tool branches from `origin/main`; this branch stacks). Merge `origin/main` in:
 the pre-push hook requires it.
 
-- [ ] **Step 2: Cherry-pick the design, the ADR and the plan**
+- [ ] **Step 2: Cherry-pick every docs commit of the design branch**
 
-Run: `git log --format='%h %s' origin/integration/agent-factory..origin/feat/agent-router-agentgateway`
-Expected: exactly the three `docs(...)` commits of this design branch.
+Run: `git log --reverse --no-merges --format='%h %s' origin/integration/agent-factory..origin/feat/agent-router-agentgateway`
+Expected: only `docs(...)` commits, oldest first. On 2026-10-02 they are, by subject:
+
+1. `docs(agents): design for the agent router on agentgateway`
+2. `docs(adr): ADR-0053, the agent router runs on agentgateway`
+3. `docs(agents): implementation plan for the agent router on agentgateway`
+4. `docs(adr): ADR-0054, internal agent work calls the Anthropic API directly`
+5. `docs(agents): agent router design follows the cloud-agnostic provider strategy`
+6. `docs(agents): phase I becomes the Anthropic backend and budgets, on gcp-0`
+7. `docs(agents): phase H gate proves internal by probe; dependsOn audit; A.1 picks the whole range`
+8. `docs(agents): programme spec's data class follows ADR-0054`
+
+Any later `docs(...)` commit on the branch belongs here too. Stop if a non-`docs` commit appears.
+Pick the whole range, so ADR-0054 and the provider updates are never dropped:
 
 ```bash
-git cherry-pick <design-sha> <adr-sha> <plan-sha>
+git cherry-pick $(git rev-list --reverse --no-merges origin/integration/agent-factory..origin/feat/agent-router-agentgateway)
 ```
 
 Never merge that branch (Global Constraints).
@@ -3243,14 +3255,16 @@ expression and on AG2.
 
 ### Task G.3: [LIVE] Parity with real runs
 
-- [ ] **Step 1: Real runs.** Start, through `task agent:run`, one run per role on `public`, one
-`internal` reviewer run, and one room run (implementer → reviewer handoff). During the implementer
-run, `kubectl delete pod -n agent-gateway <one proxy>` once mid-session (P5).
+- [ ] **Step 1: Real runs.** Start, through `task agent:run`, one run per role on `public` and one
+room run (implementer → reviewer handoff). During the implementer run,
+`kubectl delete pod -n agent-gateway <one proxy>` once mid-session (P5). No `internal` run: Envoy's
+`internal` listener has no model route, so one is not a parity item; PC2 proves the `internal`
+surface by probe, and the first real `internal` run is I.6 Step 3 (design, "Exit criterion for H").
 
 | # | Check | Expected |
 |---|---|---|
 | PC1 | `log.x_ar_agent:"system:serviceaccount:agents:xplane-run-<id>"` in agentgateway proxy logs; none in Envoy's for that run | present / absent |
-| PC2 | internal run: its tool list equals `agent-mcp-internal`'s set for its role; a public-class call from it is refused (its CNP never opens `:8080`) | exact set |
+| PC2 | from the probe with an `agent-router.reviewer.internal` token: `tools/list` on `:8081/mcp` equals `agent-mcp-internal`'s reviewer set; `POST :8080` with the same token → `401` | exact set; `401` |
 | PC3 | implementer opens a PR: `octo-sts` logs a successful exchange for the run's sub; the run's `git push` succeeds | success |
 | PC4 | the room run's `room-broker_room_handoff` and the reviewer's `room-broker_room_verdict` land in the room log | both events |
 | PC6 | `ratelimit_service_rate_limit_total_hits{key1="agent"}` rose by the runs' token totals | ≈ `gen_ai_client_token_usage_sum` increase |
@@ -3274,8 +3288,8 @@ start one more: agentgateway again.
 
 - [ ] **Step 1:** Fill AGW-6's "Live evidence" with every table above (commands and outputs).
 - [ ] **Step 2:** Count real runs since the switch with no gateway-attributable failure (from the
-fleet dashboard and the runs' `status.reason`). Phase H needs ≥ 10, at least one per role, one room
-run and one internal run.
+fleet dashboard and the runs' `status.reason`). Phase H needs ≥ 10, at least one per role and one
+room run, plus PC2's probe evidence for `internal`.
 - [ ] **Step 3: [OWNER]** The owner reads the evidence and says go for phase H.
 
 ---
@@ -3318,6 +3332,7 @@ draft on `feat/agentrun-agentgateway`, copy the pre-release.
   `agent-traces-collector.yaml` (drop the Envoy :4317 peer), `scripts/ops/k8s/agent-probe{.yaml,-mcp.sh}`,
   `observability/base/agent-platform/{vmrule-logs.yaml,grafana-dashboard-agent-run.yaml}`,
   `clusters/{aws-0,gcp-0}-agent-platform/infrastructure-agent-router.yaml` (`dependsOn` drops `envoy-ai-gateway`, the Gateway health check goes: Step 3),
+  `clusters/{aws-0,gcp-0}/agent-platform.yaml` (the comment above `dependsOn: ai-gateway`: Step 3),
   `scripts/ci/flux-schema/assert-ai-gateway.py`, its test, `scripts/ci/validate-manifests.sh` (Gate 3's label),
   `scripts/ci/tests/{test-agent-mcp-scope.sh,test-agent-observability.py}`,
   `infrastructure/base/crossplane/configuration-{aws,gcp}/configuration-packages.yaml` (CC-AGW2),
@@ -3338,7 +3353,10 @@ path (it now holds `agentgateway-llm.yaml` and `externalsecret-zai.yaml`); repla
 health check with `dependsOn: [agent-gateway, agent-secrets]` only. The probe's host default becomes
 `agent-router.agent-gateway.svc.cluster.local`. `vmrule-logs.yaml` drops `AgentRouterUnauthorizedBurst`
 (E.2's metric alert replaces it). The run page drops the Envoy halves of its OR selectors and target A.
-Pin CC-AGW2.
+Pin CC-AGW2. In `clusters/gcp-0/agent-platform.yaml:22-23` and `clusters/aws-0/agent-platform.yaml:28-29`,
+the comment "Agents run on frontier models through the ai-gateway controllers" becomes false once the
+Envoy router is gone; replace it with `# Kept for the Semantic Router (C7, soft) pending the H.5 audit;
+zero GPUs: never llm-platform (C1).` The `dependsOn` itself stays.
 - [ ] **Step 4: Docs.** Update, on the restructured AI Platform section (on `main` first):
   - `website/content/docs/platform/ai-platform/gateways.md`: the agent gateway half describes
     agentgateway (listeners, identity, MCP tool names, budgets, the rate-limit server), with a
@@ -3372,6 +3390,33 @@ with the before/after mermaid diagram, CC-AGW2's link, the P33 hold line.
 `kubectl get mcproute -A` → none; `kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router` → none;
 `kubectl get gateway -n envoy-ai-gateway-system ai-gateway` still `PROGRAMMED True` (ai-gateway untouched);
 one real run end to end → `Succeeded`. Paste into AGW-7.
+
+### Task H.5: `dependsOn: ai-gateway` audit
+
+`clusters/{aws-0,gcp-0}/agent-platform.yaml` depend on the `ai-gateway` umbrella because the Envoy
+agent-router needed Envoy Gateway and Envoy AI Gateway. After H that reason is gone (agentgateway,
+its KVStore and the Gateway API CRDs come from elsewhere), but the Semantic Router stays a **soft**
+runtime dependency: SP4's `complexity-classifier`, deployed by `agent-platform`, calls SR
+`/api/v1/eval` and falls back to `static` behind a circuit breaker. This is an audit, not a removal.
+Informational; it gates nothing.
+
+- [ ] **Step 1: Render with phase H applied.** On AGW-7's head:
+`systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 python3 scripts/ci/flux-schema/render-bundle.py .bundle`.
+- [ ] **Step 2: The agent-platform tree has no Envoy kind left**
+
+```bash
+files=$(for p in $(yq -N '.spec.path' clusters/gcp-0-agent-platform/*.yaml | grep -v '^null$' | sed 's|^\./||'); do
+  s=${p//\//-}; ls .bundle/overlay-"$s".yaml .bundle/chart-"$s"-*.yaml 2>/dev/null; done)
+cat $files | grep -cE 'apiVersion: (gateway|aigateway)\.envoyproxy\.io'
+```
+
+Expected: `0` (it is `12` before H, on the migration branch's render of 2026-10-02).
+- [ ] **Step 3: Every remaining reference, with its reason.**
+`grep -nE 'envoy-gateway-system|envoy-ai-gateway-system|semantic-router' $files`. List each hit and
+why it stays (a CNP peer for SR is expected; an Envoy namespace is not).
+- [ ] **Step 4: Verdict in AGW-7's body.** Keep, or remove. Removal, if warranted, is a separate PR
+with a live test under a suspended `ai-gateway`: the agent-platform tree reaches Ready, and C7 falls
+back to `static`.
 
 ---
 
@@ -3756,7 +3801,8 @@ Anthropic API with a platform key. Task 14 is unchanged."
 - [ ] **Step 2:** Every gate; AGW-8 as a draft on `feat/agw-remove-envoy-router`, P33 hold line.
 - [ ] **Step 3: [LIVE] gcp-0.** Each tier name on each listener answers from its mapped model
 (`gen_ai_request_model`); an unknown name is refused (I.3's shape); a real `internal` reviewer run
-completes on Claude; B1, B2 and B6 count it.
+completes on Claude; B1, B2 and B6 count it. This is the programme's **first real `internal` run**
+(moved here from G.3: no gateway had an `internal` model route before I.2).
 - [ ] **Step 4: [LIVE] rotation drill.** [OWNER] writes a new key with prerequisite P1's command;
 `kubectl annotate externalsecret -n agent-system agents-anthropic-api-key force-sync=$(date +%s) --overwrite`;
 the next `internal` call → `200`; the owner revokes the old key in the Anthropic console.
