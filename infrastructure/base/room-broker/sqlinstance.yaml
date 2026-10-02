@@ -28,11 +28,11 @@ spec:
       superuser: false
   atlasSchema:
     url: https://github.com/Smana/agent-platform
-    # A v* ref resolves as a tag, anything else as a branch, never a SHA. agent-platform
-    # merges on green (P33 lifted there, 2026-09-29) and deletes merged branches, so its
-    # main holds every merged migration. S1's live gate therefore needs AP-1 merged to
-    # agent-platform main first. Phase 7 pins the release tag.
-    ref: main
+    # A v* ref resolves as a tag, anything else as a branch, never a SHA. AP-3's stack tip
+    # (agent-platform#8), which holds every migration so far, the verdict index included;
+    # agent-platform main has none yet. It moves with the broker pin and crd-rooms.yaml, and
+    # 404s once that branch merges and is deleted. Phase 7 pins the release tag.
+    ref: feat/room-tools
     path: internal/store/migrations
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
