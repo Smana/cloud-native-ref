@@ -119,7 +119,7 @@ jobs:
         # Latest TAG, not latest RELEASE — the repo stopped cutting releases at
         # v12.1347.0 (whose old action.yml breaks on comma-separated framework)
         # but still tags every checkov bump.
-        uses: bridgecrewio/checkov-action@2f9fbe2d1e51440f8f5c42abc829aad8e9e4faab # v12.3127.0
+        uses: bridgecrewio/checkov-action@cc0e17d456ef1713bbfd963ebac19dc776775cb2 # v12.3128.0
         with:
           directory: .
           quiet: true
