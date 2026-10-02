@@ -185,17 +185,23 @@ jobs:
         with:
           name: sarif-results
 
+      # `category` keeps the configuration these results always had. Its default
+      # is `<workflow>:<job id>`, so uploading from this job would file them
+      # under `ci.yaml:sarif-upload`, orphaning every open alert on `main` and
+      # leaving PRs with no base analysis to compare against.
       - name: Upload Trivy scan results to GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
           sarif_file: trivy-results.sarif
+          category: .github/workflows/ci.yaml:security-scan
 
       - name: Upload Checkov scan results
         if: always()
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
         with:
           sarif_file: checkov-results.sarif
+          category: .github/workflows/ci.yaml:security-scan
 
   kubernetes-validation:
     name: Kubernetes validation ☸
