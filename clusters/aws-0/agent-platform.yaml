@@ -1,0 +1,28 @@
+---
+# Agent platform — opt-in Flux umbrella (Agent Factory programme, C1).
+#
+# Default: spec.suspend = true → none of the children under
+# clusters/aws-0-agent-platform/ exist: no sandbox controller, no gVisor pool,
+# no agent-router, no octo-sts. The AgentRun XRD ships in the always-on
+# Crossplane package; without this umbrella a claim has no RuntimeClass to run on.
+#
+# Enable:   flux resume kustomization ai-gateway -n flux-system   (operating
+#           order only — the Flux dependsOn edge lands in phase 3)
+#           flux resume kustomization agent-platform -n flux-system
+# Teardown: see clusters/aws-0-agent-platform/README.md
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-platform
+  namespace: flux-system
+spec:
+  suspend: true
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  # A sibling of clusters/aws-0/, never a sub-path: flux-system syncs aws-0/
+  # recursively and would apply the children around this suspend.
+  path: ./clusters/aws-0-agent-platform
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the local JSON-Schema catalog consumed by `flux schema validate`.
 #
-# Four sources (SPEC-007 FR-002):
+# Sources (SPEC-007 FR-002):
 #   1. The repo's own Crossplane XRDs  -> cloud.ogenki.io/*
 #   2. Envoy AI Gateway CRDs           -> aigateway.envoyproxy.io/*
 #      (absent from the hosted ecosystem catalog)
@@ -15,6 +15,8 @@
 #   4. GKE ComputeClass CRD            -> cloud.google.com/v1 ComputeClass
 #      (VENDORED rather than rendered: unlike the three above, GKE installs this
 #      CRD itself and publishes no chart to render it from.)
+#   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
+#      (the chart and its CRDs exist only in the git repository, SP1 S2)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #
@@ -112,6 +114,16 @@ if [[ -z "${BARMAN_PLUGIN_VERSION}" ]]; then
   exit 1
 fi
 
+# agent-sandbox ships its Helm chart (and CRDs) only in the git repository, in
+# no registry (SP1 S2) — same single-source-of-truth approach as Barman above.
+AGENT_SANDBOX_SOURCE="flux/sources/gitrepo-agent-sandbox.yaml"
+AGENT_SANDBOX_URL="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(https?://[^"[:space:]]+)"?[[:space:]]*$#\1#p' "${AGENT_SANDBOX_SOURCE}" | head -n1 || true)"
+AGENT_SANDBOX_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AGENT_SANDBOX_SOURCE}" | head -n1 || true)"
+if [[ -z "${AGENT_SANDBOX_URL}" || -z "${AGENT_SANDBOX_VERSION}" ]]; then
+  echo "error: could not read the agent-sandbox git url or tag from ${AGENT_SANDBOX_SOURCE}" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -186,12 +198,17 @@ echo "==> Fetching Barman Cloud plugin ObjectStore CRD (git ${BARMAN_PLUGIN_VERS
 git clone --quiet --depth 1 --branch "${BARMAN_PLUGIN_VERSION}" "${BARMAN_PLUGIN_URL}" "${tmp}/barman-plugin"
 cat "${tmp}/barman-plugin/config/crd/bases"/*.yaml > "${tmp}/barman-crds.yaml"
 
+echo "==> Fetching agent-sandbox CRDs (git ${AGENT_SANDBOX_VERSION})"
+git clone --quiet --depth 1 --branch "${AGENT_SANDBOX_VERSION}" "${AGENT_SANDBOX_URL}" "${tmp}/agent-sandbox"
+cat "${tmp}/agent-sandbox/helm/crds"/*.yaml > "${tmp}/agent-sandbox-crds.yaml"
+
 echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/xrd-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
-# GKE ComputeClass. Vendored rather than rendered: unlike the three above, GKE
+"${FLUX_BIN}" schema extract crd "${tmp}/agent-sandbox-crds.yaml" -d "${build_dir}"
+# GKE ComputeClass. Vendored rather than rendered: unlike every source above, GKE
 # installs this CRD itself and publishes no chart to render it from. See the
 # header of the file for how it was captured and when to refresh it.
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
@@ -222,6 +239,11 @@ fi
 # source block exists; assert it specifically, not just "some barman schema landed".
 if [[ ! -s "${build_dir}/barmancloud.cnpg.io/objectstore_v1.json" ]]; then
   echo "error: catalog build produced no barmancloud.cnpg.io/objectstore_v1.json (plugin ${BARMAN_PLUGIN_VERSION} shipped no ObjectStore CRD at config/crd/bases?)" >&2
+  exit 1
+fi
+
+if [[ ! -s "${build_dir}/agents.x-k8s.io/sandbox_v1beta1.json" ]]; then
+  echo "error: catalog build produced no agents.x-k8s.io/sandbox_v1beta1.json (agent-sandbox ${AGENT_SANDBOX_VERSION} shipped no Sandbox CRD in helm/crds?)" >&2
   exit 1
 fi
 
