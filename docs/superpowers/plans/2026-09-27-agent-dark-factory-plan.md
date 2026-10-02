@@ -254,7 +254,7 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R34 | §6.3: "the daily cap reached → Escalated; no new tasks until the next day"; §6.2: "SP3 at admission" | The reconciler sums today's `system:factory` runs before every run it starts. Once `budgets.enforcePrincipal` is on, a task past the cap **stays `Queued`** with reason `waiting_daily_budget` and starts after 00:00 UTC; in shadow it is counted (`budget-principal-shadow`). A running run past the cap is still revoked by the meter (`budget-principal`) | Holding in `Queued` is "no new run until the next day" without a `/factory retry` per task; the meter alone would start each run and revoke it 30 s later | The day's last tasks wait for midnight UTC instead of escalating; `status.reason` says why |
 | R35 | §6.1: the stop object "pauses intake; every running task goes to `Stopped`, its `AgentRun`s … deleted"; SC-5: "deletes every factory `AgentRun`" | **Owner, 2026-09-27: the stop stops everything.** While the stop object or the control issue holds, `POST /v1/runs` answers `503 kill_switch`, and a leader loop (`killswitch.Sweeper`, every 15 s) writes `revoked: manual` on every non-terminal `AgentRun` in `agents` and deletes it, human-requested runs included. A stopped human run resumes, once the stop is lifted, with `task agent:run -- … --branch agent/<id>`: the API then accepts that one branch (`resumeBranch`), only as `agent/<8 chars>`, never a task's branch (tasks resume with `/factory retry`), never a room the caller cannot start a run in, never one a live run holds | After phase 5 every run in `agents` is a factory-created run; a kill switch that spares a class of runs is not one. The harness resumes `origin/$BRANCH`, so the branch is all a resumed run needs | A human loses the stopped run's context beyond its pushed commits. A caller-chosen branch is a narrow exception to C3's "derived, never taken": it can name only an `agent/**` branch no task or live run owns |
 | R36 | §3: "A **human's** `review_verdict` in the room supersedes the agent reviewer's" | **Owner, 2026-09-27: GitHub reviews only.** The factory reads only the reviewer or tester run's own `review_verdict`. Humans steer through GitHub: "Request changes" starts a revision (Δ5, Task 2.3) and "Approve" is the merge gate's (policy-bot). No SP2 amendment | SP2 builds no human verdict action (its human actions write chat messages only), and one steering channel is easier to reason about than two | A human watching the room steers by reviewing on GitHub, not in the room |
-| R37 | §4 admission lists "`dataClass`" and "role" without saying who may ask for what | **Owner default, 2026-09-27:** through `POST /v1/runs`, only `agents-admin` may request `dataClass: internal` or a `triager` run (`403 admin_only` otherwise); `agents-member` gets public implementer, reviewer and tester runs | An `internal` run reads the cluster over MCP and reaches Bedrock, and a triager exists to read internal data (OD-13) | A developer who needs an internal investigation asks an admin |
+| R37 | §4 admission lists "`dataClass`" and "role" without saying who may ask for what | **Owner default, 2026-09-27:** through `POST /v1/runs`, only `agents-admin` may request `dataClass: internal` or a `triager` run (`403 admin_only` otherwise); `agents-member` gets public implementer, reviewer and tester runs | An `internal` run reads the cluster over MCP and reaches the `internal` model backend, and a triager exists to read internal data (OD-13) | A developer who needs an internal investigation asks an admin |
 | R38 | §2–§3: the `investigate` template is triager → implementer → reviewer, all `internal`, on a public repository | **Owner default, 2026-09-27: an internal-origin task never feeds an implementer run on a public repository.** The `investigate` template is the triager alone. Its handoff summary is a proposed public issue text (no log line, hostname, address, secret or other cluster detail); the task ends `Done` (`proposal_ready`) and narrates the room link. A maintainer reads the proposal on the tailnet, opens a public issue with the text they approve, and labels it `factory/ready`: an ordinary public task, snapshotted from what the human wrote | An internal implementer's commits and PR body would publish whatever internal data the run read; R33 only protected the issue. SP2's approvals are run-scoped (a bridge asks, a human decides) and the factory cannot open one, so the gate is the §1 trust anchor, a maintainer's label on text a human wrote | One human step per RunLore finding that needs a change; the dark factory stays dark for public work only |
 | R39 | External review G3: "the stop object doesn't revoke credentials" | **An honest residual.** After a stop, the run's gateway JWT stays valid until the run's deadline (SP1 R2: its lifetime is the deadline), because agent-router validates it offline against the cluster JWKS. What the stop does remove: it deletes the `AgentRun`, so the pod and its ServiceAccount go, octo-sts mints nothing more for it, and the harness's `preStop` revokes its GitHub token. The run's CNP goes with the pod, and agent-router's data-plane CNP admits only pods in `agents` carrying `agents.ogenki.io/run-id`, so nothing is left that can present the JWT. A denylist on agent-router is backlog | Every live credential needs the run's pod to be used, and the pod is what the stop deletes. A denylist is state on the gateway's hot path, which no Envoy Gateway primitive offers | A JWT copied out before the stop works only from a run-labelled pod in `agents`, which only the composition creates, and only until the deadline: light 20, standard 45, frontier 90 minutes (§6.2). A force-deleted pod skips `preStop`, so its GitHub token (one repository, `agent/**` only) lives out its hour |
 | R40 | External review G8: "a kill switch that fails open is not a kill switch" | **An honest residual, deliberate.** SP4's token budgets on agent-router and llm-gateway are Envoy global rate limits backed by Valkey with `failClosed: false` (`infrastructure/aws-0/envoy-gateway/helmrelease-ratelimit.yaml`): while Valkey is down, requests pass uncounted. The factory's run meter (R12: the gateway's `gen_ai` counters in VictoriaMetrics, `budget-run` at `maxTokens`) and each run's deadline still bound a run, and the stop object depends on neither | Failing closed turns a Valkey restart into an outage of every model call, agents' and humans' alike. The meter is a second counter with its own store | While Valkey is down, principal and fleet budgets are not enforced; a run can pass `maxTokens` by one meter tick (30 s) and runs to its deadline at most. With VictoriaMetrics down too, only the deadline bounds it |
@@ -317,7 +317,7 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | `tier-light|standard|frontier` on agent-router | Tier → model (R11); optional | 2 |
 | `agent_router:run_tokens:total` | Optional meter source (R12) | 2 |
 | B1/B2 enforced (not shadow) | The gateway kill-switch layer; SC-6's fleet half | 7 |
-| Bedrock behind the `internal` listener | RunLore (`internal`) tasks | 2 |
+| The Anthropic backend behind the `internal` listener (ADR-0054; external review R13) | RunLore (`internal`) tasks | AGW-8, Task I.2 |
 
 **Produced for others:**
 
@@ -356,7 +356,7 @@ the branch cluster), never what must be merged.
 | FA-7 | agent-platform · `feat/factory-safety` | 8 | FA-6 | — | Stuck detection, control issue, interventions, tier fit, `task.final` | via FR-8 |
 | FR-8 | this · `feat/factory-observability` | 8 | FR-7 | FA-7 pre-release | VMRules, dashboard, the App key-compromise runbook (SD14), the injection canaries (G2), pins, verification | SC-5 (every run, human-requested included), SC-7, SC-8, SC-10, the four canaries PASS, `/verify-spec` |
 | FA-8 | agent-platform · `feat/factory-runlore` | 9 | FA-7 | — | RunLore intake, `investigate` = the triager alone, ending on a proposal (R38) | via FR-9 |
-| FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with SP4 PR 2's branch merged in | FA-8 pre-release; Bedrock behind the `internal` listener on the cluster | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
+| FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with AGW-8's branch merged in | FA-8 pre-release; the Anthropic backend behind the `internal` listener on the cluster (AGW-8, Task I.2; external review R13) | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
 | FR-10 | this · `docs/agent-factory-journey` | 10 | FR-9 | the walkthrough's transcript | The walkthrough script and journey renderer; the user-facing pages and diagram built from its transcript | The owner's UX verdict |
 | FR-11 | this · `feat/merge-gate-live` | 10, after the wave | `main` | every SP3 PR merged; the three rulesets applied (Task 10.7) | `classes.docs-links` and `classes.revert` go from `shadow` to `live` | SC-2, SC-3, SC-4, SC-14 live; the revert drill; SC-11 starts counting |
 
@@ -3510,7 +3510,7 @@ func New(reg prometheus.Registerer, tasks client.Reader, ns string, leader func(
 		ClassMismatch: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_class_mismatch_total",
 			Help: "Predicted class versus the class policy-bot matched (§2)."}, []string{"predicted", "matched"}),
 		TierFit: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_tier_fit_total",
-			Help: "After-the-fact tier fit per classifier (§7, SC-10)."}, []string{"classifier", "tier", "fit", "control"}),
+			Help: "After-the-fact budget-fit heuristic per classifier (§7, SC-10); not accuracy."}, []string{"classifier", "tier", "fit", "control"}),
 		IntakeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_intake_errors_total",
 			Help: "Failed intake polls or requests."}, []string{"source"}),
 		Revocations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_run_revocations_total",
@@ -15428,6 +15428,9 @@ func TestFitAndScores(t *testing.T) {
 	if Fit(under) != "under" || Fit(&v1alpha1.Task{Status: v1alpha1.TaskStatus{Phase: v1alpha1.PhaseStopped}}) != "" {
 		t.Fatal("under after a full attempt; a stop scores nothing")
 	}
+	if Fit(&v1alpha1.Task{Status: v1alpha1.TaskStatus{Phase: v1alpha1.PhaseEscalated, Reason: "agent_error"}}) != "" {
+		t.Fatal("agent_error may be the gateway's: unscored (R53)")
+	}
 	cl := v1alpha1.Classification{Classifier: "semantic-router", Tier: "standard",
 		Shadow: []v1alpha1.ShadowVerdict{{Classifier: "jev", Tier: "frontier"}, {Classifier: "other", Tier: "light"}}}
 	got := map[string]string{}
@@ -15607,7 +15610,8 @@ func (r *Reconciler) stuck(ctx context.Context, t *v1alpha1.Task, run runs.Run) 
 	return true, r.Runs.Delete(ctx, run.ID)
 }
 
-var underReasons = []string{"stuck", "agent_stuck", "agent_error", "review_rounds_exhausted", "ci_red", "budget-run", "budget-task"}
+// agent_error is not here: it includes gateway and provider failures, which score nothing (R53).
+var underReasons = []string{"stuck", "agent_stuck", "review_rounds_exhausted", "ci_red", "budget-run", "budget-task"}
 
 // Fit is §7's after-the-fact score of the tier that ran: under when the task escalated for
 // capability after a full attempt, over when it succeeded on < 20 % of the tier's task budget.
@@ -15627,8 +15631,8 @@ type TierScore struct{ Classifier, Tier, Fit string }
 
 var tiers = []string{"light", "standard", "frontier"}
 
-// Score rates every classifier, acting and shadow, against the tier that would have fit. The
-// OD-14 control group, at frontier whatever C7 said, is what makes this unbiased (§7).
+// Score rates every classifier, acting and shadow, against the tier that would have fit: a
+// budget-fit heuristic (§7); the control group is not a counterfactual for lower tiers (R53).
 func Score(cl v1alpha1.Classification, acting, fit string) []TierScore {
 	right := slices.Index(tiers, acting)
 	switch fit {
@@ -15982,7 +15986,7 @@ spec:
         {"id": 8, "type": "table", "title": "Class mismatches (triage quality)", "gridPos": {"x": 16, "y": 16, "w": 8, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "targets": [{"refId": "A", "expr": "sum by (predicted, matched) (increase(agent_factory_class_mismatch_total[30d]))", "format": "table", "instant": true}]},
-        {"id": 9, "type": "table", "title": "Tier fit by classifier (SC-10, Jev vs OSS)", "gridPos": {"x": 0, "y": 24, "w": 16, "h": 8},
+        {"id": 9, "type": "table", "title": "Budget fit by classifier (heuristic)", "gridPos": {"x": 0, "y": 24, "w": 16, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "targets": [{"refId": "A", "expr": "sum by (classifier, fit, control) (increase(agent_factory_tier_fit_total[30d]))", "format": "table", "instant": true}]},
         {"id": 10, "type": "stat", "title": "Kill switch", "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
@@ -16357,8 +16361,9 @@ carries the alert, the resource, the verdict and the room link, never the findin
 2026-09-27; R38): it confirms the finding over read-only MCP and hands off a proposed public issue
 text, and the task ends `Done` (`proposal_ready`). An internal-origin task never feeds a public
 implementer: a maintainer opens a public issue with the text they approve and labels it
-`factory/ready`, an ordinary public task. The triager run is `internal`, so this phase needs SP4 PR
-2's Bedrock backend on the cluster (OD-13; the spec's phase 6).
+`factory/ready`, an ordinary public task. The triager run is `internal`, so this phase needs the
+Anthropic backend behind the `internal` listener on the cluster: AGW-8, Task I.2 (ADR-0054, OD-13;
+external review R13; the spec's phase 6).
 
 Gate: SC-9: replaying one RunLore payload twice yields exactly one issue and one task.
 
@@ -17097,7 +17102,7 @@ git add observability tooling clusters flux .policy.yml
 git commit -m "feat(runlore): findings reach the agent factory's intake, inside the umbrella"
 git push -u origin feat/factory-runlore
 gh pr create --draft --title "feat(agent-factory): RunLore intake and investigate (SP3 phase 9)" \
-  --body "SP3 phase 9, after SP4 PR 2's Bedrock backend. Stacks on feat/factory-observability. Draft until the wave."
+  --body "SP3 phase 9, after AGW-8's Anthropic backend (Task I.2). Stacks on feat/factory-observability. Draft until the wave."
 ```
 
 ### Task 9.4: [LIVE] SC-9, and one real finding end to end
@@ -17469,7 +17474,7 @@ Expected: a table of six rows and one mermaid block.
    humans watch, steer or approve rather than drive; low-risk docs fixes merge themselves once
    the merge gate is live (FR-11).
 2. A `{{< callout >}}` with the state after the wave: what is live on aws-0, what waits for SP4
-   (tier routing, Bedrock for `internal` work, enforced gateway budgets).
+   (tier routing, the Anthropic backend for `internal` work, enforced gateway budgets).
 3. The architecture diagram: the SP3 spec's flowchart, cut to issue → factory → room → runs → PR →
    policy-bot → merge.
 4. `{{< cards >}}` to `what-happens-to-a-task`, ADR-0045 and ADR-0048.
@@ -17674,7 +17679,7 @@ shows one merged after Step 1, by `renovate`; record whether its auto-merge wait
 | The C7 classifier service | SP4 PR 5 | R24: until it exists every task is `standard` with `fallback: static` |
 | `tier-*` routes on agent-router; `agent_router:run_tokens:total` | SP4 PR 2 | R11, R12: tiers size budgets and teams only until then |
 | B1–B2 enforced on agent-router: the gateway kill-switch layer, SC-6's fleet leg | SP4 PR 7 | R13; Task 5.9 Step 3 and Task 8.4 run those legs once it is on the cluster |
-| Bedrock behind the `internal` listener | SP4 PR 2 | Phase 9 needs it (OD-13) |
+| The Anthropic backend behind the `internal` listener | AGW-8, Task I.2 (ADR-0054; external review R13) | Phase 9 needs it (OD-13) |
 | The verdict poster (Δ1), the queue store, `brief.Build`, `runrequest.Factory`, `roomctl` | SP2 | Consumed by name (Interfaces) |
 | Transparent resume of a lost pod | SP1 follow-up | The factory escalates `pod_lost`; a maintainer comments `/factory retry` |
 | A provider 429 that is not a budget 429 (developer M4) | SP1 harness, SP4 | R13 maps only Envoy `RL` 429s; the harness still ends on any 429 |

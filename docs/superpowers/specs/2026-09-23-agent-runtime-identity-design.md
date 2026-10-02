@@ -87,7 +87,7 @@ flowchart LR
     F[factory · SP3]
   end
   ZAI[api.z.ai · GLM-5.2]
-  BED[Bedrock EU · self-hosted · SP4]
+  BED[Anthropic API · ADR-0054 · Bedrock/Vertex optional]
   GH[github.com]
   API[(kube-apiserver)]
 
@@ -292,8 +292,8 @@ Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behi
   - `sts` accepts exactly the four `octo-sts/Smana/cloud-native-ref/<role>` audiences, and an
     `HTTPRoute` sends `/sts/exchange` on to octo-sts. EG forwards the validated token, so octo-sts
     checks it again against the trust policy.
-- **Z.ai routes attach only to `public`.** `internal` carries Bedrock EU and self-hosted backends
-  (SP4, OD-13), so an `internal` run cannot reach Z.ai whatever logical name it sends.
+- **Z.ai routes attach only to `public`.** `internal` carries the Anthropic API (ADR-0054; Bedrock,
+  Vertex and self-hosted optional; OD-13, external review R13), so an `internal` run cannot reach Z.ai whatever logical name it sends.
 - **`ClientTrafficPolicy`.** `earlyRequestHeaders.remove: [x-ar-agent, x-ar-human,
   x-ai-gateway-client-id, agent-session-id]` runs before authentication, because
   `claim_to_headers` appends (C5).
@@ -382,7 +382,7 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 | `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name and namespace** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
 | `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `agents/zai`, the agents' own key (SP4 S12) |
-| `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
+| `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (the Anthropic API, ADR-0054; external review R13) |
 | `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new policy in `opentofu/aws/openbao/management` grants read on `platform/data/agents/*` only; its JWT role sits with the per-cluster mount in `opentofu/aws/eks/configure/openbao.tf`. A namespaced store reads its CA from its own namespace, so the public OpenBao chain (certificates only) is copied into `agent-system` from the cloud store |
 
 **MCP servers.** All three are read-only and reachable only from the `agent-router` data plane.

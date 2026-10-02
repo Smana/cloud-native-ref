@@ -431,13 +431,16 @@ Prometheus metrics (`VMServiceScrape`); JSON logs carry `task.id`, `run.id` and 
 | `agent_factory_task_tokens`, `agent_factory_budget_remaining_tokens` | `tier, template, predicted_class`; `principal` | Cost per task (SP4's price table); daily burn |
 | `agent_factory_human_interventions_total` | `kind=steer\|takeover\|approve\|request_changes\|stop\|retry` | How dark the factory really is |
 | `agent_factory_class_mismatch_total` | `predicted, matched` | Triage quality |
-| `agent_factory_tier_fit_total` | `classifier, tier, fit, control` | **Jev vs OSS comparison** |
+| `agent_factory_tier_fit_total` | `classifier, tier, fit, control` | Budget fit by classifier (heuristic, R15) |
 
 **Classifier comparison.** When a task ends, the tier that ran gets an after-the-fact fit:
 `under` (escalated for capability after a full attempt), `over` (succeeded on < 20 % of the tier's
 task budget) or `fit`. Every classifier in `status.classification`, acting and shadow, is scored
 against it; Jev only ever sees `dataClass: public` text (OD-11). Ordinary tasks reveal only the
-acting tier, so the OD-14 control group at `tier-frontier` supplies the unbiased baseline.
+acting tier. The OD-14 control group at `tier-frontier` is a budget-fit heuristic, not classifier
+accuracy: it shows how often a frontier run would have fit a smaller budget, never how a lower tier
+would have done, and while every tier maps to `agent-default` (plan R11) it measures budget sizing
+only. No savings claim rests on it before tiers map to distinct models (plan R53, external review R15).
 
 A `GrafanaDashboard` (folder `agent-factory`) plots every metric above. It and the `VMRule`s
 (gated by `validate-vmrules.sh`) ship **inside the agent-platform umbrella**, so suspending it
