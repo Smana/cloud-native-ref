@@ -104,8 +104,8 @@ sequenceDiagram
   V->>R: message kind review_verdict {approve | changes, summary}
   F->>GH: post the summary as one PR comment (factory App)
   GH-->>F: 8 checks green (poll)
-  alt policy success, no human approval, verdict approve, caps OK
-    F->>GH: enablePullRequestAutoMerge (factory App)
+  alt policy success, no human approval, verdict approve on the run-reported head, caps OK
+    F->>GH: mergePullRequest expectedHeadOid (R02)
     F->>F: Verifying · watch main CI on the merge commit for 30 min
   else policy pending
     F->>F: AwaitingHuman (policy-bot requests review)
@@ -248,7 +248,7 @@ The kill switch moves any non-terminal state to `Stopped` (not drawn). A retry a
 | Policy source | `.policy.yml` at the repo root, read from `main`. Server option `shared_repository: ""` |
 | Required check | Ruleset `agent-merge-gate` on the default branch requires `policy-bot: main`, **expected source = policy-bot's App**. Bypass: OD-7 (the owner as admin, PRs only, and Renovate) |
 | Classic protection | **Unchanged**: 8 CI contexts from app 15368, `enforce_admins`, 0 reviews, `strict: false`, conversation resolution |
-| Merge actor | The factory App calls `enablePullRequestAutoMerge` only when all hold: agent-authored, `policy-bot: main` = success with **no** maintainer approval (so a live class matched), reviewer verdict `approve` if the template has one, the head commit's `Agent-Run` trailer names one of the task's `runId`s (another task's run pushing here fails it, SP1 R9), class not paused, daily auto-merge cap not reached |
+| Merge actor | The factory App merges with `expectedHeadOid` only when all hold: agent-authored, `policy-bot: main` = success with **no** maintainer approval (so a live class matched), reviewer verdict `approve` if the template has one, the head is the one the task's own run reported in the room, and every verifier approve names that SHA (plan R52, external review R02; trailers stay claims and a foreign one still refuses), class not paused, daily auto-merge cap not reached. Confinement is repo-level (`agent/**`): every run pushes as one App, so there is no per-run branch isolation |
 
 A ruleset, not classic protection, because clusters here are torn down routinely and an absent
 policy-bot would otherwise block every merge. CI checks stay non-bypassable.
@@ -310,8 +310,8 @@ approval_rules:
 
 | Class | State at v1 | Allowlist and caps | Why it is low-risk |
 |---|---|---|---|
-| `docs-links` | **live** | Markdown under `docs/` or `website/content/`, excluding designs, the archive, ADRs and the constitution. No file added or deleted. Fewer than 21 changed lines | Mechanical: `validate-links.sh` in CI proves the result. It changes no behaviour |
-| `revert` | **live** | Factory-authored, title `Revert "…`, and exactly `docs-links`' paths, exclusions and caps | It restores a state that was already accepted |
+| `docs-links` | **live** | Markdown under `docs/` or `website/content/`, excluding designs, the archive, ADRs and the constitution. No file added or deleted. Fewer than 21 changed lines | Only link targets change, proved by the factory's `LinksOnly` before arming. `validate-links.sh` proves that the new relative targets resolve (external review R03) |
+| `revert` | **live** | Factory-authored, title `Revert "…`, and exactly `docs-links`' paths, exclusions and caps | It restores a state that was already accepted, and `LinksOnly` holds (R03) |
 | `docs` | shadow | Same paths, fewer than 201 lines | Editorial: the owner reviews docs |
 | `tests` | shadow | `^scripts/ci/tests/`, no deletions | This code runs in CI |
 | `dashboards` | shadow | `^observability/base/grafana-operator/dashboards/`, fewer than 301 lines | Display only, but the `$${}` substitution trap applies |
@@ -346,7 +346,7 @@ no PR rewrites its own checks, and the status's expected source, which `statuses
 |---|---|
 | Owner's PR | Unchanged. policy-bot posts `success` within seconds (human-authored rule). **When policy-bot is down**, the admin bypass skips only the agent gate |
 | Renovate patch/minor | Unchanged: on the bypass list, with its automerge rules still in `renovate.json`. Whether auto-merge armed by a bypass actor waits for the ruleset check is UNVERIFIED and tested in phase 2 |
-| Agent PR, live class | 8 checks + policy `success` → the factory arms auto-merge |
+| Agent PR, live class | 8 checks + policy `success` → the factory merges the run-reported head with `expectedHeadOid` (R02) |
 | Agent PR, anything else | Policy `pending`; policy-bot requests review; a maintainer approves and merges |
 | Agent PR touching a gate path | Policy `error`. Unmergeable. A human re-authors the change if it is wanted |
 
@@ -456,7 +456,7 @@ truth) → PR → policy-bot status → merge actor → `Verifying`; a `Task` en
 |---|---|---|---|---|
 | T1 | Prompt injection through a trigger | Public issue text; alert and log text in RunLore findings | Only a maintainer's label starts a task; body snapshot and hash; non-maintainer comments dropped; provenance attached; capability limits: single repo, `agent/**`, writes by the implementer only, no `workflows`, FQDN egress, read-only cluster | A plausible malicious PR. Outside a live class, a human reviews it |
 | T2 | Persistent injection | An agent edits instructions that future agents read | `AGENTS.md`/`CLAUDE.md`/`.agents/`/`.claude/` are gate paths | Agents also read ordinary docs. `docs` stays shadow; `docs-links` is capped at 20 lines |
-| T3 | An agent widens its own autonomy | Edits the policy, trust policies, workflows, factory config or budgets; forges the status; self-approves; pushes after approval; manipulates labels | Policy read from `main`; gate paths → `error`; no `workflows` permission; expected-source status; approvals only from listed humans via GitHub reviews; `invalidate_on_push`; `Agent-Run` trailer check before arming; labels are never trust inputs | policy-bot's push-time estimate can lag an approval by seconds. The error is towards pending |
+| T3 | An agent widens its own autonomy | Edits the policy, trust policies, workflows, factory config or budgets; forges the status; self-approves; pushes after approval; manipulates labels | Policy read from `main`; gate paths → `error`; no `workflows` permission; expected-source status; approvals only from listed humans via GitHub reviews; `invalidate_on_push`; run-reported head and SHA-bound verdicts (plan R52, external review R02); the merge pins `expectedHeadOid`; labels are never trust inputs | policy-bot's push-time estimate can lag an approval by seconds. The error is towards pending |
 | T4 | Auto-merge abuse | A flood of small PRs; a class drawn too wide | 10 auto-merges and 20 tasks per day; revert watch; circuit breaker; tiny live classes | Merged docs changes are public until reverted |
 | T5 | Runaway cost | Loops, stuck runs, trigger storms, runs created around the budget | One creator of `AgentRun`s (run-request API + Kyverno rule); three budget levels; bounded rounds and retries; stuck detection; RunLore coalescing plus 5/day; alert at 80 % | Up to one day's cap |
 | T6 | Factory compromise | Its App key (issues, PRs, contents write) | Arming auto-merge cannot pass the gate; its PRs match only the `revert` rule, which carries `docs-links`' paths, exclusions and caps; its RBAC cannot read `merge-gate` Secrets | A crafted docs "revert": fewer than 21 changed lines in existing docs Markdown outside the designs, the archive, ADRs and the constitution, the same blast radius as `docs-links` |
@@ -481,7 +481,7 @@ truth) → PR → policy-bot status → merge actor → `Verifying`; a `Task` en
 | SC-11 | Reverted-after-merge rate for auto-merged PRs is ≤ 5 % over the first 50 auto-merges | `agent_factory_pr_outcomes_total` |
 | SC-12 | `check-policy-gate-coverage.sh` fails on an uncovered agent-platform child path | Fixture test |
 | SC-13 | A CLI request with a human token creates a run whose `principal` is `human:<sub>` even when the body names another; the owner's direct `kubectl create agentrun` is denied | Run spec; admission error |
-| SC-14 | A push to `agent/<taskId>` whose head `Agent-Run` trailer names another task's run is never armed for auto-merge | Task status; PR stays open |
+| SC-14 | A head that no run of the task reported, or that no verifier approved, is never merged by the factory; a push after the decision fails the merge (R02) | Task status; PR stays open |
 
 ## Non-goals
 

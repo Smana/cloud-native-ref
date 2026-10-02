@@ -265,6 +265,7 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R45 | R18: the RunLore intake token is "one value, read by the factory from `platform/agents/*` and by RunLore from its own store" | **Written twice from one value (Task 9.3): `agents/runlore-intake` for the factory, `platform/runlore/factory-intake` for RunLore's `openbao-platform`** | After M1 no store reads both mounts, and C1 keeps agent-system off the ClusterSecretStore | RunLore's copy stays readable from any namespace through `openbao-platform` (T14), as before M1: a thief can post at most `runlore.dailyCap` (5) findings a day, each a triager-only task ending on a proposal a maintainer reads (R38). A rotation writes both paths |
 | R46 | Further review (2026-09-29): "a trigger-rooted trace per task" | **One root span per accepted task (Task 1.10b).** When `received` admits a task, it mints a trace id and a span id into `status.trace`. It passes W3C `traceparent` `00-<trace>-<span>-01` to every run it creates, as the claim annotation `agents.ogenki.io/traceparent` (Task 1.5a). The composition hands that to the harness as `TRACEPARENT`, and the harness's `agent-run` span parents on it (observability plan Tasks 1.3a, 2.8a, O21). When `end()` reaches a terminal phase, the factory exports the task span once, to the collector's platform port :4317 (observability plan O20). The span runs from the Task's creation, when the label was accepted, to now. Its only attributes are `agent.task_id`, `agent.tier`, `agent.task.phase` and `agent.task.reason`, never issue text. Export is best effort, and an empty `tracing.otlpEndpoint` turns tracing off | A span held in memory would not survive a restart or a leader change over a task's hours; recorded ids and a span built at the end do. The annotation is set at CREATE, and the patch-limit policy (Task 5.5) governs UPDATEs only. It clashes with no SP1 annotation (`revoked`, `usage-tokens`, `pull-request`, `finished-phase`, `principal`) and no SP3 one (`stop`, `revert`). The trace id is correlation only (observability plan O22) | The task span arrives only when the task ends, so Grafana shows a live task's runs under a missing parent until then. An escalated task that never closes has no task span. An export that succeeds before a lost status write is repeated once, with the same ids |
 | R47 | Further review (2026-09-29): "routing tier vs spend"; triage already decides the tier (§2, tier fit) | **A run's tier is recorded, and fixed.** `runs.Build` writes the label `agents.ogenki.io/tier` (Task 1.5a): an implementer carries the task's triaged tier, a reviewer the other tier it runs on (Task 4.2a). **Agents are never re-routed per request within a run.** The tier becomes `spec.model` (R11), which the XRD's CEL makes immutable, and agent-router routes on the model name only. The observability plan exposes the label as `agentrun_info{tier}` and draws tier against tokens and steps (its O23, O24) | A mid-run switch would split one conversation across models and discard the provider's prompt cache, and it would make tier fit (SC-10) unmeasurable. It is a label, not `spec.model`, because every tier maps to `agent-default` until SP4 PR 2 (R11) | An under-tiered run cannot be rescued mid-flight: it ends at its budget, and the task's next run can take another tier. The label is set at CREATE and never patched (Task 5.5's patch-limit forbids label changes). Runs requested through `POST /v1/runs` (Task 5.2) belong to no task, so they carry no tier and start their own trace |
+| R52 | External review R02: the arming trusts the `Agent-Run` trailer, which any run can write, and the verdict is not bound to a SHA. SP2 ledger ruling TB's "push identity" was never folded into this plan | **Supersedes TB's mechanism, not its intent.** All runs push as one App, so GitHub cannot tell runs apart. Arming binds a head to the task by the room log: `pr.HeadSHA` must equal, in full 40 characters, the `commit` of the latest `handoff` (or final) event whose broker-stamped actor is one of the task's implementer runs. When the template has verifiers, every verifier role's latest `approve` must carry `RunRecord.HeadSHA == pr.HeadSHA`. Trailers stay claims: a foreign or absent trailer still refuses, but a matching trailer is never sufficient. The merger merges with `mergePullRequest(expectedHeadOid)`, not auto-merge (Tasks 7.2, 7.3). Confinement is repo-level (`agent/**`); per-run branch isolation is not provided | Room events carry the broker-stamped actor (SP2 C4) and `handoff`/`review_verdict` already carry `commit`. `enablePullRequestAutoMerge`'s `expectedHeadOid` is checked at enable time only, and the disarm-by-polling path fails open while the factory is down; `mergePullRequest`'s is checked at merge time | Solo templates (`docs-links`) need a final room event naming the head: a `done` MCP tool with `commit`, or `handoff.toRole` widened to `factory` (SP2). A run that never reports its head always goes to a human |
 
 ## Interfaces with other sub-projects
 
@@ -440,7 +441,7 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | SC-11 reverted ≤ 5 % of 50 auto-merges | **10.7** (the count starts after the wave), tracked on the dashboard | `agent_factory_pr_outcomes_total` |
 | SC-12 gate-coverage fails on an uncovered child | **6.3** | fixture test |
 | SC-13 CLI token principal; direct create denied | **5.9** | run spec, admission error |
-| SC-14 foreign `Agent-Run` trailer never armed | 7.2, 7.3 (offline), 7.9 (shadow), **10.7** (live) | task status |
+| SC-14 a head no run of the task reported, or no verifier approved, is never merged (R52) | 7.2, 7.3 (offline), 7.9 (shadow), **10.7** (live) | task status |
 
 ## Owner actions
 
@@ -10489,7 +10490,8 @@ func (s *Server) admitRoom(ctx context.Context, p authn.Principal, in RunRequest
 // admitResume is R35's one caller-named branch: a stopped run's agent/<id>. A task's branch
 // resumes with /factory retry, a room's needs the caller's right to start runs there, and a
 // branch a live run holds is busy. The branch widens nothing: the agents' App may push any
-// agent/** branch already; SC-14's trailer check keeps foreign commits away from arming.
+// agent/** branch already; SC-14's run-reported head and SHA-bound verdicts (R52) keep foreign
+// commits away from the merge.
 func (s *Server) admitResume(ctx context.Context, p authn.Principal, branch string, all []runs.Run) (int, string) {
 	id := strings.TrimPrefix(branch, "agent/")
 	var task v1alpha1.Task
@@ -11713,6 +11715,13 @@ git commit -m "docs(adr): ADR-0045 merge policy gate"
   - `check-workflow-secrets.sh`: exit 1 when a workflow triggered by `pull_request` or
     `pull_request_target` references a `secrets.*` other than `GITHUB_TOKEN`. `WORKFLOWS_DIR`
     overrides the directory.
+    *External review R01:* it also exits 1 when such a workflow grants any `write` permission at
+    workflow level, or at job level for a job not in the script's own allowlist (`sarif-upload:
+    security-events`, `render-diff-comment: pull-requests`, `build-and-push: packages,
+    security-events`). An allowlisted job must contain no `actions/checkout` of the PR head and no
+    `run:` step. Fixtures: a workflow-level write fails; an unlisted job with write fails. The
+    allowlist is a gate path (R17). `build-and-push` fails the last clause today: split the push out
+    of the PR path, or record it as an exception. The `ci.yaml` job split is its own `fix(ci)` PR.
   - Tasks `ci:policy-gates`, `ci:workflow-secrets`.
 
 The canonical gate list is `no_changed_files.paths` of the rule `agent change approved by a
@@ -12906,10 +12915,11 @@ Expected: `approved`, `pending`, `error` (SC-3's verdict, before any ruleset). R
 
 ## Phase 7 — Auto-merge and rollback, built and run in shadow (FA-6, FR-7)
 
-The merger App (R16) arms GitHub's native auto-merge on an agent PR only when every §5.1 condition
-holds: 8 CI checks green, `policy-bot: main` = `success` from policy-bot's App with no maintainer
+The merger App (R16) merges an agent PR with `expectedHeadOid` (R52 replaced GitHub's native
+auto-merge) only when every §5.1 condition holds: 8 CI checks green, `policy-bot: main` = `success` from policy-bot's App with no maintainer
 approval (so a live class matched), the reviewer's verdict `approve` where the template has one,
-the head commit's `Agent-Run` trailer naming one of the task's runs (SC-14), the class live and not
+the head being the one the task's own run reported in the room, every verifier approve naming that
+SHA, and no foreign trailer (SC-14, R52), the class live and not
 paused, and the daily cap not reached. GitHub then waits for classic protection and the
 `agent-merge-gate` ruleset. After the merge, the task watches `main`'s CI on the merge commit for 30
 minutes and reverts on red, or on a maintainer's `factory/revert` within 7 days; one revert pauses
@@ -13316,6 +13326,30 @@ verdict implies: the predicted live class on a clean `success`, `review` on `pen
 `error`; a difference from the prediction counts as a `class_mismatch` (§2). A `shadow` class passes
 every condition a live one does and gets the verdict `shadow` ("would auto-merge") instead of `arm`.
 
+**Amendment (external reviews R02, R03; ruling R52).** Write these tests first; they supersede the
+trailer-only rule in the code below.
+
+- `ArmInputs` gains `ReportedHead string` (the `commit` of the latest `handoff` or final room event
+  whose broker-stamped actor is one of the task's implementer runs), `Verifiers []v1alpha1.RunRecord`
+  and `Files struct{ Base, Head map[string]string }` (from a new `forge.Files(base, head)` read, if
+  the forge lacks one).
+- After `no_approving_verdict`: `ReportedHead == ""` or `!= PR.HeadSHA` (full 40 characters) →
+  `human("head_unreported", class)`; a verifier role's latest approve whose `HeadSHA != PR.HeadSHA` →
+  `human("verdict_stale", class)`. The trailer check stays: foreign or absent still refuses.
+- `reconciler.LinksOnly(base, head map[string]string) (bool, string)`. For each changed file:
+  replacing every inline link target `](…)` and reference-definition target with a placeholder
+  leaves base and head byte-identical; the target counts are equal; each changed target is
+  relative → relative, or `https` with the old host unchanged (`web.archive.org` allowed), never
+  another scheme. For classes `docs-links` and `revert`, `!LinksOnly` → `human("class_mismatch", class)`.
+- Tests: run D pushes H with A's trailer → `head_unreported`; approve H1, then H2 is pushed before
+  the decision → `verdict_stale`; the legitimate path → `shadow`. `LinksOnly`, one failing one-line
+  diff each: `<script>`, a changed fenced command, a reworded sentence, a new external host,
+  `javascript:`; one passing diff: a relative link retargeted.
+- Solo templates (`docs-links` is solo) post a final room event that names the head: a `done` MCP
+  tool with `commit` (the `room_handoff` pattern), or `handoff.toRole` widened to `factory` (SP2).
+- Gate: Task 7.9 (shadow) proves both reasons; Task 10.7 flips no class `live` without them, so the
+  shadow forecast (`shadow_would_arm`) is honest.
+
 - [ ] **Step 1: Write the failing test**
 
 `internal/factory/reconciler/arm_test.go`:
@@ -13595,9 +13629,9 @@ git commit -m "feat(factory): the arming decision of section 5.1, table-tested (
     that ran failed, `PENDING` while one that ran is still running, else `SUCCESS`. A watched check
     that never ran is not failing: a path-filtered push workflow never reports on the merge commit.
     `verifying` uses it over `merge.verifyChecks`; the arming keeps `CIState` over `requiredChecks`.
-  - Arming records the decided head in `status.pullRequest.headSHA` and passes it as
-    `expectedHeadOid`; a head that moves while `AutoMerging` is disarmed (`DisableAutoMerge`) and
-    decided again from `AwaitingCI` (reason `head_moved`), so SC-14's trailer check covers it.
+  - Arming records the decided head in `status.pullRequest.headSHA` and merges it with
+    `expectedHeadOid` (R52, amendment below); a moved head fails the merge and is decided again from
+    `AwaitingCI` (reason `head_moved`), run-reported head and SHA-bound verdicts included.
   - A `Reverted` task keeps being reconciled while its revert PR is open: merged or closed ends the
     watch; still open after `merge.verifyFor` disarms it and asks a maintainer (`revert_stalled`).
   - `narrate.Armed`, `narrate.WaitingForHuman(t, reason)`, `narrate.CIExhausted(t, failing)`,
@@ -13605,6 +13639,16 @@ git commit -m "feat(factory): the arming decision of section 5.1, table-tested (
     `main_red`, `revert_requested`, `merged_verified`, `gate_path`, `class_mismatch`, `foreign_trailer`,
     `class_paused`, `head_moved`, `shadow_would_arm`.
   - It changes two earlier tests whose expectations encoded `ready` = `AwaitingHuman` (Step 3).
+
+**Amendment (external review R02, ruling R52).** It supersedes the arming code below.
+`EnableAutoMerge(nodeID, head)` becomes `Merge(nodeID, head)`, which calls
+`mergePullRequest(expectedHeadOid: head, mergeMethod: SQUASH)`: GitHub checks the head at merge
+time, while auto-merge's `expectedHeadOid` is an enable-time check and the disarm-by-polling path
+fails open while the factory is down. A `409` or `405` → `AwaitingCI` (`head_moved`) or
+`human("not_mergeable")`. The `AutoMerging` disarm path is dropped; `Verifying` and the revert watch
+stay. `AutoMerged` now means "merged by the merger"; R16's merger App keeps Pull requests write and
+Contents write. Metrics and narration are renamed only. Test: the forge fake rejects a moved head,
+and nothing merges.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -15186,8 +15230,10 @@ kubectl exec -n agents "$POD" -c harness -- sh -c 'cd /workspace/repo && git fet
 
 The pushed head carries `Agent-Run: <D's runId>` (the commit hook). Expect A-bis's task
 `AwaitingHuman` with reason `foreign_trailer`, no "would auto-merge" comment, and
-`autoMergeRequest` `null`, even though its policy status may be `success`. Close A-bis and D
-unmerged; delete their branches.
+`autoMergeRequest` `null`, even though its policy status may be `success`. *(External review R02,
+R52)* Repeat with the probe commit's trailer rewritten to A-bis's run id: expect `head_unreported`.
+On a `pair` task, approve H1 and push H2 before the decision: expect `verdict_stale`. Close A-bis
+and D unmerged; delete their branches.
 
 - [ ] **Step 5: The schedule**
 
@@ -15911,15 +15957,19 @@ full scope: the stop stops every run, human-started ones included (owner, 2026-0
   Expected: the admitted sandbox pods are evicted within seconds
   (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, resume both
   Kustomizations.
-- [ ] **Step 4: The gateway** — needs SP4 PR 7 (B1/B2 enforced). If it is on the cluster, set the
-  agent fleet cap to 0 on the integration branch: the next model call of any run gets a 429, and the
-  meter names it `budget-fleet`. Otherwise record the layer as deferred to SP4 PR 7.
+- [ ] **Step 4: The gateway, independent of the factory and of the ratelimit store** *(external
+  review, stop drills)*. A budget is not a stop: the fleet bucket fails open and is shadow until SP4
+  PR 7. Scale the `agent-router` data plane to 0 (or delete its listener's HTTPRoutes): the next model
+  call of a live run fails while its sandbox still runs. Restore. After SP4 PR 7, the fleet cap at 0
+  (`budget-fleet` 429) is an additional check, not the layer.
 - [ ] **Step 5: [OWNER] GitHub, independent of the cluster** — the owner suspends the **agents'** App
   installation (`https://github.com/settings/installations` → `ogenki-agents` → Suspend). From a
   running implementer sandbox, `kubectl exec … -c harness -- git -C /workspace/repo push origin HEAD`
   fails with `403`. The owner unsuspends it.
-- [ ] **Step 6:** Record the timestamps in FR-8's body; SC-5 is the first two numbers (≤ 30 s,
-  ≤ 2 min, the human run included) and the 403.
+- [ ] **Step 6:** Record, for **every** step, `t(action)` → `t(effect)` and what still works, in FR-8's
+  body *(external review, stop drills)*. Step 5: GitHub writes stop, but model calls and execution
+  continue. Step 3: pods are evicted, and GitHub tokens stay valid until their TTL. SC-5 is Step 1's
+  two numbers (≤ 30 s, ≤ 2 min, the human run included) and Step 5's 403.
 
 ### Task 8.5: [LIVE] SC-1's p50, SC-7, SC-10; SC-11 tracking; `/verify-spec`
 
@@ -17466,6 +17516,11 @@ The default path (owner, 2026-09-27; R32): every SP3 PR is merged, so merges are
 rulesets, the live classes and every proof that needs a real merge run here, in this order.
 Branch `feat/merge-gate-live` from `origin/main` (FR-11).
 
+**Gate (external reviews R02, R03, R08):** no class goes `live` before Task 7.2's `head_unreported`,
+`verdict_stale` and `LinksOnly` checks and Task 7.3's `expectedHeadOid` merge have passed their tests
+and Task 7.9's shadow proof (R52), and Task 7.3a's breaker reads GitHub (R51). Live proof: a push
+after the decision fails the merge call on `expectedHeadOid`.
+
 - [ ] **Step 1: [OWNER] The rulesets, in order** (Task 7.8's and Task 6.7's appliers):
 
 ```bash
@@ -17498,8 +17553,8 @@ required on `main`; the owner bypasses it for pull requests, Renovate always (OD
   - B2: `pending`, `AwaitingHuman` (`policy_pending`); the owner approves, then merges or closes it.
   - C2 (`.policy.yml`): `error`, and it stays `error` after the owner's approval;
     `gh pr merge <C2-pr> --squash` (no `--admin`) fails citing the required status. Close it.
-  - SC-14: Task 7.9 Step 4's probe on A2-bis from D2's sandbox: `foreign_trailer`, `autoMergeRequest`
-    `null`. Close both.
+  - SC-14: Task 7.9 Step 4's probe on A2-bis from D2's sandbox: `foreign_trailer`, then
+    `head_unreported` with the forged trailer (R52); nothing merges. Close both.
 
 - [ ] **Step 4: [OWNER] The revert drill and the circuit breaker**
 

@@ -239,6 +239,10 @@ deployed.
 **Can an agent merge to `main`, or push anywhere else?**
 No. Its GitHub App may push only `agent/**` branches and no tags, enforced by two repository rulesets. Merging is
 the human's, except for the two low-risk classes above, which go through a separate App.
+That confinement is per repository, not per run: every run pushes as the same App, so one run can
+push to another's `agent/**` branch. The footer is provenance, never authorisation: the merge gate
+merges only the commit the task's own run reported in its room, with every reviewer approval naming
+that commit.
 
 **Can it read our secrets?**
 The sandbox holds no long-lived credential. Its GitHub token is minted per run, scoped to one
