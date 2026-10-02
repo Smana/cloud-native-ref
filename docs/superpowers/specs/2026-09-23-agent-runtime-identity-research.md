@@ -234,6 +234,9 @@ these hold:
 - two minor releases ship without an architectural rewrite;
 - parking a run with `operatingMode: Suspended` plus a PVC workspace proves too lossy for rooms.
 
+> **2026-10-01 note.** Re-scored after Substrate v0.3.0: no trigger is met and 2026-12-15 stands.
+> See the [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md).
+
 ## References
 
 - agent-sandbox: [releases](https://github.com/kubernetes-sigs/agent-sandbox/releases) ·
