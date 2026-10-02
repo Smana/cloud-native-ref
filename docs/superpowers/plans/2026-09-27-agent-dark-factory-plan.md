@@ -11794,10 +11794,16 @@ git commit -m "docs(adr): ADR-0045 merge policy gate"
     *External review R01:* it also exits 1 when such a workflow grants any `write` permission at
     workflow level, or at job level for a job not in the script's own allowlist (`sarif-upload:
     security-events`, `render-diff-comment: pull-requests`, `build-and-push: packages,
-    security-events`). An allowlisted job must contain no `actions/checkout` of the PR head and no
-    `run:` step. Fixtures: a workflow-level write fails; an unlisted job with write fails. The
-    allowlist is a gate path (R17). `build-and-push` fails the last clause today: split the push out
-    of the PR path, or record it as an exception. The `ci.yaml` job split is its own `fix(ci)` PR.
+    security-events`, `notify-main-broken: issues` — a recorded exception: push-gated by its `if:`,
+    deliberately checkout-free, its `run:` steps open the tracking issue only after a broken push
+    to `main`). An allowlisted job must contain no `actions/checkout` of the PR head, and no
+    `run:` step that executes on a `pull_request` event — a job whose `if:` pins
+    `github.event_name == 'push'` satisfies this by construction and is listed as push-gated in
+    the script. Fixtures: a workflow-level write fails; an unlisted job with write fails; a
+    push-gated allowlisted job with a `run:` step passes; the same job without the push gate
+    fails. The allowlist is a gate path (R17). `build-and-push` fails the last clause today:
+    split the push out of the PR path, or record it as an exception. The `ci.yaml` job split is
+    its own `fix(ci)` PR.
   - Tasks `ci:policy-gates`, `ci:workflow-secrets`.
 
 The canonical gate list is `no_changed_files.paths` of the rule `agent change approved by a
@@ -11896,6 +11902,11 @@ on: {push: {branches: [main]}}
 jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.DEPLOY_KEY }}"}]}}
 EOF
 WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "GITHUB_TOKEN, and secrets on push-only workflows, pass"
+cat >"$d/push-gated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {if: "github.event_name == 'push'", runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "a push-gated allowlisted job with a run: step passes"
 cat >"$d/bad.yml" <<'EOF'
 on:
   pull_request_target:
@@ -11917,6 +11928,12 @@ jobs:
 EOF
 out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with an unlisted job holding write fails"
 grep -q 'job-write.yml.*upload' <<<"$out" || fail "the failure names the file and the job"
+cat >"$d/ungated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "an allowlisted job with a run: step and no push gate fails"
+grep -q 'ungated-run.yml.*notify-main-broken' <<<"$out" || fail "the failure names the file and the job"
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
 ```
@@ -12003,6 +12020,8 @@ ALLOWLIST = {
     "sarif-upload": {"security-events"},
     "render-diff-comment": {"pull-requests"},
     "build-and-push": {"packages", "security-events"},
+    # notify-main-broken: push-gated if:, no checkout by design, run: only opens the tracking issue
+    "notify-main-broken": {"issues"},
 }
 
 def write_scopes(perms):
@@ -12045,7 +12064,10 @@ for f in sorted(glob.glob(os.path.join(os.environ["DIR"], "*.y*ml"))):
             # the PR merge commit; pull_request_target's is the base, so only an explicit
             # pull_request ref counts there.
             steps = [s for s in (spec.get("steps") or []) if isinstance(s, dict)]
-            if any("run" in s for s in steps):
+            # a push-gated if: means the job's run: steps never execute on a pull_request event
+            job_if = str(spec.get("if") or "")
+            push_gated = "github.event_name == 'push'" in job_if or "!= 'pull_request'" in job_if
+            if any("run" in s for s in steps) and not push_gated:
                 bad.append(f"{name}: allowlisted job '{job}' has a run: step")
             for s in steps:
                 if str(s.get("uses") or "").split("@")[0] != "actions/checkout":
