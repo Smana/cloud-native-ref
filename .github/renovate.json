@@ -106,6 +106,17 @@
       "automergeStrategy": "squash"
     },
     {
+      "description": "Never automerge the agent MCP servers. Each one is read-only by RBAC/CNP, not by the MCP protocol: a bump that adds a resource/prompt/template ships unauthorized, because `resources/*` and `prompts/*` bypass MCPRoute authorization entirely (review M5/I2). Read the release notes before bumping. octo-sts is included because CI never starts it, so a green PR proves nothing about the exchange still behaving.",
+      "matchPackageNames": [
+        "ghcr.io/controlplaneio-fluxcd/charts/flux-operator-mcp",
+        "ghcr.io/controlplaneio-fluxcd/flux-operator-mcp",
+        "ghcr.io/victoriametrics/mcp-victoriametrics",
+        "ghcr.io/victoriametrics/mcp-victorialogs",
+        "ghcr.io/octo-sts/app"
+      ],
+      "automerge": false
+    },
+    {
       "description": "Never automerge the Grafana plugin pins, whatever the update type. They are TRACKED from GitHub releases and INSTALLED from the Grafana.com catalog, and the two publish independently \u2014 a tag can exist on GitHub days before, or without ever, reaching the catalog. Renovate has no catalog datasource, so it cannot tell the difference: a bump to a version the catalog does not carry is green on every check here and CrashLoopBackOff on the cluster, because the plugin installer is a startup module and Grafana refuses to start rather than start without the plugin. That takes observability -> tooling -> apps down with it. It has already happened twice \u2014 #1959 reverted by #1980, #1981 reverted by #1982 \u2014 and #1980 pinned the version back with the check to run recorded in the ConfigMap at the point someone is next asked to accept a bump: `curl -s https://grafana.com/api/plugins/<plugin-id>/versions`. Automerging would mean nobody is ever asked, and that comment would go unread. Matched by file rather than by package so a third plugin added to the same list inherits the exclusion for free.",
       "matchFileNames": [
         "observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml"

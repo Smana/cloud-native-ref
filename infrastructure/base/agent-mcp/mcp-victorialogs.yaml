@@ -1,0 +1,145 @@
+---
+# No Kubernetes identity: it reads VictoriaLogs over HTTP (SP1 §6). Logs tools
+# reach reviewers, testers and triagers on `internal` only (MCPRoute).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-victorialogs
+  namespace: agent-system
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-victorialogs
+  namespace: agent-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-victorialogs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-victorialogs
+    spec:
+      serviceAccountName: mcp-victorialogs
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          # A bump that adds a resource/prompt/template here ships unauthorized:
+          # `resources/*` and `prompts/*` bypass MCPRoute authorization entirely
+          # (review M5). Check the release notes before bumping.
+          image: ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0@sha256:753bb4fbe402ca1a782842f44636830f9895736f11d7fe783b924f8a0daf083d
+          env:
+            - name: VL_INSTANCE_ENTRYPOINT
+              value: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+            - name: MCP_SERVER_MODE
+              value: http
+            - name: MCP_LISTEN_ADDR
+              value: ":8081"
+          ports:
+            - name: mcp
+              containerPort: 8081
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: mcp
+          # Same docs-index startup as mcp-victoriametrics: liveness waits until it listens.
+          startupProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 20
+          resources:
+            # 89Mi idle against a 128Mi limit on aws-0: headroom for the same embedded-docs load.
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-victorialogs
+  namespace: agent-system
+spec:
+  selector:
+    app.kubernetes.io/name: mcp-victorialogs
+  ports:
+    - name: mcp
+      port: 8081
+      targetPort: mcp
+---
+# Same pinning as flux-operator-mcp: the agent-router data plane by name AND
+# namespace, never a same-named Gateway elsewhere.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mcp-victorialogs
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-victorialogs
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Kubelet probes need this: there's no separate health port or shell for
+    # an exec probe. Residual: any hostNetwork pod on the same node (a node
+    # daemon, cilium-envoy) can also reach this unauthenticated server
+    # (review M2).
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: victoria-logs-single
+      toPorts:
+        - ports:
+            - port: "9428"
+              protocol: TCP
