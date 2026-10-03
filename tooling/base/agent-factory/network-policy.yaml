@@ -1,5 +1,5 @@
 # agent-factory (SP3 §6.5). Default deny; one allow per flow. Later phases add the RunLore
-# intake, the run-request API, the classifier and VictoriaLogs.
+# intake, the run-request API and VictoriaLogs. The classifier egress is SP4's C7.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -40,6 +40,12 @@ spec:
             app.kubernetes.io/name: room-broker
       toPorts:
         - ports: [{port: "8443", protocol: TCP}]
+    - toEndpoints:  # C7, once per task (SP4 PR 5)
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: complexity-classifier
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
     - toEndpoints:  # the run meter's source
         - matchLabels:
             io.kubernetes.pod.namespace: observability
