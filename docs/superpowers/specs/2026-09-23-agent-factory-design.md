@@ -330,8 +330,8 @@ SP4 owns the model mapping and budget enforcement.
   *(Resolves SP1's `x-agent-sub` in favour of SP4's names.)*
 - **Logical model names:** `tier-light`, `tier-standard`, `tier-frontier`, and the alias
   `agent-default` (initially → GLM-5.2 via Z.ai). The **data class** decides the backend behind a
-  name: `public` runs may reach Z.ai. `internal` runs reach only the providers [ADR-0054](../../../website/content/docs/decisions/0054-agent-model-providers-anthropic-direct.md)
-  admits for internal data. The default is the Anthropic API; Bedrock, Vertex and self-hosted models are
+  name: `public` runs may reach Z.ai. `internal` runs reach only the providers ADR-0054 admits for
+  internal data. The default is the Anthropic API; Bedrock, Vertex and self-hosted models are
   optional. They never reach Z.ai or OpenRouter (OD-13, gate AG5). `internal` is a processing, tool
   and egress class: it picks the provider, the MCP tool set (OD-13's consequence) and the run's
   egress. Processing location, retention and residency are properties of the provider, recorded in

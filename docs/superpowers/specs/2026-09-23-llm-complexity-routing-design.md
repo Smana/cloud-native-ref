@@ -299,7 +299,7 @@ switch on whether the gateway is present.
 |---|---|---|
 | Automatic `MoM` routing | frontier only without PII | SR `NOT pii_any` |
 | A frontier model explicitly chosen by a human | that provider | the principal's choice, logged |
-| Agent-run context | `public` → Z.ai. `internal` → Bedrock EU only (or self-hosted, where a cluster override points there) | Routes attach only to their class's listener (S13), so it fails closed. SP3 sets `spec.dataClass` (C3) |
+| Agent-run context | `public` → Z.ai. `internal` → the Anthropic API (ADR-0054, external review R13; Bedrock, Vertex or self-hosted optional per cloud) | Routes attach only to their class's listener (S13), so it fails closed. SP3 sets `spec.dataClass` (C3) |
 | Task text to Jev | only `dataClass: public` | C7 adapter |
 | Direct from pods | nowhere | provider FQDNs are egress-allowed on the two data-plane pod sets only |
 
@@ -310,13 +310,14 @@ switch on whether the gateway is present.
 is frontier-backed so it works with zero GPUs, and local 7–8B models are never agent tiers. One
 route per class listener:
 
-| Name | `public` → Z.ai ($/1M in · cached · out) | `internal` → Bedrock EU (first-party list $/1M) |
+| Name | `public` → Z.ai ($/1M in · cached · out) | `internal` → the Anthropic API (ADR-0054; first-party list $/1M) |
 |---|---|---|
 | `tier-light` | `glm-5.3-flash` (API ID UNVERIFIED) · 0.15 · 0.03 · 0.50 | `eu.anthropic.claude-haiku-4-5-20251001-v1:0` · 1 / 5 |
 | `tier-standard` | `glm-5.3-flashx` (API ID UNVERIFIED) · 0.37 · 0.075 · 1.25 | `eu.anthropic.claude-sonnet-5` · 2 / 10 |
 | `tier-frontier`, `agent-default` | `glm-5.2` · 1.40 · 0.26 · 4.40 | `eu.anthropic.claude-opus-5-5` · 4 / 20 |
 
-Until the Bedrock slice (PR 2) lands, `internal` runs have **no backend** (C5):
+The `internal` IDs above are the superseded Bedrock ones; the agentgateway plan's Task I.2 sets the
+Anthropic API IDs (external review R13). Until it lands, `internal` runs have **no backend** (C5):
 `agent-models-internal` is empty, so requests 404 before any token is spent.
 
 `llm-gateway` on `ai-gateway` defines `tier-frontier` (the `MoM` hard target) and, after slice 2, the
@@ -450,7 +451,7 @@ The umbrellas and their dependencies are C1. SP4's placement within them:
 | SC-8 | The routing dashboard shows tier mix, USD by principal kind, rule headroom and the three promptfoo arms | Grafana |
 | SC-9 | After 14 nightly runs: routed `MoM` reaches ≥95% of always-frontier's pass rate at ≤50% of its cost, **or** `MoM` defaults to `mom-standard` with the reason recorded | promptfoo metrics |
 | SC-10 | After migration, `runlore/credentials` holds no `GLM_API_KEY`, and RunLore succeeds as `system:runlore` | OpenBao read; gateway metrics |
-| SC-11 | A token with an `…internal` audience never reaches `api.z.ai` for any of the four names: `public` returns 401, and `internal` reaches Bedrock, or 404s before PR 2 | gateway access logs; Hubble on the data-plane pods |
+| SC-11 | A token with an `…internal` audience never reaches `api.z.ai` for any of the four names: `public` returns 401, and `internal` reaches the Anthropic API (ADR-0054), or 404s before the agentgateway plan's Task I.2 | gateway access logs; Hubble on the data-plane pods |
 
 ## Non-goals
 
@@ -485,7 +486,7 @@ model early. gcp-0 (Vertex, tier map, umbrella) follows as its own workstream.
 |---|---|---|---|
 | 1 | this | `ai-gateway` umbrella and the move. `llm-gateway` namespace, platform Z.ai backend, `tier-frontier`. EG rate limit + `KVStore`. Header strips, metrics attributes, price rules, B3–B5 in shadow | 0046, 0050 |
 | — | this (SP1) | `agent-router` Gateway, JWT, agents' Z.ai backend, `agent-models` with `agent-default` | — |
-| 2 | this (+ SP1 audiences) | `agent-models` / `agent-models-internal` tiers, B1–B2 in shadow, `agent:`/`human:` recording rules, Bedrock (`EPI`s, `claude-*`), `oidc` listener, `/anthropic` | — |
+| 2 | this (+ SP1 audiences) | `agent-models` / `agent-models-internal` tiers, B1–B2 in shadow, `agent:`/`human:` recording rules, Bedrock (`EPI`s, `claude-*`), `oidc` listener, `/anthropic` (agent half moved to the AGW plan phase I; external review R13) | — |
 | 3 | crossplane-configuration → this | `spec.gateway.aliases`, fixtures, release, pin bump, claim aliases, Kyverno uniqueness | — |
 | 4 | this | SR 0.3.0 (migrate, explicit values, render assertion, Renovate), HA, fail-open patch, complexity and guard decisions, replay without bodies | — |
 | 5 | shared repo (OD-4) + this | `complexity-classifier`, Jev off | 0047 |

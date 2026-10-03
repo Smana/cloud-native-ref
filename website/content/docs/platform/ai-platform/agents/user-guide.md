@@ -3,17 +3,20 @@ title: User guide
 weight: 10
 description: "Work in progress. How a developer gives work to agents, follows it, steers it and stops it, today and in the target design."
 lastVerified: 2026-10-01
+aliases:
+  - /docs/platform/agent-factory/user-guide/
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** Part 1 describes the **target experience**, and marks what already works on
-`gcp-0`, which runs the programme from the `integration/agent-factory` branch. It exists so the
+**Work in progress.** Part 1 describes the **target experience**, and marks what is already
+deployed on `gcp-0`, which runs the programme from the `integration/agent-factory` branch, and
+whether its live gate has run. It exists so the
 experience can be agreed *before* the rest is built, and it will change. Part 2 is the run you start
 by hand, which also works today. Nothing here is on `main` yet.
 {{< /callout >}}
 
 New to the vocabulary (run, role, sandbox, room)? Read
-[the overview]({{< relref "/docs/platform/agent-factory/_index.md" >}}) first; it takes two minutes.
+[the overview]({{< relref "/docs/platform/ai-platform/agents/_index.md" >}}) first; it takes two minutes.
 
 ## Before you start
 
@@ -30,7 +33,8 @@ New to the vocabulary (run, role, sandbox, room)? Read
 
 | State on `gcp-0` | Steps |
 |---|---|
-| Works today | The `factory/ready` label, the snapshot and triage, the started / PR / end comments, the room's *watch* link, posting or queuing a message, steering the running agent, `factory/stop` on one task, the stop ConfigMap, the run meter and the daily cap |
+| Deployed, live gate partly passed | The room's *watch* link, posting or queuing a message |
+| Deployed, live gate pending | The `factory/ready` label, the snapshot (a fixed template; triage arrives in phase 4), the started / PR / end comments, `factory/stop` on one task, the stop ConfigMap, the run meter and the daily cap (factory gate 1.13); steering the running agent (gate 4.8: owner steps pending); a hand-started reviewer's verdict on the PR (gate 3.11) |
 | Built, not yet deployed | The reviewer run after the implementer, "Request changes" turned into a new run, `/factory retry`, the PR provenance footer |
 | Planned | Approvals in the room, the merge gate, the pinned control issue |
 
@@ -65,7 +69,8 @@ Write the issue the way you would for a colleague: what is wrong, where, and wha
 Then add the label **`factory/ready`** and walk away.
 
 The factory takes a **snapshot** of the issue at that moment. The agents work from that snapshot,
-so an edit made later does not change a task already under way. It then triages the task once:
+so an edit made later does not change a task already under way. *(Phase 4, not started; today a
+fixed template)* It then triages the task once:
 - which class the task is, for example `docs-links`;
 - which team of roles works it;
 - how big a budget it gets.
@@ -101,8 +106,8 @@ Agent-Model: agent-default
 run; a run started from an issue or PR URL also carries `Agent-Task-URL: <url>`.
 
 A reviewer run records its **verdict** in the room, which posts it on the PR as one comment. That
-works today for a reviewer you start by hand; the factory starts one itself once the reviewer pair is
-deployed. The comment is advice only: it neither approves nor blocks. The decision stays yours.
+is deployed for a reviewer you start by hand, with its live gate (3.11) pending; the factory starts
+one itself once the reviewer pair is deployed. The comment is advice only: it neither approves nor blocks. The decision stays yours.
 
 ### 4. Steer it
 
@@ -111,7 +116,7 @@ deployed. The comment is advice only: it neither approves nor blocks. The decisi
 | Ask for changes | *(Built, not yet deployed)* A normal GitHub review with **"Request changes"**. Your review becomes the input of a new run on the same branch |
 | Accept the work | Approve and merge as usual |
 | Try again after a failure | *(Built, not yet deployed)* Comment **`/factory retry`** |
-| Add context while it runs | If you are a collaborator in the room, post a message there: it is queued for the next run, or steers the running one |
+| Add context while it runs | If you are a collaborator in the room, post a message there. Messages default to the room (no agent prompted, though a running agent may read them); choose *queue* for the next run's brief, or *steer* while you hold the driver token |
 
 *(Planned)* The **merge gate** merges nothing but two low-risk classes, and only once CI and the
 policy agree: `docs-links` (fixing broken links) and `revert` (the factory's revert of an
@@ -130,7 +135,8 @@ An interrupted run keeps its branch. Its work resumes from there.
 
 ### Budgets and costs
 
-Three limits keep a task from running away, all enforced today:
+Three limits keep a task from running away, all deployed on `gcp-0` (the run meter and the daily
+cap with their live gate pending):
 - **Each run has a deadline.** The sandbox is stopped when it expires.
 - **Each run has a token budget.** The factory's run meter revokes the run when it is spent, runs
   started by hand included.
@@ -202,9 +208,9 @@ task agent:run -- --role implementer --class public --branch agent/<id> --task-u
 A run that loses its pod (a node going away, for example) **fails** rather than silently
 restarting. Resuming with `--branch` continues from what it already pushed.
 
-Known issue (round 9, F12): today a lost pod is re-created within about a second, the run stays
-`Running`, and the task starts over in a fresh conversation, which can push twice. Until the fix
-lands, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
+Known issue ([F12]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
+the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
+fix is under review. Until it is deployed, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
 and resume it with `--branch`.
 
 ---
@@ -219,18 +225,24 @@ and resume it with `--branch`.
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
 `task agent:run` prints the dashboard link (`/d/agent-run/agent-run?var-run=<id>`). Two known
-issues from round 9: a successful run's page lacks its outcome and PR (F18), and MCP tool calls
-are not yet joined to the run's trace (F16).
+issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}); fixed
+on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls are not yet joined to the run's trace
+([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
-that room. Known issue (round 9, F11): a very short run can lose its whole transcript, because the
-harness exits before the room-bridge's next poll.
+that room. Known issue ([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
+transcript, because the harness exits before the room-bridge's next poll. The fix is built, not yet
+deployed.
 
 ## Frequently asked questions
 
 **Can an agent merge to `main`, or push anywhere else?**
 No. Its GitHub App may push only `agent/**` branches and no tags, enforced by two repository rulesets. Merging is
 the human's, except for the two low-risk classes above, which go through a separate App.
+That confinement is per repository, not per run: every run pushes as the same App, so one run can
+push to another's `agent/**` branch. The footer is provenance, never authorisation: the merge gate
+merges only the commit the task's own run reported in its room, with every reviewer approval naming
+that commit.
 
 **Can it read our secrets?**
 The sandbox holds no long-lived credential. Its GitHub token is minted per run, scoped to one

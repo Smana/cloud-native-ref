@@ -95,8 +95,10 @@ curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv
 ```
 
 Expected: `internal chat 404` — SP1 seeds only the `public`-listener Z.ai route
-(`agent-models`); `internal` is meant for Bedrock EU and self-hosted backends only, from SP4 PR 2,
-not yet built. No `upstream_cluster` containing `zai` among the 8081 lines.
+(`agent-models`); `internal` is served by the direct Anthropic API (key in OpenBao,
+gateway-injected; ADR-0054) once the agentgateway migration's phase I lands, with Bedrock/Vertex
+optional per cloud. The internal route does not exist on this cluster yet. No `upstream_cluster`
+containing `zai` among the 8081 lines.
 
 **What this proves:** SC-17 (listener half) — an `internal`-class run has no path to Z.ai whatsoever,
 structurally (the route doesn't exist on that listener), not just by audience mismatch.
