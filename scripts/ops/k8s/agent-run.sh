@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# Creates one AgentRun (SP1). Until SP3's factory ships, the owner creates runs
-# directly (C3), so this script is the creator: it generates the runId (C2).
+# Asks the agent factory for one AgentRun (SP3 §4). Since SP3 the factory is the only creator
+# (C3): it derives the branch, and the principal is your ZITADEL identity, proven by the token
+# `roomctl token` prints (run `roomctl login` once). The body never names the principal; it names
+# a branch only to resume a run the stop object ended (--branch agent/<runId>, R35).
 #
 # usage: agent-run.sh --role <implementer|reviewer|tester|triager> --class <public|internal>
 #                     (--task "<text>" | --task-url <issue or PR URL>)
-#                     [--repo <owner/name>] [--branch agent/<id>] [--size small|medium|large]
-#                     [--minutes <1-480>] [--profiles pypi,npm,golang,crates] [--room <roomId>] [--dry-run]
-# --room joins the run to a room (SP2) and defaults --branch to the room's shared agent/<roomId>.
-# --class internal has no model route until SP4 PR 2, so such a run 404s on every model call; it is
-# still accepted because the runbooks use it to test the internal listener.
-# AGENT_PRINCIPAL overrides the principal (default: human:<git user.email>) and must match
-# the design's principal CEL: human:<id> or system:<name> (lowercase, plan Task 1.1).
-# Only the run's name goes to stdout (callers capture it with `| tail -1`); the
-# applied claim's key fields and the run's dashboard link go to stderr (SO-5).
-# AGENT_GRAFANA_URL overrides the Grafana host, read otherwise from the grafana HTTPRoute.
+#                     [--repo <owner/name>] [--room <roomId>] [--base-ref <ref>] [--model <name>]
+#                     [--max-tokens <n>] [--profiles pypi,npm,golang,crates] [--branch agent/<id>] [--dry-run]
+# internal runs and triagers are for agents-admin (R37).
+# AGENT_FACTORY_URL (default https://factory.priv.aws.ogenki.io) and AGENT_FACTORY_CA (default
+# the private CA under opentofu/aws/openbao/management/.tls) select the endpoint.
+# Only the run id goes to stdout; the branch and next steps go to stderr.
 set -euo pipefail
 
-repo=Smana/cloud-native-ref role="" class="" task="" url="" branch="" size=small minutes=120 profiles="" room="" dry=""
+repo=Smana/cloud-native-ref role="" class="" task="" url="" room="" base="" model="" tokens="" profiles="" dry="" resume=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) repo=$2; shift 2 ;;
@@ -24,105 +22,63 @@ while [ $# -gt 0 ]; do
     --class) class=$2; shift 2 ;;
     --task) task=$2; shift 2 ;;
     --task-url) url=$2; shift 2 ;;
-    --branch) branch=$2; shift 2 ;;
-    --size) size=$2; shift 2 ;;
-    --minutes) minutes=$2; shift 2 ;;
-    --profiles) profiles=$2; shift 2 ;;
     --room) room=$2; shift 2 ;;
-    --dry-run) dry="--dry-run=server"; shift ;;
+    --base-ref) base=$2; shift 2 ;;
+    --model) model=$2; shift 2 ;;
+    --max-tokens) tokens=$2; shift 2 ;;
+    --profiles) profiles=$2; shift 2 ;;
+    --dry-run) dry=1; shift ;;
+    --branch)
+      [[ "$2" =~ ^agent/[a-z2-7]{8}$ ]] || { echo "--branch resumes a stopped run: agent/<its 8-character id>" >&2; exit 2; }
+      resume=$2; shift 2 ;;
+    --minutes|--size)
+      echo "$1 is gone: the factory sizes the run (SP3)" >&2; exit 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-# No default data class: classifying data is a decision (design §2).
 if [ -z "$role" ] || [ -z "$class" ]; then
-  echo "--role and --class are required" >&2; exit 2
-fi
-case "$role" in
-  implementer|reviewer|tester|triager) ;;
-  *) echo "--role must be one of implementer, reviewer, tester, triager" >&2; exit 2 ;;
-esac
-case "$class" in
-  public|internal) ;;
-  *) echo "--class must be public or internal" >&2; exit 2 ;;
-esac
-case "$size" in
-  small|medium|large) ;;
-  *) echo "--size must be one of small, medium, large" >&2; exit 2 ;;
-esac
-case "$minutes" in
-  ''|*[!0-9]*) echo "--minutes must be an integer between 1 and 480" >&2; exit 2 ;;
-esac
-# 480 is 3 digits: reject anything longer before it reaches arithmetic, where
-# a huge digit string makes `[ -lt ]`/`[ -gt ]` fail their own comparison
-# (non-fatal under set -e) and the range check silently passes it through.
-if [ "${#minutes}" -gt 3 ]; then
-  echo "--minutes must be an integer between 1 and 480" >&2; exit 2
-fi
-if [ "$minutes" -lt 1 ] || [ "$minutes" -gt 480 ]; then
-  echo "--minutes must be an integer between 1 and 480" >&2; exit 2
-fi
-if [ -n "$room" ] && [[ ! "$room" =~ ^[a-z2-7]{8}$ ]]; then
-  echo "--room must be a room id: 8 characters of [a-z2-7]" >&2; exit 2
-fi
-# A human room's runs share one branch (C3); --branch still wins.
-if [ -n "$room" ] && [ -z "$branch" ]; then
-  branch="agent/$room"
+  echo "--role and --class are required (no default data class: classifying data is a decision)" >&2; exit 2
 fi
 if { [ -n "$task" ] && [ -n "$url" ]; } || { [ -z "$task" ] && [ -z "$url" ]; }; then
   echo "give exactly one of --task or --task-url" >&2; exit 2
 fi
 
-if [ -n "${AGENT_PRINCIPAL:-}" ]; then
-  principal="$AGENT_PRINCIPAL"
-  # Mirrors the XRD's principal CEL exactly (plan Task 1.1): a glob `case`
-  # here would only constrain the first character after the colon, not the
-  # rest of the string.
-  if [[ ! "$principal" =~ ^human:[A-Za-z0-9@._-]+$ && ! "$principal" =~ ^system:[a-z0-9-]+$ ]]; then
-    echo "AGENT_PRINCIPAL must match human:<id> or system:<name> (lowercase)" >&2; exit 2
-  fi
-else
-  email="$(git config user.email)" || {
-    echo "git config user.email is not set; set it or export AGENT_PRINCIPAL" >&2; exit 2
-  }
-  principal="human:$email"
+body="$(REPO="$repo" ROLE="$role" CLASS="$class" TASK="$task" URL="$url" ROOM="$room" BASE="$base" \
+  MODEL="$model" TOKENS="$tokens" PROFILES="$profiles" RESUME="$resume" jq -n '
+  {role: env.ROLE, repository: env.REPO, dataClass: env.CLASS,
+   task: (if env.TASK != "" then {text: env.TASK} else {url: env.URL} end)}
+  + (if env.ROOM != "" then {roomRef: env.ROOM} else {} end)
+  + (if env.BASE != "" then {baseRef: env.BASE} else {} end)
+  + (if env.MODEL != "" then {model: env.MODEL} else {} end)
+  + (if env.TOKENS != "" then {maxTokens: (env.TOKENS | tonumber)} else {} end)
+  + (if env.PROFILES != "" then {egressProfiles: (env.PROFILES | split(","))} else {} end)
+  + (if env.RESUME != "" then {resumeBranch: env.RESUME} else {} end)')"
+if [ -n "$dry" ]; then
+  printf '%s\n' "$body" >&2
+  exit 0
 fi
 
-run_id="$(python3 -c 'import secrets; print("".join(secrets.choice("abcdefghijklmnopqrstuvwxyz234567") for _ in range(8)))')"
-
-# The run's page opens a minute before the run exists (epoch ms).
-from_ms="$(( $(date +%s) - 60 ))000"
-
-# JSON, not YAML: task text passes through unescaped by the shell.
-claim="$(RUN_ID="$run_id" REPO="$repo" ROLE="$role" CLASS="$class" TASK="$task" URL="$url" \
-  BRANCH="$branch" SIZE="$size" MINUTES="$minutes" PROFILES="$profiles" PRINCIPAL="$principal" ROOM="$room" python3 -c '
-import json, os
-e = os.environ
-spec = {"role": e["ROLE"], "repository": e["REPO"], "principal": e["PRINCIPAL"], "dataClass": e["CLASS"],
-        "size": e["SIZE"], "budget": {"maxMinutes": int(e["MINUTES"])},
-        "task": {"text": e["TASK"]} if e["TASK"] else {"url": e["URL"]}}
-if e["BRANCH"]:
-    spec["branch"] = e["BRANCH"]
-if e["ROOM"]:
-    spec["roomRef"] = e["ROOM"]
-if e["PROFILES"]:
-    spec["egress"] = {"profiles": e["PROFILES"].split(",")}
-print(json.dumps({"apiVersion": "cloud.ogenki.io/v1alpha1", "kind": "AgentRun",
-                  "metadata": {"name": "xplane-run-" + e["RUN_ID"], "namespace": "agents"}, "spec": spec}))')"
-
-# $dry is empty or one flag; unquoted on purpose. `create`, never `apply`: a
-# run must always be new, and a runId collision should surface as a clear
-# AlreadyExists rather than a silent, CEL-immutability-rejected update.
-# shellcheck disable=SC2086
-printf '%s\n' "$claim" | kubectl create $dry -f -
-printf 'agent-run: principal=%s role=%s dataClass=%s repository=%s room=%s branch=%s maxMinutes=%s\n' \
-  "$principal" "$role" "$class" "$repo" "${room:--}" "${branch:--}" "$minutes" >&2
-# The run's page (observability plan O17). No host, no link; a dry run creates no run.
-if [ -z "$dry" ]; then
-  grafana="${AGENT_GRAFANA_URL:-}"
-  if [ -z "$grafana" ]; then
-    host="$(kubectl get httproute grafana -n observability -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || true)"
-    [ -z "$host" ] || grafana="https://$host"
-  fi
-  [ -z "$grafana" ] || printf 'agent-run: dashboard %s/d/agent-run/agent-run?var-run=%s&from=%s&to=now\n' "${grafana%/}" "$run_id" "$from_ms" >&2
-fi
-echo "xplane-run-$run_id"
+endpoint="${AGENT_FACTORY_URL:-https://factory.priv.aws.ogenki.io}/v1/runs"
+ca="${AGENT_FACTORY_CA:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/opentofu/aws/openbao/management/.tls/ca.pem}"
+# Without the trap, a missing roomctl or a logged-out session aborts raw under set -e
+# (bash's own error, or an empty-token 401); say what to run instead, as the 401 handler does.
+token="$(roomctl token)" || { echo "not authenticated: run roomctl login" >&2; exit 1; }
+auth_hdr="Authorization: Bearer $token"  # argv-ok: roomctl's own short-lived token, issued per-process; not a credential leak
+resp="$(printf '%s' "$body" | curl -sS --cacert "$ca" -X POST "$endpoint" \
+  -H "$auth_hdr" -H "Content-Type: application/json" \
+  --data-binary @- -w '\n%{http_code}')"
+code="${resp##*$'\n'}"
+json="${resp%$'\n'*}"
+case "$code" in
+  201) ;;
+  429) echo "refused: your daily token budget for runs is spent (resets at 00:00 UTC)" >&2; exit 1 ;;
+  403) echo "refused: $(jq -r .error <<<"$json") (agents group, admin-only internal or triager, repository allowlist, a task's branch, or not your room)" >&2; exit 1 ;;
+  409) echo "refused: $(jq -r .error <<<"$json"): a running run already holds that room or branch" >&2; exit 1 ;;
+  401) echo "refused: not authenticated; run roomctl login" >&2; exit 1 ;;
+  *) echo "refused ($code): $(jq -r '.error // .' <<<"$json")" >&2; exit 1 ;;
+esac
+run="$(jq -r .runId <<<"$json")"
+branch="$(jq -r .branch <<<"$json")"
+printf 'agent-run: run %s on %s; watch it with kubectl get agentrun -n agents xplane-run-%s -w%s\n' \
+  "$run" "$branch" "$run" "${room:+, or in the room https://rooms.priv.aws.ogenki.io/r/$room}" >&2
+echo "$run"
