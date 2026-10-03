@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#12 at ddb06e0, the chart's appVersion.
+      # agent-platform#13 at 5b657d2, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr12.ddb06e02@sha256:09e58a491130f298f5d8c63c35597c6936037feda1f4665bf978b2b2e2b2109b"
+      tag: "v0.0.1-pr13.5b657d2f@sha256:7675d8fbbee7f1b684d49ea3a7e4b149b98e3b8732d9083145ed8ef7f4ad8a18"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -31,8 +31,21 @@ data:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
       poll: {issues: 60s, tasks: 30s, meter: 30s}
-      # pair until phase 4's triage picks templates: every task gets a reviewer (SP3 phase 3).
+      # pair until a class goes live (FR-11): every task gets a reviewer (SP3 phase 3).
       defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
+      triage:
+        # SP4 PR 5's complexity-classifier (C7, R24). Until it exists every task falls back to
+        # standard with fallback: static, which status.classification records.
+        classifierURL: http://complexity-classifier.agent-system.svc.cluster.local:8080/v1/classify
+        controlPercent: 10  # OD-14
+      classes:
+        # OD-8's live candidates. Neither is live before the merge wave (owner, 2026-09-27; R32):
+        # FR-7 makes them shadow, FR-11 live.
+        docs-links: {}
+        revert: {}
+        docs: {}
+        tests: {}
+        dashboards: {}
       # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
       tiers:
         light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}
@@ -43,7 +56,13 @@ data:
         pair: {roles: [implementer, reviewer], maxReviewRounds: 2}
         trio: {roles: [implementer, tester, reviewer], maxReviewRounds: 2}
         investigate: {roles: [triager]}  # R38: proposes a public issue text, never writes
-      caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336}
+      caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336, awaitingHumanWIP: 5}
+      budgets:
+        # OD-10: a shadow week first (R3). The run cap is always enforced by the meter.
+        enforceTask: false
+        enforcePrincipal: false
+        factoryDaily: 25000000
+        humanDaily: 5000000
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428

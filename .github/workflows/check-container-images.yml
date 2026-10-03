@@ -1,44 +1,29 @@
-name: Build Container Images
+name: Check Container Images
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
       - 'container-images/**'
-      - '.github/workflows/build-container-images.yml'
-  workflow_dispatch:
-    inputs:
-      image:
-        description: 'Specific image to build (e.g., pev2) or "all"'
-        required: false
-        default: 'all'
+      - '.github/workflows/check-container-images.yml'
 
-# Declared here rather than left to the repository default. The default is `read`
-# today, so this grants nothing new — it puts the guarantee in the file, which is
-# what gets read, forked and copied. `build-and-push` keeps its own job-level
-# block, which is where `packages: write` belongs: the narrowest scope that needs
-# it, not the whole workflow.
-#
-# This workflow has no pull_request trigger on purpose. A workflow that runs on
-# PRs injects its declared scopes into every PR run — whatever the steps gate —
-# so the PR build lives in check-container-images.yml, which is read-only end
-# to end. permissions: cannot be made conditional; the split is the only way to
-# keep packages: write away from PR code.
+# Read-only because every job below checks out the PR head and executes the
+# PR's Dockerfile — the same trust class ci.yaml accepts for pre-commit hooks
+# over PR code (see its permissions block). No job here may hold a write scope
+# or log in to a registry: publishing lives in build-container-images.yml,
+# which no pull request can trigger.
 permissions:
   contents: read
 
-# Runs queue rather than cancel: every push to `main` is a different merge
-# result whose images must all be built and published, so a newer commit must
-# not kill the run publishing the previous one. PR runs — which do cancel
-# their predecessors — live in check-container-images.yml, a separate workflow
-# and group.
+# One in-flight run per PR: a push that supersedes an earlier commit cancels
+# the run that was building it. Keyed on workflow and ref like ci.yaml, so
+# this file and ci.yaml never cancel each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_USER: ${{ github.actor }}
 
 jobs:
   detect-changes:
@@ -74,18 +59,6 @@ jobs:
       - name: Detect which images changed
         id: filter
         run: |
-          # Manual trigger - build specified image or all
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ github.event.inputs.image }}" == "all" ]]; then
-              IMAGES=$(ls -d container-images/*/ | sed 's|container-images/||g' | sed 's|/||g' | jq -R -s -c 'split("\n")[:-1]')
-            else
-              IMAGES='["${{ github.event.inputs.image }}"]'
-            fi
-            echo "images=${IMAGES}" >> $GITHUB_OUTPUT
-            echo "Manual trigger - building: ${IMAGES}"
-            exit 0
-          fi
-
           # Automatic trigger - detect changes.
           #
           # pipefail matters here: the extraction below is a pipeline whose LAST command
@@ -157,7 +130,7 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           REGISTRY_USER: ${{ github.repository_owner }}
 
-  build-and-push:
+  build:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     # Wider than the 15 used elsewhere: this builds linux/arm64 under QEMU
@@ -168,23 +141,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
-    permissions:
-      contents: read
-      packages: write
-      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ env.REGISTRY_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract application version from Dockerfile
         id: app-version
@@ -217,92 +179,40 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            # <branch>-<sha> exists only in this workflow: on pull_request events
-            # {{branch}} is empty and the template renders the invalid tag
-            # "-<sha>" (leading dash), which is why check-container-images.yml
-            # carries no type=sha at all — its builds are tagged pr-<n> and never
-            # pushed.
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            # The PR build's automatic tag is pr-<n>. There is no type=sha here:
+            # {{branch}} is empty on pull_request events, so prefix={{branch}}-
+            # renders the invalid tag "-<sha>" (leading dash) and buildx fails
+            # before it even decides not to push. The <branch>-<sha> tag is
+            # produced by build-container-images.yml, whose triggers always set
+            # {{branch}}.
+            type=ref,event=pr
             type=raw,value=${{ steps.app-version.outputs.version }},enable=${{ steps.app-version.outputs.version != '' }}
 
-      - name: Check for a test stage
-        id: test-stage
-        run: |
-          # Generic, not agent-harness-specific: any Dockerfile that names a
-          # `test` build stage gets it run and gated here (review M4). Without
-          # this, a Renovate-automerged FROM-digest bump rebuilds and
-          # republishes an image whose test suite nobody ran.
-          if grep -qE '^FROM .+ AS test$' "${{ matrix.dockerfile }}"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build and run the test stage
-        if: steps.test-stage.outputs.exists == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          target: test
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Docker image
+      - name: Build Docker image
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: '${{ fromJSON(steps.meta.outputs.json).tags[0] }}'
-          format: 'sarif'
-          output: 'trivy-results-${{ matrix.name }}.sarif'
-          severity: 'HIGH,CRITICAL'
-          ignore-unfixed: true
-
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        with:
-          sarif_file: 'trivy-results-${{ matrix.name }}.sarif'
-          category: 'trivy-${{ matrix.name }}'
-
-      - name: Upload security scan results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: security-scan-${{ matrix.name }}
-          path: trivy-results-${{ matrix.name }}.sarif
-          retention-days: 30
-
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [detect-changes, build-and-push]
+    needs: [detect-changes, build]
     if: always()
     steps:
       - name: Create build summary
         run: |
           echo "## 🏗️ Container Images Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Changed Images**: ${{ needs.detect-changes.outputs.images }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -310,8 +220,7 @@ jobs:
           if [[ "${{ needs.detect-changes.outputs.images }}" == "[]" ]]; then
             echo "ℹ️ No container images changed - build skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "**Build Status**: ${{ needs.build-and-push.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Build Status**: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
             echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
             echo "**Registry**: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Security Scan**: ✅ Trivy (HIGH, CRITICAL)" >> $GITHUB_STEP_SUMMARY
           fi

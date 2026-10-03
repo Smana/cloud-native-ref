@@ -127,8 +127,8 @@
       "automerge": false
     },
     {
-      "description": "Never automerge the agent factory: its chart and image are the orchestrator of unattended agents, and its pin is a gate path. A human reads every bump. One group, because the chart's appVersion names the image: bumping one alone deploys a chart against an image it was not built with (scripts/ci/tests/test-agent-factory-pins.py fails on a mismatch).",
-      "matchPackageNames": ["ghcr.io/smana/charts/agent-factory", "ghcr.io/smana/agent-factory"],
+      "description": "Never automerge the agent factory: its chart and image are the orchestrator of unattended agents, and its pin is a gate path. A human reads every bump. One group, because the chart's appVersion names the image: bumping one alone deploys a chart against an image it was not built with (scripts/ci/tests/test-agent-factory-pins.py fails on a mismatch). Kueue's chart joins the rule — it gates every sandbox's admission — and lands in the group PR when both have pending bumps.",
+      "matchPackageNames": ["ghcr.io/smana/charts/agent-factory", "ghcr.io/smana/agent-factory", "registry.k8s.io/kueue/charts/kueue"],
       "groupName": "agent-factory",
       "automerge": false
     },
