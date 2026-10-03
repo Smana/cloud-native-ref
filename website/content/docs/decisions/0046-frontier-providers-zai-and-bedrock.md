@@ -6,7 +6,12 @@ description: Frontier models reach the platform through two providers chosen by 
 lastVerified: 2026-09-25
 ---
 
-**Status**: Accepted
+**Status**: Accepted; the internal-data provider superseded by [ADR-0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}})
+
+> **Superseded for internal data, 2026-10-01.** [ADR-0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}})
+> sends internal data to the Anthropic API directly, with a key in OpenBao, on both clouds. Bedrock
+> and Vertex below become optional per-cloud backends. The Z.ai choice for public data stands.
+
 **Date**: 2026-09-25
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [SP4 — LLM complexity routing](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md)

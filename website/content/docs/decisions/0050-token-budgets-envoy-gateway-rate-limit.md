@@ -6,7 +6,12 @@ description: Per-run, per-fleet, per-human and per-client daily token budgets ar
 lastVerified: 2026-10-01
 ---
 
-**Status**: Accepted
+**Status**: Accepted; Option 1 superseded for the agent router by [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})
+
+> **Superseded for the agent router, 2026-10-01.** [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})
+> puts B1–B2 on agentgateway's global rate limit and our own `envoyproxy/ratelimit`, with the same
+> limits, token cost and shadow mode. B3–B5 on `ai-gateway` stay on Option 1.
+
 **Date**: 2026-09-25
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [SP4 — LLM complexity routing](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md)
