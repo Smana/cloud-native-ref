@@ -1,0 +1,33 @@
+---
+# The UI's session signing key, generated in-cluster (no-seed rule). CreatedOnce: a rotation
+# would only log UI users out, but there is no reason to.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: policy-bot-sessions
+  namespace: merge-gate
+spec:
+  length: 64
+  symbols: 0
+  noUpper: false
+  allowRepeat: true
+  secretKeys:
+    - password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: policy-bot-sessions
+  namespace: merge-gate
+spec:
+  refreshPolicy: CreatedOnce
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: policy-bot-sessions
+  target:
+    name: policy-bot-sessions
+    creationPolicy: Owner
+    deletionPolicy: Retain

@@ -1,0 +1,48 @@
+# policy-bot (§5.1, §6.5): no database, safe with two replicas. The most sensitive component
+# here (T7): its own namespace and store, a digest-pinned image, no API token.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-bot
+  namespace: merge-gate
+  labels: {app.kubernetes.io/name: policy-bot}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: policy-bot}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: policy-bot}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: policy-bot
+          image: palantirtechnologies/policy-bot:1.41.2@sha256:a35545fe6ac75e2429352e6f8d4baa92ce16d4e524b10a3711031c2ff79841a5
+          envFrom:
+            - secretRef: {name: policy-bot}
+          env:
+            - name: POLICYBOT_SESSIONS_KEY
+              valueFrom: {secretKeyRef: {name: policy-bot-sessions, key: password}}
+          ports:
+            - {name: http, containerPort: 8080, protocol: TCP}
+          startupProbe: {httpGet: {path: /api/health, port: http}, periodSeconds: 2, failureThreshold: 30}
+          livenessProbe: {httpGet: {path: /api/health, port: http}, periodSeconds: 10}
+          readinessProbe: {httpGet: {path: /api/health, port: http}, periodSeconds: 5}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /secrets, readOnly: true}  # the image's default config path
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: config, configMap: {name: policy-bot}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
