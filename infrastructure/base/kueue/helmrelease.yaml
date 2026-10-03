@@ -1,0 +1,23 @@
+# Kueue admits every factory sandbox pod (SP3 S5, ADR-0048). Pod integration, namespace agents
+# only; its stopPolicy is the kill-switch layer that does not depend on the factory (§6.1).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kueue
+  namespace: agent-system
+spec:
+  interval: 30m
+  releaseName: kueue
+  chartRef:
+    kind: OCIRepository
+    name: kueue
+    namespace: agent-system
+  install:
+    crds: CreateReplace
+    remediation: {retries: 3}
+  upgrade:
+    crds: CreateReplace
+    remediation: {retries: 3, remediateLastFailure: true}
+  valuesFrom:
+    - kind: ConfigMap
+      name: kueue-helm-values
