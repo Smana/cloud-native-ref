@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#10 at 800fcd8, the chart's appVersion.
+      # agent-platform#12 at ddb06e0, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr10.800fcd8f@sha256:42bda560b1f7c2a3ac7e4b84c01bc538b72b5f1f9779aa38f134528eb8b1e629"
+      tag: "v0.0.1-pr12.ddb06e02@sha256:09e58a491130f298f5d8c63c35597c6936037feda1f4665bf978b2b2e2b2109b"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -31,7 +31,8 @@ data:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
       poll: {issues: 60s, tasks: 30s, meter: 30s}
-      defaults: {template: solo, tier: standard, dataClass: public, predictedClass: review}
+      # pair until phase 4's triage picks templates: every task gets a reviewer (SP3 phase 3).
+      defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
       # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
       tiers:
         light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}

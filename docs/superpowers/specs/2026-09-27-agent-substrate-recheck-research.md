@@ -16,6 +16,10 @@ Upstream was read at `google/ax@d0bc38b`: `gh api repos/google/ax/compare/d0bc38
 was read at `agent-substrate/substrate@ed6d2a1`, 2 commits after SP1's `c7b5469`. Anything not confirmed is marked
 **UNVERIFIED**.
 
+> **2026-10-01 note.** The triggers were re-scored after Substrate v0.3.0 in the
+> [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md): still none met. That pass also corrects the no-spot trigger, which
+> should name the rule in Substrate's `tools/setup-gcp/README.md`, not #1528 (the PR that added it).
+
 ## TL;DR
 
 - **No re-check trigger is met; the SP1 verdict stands.** ax `main` has not moved. ax#376 (unauthenticated control
