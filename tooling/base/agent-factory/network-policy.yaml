@@ -1,5 +1,6 @@
-# agent-factory (SP3 §6.5). Default deny; one allow per flow. Later phases add the RunLore
-# intake, the run-request API and VictoriaLogs. The classifier egress is SP4's C7.
+# agent-factory (SP3 §6.5). Default deny; one allow per flow. The RunLore intake still lands
+# in a later phase. The classifier egress is SP4's C7; the 8443 ingress and the ZITADEL and
+# VictoriaLogs egresses are FR-5.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -19,6 +20,15 @@ spec:
             app.kubernetes.io/name: vmagent
       toPorts:
         - ports: [{port: "9090", protocol: TCP}]
+    - fromEntities: [ingress]  # the tailnet gateway (Cilium's Gateway API identity)
+      toPorts:
+        - ports: [{port: "8443", protocol: TCP}]
+    - fromEndpoints:  # the room broker's hand to role, fork and add agent (SP2 P14)
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker
+      toPorts:
+        - ports: [{port: "8443", protocol: TCP}]
   egress:
     - toEndpoints:
         - matchLabels:
@@ -62,3 +72,13 @@ spec:
         - matchName: api.github.com
       toPorts:
         - ports: [{port: "443", protocol: TCP}]
+    - toFQDNs:  # ZITADEL's JWKS: tokens are checked offline
+        - matchName: auth.${public_domain_name}
+      toPorts:
+        - ports: [{port: "443", protocol: TCP}]
+    - toEndpoints:  # the 429 lookup (R13)
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: victoria-logs-single
+      toPorts:
+        - ports: [{port: "9428", protocol: TCP}]
