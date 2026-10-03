@@ -1,0 +1,11 @@
+# Two replicas but never both draining: a missed webhook delivery leaves the PR's check
+# pending until the next event (policy-bot recomputes on events, not on a timer).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: policy-bot
+  namespace: merge-gate
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: policy-bot}

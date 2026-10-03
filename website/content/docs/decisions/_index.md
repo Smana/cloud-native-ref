@@ -87,6 +87,7 @@ single-file fixes never need one.
 | [0042]({{< relref "/docs/decisions/0042-agent-router-identity-gateway.md" >}}) | Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens | Accepted | 2026-09-26 |
 | [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches | Accepted | 2026-09-26 |
 | [0044]({{< relref "/docs/decisions/0044-room-session-protocol.md" >}}) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
+| [0045]({{< relref "/docs/decisions/0045-merge-policy-gate.md" >}}) | palantir/policy-bot, required through a repository ruleset, decides which agent PRs merge | Accepted | 2026-09-27 |
 | [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
 | [0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}}) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |

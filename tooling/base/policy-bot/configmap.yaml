@@ -1,0 +1,28 @@
+# policy-bot's server config (§5.1). Secrets come from the environment, never this file.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-bot
+  namespace: merge-gate
+data:
+  policy-bot.yml: |
+    server:
+      address: "0.0.0.0"
+      port: 8080
+      public_url: https://policy-bot.${private_domain_name}
+    logging:
+      text: false
+      level: info
+    github:
+      web_url: "https://github.com"
+      v3_api_url: "https://api.github.com"
+      v4_api_url: "https://api.github.com/graphql"
+    options:
+      policy_path: .policy.yml
+      # The spec's value (§5.1): .policy.yml from the repository's main only. policy-bot may read
+      # an empty value as its default, .github (checked live in Task 6.9 Step 3), so this line alone
+      # is not the guarantee: the wave deletes Smana/.github/policy.yml and uninstalls policy-bot's
+      # App there (Task 10.5 Step 5), leaving the fallback nothing to read. The integration branch
+      # sets .github until the wave lands .policy.yml on main (R31).
+      shared_repository: ""
+      status_check_context: policy-bot

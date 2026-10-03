@@ -25,7 +25,7 @@ load_function() {
     eval "$body"
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
-         mirror_to_openbao force_sync_mirrored cmd_sync stored_client_id; do
+         mirror_to_openbao force_sync_mirrored stored_client_id restart_rotated_consumers cmd_sync; do
     load_function "$f" "$SRC"
 done
 # shellcheck source=scripts/lib/bao-map.sh
@@ -185,9 +185,6 @@ store_read() { printf '%s' "$p"; }
 store_write_and_mirror() { cat > "$T/written-$1"; }
 api_or_fail() { printf '%s' "$4" > "$T/create"; printf '{"clientId":"NEW","clientSecret":"S"}'; }  # pragma: allowlist secret
 api() { printf '%s' "$4" > "$T/put"; }
-# restart_rotated_consumers exists in the source script (#2149) but is called only
-# from the summary tail of cmd_sync; a missing mock fails it with 127.
-restart_rotated_consumers() { :; }
 run_cmd_sync() { out="$( ( set -o errexit -o nounset -o pipefail; cmd_sync ) 2>&1 )"; rc=$?; }
 
 app_id_by_name() { echo ""; }

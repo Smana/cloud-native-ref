@@ -1639,7 +1639,7 @@ cmd_sync() {
 case "$COMMAND" in
     sync) cmd_sync ;;
     *)
-        sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac

@@ -45,6 +45,7 @@ spec:
                   - demo
                   - envoy-ai-gateway-system
                   - envoy-gateway-system
+                  - merge-gate # policy-bot's UI (SP3)
                   - observability
                   - tooling
       tls:

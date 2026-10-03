@@ -69,3 +69,10 @@ resource "vault_policy" "agents_secrets" {
   name   = "agents-secrets"
   policy = file("policies/agents-secrets.hcl")
 }
+
+# The merge-gate SecretStore (SP3): the `merge-gate` mount only (R44). Bound to the JWT role
+# `merge-gate-secrets` in eks/configure by name.
+resource "vault_policy" "merge_gate_secrets" {
+  name   = "merge-gate-secrets"
+  policy = file("policies/merge-gate-secrets.hcl")
+}
