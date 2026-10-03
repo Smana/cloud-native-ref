@@ -30,7 +30,7 @@ variable "openbao_version" {
   # it; see the reproduction recorded there. Do not raise that parallelism while
   # #3411 is open.
   # renovate: datasource=github-releases depName=openbao/openbao
-  default = "2.7.0"
+  default = "2.7.1"
 }
 
 variable "openbao_data_path" {
