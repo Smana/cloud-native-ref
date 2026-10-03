@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#13 at 5b657d2, the chart's appVersion.
+      # agent-platform#14 at f04ca42, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr13.5b657d2f@sha256:7675d8fbbee7f1b684d49ea3a7e4b149b98e3b8732d9083145ed8ef7f4ad8a18"
+      tag: "v0.0.1-pr14.f04ca421@sha256:c2bb9a47ffda2d094feaa34a69a2bb2dfe130dc9ec5177561fb9781839f43892"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -30,6 +30,16 @@ data:
       github:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
+      # The run-request API (FR-5): tailnet only via the HTTPRoute, tokens checked
+      # offline against ZITADEL's JWKS; the client ids ride the chart's oidcSecret mount.
+      api:
+        listen: ":8443"
+        repositories: [Smana/cloud-native-ref]  # OD-6
+        humanIssuer: ${identity_provider_url}
+        humanJWKS: ${identity_provider_url}/oauth/v2/keys
+        clientIDFiles:
+          - /etc/agent-factory-oidc/rooms-proxy-client-id
+          - /etc/agent-factory-oidc/roomctl-client-id
       poll: {issues: 60s, tasks: 30s, meter: 30s}
       # pair until a class goes live (FR-11): every task gets a reviewer (SP3 phase 3).
       defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
@@ -67,5 +77,8 @@ data:
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
         query: 'sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+        # The 429 lookup (R13): throttle hits per agent over the gateway's access logs.
+        logsURL: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+        throttleQuery: '_time:2m kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:429 AND log.response_flags:~"RL" | stats by (log.x_ar_agent) count() hits'
       # Task spans (R46) to the trace collector's platform port (observability plan O20).
       tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}

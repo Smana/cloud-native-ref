@@ -1,0 +1,24 @@
+# factory.${private_domain_name}: the run-request API for the CLI, tailnet only (R15). One
+# method, one exact path; everything else on the host is the gateway's 404. The token is
+# checked by the factory itself (§4), so no oauth2-proxy stands in front.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  parentRefs:
+    - name: platform-tailscale-general
+      namespace: infrastructure
+      sectionName: https
+  hostnames:
+    - "factory.${private_domain_name}"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /v1/runs
+          method: POST
+      backendRefs:
+        - name: agent-factory
+          port: 8443

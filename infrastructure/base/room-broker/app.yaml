@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # FA-3's pre-release (agent-platform#12, FA-2's broker unchanged, a superset of AP-4's), by digest
-    # (P33). Move it with the retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr12.ddb06e02@sha256:1c309aab488b58bdca05c6149f11e4d67ce1b8b013fcf17a4820a98656cbfce7"
+    # FA-5's pre-release (agent-platform#14): SP2's runrequest.Factory, switched on by factoryURL.
+    # Move it with the retention CronJob's, crd-rooms.yaml and atlasSchema.ref together (P33).
+    tag: "v0.0.1-pr14.f04ca421@sha256:a1d1e8023f8757eb04fffdbb3feafdc92d4ef467436f3feb8efc062ac9f9d4a1"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2

@@ -24,6 +24,9 @@ data:
     # The broker reads this file once: restart it after a change.
     systemPrincipals:
       system:serviceaccount:agent-system:agent-factory: system:factory
+    # SP3 phase 5: runs for hand to role, fork and add agent come from the factory, with the
+    # human's own token; the broker no longer renders a claim for the owner (C3).
+    factoryURL: http://agent-factory.agent-system.svc.cluster.local:8443
     # Humans, through oauth2-proxy (phase 2). Required by the broker. The ids are
     # files, never literals: gcp-0 mints a fresh ZITADEL every build (ruling AS-a).
     human:
