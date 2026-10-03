@@ -25,7 +25,7 @@ load_function() {
     eval "$body"
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
-         mirror_to_openbao force_sync_mirrored cmd_sync; do
+         mirror_to_openbao force_sync_mirrored stored_client_id restart_rotated_consumers cmd_sync; do
     load_function "$f" "$SRC"
 done
 # shellcheck source=scripts/lib/bao-map.sh
