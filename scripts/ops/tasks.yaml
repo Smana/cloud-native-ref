@@ -50,6 +50,9 @@ tasks:
   github:agent-branch-ruleset:
     desc: Apply the agents' branch ruleset (agent/** only for the agents' App) to one repository
     cmds: ["{{.TASKFILE_DIR}}/github/agent-branch-ruleset.sh {{.CLI_ARGS}}"]
+  github:agent-merge-gate-ruleset:
+    desc: "POLICY_BOT_APP_SLUG=<slug>: apply the merge-gate ruleset (policy-bot: main from policy-bot's App) to one repository"
+    cmds: ["{{.TASKFILE_DIR}}/github/agent-merge-gate-ruleset.sh {{.CLI_ARGS}}"]
   demo:load:
     desc: Run an image-gallery load-generator scenario in-cluster
     cmds: ["{{.TASKFILE_DIR}}/demo/load.sh {{.CLI_ARGS}}"]

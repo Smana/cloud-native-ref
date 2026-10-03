@@ -1,0 +1,12 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: policy-bot
+  namespace: merge-gate
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: policy-bot}
+  endpoints:
+    - port: http
+      path: /api/metrics  # Prometheus metrics are always served there (policy-bot README)
+      interval: 60s

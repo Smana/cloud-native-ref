@@ -16,10 +16,15 @@ on:
   push:
     branches: ["main"]
 
+# Read-only by default. Every job below that checks out the PR runs PR code
+# (pre-commit hooks, `task ci:*`, scripts/ci/*, render-both.sh), and the job
+# token sits in that checkout's git config, readable by any of it. A write scope
+# granted here reached all of them: `security-events: write` let a PR script
+# dismiss code-scanning alerts repo-wide. The two write scopes CI needs live in
+# `sarif-upload` and `render-diff-comment`, which never check out or run PR
+# code: they download an artifact and hand it to a pinned action.
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 # One in-flight run per PR. A push that supersedes an earlier commit cancels the
 # run that was validating it — that run's verdict is about a commit nobody will
@@ -68,6 +73,8 @@ jobs:
       # on that egress IP. It failed on an unrelated docs PR on 2026-08-22.
       #
       # With GITHUB_TOKEN set below, tflint authenticates and gets 5000/hour.
+      # The token is read-only (workflow-level `contents: read`), so a hook
+      # that reads it gains nothing a public clone does not already have.
       # Tool versions come from mise.toml, which pins tofu, pre-commit and
       # tflint — the same file a contributor runs `mise install` against, so
       # this keeps the CI/local parity the Dagger image was there to provide.
@@ -108,17 +115,11 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
       - name: Run Checkov static analysis
         # Latest TAG, not latest RELEASE — the repo stopped cutting releases at
         # v12.1347.0 (whose old action.yml breaks on comma-separated framework)
         # but still tags every checkov bump.
-        uses: bridgecrewio/checkov-action@5798bad4f6dd9c1fb67ae3ec10d42d8fb67037c4 # v12.3126.0
+        uses: bridgecrewio/checkov-action@cc0e17d456ef1713bbfd963ebac19dc776775cb2 # v12.3128.0
         with:
           directory: .
           quiet: true
@@ -127,11 +128,18 @@ jobs:
           output_format: sarif
           output_file_path: checkov-results.sarif
 
-      - name: Upload Checkov scan results
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+      # Handed to `sarif-upload`, which holds `security-events: write`. This job
+      # runs Checkov over the PR tree (and Checkov reads a repo `.checkov.yaml`),
+      # so it must not hold that scope itself.
+      - name: Upload SARIF results for the upload job
         if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          sarif_file: checkov-results.sarif
+          name: sarif-results
+          path: |
+            trivy-results.sarif
+            checkov-results.sarif
+          if-no-files-found: ignore
 
       # The scan range has to come from the event. `base: main` / `head: HEAD`
       # is a real range on a pull request, where the two are different commits
@@ -157,6 +165,43 @@ jobs:
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.sha }}
           extra_args: --debug --only-verified
+
+  # The only job with `security-events: write`. No checkout and no `run:`: it
+  # downloads the SARIF that `security-scan` produced and uploads it with a
+  # pinned action, so no PR code ever runs with this scope. Not a required
+  # check; `Security scanning 🔒` remains the gate.
+  sarif-upload:
+    name: Upload SARIF results
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: security-scan
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Download SARIF results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sarif-results
+
+      # `category` keeps the configuration these results always had. Its default
+      # is `<workflow>:<job id>`, so uploading from this job would file them
+      # under `ci.yaml:sarif-upload`, orphaning every open alert on `main` and
+      # leaving PRs with no base analysis to compare against.
+      - name: Upload Trivy scan results to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: .github/workflows/ci.yaml:security-scan
+
+      - name: Upload Checkov scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: checkov-results.sarif
+          category: .github/workflows/ci.yaml:security-scan
 
   kubernetes-validation:
     name: Kubernetes validation ☸
@@ -210,6 +255,14 @@ jobs:
       - name: Test suites
         run: task ci:test
 
+      # Gate paths and pull_request secrets (SP3 SC-12, T8). In an existing required job:
+      # a new required context could not be path-filtered and would need a settings change.
+      # The scripts are called directly, not through the task wrappers: both scripts are gate
+      # paths, the taskfiles are not, so an approved agent PR cannot turn this step into a no-op.
+      - name: Merge-gate invariants
+        if: ${{ !cancelled() }}
+        run: ./scripts/ci/check-policy-gate-coverage.sh && ./scripts/ci/check-workflow-secrets.sh
+
       # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
       # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
       # nothing, and gen-catalog.sh fetches the release asset as before.
@@ -238,9 +291,10 @@ jobs:
     # this diffs the rendered DESIRED state (main vs this PR). Drift (cluster ≠
     # git) is Flux's concern and is alerted on separately, so no cluster access
     # is needed here — keeping the job hosted, secretless and fork-safe.
+    # Read-only: it runs the PR's render-both.sh and diff-bundles.py.
+    # `render-diff-comment` posts the result.
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -276,15 +330,37 @@ jobs:
           python3 scripts/ci/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head rendered-diff-full.md | tee rendered-diff.md
           cat rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
 
+      # rendered-diff.md (the capped comment body) rides along for
+      # `render-diff-comment`. `always()`: a partial diff is still posted, as
+      # it was when the comment step lived in this job.
       - name: Upload full diff artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rendered-diff
-          path: rendered-diff-full.md
+          path: |
+            rendered-diff-full.md
+            rendered-diff.md
           if-no-files-found: ignore
 
+  # The only job with `pull-requests: write`. No checkout and no `run:`: it
+  # posts the comment `render-diff` computed, so no PR code runs with this
+  # scope. Same-repo PRs only, as before.
+  render-diff-comment:
+    name: Post the rendered diff comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: render-diff
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download the rendered diff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: rendered-diff
+
       - name: Post/update PR comment
-        if: always() && github.event.pull_request.head.repo.full_name == github.repository
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: rendered-manifest-diff
@@ -361,8 +437,10 @@ jobs:
     timeout-minutes: 5
     needs: [pre-commit, security-scan, kubernetes-validation, shellcheck, links]
     # `failure()` is required: without it this inherits the default `success()`
-    # and never runs. `render-diff` is deliberately absent from `needs` -- it is
-    # pull-request-only and is always skipped here.
+    # and never runs. `render-diff` and `render-diff-comment` are deliberately
+    # absent from `needs` -- they are pull-request-only and always skipped here.
+    # `sarif-upload` is absent too: it gates nothing, and `security-scan`, which
+    # it follows, is already listed.
     if: failure() && github.event_name == 'push'
     permissions:
       contents: read

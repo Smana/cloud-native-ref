@@ -30,6 +30,8 @@
 #      a seed that predates the app, so its id is new every time and
 #      Terraform, which created the mount, ignores this field afterwards.
 #      No-op when --openbao-url is empty, which is every consumer call.
+#   6. Restarts the Deployments that read a REPLACED client id from env, once
+#      their Secret carries the new one (restart_rotated_consumers).
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -1045,6 +1047,95 @@ force_sync_mirrored() {
     done || echo "WARN: could not match ExternalSecrets to the mirrored paths" >&2
 }
 
+# The client id a stored consumer payload carries, whichever field its consumer
+# names it by (merge_secret). The payload arrives on stdin: it holds the secret.
+stored_client_id() {
+    jq -r 'first(.GF_AUTH_GENERIC_OAUTH_CLIENT_ID, .OIDC_CLIENT_ID, .clientID,
+                 .client_id, ."client-id" | strings) // empty' 2>/dev/null || true
+}
+
+# Restart the Deployments that read a ROTATED client from env. They resolve it
+# once, at start, so a refreshed Secret is not enough: after an OpenBao rebuild
+# headlamp-oauth2-proxy kept the dead directory's client id and answered "App
+# not found" until restarted by hand, while every resource reported healthy.
+#
+# Arguments are `<store key>=<new client id>`, only for keys whose stored client
+# id this run changed, so a re-run with nothing rotated restarts nothing. Warn-only
+# like force_sync_mirrored: the clients are already written.
+#
+# kubectl must point at $CLUSTER. aws/eks/init's consuming sync for gcp-0 runs
+# with kubectl on aws-0, and restarting there would restart the wrong cluster.
+#
+# The Secret has to carry the new id before the restart, or the new pods read
+# the old one again: force-sync each ExternalSecret reading the key, then wait
+# (one deadline for all of them) until its Secret does.
+restart_rotated_consumers() {
+    [ "$APPLY" = "true" ] && [ $# -gt 0 ] || return 0
+    local pair store_name id target es_json ns es obj deploys d deadline now
+    local matches=() restarted=()
+    if ! kubectl get configmap -n flux-system -o name 2>/dev/null | grep -Eq -- "-${CLUSTER}-vars\$"; then
+        echo "WARN: kubectl does not point at ${CLUSTER}. Rotated: ${*%%=*}." >&2
+        echo "      Restart the Deployments reading those keys there, once their Secrets refresh." >&2
+        return 0
+    fi
+    if ! es_json="$(kubectl get externalsecrets -A -o json 2>/dev/null)"; then
+        echo "WARN: could not list ExternalSecrets; restart the consumers of ${*%%=*} by hand" >&2
+        return 0
+    fi
+    now="$(date +%s)"
+    for pair in "$@"; do
+        store_name="${pair%%=*}"; id="${pair#*=}"
+        target="$(bao_target_for "$store_name")" || target=""
+        # Read from OpenBao at the key's mapped path, or from the managed store
+        # under the key itself (unmapped keys such as headlamp-oauth2-proxy).
+        while read -r ns es obj; do
+            [ -n "$obj" ] || continue
+            kubectl annotate externalsecret "$es" -n "$ns" force-sync="$now" --overwrite >/dev/null 2>&1 \
+                || echo "WARN: could not force-sync externalsecret ${ns}/${es}" >&2
+            matches+=("${ns} ${obj} ${id}")
+        done < <(jq -r --arg name "$store_name" --arg target "$target" '.items[]
+            | (.spec.secretStoreRef.name // "") as $store
+            | ([(.spec.data // [])[].remoteRef.key?, (.spec.dataFrom // [])[].extract.key?]
+               | map(select(. != null))) as $keys
+            | select((($store | startswith("openbao-")) and $target != ""
+                       and ($keys | map(($store | ltrimstr("openbao-")) + "/" + .) | index($target)) != null)
+                     or ($store == "clustersecretstore" and ($keys | index($name)) != null))
+            | "\(.metadata.namespace) \(.metadata.name) \(.spec.target.name // .metadata.name)"' <<< "$es_json")
+    done
+    [ "${#matches[@]}" -gt 0 ] || { echo "[ok     ] no ExternalSecret reads a rotated key; nothing to restart"; return 0; }
+
+    deadline=$(( $(date +%s) + ${OIDC_CONSUMER_WAIT_SECONDS:-180} ))
+    for pair in "${matches[@]}"; do
+        read -r ns obj id <<< "$pair"
+        until kubectl get secret "$obj" -n "$ns" -o json 2>/dev/null \
+                | jq -e --arg id "$id" '.data // {} | any(.[]; @base64d == $id)' >/dev/null 2>&1; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "WARN: ${ns}/${obj} does not carry client ${id} yet; its consumers keep the old one." >&2
+                echo "      Once it does: kubectl rollout restart deployment -n ${ns} <each Deployment reading it>" >&2
+                continue 2
+            fi
+            sleep "${OIDC_CONSUMER_POLL_SECONDS:-5}"
+        done
+        if ! deploys="$(kubectl get deployments -n "$ns" -o json 2>/dev/null | jq -r --arg s "$obj" '.items[]
+                | select([.spec.template.spec | (.containers // []) + (.initContainers // []) | .[]
+                          | (.envFrom // [])[].secretRef.name?, (.env // [])[].valueFrom.secretKeyRef.name?]
+                         | index($s) != null)
+                | .metadata.name')"; then
+            echo "WARN: could not list Deployments in ${ns}; restart the readers of ${obj} by hand" >&2
+            continue
+        fi
+        for d in $deploys; do
+            [[ " ${restarted[*]} " == *" ${ns}/${d} "* ]] && continue
+            if kubectl rollout restart deployment "$d" -n "$ns" >/dev/null 2>&1; then
+                echo "[restart] deployment ${ns}/${d} -- ${obj} carries rotated client ${id}"
+                restarted+=("${ns}/${d}")
+            else
+                echo "WARN: could not restart deployment ${ns}/${d}; it keeps the old client id" >&2
+            fi
+        done
+    done
+}
+
 # GCP hosting: publish this directory's project id for gke/configure, which
 # reads it at plan time (GCP parity GP-4). A fresh directory gets a new id
 # every build, and the committed one would otherwise come back on the next
@@ -1269,6 +1360,9 @@ cmd_sync() {
     local failed_mirrors="" wrc=0
     # Keys mirrored without error, force-synced after the loop.
     local mirrored_keys=()
+    # `<key>=<client id>` for each key whose stored client id this run replaced:
+    # the only consumers restart_rotated_consumers restarts.
+    local rotated=() prev_id
     # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
     # branches below for where each is set. Empty stays empty on a dry run
     # (reconcile_openbao_oidc treats that as its own skip) and on any topology
@@ -1442,6 +1536,7 @@ cmd_sync() {
                 echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
                 converged=$((converged + 1))
             else
+                prev_id="$(stored_client_id <<< "$existing_secret")"
                 wrc=0
                 printf '%s' "$desired" | store_write_and_mirror "$key" || wrc=$?
                 case "$wrc" in
@@ -1449,6 +1544,7 @@ cmd_sync() {
                     2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
                     *) exit 1 ;;
                 esac
+                [ -z "$prev_id" ] || [ "$prev_id" = "$client_id" ] || rotated+=("${key}=${client_id}")
                 echo "[converged] ${name} -> ${key} (client id ${client_id}, secret untouched)"
                 converged=$((converged + 1))
             fi
@@ -1482,6 +1578,14 @@ cmd_sync() {
         # store an empty payload.
         local merged
         merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret" "$project_id")" || exit 1
+        # A key that held a client before is a rotation (a fresh directory, or a
+        # restore older than the app); one that held none is a first bootstrap,
+        # whose consumers are still waiting for the Secret and start on their own.
+        # Never fatal: ZITADEL has issued the secret, and only the write below keeps it.
+        prev_id=""
+        if store_exists "$key"; then
+            prev_id="$(store_read "$key" | stored_client_id)" || prev_id=""
+        fi
         wrc=0
         printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
         case "$wrc" in
@@ -1489,6 +1593,7 @@ cmd_sync() {
             2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
             *) exit 1 ;;
         esac
+        [ -z "$prev_id" ] || [ "$prev_id" = "$client_id" ] || rotated+=("${key}=${client_id}")
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done
@@ -1511,6 +1616,7 @@ cmd_sync() {
     local openbao_failed=0
     reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" || openbao_failed=1
     force_sync_mirrored "${mirrored_keys[@]}"
+    restart_rotated_consumers ${rotated[@]+"${rotated[@]}"}
 
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
@@ -1533,7 +1639,7 @@ cmd_sync() {
 case "$COMMAND" in
     sync) cmd_sync ;;
     *)
-        sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac
