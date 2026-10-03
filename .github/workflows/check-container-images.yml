@@ -75,14 +75,29 @@ jobs:
             exit 0
           fi
 
-          # Extract unique image names from changed paths
-          IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | grep "container-images/" | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
-
-          # We got here because changed dirs WERE detected, so an empty image list can only
-          # mean the extraction broke. Fail instead of skipping the build behind a green tick.
-          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
-            echo "::error::detected changed dirs ${CHANGED_DIRS} but extracted no image names - image detection is broken"
+          # Every entry is one of two shapes: a depth-2 image dir (container-images/<name>)
+          # or the depth-1 root (container-images) that dir_names reports when a file
+          # directly in the image root — the README — changes. The root names no image
+          # and is handled by the no-images exit below; an entry matching neither shape
+          # means the extraction is broken, so fail loud rather than skip the build
+          # behind a green tick.
+          if echo "$CHANGED_DIRS" | jq -r '.[]' | grep -vE '^(container-images|container-images/[^/]+)$' > /dev/null; then
+            echo "::error::detected changed dirs ${CHANGED_DIRS} but some entries are neither container-images/<name> nor the container-images root - image detection is broken"
             exit 1
+          fi
+
+          # Extract unique image names from the depth-2 entries. The `|| true` swallows
+          # grep's no-match exit — a root-only change names no image, and under bash -e
+          # an unguarded no-match would abort the step — while pipefail still catches a
+          # jq parse failure.
+          IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | { grep -E '^container-images/[^/]+$' || true; } | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+
+          # No depth-2 entries: only root-level files changed, which names no image —
+          # the same outcome as the no-changes exit above.
+          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
+            echo "Only root-level container-images files changed - no images to build"
+            echo "images=[]" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
           echo "Changed images: ${IMAGES}"
