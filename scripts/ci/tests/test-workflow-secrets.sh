@@ -53,5 +53,12 @@ jobs: {notify-main-broken: {runs-on: x, permissions: {issues: write}, steps: [{r
 EOF
 out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "an allowlisted job with a run: step and no push gate fails"
 grep -q 'ungated-run.yml.*notify-main-broken' <<<"$out" || fail "the failure names the file and the job"
+cat >"$d/job-writeall.yml" <<'EOF'
+on: {pull_request: {}}
+jobs:
+  deploy: {runs-on: x, permissions: write-all, steps: [{run: "echo ok"}]}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "an unlisted job with permissions: write-all slips through"
+grep -q 'job-writeall.yml.*deploy' <<<"$out" || fail "the failure names the offending job"
 [ "$fails" -eq 0 ] || exit 1
 echo PASS

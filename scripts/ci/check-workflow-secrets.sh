@@ -21,8 +21,10 @@ ALLOWLIST = {
 }
 
 def write_scopes(perms):
-    # `permissions: write` (a bare string) is write on every scope
-    if perms == "write":
+    # GitHub's all-scopes shorthand is `write-all` (`read-all` is read-only and
+    # correctly yields no write). A bare `write` is not valid syntax; keep
+    # treating it as all-scopes — it can only ever tighten the lint.
+    if perms in ("write", "write-all"):
         return None
     if isinstance(perms, dict):
         return {k for k, v in perms.items() if v == "write"}
