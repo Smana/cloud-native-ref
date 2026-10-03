@@ -28,11 +28,11 @@ spec:
       superuser: false
   atlasSchema:
     url: https://github.com/Smana/agent-platform
-    # A v* ref resolves as a tag, anything else as a branch, never a SHA. AP-4's stack tip
-    # (agent-platform#9), which holds every migration so far; three build indexes CONCURRENTLY, outside a transaction;
-    # agent-platform main has none yet. It moves with the broker pin and crd-rooms.yaml, and
-    # 404s once that branch merges and is deleted. Phase 7 pins the release tag.
-    ref: feat/room-driver
+    # A v* ref resolves as a tag, anything else as a branch, never a SHA. AP-5's stack tip
+    # (agent-platform#11), which holds every migration so far, the approvals projection and its
+    # CONCURRENTLY indexes included; agent-platform main has none yet. It moves with the broker pin
+    # and crd-rooms.yaml, and 404s once that branch merges and is deleted. Phase 7 pins the release tag.
+    ref: feat/room-approvals
     path: internal/store/migrations
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
