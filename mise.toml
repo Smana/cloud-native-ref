@@ -75,7 +75,7 @@ kustomize = "5.8.2"
 # Task runner (taskfile.yaml). Pinned here rather than installed separately so
 # the jdx/mise-action already in the job that calls `task`
 # (kubernetes-validation) installs it with no new action.
-task = "3.53.1"
+task = "3.54.0"
 
 # Google Cloud SDK — required by the GCP stacks (opentofu/gcp/**) for cluster
 # credentials and for the gcloud-based evidence commands in the GCP runbook.
