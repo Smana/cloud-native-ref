@@ -128,7 +128,7 @@
     },
     {
       "description": "Never automerge the agent factory: its chart and image are the orchestrator of unattended agents, and its pin is a gate path. A human reads every bump. One group, because the chart's appVersion names the image: bumping one alone deploys a chart against an image it was not built with (scripts/ci/tests/test-agent-factory-pins.py fails on a mismatch).",
-      "matchPackageNames": ["ghcr.io/smana/charts/agent-factory", "ghcr.io/smana/agent-factory"],
+      "matchPackageNames": ["ghcr.io/smana/charts/agent-factory", "ghcr.io/smana/agent-factory", "palantirtechnologies/policy-bot"],
       "groupName": "agent-factory",
       "automerge": false
     },

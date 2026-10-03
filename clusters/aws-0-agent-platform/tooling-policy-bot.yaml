@@ -1,0 +1,27 @@
+---
+# policy-bot (SP3 §5): posts policy-bot: main on every PR. Not required until the
+# agent-merge-gate ruleset is applied, after the wave (Task 10.7).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: policy-bot
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 5m0s
+  path: ./tooling/base/policy-bot
+  sourceRef:
+    kind: ExternalArtifact
+    name: tooling-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: merge-gate-secrets
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: policy-bot
+      namespace: merge-gate

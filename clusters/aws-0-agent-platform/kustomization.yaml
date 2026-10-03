@@ -12,7 +12,9 @@ resources:
   - security-agent-secrets.yaml
   - infrastructure-agent-router.yaml
   - security-octo-sts.yaml
+  - security-merge-gate-secrets.yaml
   - infrastructure-agent-mcp.yaml
   - infrastructure-room-broker.yaml
   - tooling-agent-factory.yaml
+  - tooling-policy-bot.yaml
   - observability-agent-platform.yaml

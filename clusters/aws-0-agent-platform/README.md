@@ -13,9 +13,11 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → the `agents` mount |
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
+| `merge-gate-secrets` | `security/base/merge-gate-secrets` | `SecretStore merge-gate-secrets` → the `merge-gate` OpenBao mount (SP3, R44) |
 | `agent-mcp` | `infrastructure/base/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
 | `room-broker` | `infrastructure/aws-0/room-broker` | Room CRD, broker, room log (CNPG), retention, and from phase 2 oauth2-proxy (SP2) |
 | `agent-factory` | `tooling/aws-0/agent-factory` | The factory: Task CRD and controller, issue intake, run meter (SP3) |
+| `policy-bot` | `tooling/base/policy-bot` | The merge gate: policy-bot, its public hook and tailnet UI (SP3, ADR-0045) |
 | `agent-observability` | `observability/aws-0/agent-platform` | VMRules, the dashboards (`agent-platform`, `agent-run`, `agent-fleet`) and the agent trace collector |
 
 ## Resume
