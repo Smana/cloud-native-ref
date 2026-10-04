@@ -79,7 +79,7 @@ jobs:
       # tflint — the same file a contributor runs `mise install` against, so
       # this keeps the CI/local parity the Dagger image was there to provide.
       - name: Install tools
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
 
       - name: Validate Opentofu configuration
         run: pre-commit run --all-files --show-diff-on-failure
@@ -212,7 +212,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install tools
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
 
       # Pinned: preflight.sh only enforces a version floor (>=0.10), so an
       # unpinned install silently floats to whatever upstream released.
@@ -285,7 +285,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
 
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
