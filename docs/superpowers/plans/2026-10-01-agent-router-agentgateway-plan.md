@@ -78,7 +78,7 @@ starting point for most YAML below.
     by hand: `kubectl patch configuration.pkg.crossplane.io smana-crossplane-configuration-core --type merge -p '{"spec":{"package":"ghcr.io/smana/crossplane-configuration-core:<pre-release>"}}'`.
 - **Never merge `feat/agent-router-agentgateway` or `feat/agentgateway-poc` into a stack branch.**
   Both are cut from `integration/agent-factory` and carry its do-not-merge content (`feat/gcp-primary`).
-  AGW-1 cherry-picks every `docs(...)` commit of the design branch instead (Task A.1 Step 2).
+  AGW-1 takes the design's files instead (Task A.1 Step 2).
 - **Flux substitution.** Every directory below is applied with `postBuild.substituteFrom`: a literal
   `${…}` that is not a cluster var is written `$${…}`. Bare `$1` in relabel replacements passes Flux
   untouched. `python3 scripts/ci/flux-schema/check-substitution.py` fails otherwise.
@@ -128,7 +128,7 @@ The design's D1–D8 bind. These are the plan's own:
 
 | # | Repo · branch | Base (stack parent) | Phase | Carries | Live gate (gcp-0) |
 |---|---|---|---|---|---|
-| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053, ADR-0054, programme-spec alignment (cherry-picked); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
+| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053, ADR-0054, programme-spec alignment (Task A.1 Step 2); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
 | AGW-2 | this · `feat/agw-platform` | AGW-1 | B | controller, Gateway, parameters, listener identity, CNPs, both clouds; gate wired | B.6 |
 | — | this · `feat/agentgateway-poc` | (existing) | B | PoC teardown commit (R5) | B.6 |
 | AGW-3 | this · `feat/agw-routes` | AGW-2 | C | LLM, `/v1/models`, MCP, octo-sts route, additive ingress CNPs, probe | C.5 |
@@ -259,28 +259,59 @@ exits 0, AGW-1 open as a draft on `feat/rooms-driver`.
 the first commit (the tool branches from `origin/main`; this branch stacks). Merge `origin/main` in:
 the pre-push hook requires it.
 
-- [ ] **Step 2: Cherry-pick every docs commit of the design branch**
+- [ ] **Step 2: Bring the design docs from where they now live**
 
-Run: `git log --reverse --no-merges --format='%h %s' origin/integration/agent-factory..origin/feat/agent-router-agentgateway`
-Expected: only `docs(...)` commits, oldest first. On 2026-10-02 they are, by subject:
+PR #2162 merged the design branch into `integration/agent-factory` on 2026-10-03, so its commits are
+in no range this branch can cherry-pick, and `feat/rooms-driver` does not contain them. Never merge
+integration or the design branch (Global Constraints): take the files.
 
-1. `docs(agents): design for the agent router on agentgateway`
-2. `docs(adr): ADR-0053, the agent router runs on agentgateway`
-3. `docs(agents): implementation plan for the agent router on agentgateway`
-4. `docs(adr): ADR-0054, internal agent work calls the Anthropic API directly`
-5. `docs(agents): agent router design follows the cloud-agnostic provider strategy`
-6. `docs(agents): phase I becomes the Anthropic backend and budgets, on gcp-0`
-7. `docs(agents): phase H gate proves internal by probe; dependsOn audit; A.1 picks the whole range`
-8. `docs(agents): programme spec's data class follows ADR-0054`
+Run: `git diff --name-only origin/feat/rooms-driver...origin/integration/agent-factory -- docs website/content/docs/decisions`
+Expected (2026-10-04): 30 paths. Nine are #2162's: the four it created and the five it edited,
+listed below. The rest are integration-only (runbooks, the rooms and gcp-primary documents, other
+ADRs) and stay out.
 
-Any later `docs(...)` commit on the branch belongs here too. Stop if a non-`docs` commit appears.
-Pick the whole range, so ADR-0054 and the provider updates are never dropped:
+1. The four files #2162 created, whole. Until the prompt-caching PR (phase J) is merged into
+   integration, the design and the plan come from `origin/feat/agent-router-agentgateway`:
+
+   ```bash
+   SRC=origin/integration/agent-factory
+   git checkout "$SRC" -- \
+     docs/superpowers/specs/2026-10-01-agent-router-agentgateway-design.md \
+     docs/superpowers/plans/2026-10-01-agent-router-agentgateway-plan.md \
+     website/content/docs/decisions/0053-agent-router-on-agentgateway.md \
+     website/content/docs/decisions/0054-agent-model-providers-anthropic-direct.md
+   ```
+
+2. Only #2162's hunks in the five files it shares with other work. A whole-file checkout would carry
+   integration-only content, such as ADR-0052's row in `_index.md`. `9ecbe8ac`…`400e37f9` are #2162's
+   eight docs commits, with no merge between them:
+
+   ```bash
+   git diff 9ecbe8ac^ 400e37f9 -- \
+     website/content/docs/decisions/0042-agent-router-identity-gateway.md \
+     website/content/docs/decisions/0046-frontier-providers-zai-and-bedrock.md \
+     website/content/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md \
+     website/content/docs/decisions/_index.md \
+     docs/superpowers/specs/2026-09-23-agent-factory-design.md > /tmp/claude-agw-a1.patch
+   git apply --3way --index /tmp/claude-agw-a1.patch
+   ```
+
+   Expected: the three ADRs apply cleanly; `_index.md` (three hunks) and the programme spec (one hunk)
+   conflict. Resolve them by hand, then `git add` both:
+   - `_index.md`: keep `ours` rows; from `theirs` take only the status cells of 0042, 0046 and 0050,
+     and the rows 0053 and 0054, appended after the last row;
+   - `2026-09-23-agent-factory-design.md`: keep `theirs` in its one hunk (`ours` is main's same
+     wording without the ADR-0054 link).
+
+Run: `git diff --cached --name-only | wc -l && grep -c '0053-agent-router-on-agentgateway\|0054-agent-model-providers-anthropic-direct' website/content/docs/decisions/_index.md && grep -c '^## Phase J' docs/superpowers/plans/2026-10-01-agent-router-agentgateway-plan.md && ./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
+Expected: `9`, `5`, `1`, and both gates exit 0. (Dry-run on 2026-10-04 against `feat/rooms-driver`
+at `7c8165a6`, with the design and the plan from `origin/feat/agent-router-agentgateway`: these
+outputs.) Then commit them as one docs commit:
 
 ```bash
-git cherry-pick $(git rev-list --reverse --no-merges origin/integration/agent-factory..origin/feat/agent-router-agentgateway)
+git commit -m "docs(agents): the agent router on agentgateway: design, plan, ADR-0053 and ADR-0054"
+rm /tmp/claude-agw-a1.patch
 ```
-
-Never merge that branch (Global Constraints).
 
 - [ ] **Step 3: The base carries both umbrellas suspended**
 
