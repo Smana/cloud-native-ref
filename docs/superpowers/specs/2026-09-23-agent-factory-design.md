@@ -433,7 +433,7 @@ sub-project so parallel drafts cannot collide (0039 and 0040 are already taken o
 
 | ADR | Topic | Chosen | Over | Sub-project |
 |---|---|---|---|---|
-| 0041 | Agent sandbox runtime | agent-sandbox + gVisor, AL2023 sandbox nodes on EKS | Kata/Firecracker, OpenHands Enterprise, Coder, E2B, Agent Substrate + google/ax *(evaluated 2026-09-26, re-check triggers in the SP1 research)* | SP1 |
+| 0041 | Agent sandbox runtime | agent-sandbox + gVisor, AL2023 sandbox nodes on EKS | Kata/Firecracker, OpenHands Enterprise, Coder, E2B, Agent Substrate + google/ax *(evaluated 2026-09-26, re-check triggers in the SP1 research)*, kagent *([evaluated 2026-10-04](2026-10-04-kagent-evaluation-research.md))* | SP1 |
 | 0042 | Agent identity gateway | Agent Router | agentgateway | SP1 |
 | 0043 | GitHub credentials for agents | octo-sts | PATs, ESO GitHub generator, git proxy | SP1 |
 | 0044 | Session protocol | AHP-shaped room log we own | OpenHands shared conversations, ACP-only | SP2 |
