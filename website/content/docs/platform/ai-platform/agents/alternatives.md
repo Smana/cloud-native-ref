@@ -41,6 +41,7 @@ all five.
 flowchart TB
   subgraph L5["Factory: issue → runs → PR, budgets, merge gate, stop switch"]
     F5["Ours: agent-factory controller + Kueue + policy-bot"]
+    T5["Temporal: durable workflows (watched)"]
   end
   subgraph L4["Collaboration: shared sessions with humans and agents"]
     F4["Ours: rooms (room-broker + Postgres log)"]
@@ -65,14 +66,23 @@ flowchart TB
 
 | Layer | Chosen | Alternatives considered | Why |
 |---|---|---|---|
-| **Runtime** | [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) + [gVisor](https://gvisor.dev), one pod per run | Agent Substrate (with google/ax or kagent), Kata/Firecracker, OpenHands Enterprise, Coder, E2B/Daytona | Open source; runs on EKS and GKE, on spot nodes; each run gets its own ServiceAccount and Cilium policy, so the constitution's rules apply per run. Kata needs bare metal or nested virtualisation |
+| **Runtime** | [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) + [gVisor](https://gvisor.dev), one pod per run | Agent Substrate (with google/ax or kagent), Kata/Firecracker, OpenHands Enterprise, Coder, E2B/Daytona | Open source; runs on EKS and GKE, on spot nodes; each run gets its own ServiceAccount and Cilium policy, so the constitution's rules apply per run. Kata/Firecracker needs bare-metal hosts or nested virtualisation: the smallest AWS metal host has 128 vCPU, about $1.5/h spot or $5.4/h on demand ([Vantage](https://instances.vantage.sh/aws/ec2/c6i.metal)), against a few cents an hour for a run's spot node. An agent step mostly waits on the model (about 11 s a reply), so gVisor's system-call overhead does not show |
 | **Harness** | [OpenHands](https://github.com/OpenHands/software-agent-sdk) agent-server | Headless Claude Code, kagent's harnesses, ax's Antigravity agent | Open source, headless (an HTTP API), works with any OpenAI-compatible model, supports MCP. Claude Code is proprietary; Antigravity is Gemini-only |
 | **Gateway** | [agentgateway](https://agentgateway.dev) (decided 2026-10-01; [Agent Router](https://theagentrouter.ai) runs today) | Agent Router 1.1 on Envoy Gateway | See [gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}}) |
-| **Rooms** | A log we own: room-broker on PostgreSQL | OpenHands shared conversations, ACP, A2A through a gateway, Valkey Streams, NATS JetStream, ax or Substrate as the session layer, kagent sessions | A room is an audit trail: every event needs an author, a strict order and durable storage, and approvals need authorised approvers. Nothing we evaluated records who said what among several people and agents |
-| **Factory** | A small custom controller + [Kueue](https://kueue.sigs.k8s.io) | Argo Workflows, Tekton, Temporal, a Crossplane `Task` composition, gh-aw | The lifecycle is a reconciliation against GitHub over hours, and budgets and the kill switch are domain logic any option would still need. Argo has no budget concept; Temporal adds a server and a database; a Crossplane composition has no timers |
+| **Rooms** | A log we own: room-broker on PostgreSQL | OpenHands shared conversations, ACP, A2A through a gateway, Valkey Streams, NATS JetStream, ax or Substrate as the session layer, kagent sessions | Two different questions. **Protocols** (OpenHands shared conversations, ACP, A2A, ax or Substrate, kagent sessions): none records who said what among several people and agents, or who may approve. **Brokers** (Valkey Streams, NATS JetStream): an event is written to Postgres first, which fixes its place in the log, then announced with `LISTEN/NOTIFY`. At a few events per second a second stateful system adds nothing, and delivering live before the write would let watchers see events the audit log never records |
+| **Factory** | A small custom controller + [Kueue](https://kueue.sigs.k8s.io) | Argo Workflows, Tekton, Temporal, a Crossplane `Task` composition, gh-aw | The factory's state lives in Kubernetes objects and GitHub. Waiting hours on CI or a review is a periodic re-check of that state, so a restart loses nothing. Budgets and the kill switch are domain logic any engine would still need. Argo has no budget concept and a Crossplane composition has no timers. Temporal suits workflows whose state lives in code, and is the one to watch ([below](#temporal)) |
 | **Merge gate** | [policy-bot](https://github.com/palantir/policy-bot) behind a repository ruleset | Required reviews, rulesets alone, a custom check, Prow/tide, Mergify, Kodiak | The policy lives in the repository and is reviewable, and the right to merge sits with one dedicated App |
 
 The full records are in the programme's design documents, listed under [Sources](#sources).
+
+## What would make us reconsider
+
+| Current choice | Alternative that could win | Reconsider when |
+|---|---|---|
+| Custom factory controller | [Temporal](#temporal) | The task lifecycle needs multi-step compensation, timed human waits multiply, retry and resume rules grow, or the factory's bugs cluster around timers and retries |
+| Postgres `LISTEN/NOTIFY` for room fan-out | NATS JetStream, for fan-out only: the log stays in Postgres and is written first | Notification latency or database load shows on the room dashboards, or rooms need many broker replicas |
+| gVisor | Kata or Firecracker microVMs | Concurrency reaches about 20 sandboxes, enough to fill a metal host; a gVisor incompatibility blocks a class of task; or nested virtualisation becomes available on our node types |
+| agent-sandbox, one pod per run | [Agent Substrate](#agent-substrate) | See [Reconsidering Substrate](#reconsidering-substrate-not-now-deliberately-open) |
 
 ## Projects evaluated in detail
 
@@ -152,6 +162,31 @@ beats our fork. It depends on Substrate.
 
 **Reconsider:** see the [triggers](#reconsidering-substrate-not-now-deliberately-open).
 
+### Temporal
+
+*Assessed on 2026-10-04 against the factory's needs; no proof of concept.*
+
+**What it is.** A durable-execution engine ([temporalio/temporal](https://github.com/temporalio/temporal),
+MIT). Workflows are written as code, and the engine keeps their state through crashes, with durable
+timers, signals, retry policies and a full history of every execution.
+
+**What it would bring.**
+- Timed human waits, such as remind after a day, escalate after two, close after a week, without
+  re-check logic.
+- Retry and resume policies declared per step.
+- An execution history and UI per task.
+
+It can keep its state in PostgreSQL, so on this platform the database would be a `SQLInstance`
+claim, not new infrastructure.
+
+**Why not now.** The factory's waits are re-checks of state that already lives in Kubernetes
+objects and GitHub, and a controller restart loses nothing. Temporal would add its server services
+and workflows that are versioned as code, which is heavy at today's 20 tasks a day.
+
+**Reconsider** under the conditions in [the table above](#what-would-make-us-reconsider). The first
+candidate is the automatic resume of runs lost to spot reclamation, now being designed: if resume
+rules multiply, a workflow engine becomes worth its weight.
+
 ## Would rebuilding on kagent + Substrate be simpler?
 
 It is the strongest challenge to this design, so it is judged on the work still ahead, not on what
@@ -185,8 +220,9 @@ and brings its authorization gap.
 
 ## Reconsidering Substrate: not now, deliberately open
 
-We intend to reconsider Substrate, and kagent with it, in the near future. The design keeps the door
-open:
+We intend to reconsider Substrate, and kagent with it, in the near future. Until then, a run on a
+reclaimed spot node fails and is resumed from its branch; making that resume automatic is being
+designed. The design keeps the door open:
 - `AgentRun` is the abstraction, so a Substrate backend would be a new composition behind it, not a
   rewrite.
 - Run identity accepts tokens from any issuer.
