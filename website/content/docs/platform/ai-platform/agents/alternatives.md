@@ -1,23 +1,36 @@
 ---
 title: Alternatives considered
 weight: 50
-description: "Work in progress. Why the agent factory runs on agent-sandbox, gVisor and OpenHands, and builds its rooms and factory itself, rather than adopting google/ax, Agent Substrate or kagent: what each would bring, what blocks it today, and when we reconsider."
+description: "Work in progress. The alternatives considered for each layer of the agent factory, why the current choices won, the projects evaluated in detail, and what would make us reconsider."
 lastVerified: 2026-10-04
 ---
 
 {{< callout type="warning" >}}
-**Work in progress.** This page records the comparisons behind the agent factory's main choices,
-as checked against each project's code on 2026-10-04. These projects move fast. The choices are
-re-checked on a schedule, and the [last section](#not-now-deliberately-open) says when.
+**Work in progress.** The agent ecosystem moves fast. Each detailed evaluation states when it was
+checked and what would reopen it, and the page grows as new candidates appear.
 {{< /callout >}}
 
+What alternatives did we consider for each layer of the agent factory, and why did the current
+choices win? A new candidate gets a row in [the table](#decisions-at-a-glance). If it could replace a
+whole layer, it also gets a section under [projects evaluated in detail](#projects-evaluated-in-detail).
+
 **In short:**
-- **No tool on the market covers more than one layer of the factory.** The factory, the rooms and
-  the controls around them would still be ours whatever we adopted.
-- **The candidate that would change the most is Agent Substrate**, with kagent built on it. It
-  cannot yet meet three things this platform requires: running on both EKS and GKE, running on spot
-  nodes, and giving every workload its own identity and network policy.
-- **Adoption is deferred, not refused.** Our design keeps a door open for Substrate.
+- **No candidate evaluated so far covers more than one or two layers.** The factory, the rooms and
+  the controls around them would stay ours whatever we adopted.
+- **A choice can be deferred rather than refused.** Each detailed evaluation lists the concrete
+  triggers that would make us reconsider it.
+
+## How candidates are evaluated
+
+- **Against code, not announcements.** Claims are checked in the project's repository at a pinned
+  commit, and linked.
+- **On the work still ahead.** What is already built does not count in its favour; what adopting a
+  candidate would still leave us to build does.
+- **Against the platform's requirements:**
+  - it runs on both EKS and GKE, on spot nodes;
+  - every workload gets its own identity and network policy;
+  - no long-lived credential reaches a sandbox;
+  - open source first.
 
 ## Where each tool fits
 
@@ -61,11 +74,13 @@ flowchart TB
 
 The full records are in the programme's design documents, listed under [Sources](#sources).
 
-## google/ax, Agent Substrate and kagent
+## Projects evaluated in detail
 
-These three are the closest to a ready-made agent platform on Kubernetes, so they get a closer look.
+Candidates that could replace a whole layer. Each section states when it was checked.
 
 ### google/ax
+
+*Checked on 2026-10-04 at `ac23328`.*
 
 **What it is.** Google's agent orchestrator: it runs each task as an agent on Agent Substrate and
 bootstraps Google's Antigravity agent inside it.
@@ -87,7 +102,12 @@ bootstraps Google's Antigravity agent inside it.
 Adopting ax would replace the harness as well as the runtime, and lock the platform to one model
 provider.
 
+**Reconsider if** ax closes #376 and #363 and supports other model providers without putting keys in
+the sandbox, on top of the [Substrate triggers](#reconsidering-substrate-not-now-deliberately-open).
+
 ### Agent Substrate
+
+*Checked on 2026-10-04 at `16b863a`.*
 
 **What it is.** A runtime that packs many gVisor-isolated agents into shared worker pods and can
 **suspend and resume** an agent, memory included, from snapshots.
@@ -105,7 +125,11 @@ provider.
 | Documented on kind and GKE only; needs Kubernetes certificate APIs that are stable only from 1.37 | [README](https://github.com/agent-substrate/substrate/blob/16b863a/README.md#L86-L147), [Kubernetes 1.37](https://kubernetes.io/blog/2026/08/28/kubernetes-v1-37-pod-certificates-and-cluster-trust-bundles/) |
 | Pre-1.0; EKS-related fixes landed on `main` in October, unreleased | [v0.3.0](https://github.com/agent-substrate/substrate/releases/tag/v0.3.0), [#1898](https://github.com/agent-substrate/substrate/issues/1898), [#432](https://github.com/agent-substrate/substrate/issues/432) |
 
+**Reconsider:** see the [triggers](#reconsidering-substrate-not-now-deliberately-open).
+
 ### kagent
+
+*Checked on 2026-10-04 at `bf8afa56` (v1) and `v0.10.3`.*
 
 **What it is.** A CNCF Sandbox project, mostly maintained by Solo.io, and really two products:
 - **v1** (alpha, where the project invests) runs only on its own fork of Agent Substrate, with
@@ -125,6 +149,8 @@ provider.
 
 **Worth learning from:** forking a session together with a snapshot of the running agent, which
 beats our fork. It depends on Substrate.
+
+**Reconsider:** see the [triggers](#reconsidering-substrate-not-now-deliberately-open).
 
 ## Would rebuilding on kagent + Substrate be simpler?
 
@@ -157,7 +183,7 @@ that would need an amendment to the constitution, and two alphas changing fast.
 **Substrate as a backend behind `AgentRun`** beats kagent + Substrate: kagent adds little we lack
 and brings its authorization gap.
 
-## Not now, deliberately open
+## Reconsidering Substrate: not now, deliberately open
 
 We intend to reconsider Substrate, and kagent with it, in the near future. The design keeps the door
 open:

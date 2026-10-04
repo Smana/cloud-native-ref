@@ -21,7 +21,7 @@ open a pull request, and the factory narrates each step on the issue. Humans ste
 joining the agents' room. Only policy-defined low-risk changes merge themselves; everything else
 waits for a human.
 
-Why build this rather than adopt google/ax, Agent Substrate or kagent? See
+Which alternatives were considered, and why these choices? See
 [Alternatives considered]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}}).
 
 ## New here? The ideas in two minutes
