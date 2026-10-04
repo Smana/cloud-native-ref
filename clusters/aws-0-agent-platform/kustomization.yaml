@@ -5,6 +5,7 @@ kind: Kustomization
 # clusters/aws-0/agent-platform.yaml applies this directory only when resumed.
 resources:
   - infrastructure-agent-sandbox.yaml
+  - infrastructure-kueue.yaml
   - infrastructure-agents-nodepool.yaml
   - infrastructure-runtimeclass-gvisor.yaml
   - infrastructure-agent-runtime.yaml
