@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#14 at f04ca42, the chart's appVersion.
+      # agent-platform#15 at 494f003, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr14.f04ca421@sha256:c2bb9a47ffda2d094feaa34a69a2bb2dfe130dc9ec5177561fb9781839f43892"
+      tag: "v0.0.1-pr15.494f0032@sha256:183e00dd49ad1670982d6c4a7fd231bff804a645428dec77a4e45ac01654a8f0"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -30,6 +30,8 @@ data:
       github:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
+        mergerAppIDFile: /etc/agent-factory-merger/app_id
+        mergerKeyFile: /etc/agent-factory-merger/private_key
       # The run-request API (FR-5): tailnet only via the HTTPRoute, tokens checked
       # offline against ZITADEL's JWKS; the client ids ride the chart's oidcSecret mount.
       api:
@@ -49,13 +51,48 @@ data:
         classifierURL: http://complexity-classifier.agent-system.svc.cluster.local:8080/v1/classify
         controlPercent: 10  # OD-14
       classes:
-        # OD-8's live candidates. Neither is live before the merge wave (owner, 2026-09-27; R32):
-        # FR-7 makes them shadow, FR-11 live.
-        docs-links: {}
-        revert: {}
+        # Shadow until the wave (owner, 2026-09-27; R32): decided like a live class, never armed.
+        docs-links: {shadow: true}
+        revert: {shadow: true}
         docs: {}
         tests: {}
         dashboards: {}
+      merge:
+        # Classic protection's 8 contexts (app 15368), read with `gh api repos/Smana/cloud-native-ref/branches/main/protection`.
+        requiredChecks:
+          - "Pre-commit checks 🛃"
+          - "Security scanning 🔒"
+          - "Kubernetes validation ☸"
+          - "Rendered manifest diff 📝"
+          - "Check the shell scripts 💻"
+          - "Check the documentation links 🔗"
+          - "Validate Vector Log Parsing Configuration (vlsingle)"
+          - "Validate Vector Log Parsing Configuration (vlcluster)"
+        # The jobs ci.yaml runs on push to main, watched on the merge commit (§6.4). Not the Vector
+        # checks (their push trigger is path-filtered) nor the rendered diff (PR-only).
+        verifyChecks:
+          - "Pre-commit checks 🛃"
+          - "Security scanning 🔒"
+          - "Kubernetes validation ☸"
+          - "Check the shell scripts 💻"
+          - "Check the documentation links 🔗"
+        policyBotLogin: ogenki-merge-gate[bot]
+        mergerLogin: ogenki-agent-merger[bot]
+        autoMergesPerDay: 10
+        fixRuns: 2
+        verifyFor: 30m
+        revertWindow: 168h
+        leakScanCheck: "Security scanning 🔒"  # R42: TruffleHog's check run, in both lists above
+        breaker: {window: 10, maxReverts: 1}      # R41: 1 revert in the last 10 merges demotes a class
+      schedules:
+        - name: link-rot
+          cron: "0 6 * * 1"  # Mondays, 06:00 UTC
+          class: docs-links
+          text: |
+            Find broken external links in Markdown under docs/ and website/content/, outside
+            docs/superpowers/, docs/specs/ and website/content/docs/decisions/. Fix those with an
+            obvious replacement, changing fewer than 21 lines in total and adding or deleting no
+            file. If none is broken, change nothing and open no pull request.
       # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
       tiers:
         light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}
