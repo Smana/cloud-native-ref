@@ -1,13 +1,14 @@
 # Public gateway for the FEW endpoints that must be reachable from the internet.
-# Deliberately single-purpose: today its only consumer is runlore's Slack
-# interactivity callback (POST /slack/interactions) — Slack posts button clicks /
-# reactions from its own servers, so a private (Tailscale) gateway cannot carry
-# them. Exposure is bounded by construction:
-#   - allowedRoutes restricts attachment to the runlore namespace only;
-#   - the runlore HTTPRoute matches exactly ONE path+method (everything else on
+# Deliberately single-purpose per consumer: runlore's Slack interactivity callback
+# (POST /slack/interactions) and policy-bot's GitHub webhook (POST /api/github/hook) —
+# Slack and GitHub post from their own servers, so a private (Tailscale) gateway cannot
+# carry them. Exposure is bounded by construction:
+#   - allowedRoutes restricts attachment to the consumer's namespace only;
+#   - each HTTPRoute matches exactly ONE path+method (everything else on
 #     the hostname is a gateway 404);
-#   - every request that reaches the app is HMAC-verified against the Slack
-#     signing secret (±5min replay window) — see runlore's docs/security-model.md.
+#   - every request that reaches the app is HMAC-verified (runlore against the Slack
+#     signing secret, ±5min replay window — see runlore's docs/security-model.md;
+#     policy-bot against the App's webhook secret).
 # TLS via cert-manager (letsencrypt-prod), internet-facing NLB.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -54,3 +55,22 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: runlore-public-tls
+    # policy-bot's webhook (SP3 §5.1, ADR-0045): routes from merge-gate only. Outside the
+    # agent-platform umbrella, because a listener cannot be gated with it (R19).
+    - name: policy-bot
+      hostname: "policy-bot.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - merge-gate
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: policy-bot-public-tls

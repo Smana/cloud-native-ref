@@ -18,3 +18,4 @@ resources:
   - tooling.yaml
   - agents.yaml
   - agent-system.yaml
+  - merge-gate.yaml

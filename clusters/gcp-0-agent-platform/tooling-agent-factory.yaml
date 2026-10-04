@@ -23,6 +23,9 @@ spec:
     - name: agent-secrets
     - name: room-broker
     - name: agent-policies
+    # Its runs enqueue into the LocalQueues; without them a submitted run has
+    # no queue to name and sits unadmitted.
+    - name: kueue-queues
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

@@ -33,6 +33,14 @@ tasks:
     desc: Assert exactly one cloud hosts ZITADEL (ADR-0027)
     cmds: ["{{.TASKFILE_DIR}}/ci/validate-idp-topology.sh"]
 
+  policy-gates:
+    desc: Every agent-platform path is a gate path, in every agent rule (SC-12)
+    cmds: ["{{.TASKFILE_DIR}}/ci/check-policy-gate-coverage.sh"]
+
+  workflow-secrets:
+    desc: No secret but GITHUB_TOKEN in a pull_request workflow (T8)
+    cmds: ["{{.TASKFILE_DIR}}/ci/check-workflow-secrets.sh"]
+
   openbao-policies:
     desc: Assert every policy an OpenBao JWT role names is defined by its cloud's management stack
     cmds: ["{{.TASKFILE_DIR}}/ci/validate-openbao-policies.sh"]

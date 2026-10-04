@@ -187,3 +187,102 @@ spec:
         !object.spec.audiences.exists(a,
           a.startsWith('agent-router.') || a.startsWith('octo-sts/') || a.startsWith('room-broker'))
       message: "audiences agent-router.*, octo-sts/* and room-broker* are minted only for ServiceAccounts in namespace agents"
+---
+# One creator (C3). RBAC cannot stop a cluster-admin; this does. Break-glass: suspend the
+# agent-policies Kustomization, then `kubectl delete validatingpolicy agentrun-one-creator`
+# (Flux would re-create it otherwise). Beside agentrun-admission, not in it, so that the
+# break-glass leaves the name and namespace checks in place.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agentrun-one-creator
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cloud.ogenki.io]
+        apiVersions: [v1alpha1]
+        operations: [CREATE]
+        resources: [agentruns]
+  validations:
+    - expression: "request.userInfo.username == 'system:serviceaccount:agent-system:agent-factory'"
+      message: "only the agent factory creates AgentRuns (C3): use `task agent:run` (POST /v1/runs), or the room's hand-to-role"
+---
+# The factory may patch three annotations and nothing else (§6.5): Crossplane owns status, and
+# the claim's spec is the run's fixed profile (SP2 S9).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agentrun-factory-patch-limit
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cloud.ogenki.io]
+        apiVersions: [v1alpha1]
+        operations: [UPDATE]
+        resources: [agentruns]
+  matchConditions:
+    - name: the-factory
+      expression: "request.userInfo.username == 'system:serviceaccount:agent-system:agent-factory'"
+  variables:
+    - name: allowed
+      expression: "['agents.ogenki.io/usage-tokens', 'agents.ogenki.io/pull-request', 'agents.ogenki.io/revoked']"
+    - name: new
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+    - name: old
+      expression: "has(oldObject.metadata.annotations) ? oldObject.metadata.annotations : {}"
+  validations:
+    - expression: "object.spec == oldObject.spec"
+      message: "the factory never changes an AgentRun's spec"
+    - expression: "(has(object.metadata.labels) ? object.metadata.labels : {}) == (has(oldObject.metadata.labels) ? oldObject.metadata.labels : {})"
+      message: "the factory never changes an AgentRun's labels"
+    - expression: >-
+        variables.new.all(k, k in variables.allowed || (k in variables.old && variables.old[k] == variables.new[k])) &&
+        variables.old.all(k, k in variables.allowed || k in variables.new)
+      message: "the factory changes only the usage-tokens, pull-request and revoked annotations"
+---
+# Ruling TV: the compensation for the factory's unbounded ledger RBAC. A ledger is date-named
+# (R50), so resourceNames cannot bound it and agent-factory holds get,list,create,update,delete on
+# every configmap in agent-system. One of those objects must not be factory-writable:
+# agent-factory-stop, the kill switch. The factory only reads it (Sweeper, Engaged check); if it
+# could write it, it could stop itself — a self-DoS, and a control that no longer acts from
+# outside the sandbox. The owner creates and deletes it out-of-band and keeps that ability. The
+# apiserver reports PATCH as UPDATE, so the UPDATE rule covers it. DELETE carries no object — the
+# name arrives in request.name/oldObject, not object — so the scope is pinned by resourceNames,
+# not an expression name check, and the denial is unconditional: whatever matches this rule is
+# the stop object written by the factory.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: agent-factory-stop-readonly
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agent-system
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [configmaps]
+        resourceNames: [agent-factory-stop]
+  matchConditions:
+    - name: the-factory
+      expression: "request.userInfo.username == 'system:serviceaccount:agent-system:agent-factory'"
+  validations:
+    - expression: "false"
+      message: "the factory reads agent-factory-stop, never writes or deletes it: the kill switch belongs to the owner, create or remove it by hand"

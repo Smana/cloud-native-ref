@@ -5,6 +5,7 @@ kind: Kustomization
 # clusters/aws-0/agent-platform.yaml applies this directory only when resumed.
 resources:
   - infrastructure-agent-sandbox.yaml
+  - infrastructure-kueue.yaml
   - infrastructure-agents-nodepool.yaml
   - infrastructure-runtimeclass-gvisor.yaml
   - infrastructure-agent-runtime.yaml
@@ -12,7 +13,10 @@ resources:
   - security-agent-secrets.yaml
   - infrastructure-agent-router.yaml
   - security-octo-sts.yaml
+  - security-merge-gate-secrets.yaml
   - infrastructure-agent-mcp.yaml
   - infrastructure-room-broker.yaml
   - tooling-agent-factory.yaml
+  - tooling-policy-bot.yaml
   - observability-agent-platform.yaml
+  - observability-runlore-factory.yaml
