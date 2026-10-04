@@ -226,7 +226,7 @@ even a `DROPPED` verdict. The only trace anywhere was
 **An explicitly empty config value silently defaulted.** `os.Getenv` cannot
 distinguish "set to empty" from "absent", so `TEP_INJECT_PREFIX: ""` — meaning
 "inject the raw token" — became `"Bearer "`. The API server received
-`Authorization: Bearer Bearer <token>` and answered `401`, while the exchange
+`Authorization: Bearer <token>` and answered `401`, while the exchange
 succeeded and every component logged success. Found only by comparing a working
 request against a failing one header by header.
 
