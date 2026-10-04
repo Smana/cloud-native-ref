@@ -8,5 +8,6 @@ resources:
   - externalsecret-credentials.yaml
   - externalsecret-slack.yaml
   - externalsecret-webhook.yaml
+  - helm-values-configmap.yaml
   - helmrelease.yaml
   - httproute.yaml

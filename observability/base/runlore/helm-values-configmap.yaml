@@ -1,0 +1,21 @@
+# envFrom lives HERE, not in spec.values: Flux merges spec.values LAST, over the
+# valuesFrom result (fluxcd/pkg chartutil.ChartValuesFromReferences ends in
+# MergeMaps(result, spec.values)), and lists replace rather than merge. In spec.values
+# it would therefore replace the agent-platform umbrella's four-entry list with three,
+# silently dropping the factory intake Secret (TW7). As the first valuesFrom entry this
+# list is always shipped; the umbrella's optional CM, merged second, replaces it whole.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runlore-base-values
+data:
+  values.yaml: |  # pragma: allowlist secret -- Secret names only, no credential value
+    # Secret-backed env (GEMINI_API_KEY, GITHUB_APP_PRIVATE_KEY) from the
+    # runlore-credentials ExternalSecret. RunLore never inlines credentials.
+    envFrom:
+      - secretRef:
+          name: runlore-credentials
+      - secretRef:
+          name: runlore-slack
+      - secretRef:
+          name: runlore-webhook

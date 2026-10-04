@@ -1,5 +1,7 @@
 # Merged into RunLore's values only while the agent-platform umbrella ships it (optional
-# valuesFrom). notify.templated POSTs every finding to the factory, which keeps the actionable
+# valuesFrom, the SECOND entry after runlore-base-values -- lists replace, never merge, so
+# this envFrom must own the WHOLE list and restate the base's three entries; TW7).
+# notify.templated POSTs every finding to the factory, which keeps the actionable
 # ones (§1, OD-9).
 apiVersion: v1
 kind: ConfigMap
