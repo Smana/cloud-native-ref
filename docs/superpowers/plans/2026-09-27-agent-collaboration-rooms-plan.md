@@ -7875,7 +7875,8 @@ three without delegating authorisation to a pre-1.0 protocol or a runtime we rej
 ### Neutral
 
 - Next re-check of ax and Substrate: 2026-12-15, or when EKS ships 1.37 and Substrate closes #1898,
-  lifts its no-spot rule (#1528) and fixes #1657.
+  lifts its no-spot rule (#1528) and fixes #1657. #1898 closed on 2026-10-02, unreleased
+  ([2026-10-04 re-check](../specs/2026-10-01-agent-ecosystem-recheck-research.md#2026-10-04-re-check-ax-and-substrate-claims-against-code)).
 
 ---
 
