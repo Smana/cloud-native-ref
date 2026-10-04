@@ -25,4 +25,4 @@ build the rest.
 | 12 | End-to-end UX walkthrough (label, room, request changes, approve, merge), then the merge wave to `main` | — | 1–10 | UX sign-off (P33) |
 
 Re-check google/ax, Agent Substrate and kagent on **2026-12-15**, or earlier on any trigger listed
-on the docs site's *Alternatives considered* page (`website/content/docs/platform/ai-platform/agents/alternatives.md`, PR #2190).
+on the docs site's *Alternatives considered* page (`website/content/docs/platform/ai-platform/agents/alternatives.md`).

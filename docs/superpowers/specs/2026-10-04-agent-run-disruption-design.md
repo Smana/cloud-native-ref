@@ -37,7 +37,7 @@ shutdown at all is handled by classification and resume only (§3, §4).
 ## Owner decisions (2026-10-04)
 
 - **Resume, lose minutes.** Continuing the same conversation (durable OpenHands state, in-place
-  resume) is out of scope. The Substrate spike planned in the kagent evaluation (PR #2190) may make it
+  resume) is out of scope. The Substrate spike planned in the [kagent evaluation](2026-10-04-kagent-evaluation-research.md) may make it
   moot.
 - **Shutdown signal first.** Make the signal every cloud sends work; add an early warning on aws-0
   only if a fault-injection test shows the OS-shutdown window does not complete.
@@ -197,7 +197,7 @@ The choice between them is deferred to that evidence.
 - Continuing the same conversation across pods: durable OpenHands state, a stable per-run secret key,
   an in-place resume.
 - Periodic checkpoints on a timer.
-- Agent Substrate (see the kagent evaluation, PR #2190).
+- Agent Substrate (see the [kagent evaluation](2026-10-04-kagent-evaluation-research.md)).
 
 No ADR: no technology is chosen over another. The alternatives weighed were design approaches (early
 warning everywhere, periodic checkpoints, conversation continuity), recorded above.
