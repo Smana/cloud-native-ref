@@ -94,10 +94,10 @@ Total: at most 15 s; each box is an upper bound. The preStop hook is removed: it
 
 | Step | Owner | Detail |
 |---|---|---|
-| Pause | `agent-run` | Stops new tool calls so the work tree stops changing. Uses agent-server's existing pause or interrupt operation |
-| Checkpoint | `agent-run` | Implementer only; other roles never write. `git add -A` (`.gitignore` applies), commit only if the tree changed, with the trailer `Agent-Checkpoint: disruption` beside the usual provenance trailers, then push to `spec.branch`. The credential comes through `git-credential-agent`, which re-exchanges through the identity-proxy on `:4001`: that sidecar and the network policy outlive the harness |
+| Pause | `agent-run` | Stops new tool calls so the work tree stops changing: agent-server's `interrupt`, which cancels the in-flight model call (`pause` would wait for it). A terminal command already running is not killed |
+| Checkpoint | `agent-run` | Implementer only; other roles never write. `git add -A` (`.gitignore` applies), commit only if the tree changed, then push to `spec.branch`. The trailer `Agent-Checkpoint: disruption` is added by the commit-msg hook beside the usual provenance trailers, because the hook neutralises any `Agent-*` line written in a message. The credential comes through `git-credential-agent`, which re-exchanges through the identity-proxy on `:4001`: that sidecar and the network policy outlive the harness |
 | Final read | `agent-run` → room-bridge | A new localhost call to the bridge, which reads the harness log to its end and mirrors it before answering. This is the harness half of F11 |
-| Stop, revoke | `agent-run` | The revoke moves from preStop into `agent-run`'s exit, after the push. If `agent-run` dies first, the token expires within the hour, as the docs already state |
+| Stop, revoke | `agent-run` | The revoke moves from preStop into `agent-run`'s exit, after the push, and runs in-process: a Python subprocess can take longer than 1 s to start under gVisor. If `agent-run` dies first, the token expires within the hour, as the docs already state |
 
 The checkpoint commit lands on the PR like any commit and triggers CI once. The resumed run continues
 from it.
@@ -115,9 +115,16 @@ the pod's reason (agent-sandbox v1.0.3 to `main`). Precedence:
 | `PodFailed` | The pod failed on its own: the harness exited non-zero, a crash, an out-of-memory kill |
 
 Where a plain `DELETE` or PodGC leaves no `DisruptionTarget`, or an evicted pod is deleted before the
-composition reads it, the run reads `PodLost`. That is still treated as infrastructure loss (§4). The `status.reason` enum gains `Disrupted`. Crossplane must be
-able to read the pod; the plan verifies the RBAC and the composition-function mechanism (required
-resources) before relying on them.
+composition reads it, the run reads `PodLost`. That is still treated as infrastructure loss (§4).
+Since Kubernetes 1.27 the kubelet marks a deleted pod `Failed`, so `Finished=PodFailed` alone does not
+mean the run failed: `Finished=PodFailed` with a pod that is gone, carries a `deletionTimestamp`, or
+has been replaced reads `PodLost`. `status.reason` is a plain string; its documented values gain
+`Disrupted`.
+
+The pod is read as a Crossplane **required resource** (function-kcl ≥ v0.12.2). Crossplane serves
+required resources from its cluster-wide cache, so Crossplane needs `get`, `list` and `watch` on pods
+in every namespace, not `get` in `agents`: a wider read, and a cluster-wide pod informer in
+Crossplane's memory, which the plan measures.
 
 ### 4. Automatic resume
 
