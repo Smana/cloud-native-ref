@@ -4,8 +4,9 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  # SUSPENDED: GCP is primary (ADR-0052); aws-0 does not host, and a GCP-only platform has no aws-0 at all.
-  suspend: true
+  # AWS hosts the IdP again (owner, 2026-10-04: aws-0 is the target; the gcp
+  # run proved parity). Restored-from-backup directory, unlike gcp's fresh one.
+  suspend: false
   prune: true
   interval: 1m0s
   # 15m, not 5m: this must be >= the time the HelmRelease can legitimately take,

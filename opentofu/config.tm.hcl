@@ -59,11 +59,10 @@ globals {
   # build, so nothing migrates with this switch; the deploy re-registers the
   # IdP and every client.
   #
-  # TM_CLOUD MUST BE SET while this is not "aws": unset means aws, so
-  # tm-provisioner.sh refuses (exit 3) rather than apply the shared stacks and
-  # skip every GCP one. `TM_CLOUD=gcp terramate script run deploy` is the
-  # normal deploy.
-  primary_cloud = "gcp"
+  # AWS is primary again (owner, 2026-10-04): aws-0 hosts the IdP and the
+  # platform; the gcp lane stays deployable for parity. An unset TM_CLOUD
+  # means aws and no longer trips tm-provisioner's guard.
+  primary_cloud = "aws"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy

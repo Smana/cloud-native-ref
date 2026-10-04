@@ -25,7 +25,9 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  suspend: false
+  # SUSPENDED (owner, 2026-10-04): aws-0 hosts the IdP again; gcp-0 stays a
+  # parity proof, not a second directory.
+  suspend: true
   prune: true
   interval: 1m0s
   timeout: 10m0s
