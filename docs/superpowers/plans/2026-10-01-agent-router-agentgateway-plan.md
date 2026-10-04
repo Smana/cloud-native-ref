@@ -12,7 +12,9 @@ our own rate-limit server, and the Envoy agent-router is deleted once verified.
 crossplane-configuration release lets the run CNP reach both gateways. After the live gates pass, a
 second release drops the old egress and the Envoy objects go. Last, phase I gives `internal` the
 Anthropic API (ADR-0054) and per-provider budgets, provable on gcp-0; optional backends (OpenRouter,
-Bedrock, Vertex) sit in an appendix, off by default.
+Bedrock, Vertex) sit in an appendix, off by default. Phase J then makes prompt caching
+provider-agnostic: the gateway asks the providers that need asking, prices every request from one
+table, and budgets, the run meter and the run page count that price.
 
 **Tech Stack:**
 - agentgateway v1.5.0: charts `oci://cr.agentgateway.dev/charts/agentgateway{,-crds}` (CRDs `agentgateway.dev/v1alpha1`: `AgentgatewayBackend`, `AgentgatewayPolicy`, `AgentgatewayParameters`, `AgentgatewayModel`);
@@ -46,6 +48,8 @@ starting point for most YAML below.
   | Gate | `scripts/ci/flux-schema/assert-agent-gateway.py`, checks AG1–AG9 |
   | MCP tool names | `<target>_<tool>`, targets `flux-operator-mcp`, `mcp-victoriametrics`, `mcp-victorialogs`, `room-broker` |
   | Providers (ADR-0054) | `public` → `AgentgatewayBackend zai`; `internal` → `AgentgatewayBackend anthropic`, Secret `agents-anthropic-api-key` from OpenBao `agents/anthropic` field `api_key`; optional `openrouter` (public only), `bedrock`/`vertexai` (internal), all off by default <!-- pragma: allowlist secret --> |
+  | Price table (design D10) | ConfigMap `agent-model-prices` in `agent-gateway`, key `catalog.json`, named by `AgentgatewayParameters agent-router` `spec.modelCatalog` (phase J) |
+  | Reference token (design D11) | a request's gateway price ÷ REF, REF = `0.0000017` USD per token ($1.70 per million). Every token descriptor's `cost` is `BILLABLE_COST` = `has(llm.cost) ? uint(llm.cost.total / 0.0000017) : uint(llm.totalTokens)` (phase J) |
   | ADRs | **0053** (gateway), **0054** (providers) |
 
 - **Pins** (resolved 2026-10-01 from the PoC; re-resolve on the day of Task B.2 with
@@ -74,7 +78,7 @@ starting point for most YAML below.
     by hand: `kubectl patch configuration.pkg.crossplane.io smana-crossplane-configuration-core --type merge -p '{"spec":{"package":"ghcr.io/smana/crossplane-configuration-core:<pre-release>"}}'`.
 - **Never merge `feat/agent-router-agentgateway` or `feat/agentgateway-poc` into a stack branch.**
   Both are cut from `integration/agent-factory` and carry its do-not-merge content (`feat/gcp-primary`).
-  AGW-1 cherry-picks every `docs(...)` commit of the design branch instead (Task A.1 Step 2).
+  AGW-1 takes the design's files instead (Task A.1 Step 2).
 - **Flux substitution.** Every directory below is applied with `postBuild.substituteFrom`: a literal
   `${…}` that is not a cluster var is written `$${…}`. Bare `$1` in relabel replacements passes Flux
   untouched. `python3 scripts/ci/flux-schema/check-substitution.py` fails otherwise.
@@ -88,7 +92,7 @@ starting point for most YAML below.
   cited.
   - This repo: `export XRD_CRDS_FILE="$(./scripts/ci/fetch-xrd-crds.sh)" && ./scripts/ci/validate-manifests.sh`
     → exit 0 with `Invalid: 0, Skipped: 0` and `assert-agent-gateway: 9 checks, 0 violations` (from
-    Task B.5 on), then `./scripts/ci/validate-links.sh`, `./scripts/ci/verify-doc-paths.sh`,
+    Task B.5 on; `10 checks` from Task J.1 on), then `./scripts/ci/validate-links.sh`, `./scripts/ci/verify-doc-paths.sh`,
     `python3 scripts/ci/flux-schema/check-substitution.py`, `./scripts/ci/validate-vmrules.sh` and
     `task check` → exit 0.
   - crossplane-configuration: `task check` → exit 0. agent-platform: `go test ./...` → `ok`.
@@ -124,7 +128,7 @@ The design's D1–D8 bind. These are the plan's own:
 
 | # | Repo · branch | Base (stack parent) | Phase | Carries | Live gate (gcp-0) |
 |---|---|---|---|---|---|
-| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053, ADR-0054, programme-spec alignment (cherry-picked); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
+| AGW-1 | this · `feat/agw-gate` | `feat/rooms-driver` (#2150) | A | design, plan, ADR-0053, ADR-0054, programme-spec alignment (Task A.1 Step 2); CRD schemas in the local catalog; `assert-agent-gateway.py` + tests | — |
 | AGW-2 | this · `feat/agw-platform` | AGW-1 | B | controller, Gateway, parameters, listener identity, CNPs, both clouds; gate wired | B.6 |
 | — | this · `feat/agentgateway-poc` | (existing) | B | PoC teardown commit (R5) | B.6 |
 | AGW-3 | this · `feat/agw-routes` | AGW-2 | C | LLM, `/v1/models`, MCP, octo-sts route, additive ingress CNPs, probe | C.5 |
@@ -136,6 +140,8 @@ The design's D1–D8 bind. These are the plan's own:
 | CC-AGW2 | crossplane-configuration · `feat/agentrun-agentgateway-only` | CC-AGW1 | H | run CNP reaches agentgateway only | H.4 |
 | AGW-7 | this · `feat/agw-remove-envoy-router` | AGW-6 | H | Envoy agent-router deleted; A5–A7 retired; docs | H.4 |
 | AGW-8 | this · `feat/agent-frontier-tiers` | AGW-7 | I | Anthropic backend on `internal`, tiers, B6, budget alerts (SP4 PR 2's agent half) | I.2, I.4, I.6 on gcp-0 |
+| AGW-9 | this · `feat/agw-prompt-caching` | AGW-8 | J | price table, AG10, reference-token budgets, Anthropic caching intent, token-type relabel, run page, run-token rule and alerts | J.7, J.8 on gcp-0 |
+| — | this · SP3's stack head (`feat/factory-pair` on 2026-10-04) | (existing) | J | the run meter's query in reference tokens (Task J.5 Step 5) | J.7 |
 
 **Live-check routine** (each [LIVE] step): merge the PR into `integration/agent-factory` with a merge
 commit; if it pins a crossplane-configuration pre-release, hand-patch the core package (Global
@@ -143,8 +149,8 @@ Constraints); run the evidence command; wait for Ready one child per call
 (`flux get kustomization agentgateway -n flux-system`, then `agent-gateway`, `agent-mcp`, …).
 
 **Merge order in the wave** (P33 Phase 7): agent-platform AP-AGW1 after #11; crossplane-configuration
-CC-AGW1 → CC-AGW2 after #35, then one release tag; this repo AGW-1 → … → AGW-8 after #2150, each
-re-pinned to the release.
+CC-AGW1 → CC-AGW2 after #35, then one release tag; this repo AGW-1 → … → AGW-9 after #2150, each
+re-pinned to the release. Task J.5 Step 5's commit merges with SP3's PR that carries it.
 
 ## File structure
 
@@ -175,12 +181,21 @@ re-pinned to the release.
 | `infrastructure/base/agent-router/*` (Envoy objects), `infrastructure/base/agent-mcp/mcproutes.yaml`, `scripts/ci/flux-schema/assert-ai-gateway.py` A5–A7 | H | Removal |
 | `docs/runbooks/agent-factory/{02,04,06,08}-*.md`, `website/content/docs/platform/ai-platform/gateways.md`, `website/content/docs/platform/ai-platform/agents/*.md`, `website/content/docs/platform/ai-platform/observability.md`, `website/content/docs/platform/ai-platform/status.md` | H | Docs (the restructured AI Platform section, on `main` first) |
 | `infrastructure/base/agent-router/{externalsecret-anthropic,agentgateway-anthropic,agentgateway-llm}.yaml`, `infrastructure/base/agent-gateway/policy-budgets-providers.yaml`, `infrastructure/base/agent-model-routing/` | I | Anthropic backend, tiers, B6, alerts and prices |
+| `infrastructure/base/agent-gateway/model-prices.yaml`, `parameters.yaml` (`modelCatalog`) | J | The one price table |
+| `infrastructure/base/agent-gateway/{policy-budgets,policy-budgets-providers,ratelimit,vmpodscrape}.yaml` | J | Reference-token budgets; the token-type relabel |
+| `infrastructure/base/agent-router/agentgateway-anthropic.yaml` | J | Anthropic's caching intent |
+| `infrastructure/base/agent-model-routing/vmrule-agent-budgets.yaml`, `observability/base/agent-platform/{vmrule.yaml,grafana-dashboard-agent-run.yaml}`, `scripts/ci/tests/test-agent-observability.py` | J | Run tokens, alerts, the run page |
+| `scripts/ci/flux-schema/assert-agent-gateway.py` (AG8, AG10), its test, `scripts/AGENTS.md` | J | The gate |
+| `container-images/agent-harness/{agent_run.py,tests/test_agent_run.py}` | J | The price comment; the prompt-prefix pin |
+| `website/content/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md` | J | The reference-token unit |
 | `infrastructure/base/agent-router/optional/openrouter/` (unreferenced), Bedrock/Vertex overlays | Appendix | Optional backends, off by default |
 
 **crossplane-configuration**: `apis/agentrun/kcl/main.k` (`_ROUTER_FQDNS`, `_ROUTER_ENDPOINTS`, `_BRIDGE_IMAGE`),
 `apis/agentrun/kcl/main_test.k`, `tests/golden/agentrun-{basic,complete}.yaml`, `apis/agentrun/kcl/README.md`.
 
 **agent-platform**: `internal/bridge/classify.go`, `internal/bridge/classify_test.go`.
+
+**SP3's stack in this repo** (Task J.5 Step 5): `tooling/base/agent-factory/helm-values-configmap.yaml`.
 
 ## Success criteria → proving task
 
@@ -199,6 +214,10 @@ re-pinned to the release.
 | SC-11 no Envoy agent-router left | H.2 | H.4 |
 | SC-12 internal on Claude, never Z.ai | I.1 (AG5) | I.2, I.6 |
 | SC-13 B6 counts Anthropic tokens, B1–B2 too | I.4 | I.4 |
+| SC-14 cache reads, no provider field in the request | J.3 (AG10), J.6 | J.7 |
+| SC-15 budgets and the run meter in reference tokens | J.2, J.5 (AG8) | J.7 |
+| SC-16 run page cache view, exact pricing | J.1 (AG10), J.4 | J.7 |
+| SC-17 the same task twice, measured | — | J.8 |
 
 ## Owner actions
 
@@ -240,28 +259,59 @@ exits 0, AGW-1 open as a draft on `feat/rooms-driver`.
 the first commit (the tool branches from `origin/main`; this branch stacks). Merge `origin/main` in:
 the pre-push hook requires it.
 
-- [ ] **Step 2: Cherry-pick every docs commit of the design branch**
+- [ ] **Step 2: Bring the design docs from where they now live**
 
-Run: `git log --reverse --no-merges --format='%h %s' origin/integration/agent-factory..origin/feat/agent-router-agentgateway`
-Expected: only `docs(...)` commits, oldest first. On 2026-10-02 they are, by subject:
+PR #2162 merged the design branch into `integration/agent-factory` on 2026-10-03, so its commits are
+in no range this branch can cherry-pick, and `feat/rooms-driver` does not contain them. Never merge
+integration or the design branch (Global Constraints): take the files.
 
-1. `docs(agents): design for the agent router on agentgateway`
-2. `docs(adr): ADR-0053, the agent router runs on agentgateway`
-3. `docs(agents): implementation plan for the agent router on agentgateway`
-4. `docs(adr): ADR-0054, internal agent work calls the Anthropic API directly`
-5. `docs(agents): agent router design follows the cloud-agnostic provider strategy`
-6. `docs(agents): phase I becomes the Anthropic backend and budgets, on gcp-0`
-7. `docs(agents): phase H gate proves internal by probe; dependsOn audit; A.1 picks the whole range`
-8. `docs(agents): programme spec's data class follows ADR-0054`
+Run: `git diff --name-only origin/feat/rooms-driver...origin/integration/agent-factory -- docs website/content/docs/decisions`
+Expected (2026-10-04): 30 paths. Nine are #2162's: the four it created and the five it edited,
+listed below. The rest are integration-only (runbooks, the rooms and gcp-primary documents, other
+ADRs) and stay out.
 
-Any later `docs(...)` commit on the branch belongs here too. Stop if a non-`docs` commit appears.
-Pick the whole range, so ADR-0054 and the provider updates are never dropped:
+1. The four files #2162 created, whole. Until the prompt-caching PR (phase J) is merged into
+   integration, the design and the plan come from `origin/feat/agent-router-agentgateway`:
+
+   ```bash
+   SRC=origin/integration/agent-factory
+   git checkout "$SRC" -- \
+     docs/superpowers/specs/2026-10-01-agent-router-agentgateway-design.md \
+     docs/superpowers/plans/2026-10-01-agent-router-agentgateway-plan.md \
+     website/content/docs/decisions/0053-agent-router-on-agentgateway.md \
+     website/content/docs/decisions/0054-agent-model-providers-anthropic-direct.md
+   ```
+
+2. Only #2162's hunks in the five files it shares with other work. A whole-file checkout would carry
+   integration-only content, such as ADR-0052's row in `_index.md`. `9ecbe8ac`…`400e37f9` are #2162's
+   eight docs commits, with no merge between them:
+
+   ```bash
+   git diff 9ecbe8ac^ 400e37f9 -- \
+     website/content/docs/decisions/0042-agent-router-identity-gateway.md \
+     website/content/docs/decisions/0046-frontier-providers-zai-and-bedrock.md \
+     website/content/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md \
+     website/content/docs/decisions/_index.md \
+     docs/superpowers/specs/2026-09-23-agent-factory-design.md > /tmp/claude-agw-a1.patch
+   git apply --3way --index /tmp/claude-agw-a1.patch
+   ```
+
+   Expected: the three ADRs apply cleanly; `_index.md` (three hunks) and the programme spec (one hunk)
+   conflict. Resolve them by hand, then `git add` both:
+   - `_index.md`: keep `ours` rows; from `theirs` take only the status cells of 0042, 0046 and 0050,
+     and the rows 0053 and 0054, appended after the last row;
+   - `2026-09-23-agent-factory-design.md`: keep `theirs` in its one hunk (`ours` is main's same
+     wording without the ADR-0054 link).
+
+Run: `git diff --cached --name-only | wc -l && grep -c '0053-agent-router-on-agentgateway\|0054-agent-model-providers-anthropic-direct' website/content/docs/decisions/_index.md && grep -c '^## Phase J' docs/superpowers/plans/2026-10-01-agent-router-agentgateway-plan.md && ./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh`
+Expected: `9`, `5`, `1`, and both gates exit 0. (Dry-run on 2026-10-04 against `feat/rooms-driver`
+at `7c8165a6`, with the design and the plan from `origin/feat/agent-router-agentgateway`: these
+outputs.) Then commit them as one docs commit:
 
 ```bash
-git cherry-pick $(git rev-list --reverse --no-merges origin/integration/agent-factory..origin/feat/agent-router-agentgateway)
+git commit -m "docs(agents): the agent router on agentgateway: design, plan, ADR-0053 and ADR-0054"
+rm /tmp/claude-agw-a1.patch
 ```
-
-Never merge that branch (Global Constraints).
 
 - [ ] **Step 3: The base carries both umbrellas suspended**
 
@@ -3806,6 +3856,745 @@ completes on Claude; B1, B2 and B6 count it. This is the programme's **first rea
 - [ ] **Step 4: [LIVE] rotation drill.** [OWNER] writes a new key with prerequisite P1's command;
 `kubectl annotate externalsecret -n agent-system agents-anthropic-api-key force-sync=$(date +%s) --overwrite`;
 the next `internal` call → `200`; the owner revokes the old key in the Anthropic console.
+
+---
+
+## Phase J — AGW-9: prompt caching and cache-aware accounting
+
+Design: [Prompt caching](../specs/2026-10-01-agent-router-agentgateway-design.md#prompt-caching),
+rulings D9–D13. It follows phase I because it amends what phase I lands: the Anthropic backend (I.2),
+B6 (I.4) and the run-token rule (I.5). Gate: AG8 and AG10 green; on gcp-0 an `internal` probe reads
+from cache with no provider-specific field in its request, budgets and the run meter count reference
+tokens, and the run page shows the cache-hit ratio.
+
+REF and `BILLABLE_COST` are the Global Constraints' values. Prices below were read on 2026-10-04 from
+[Z.ai pricing](https://docs.z.ai/guides/overview/pricing) and
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing); re-read both on the day.
+
+### Task J.1: The price table and gate AG10
+
+**Files:**
+- Create: `infrastructure/base/agent-gateway/model-prices.yaml`
+- Modify: `infrastructure/base/agent-gateway/parameters.yaml`, `infrastructure/base/agent-gateway/kustomization.yaml`,
+  `scripts/ci/flux-schema/assert-agent-gateway.py`, `scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`, `scripts/AGENTS.md`
+
+**Interfaces:**
+- Produces: ConfigMap `agent-gateway/agent-model-prices` (key `catalog.json`); `CATALOG_PROVIDER`,
+  `model_catalog`, `check_prices` (AG10) in the gate, reused by Task J.3.
+
+- [ ] **Step 1: Worktree.** `EnterWorktree` with branch `feat/agw-prompt-caching`, then
+`git reset --hard origin/feat/agent-frontier-tiers`; merge `origin/main` in.
+
+- [ ] **Step 2: Write the failing tests.** In `test-assert-agent-gateway.py`, add `import json` to the
+imports. In `compliant()`, the `AgentgatewayParameters` spec gains
+`"modelCatalog": {"sources": [{"configMap": {"name": "agent-model-prices", "key": "catalog.json"}}]}`,
+and the list gains:
+
+```python
+        {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"namespace": "agent-gateway", "name": "agent-model-prices"},
+         "data": {"catalog.json": json.dumps({"providers": {"openai": {"models": {
+             "glm-5.3": {"rates": {"input": "1.40", "output": "4.40", "cacheRead": "0.26"}}}}}})}},
+```
+
+Before `print("main")`, add:
+
+```python
+print("AG10 price table (design D10)")
+expect("a pinned model without a price row fails", lambda o: find(o, "AgentgatewayBackend", "zai")["spec"]["ai"]
+       ["provider"]["openai"].update({"model": "glm-9"}), "AG10")
+expect("a row without cacheRead fails", lambda o: find(o, "ConfigMap", "agent-model-prices")["data"].update(
+    {"catalog.json": json.dumps({"providers": {"openai": {"models": {
+        "glm-5.3": {"rates": {"input": "1.40", "output": "4.40"}}}}}})}), "AG10")
+expect("no modelCatalog on the parameters fails", lambda o: find(o, "AgentgatewayParameters", "agent-router")["spec"]
+       .pop("modelCatalog"), "AG10")
+v = violations_after(lambda o: find(o, "AgentgatewayBackend", "zai")["spec"]["ai"]["provider"].update({"openai": {}}))
+check("an unpinned backend is not priced at build time", not any(x.startswith("AG10") for x in v), f"got {v}")
+```
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+Expected: FAIL on the first three (no AG10 yet).
+
+- [ ] **Step 3: The gate.** In `assert-agent-gateway.py`, add `import json`; add to the docstring after
+AG9: `AG10 Every model an agent backend pins has input, output and cacheRead rates (and cacheWrite
+where the provider charges cache writes) in the model catalog the Gateway's parameters name
+(design D10).` After `PROVIDER_LISTENERS`, add:
+
+```python
+# Design D10: one price table for agent traffic. Rows are keyed by agentgateway's
+# provider name, so Z.ai, served by the `openai` provider, is priced under "openai".
+CATALOG_PROVIDER = {"openai": "openai", "anthropic": "anthropic", "bedrock": "aws.bedrock", "vertexai": "gcp.vertex_ai"}
+RATES = ("input", "output", "cacheRead")
+CACHE_WRITE_PROVIDERS = ("anthropic", "bedrock")
+
+
+def model_catalog(objs):
+    """The merged price table the Gateway's parameters name; None when they name none."""
+    gw = next((g for g in kind(objs, "Gateway")
+               if (meta(g).get("namespace"), meta(g).get("name")) == (GW_NS, GW_NAME)), None)
+    pref = ((spec_of(gw).get("infrastructure") or {}).get("parametersRef") or {}) if gw else {}
+    params = next((p for p in kind(objs, "AgentgatewayParameters")
+                   if meta(p).get("namespace") == GW_NS and meta(p).get("name") == pref.get("name")), None)
+    sources = ((spec_of(params).get("modelCatalog") or {}).get("sources") or []) if params else []
+    if not sources:
+        return None
+    providers = {}
+    for source in sources:
+        cm_ref = source.get("configMap") or {}
+        cm = next((c for c in kind(objs, "ConfigMap")
+                   if meta(c).get("namespace") == GW_NS and meta(c).get("name") == cm_ref.get("name")), {})
+        raw = (cm.get("data") or {}).get(cm_ref.get("key") or "catalog.json")
+        try:
+            data = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            data = {}
+        for name, entry in (data.get("providers") or {}).items():
+            providers.setdefault(name, {}).update((entry or {}).get("models") or {})
+    return providers
+
+
+def check_prices(objs):
+    backends = [b for b in kind(objs, "AgentgatewayBackend") if (spec_of(b).get("ai") or {}).get("provider")]
+    if not backends:
+        return []
+    catalog = model_catalog(objs)
+    if catalog is None:
+        return [f"AG10: {GW_NS}/{GW_NAME}'s AgentgatewayParameters names no modelCatalog; agent requests go unpriced"]
+    out = []
+    for b in backends:
+        for provider, conf in spec_of(b)["ai"]["provider"].items():
+            if provider not in CATALOG_PROVIDER:
+                continue  # host, port, pathPrefix
+            model = (conf or {}).get("model")
+            if not model:
+                continue  # unpinned (OB.1's OpenRouter): AgentModelUnpriced covers it at runtime
+            key = CATALOG_PROVIDER[provider]
+            rates = ((catalog.get(key) or {}).get(model) or {}).get("rates") or {}
+            need = RATES + (("cacheWrite",) if provider in CACHE_WRITE_PROVIDERS else ())
+            missing = [r for r in need if not rates.get(r)]
+            if missing:
+                out.append(f"AG10: {ref(b)} pins {provider}/{model}, which the price table does not price "
+                           f"({', '.join(missing)} missing under providers.{key})")
+    return out
+```
+
+Append `check_prices` to `CHECKS`. If Task I.3 chose `AgentgatewayModel` for the tiers, extend
+`check_prices` to read each model's concrete provider and model the same way (I.3's ruling records
+the field path). In `scripts/AGENTS.md`, the gate's row gains AG10.
+
+- [ ] **Step 4: The table.** Create `infrastructure/base/agent-gateway/model-prices.yaml` (the two
+Flash IDs are the ones Task I.3 Step 2 confirmed):
+
+```yaml
+# The one price table for agent traffic (design D10), USD per million tokens,
+# keyed by agentgateway's provider name (Z.ai is served by `openai`) and the
+# model a backend pins. The gateway prices every request from it (llm.cost,
+# gen_ai_client_cost) and the budgets charge that price (D11). A new provider
+# or model is a row here; gate AG10 fails a pinned model without input, output
+# and cacheRead, plus cacheWrite where the provider charges cache writes.
+# Read 2026-10-04: docs.z.ai/guides/overview/pricing,
+# platform.claude.com/docs/en/about-claude/pricing (5-minute cache writes, D13).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-model-prices
+  namespace: agent-gateway
+data:
+  catalog.json: |
+    {
+      "providers": {
+        "openai": {
+          "models": {
+            "glm-5.3": {"rates": {"input": "1.40", "output": "4.40", "cacheRead": "0.26"}},
+            "glm-5.2": {"rates": {"input": "1.40", "output": "4.40", "cacheRead": "0.26"}},
+            "glm-5.3-flash": {"rates": {"input": "0.15", "output": "0.50", "cacheRead": "0.03"}},
+            "glm-5.3-flashx": {"rates": {"input": "0.37", "output": "1.25", "cacheRead": "0.075"}}
+          }
+        },
+        "anthropic": {
+          "models": {
+            "claude-opus-5-5": {"rates": {"input": "4.00", "output": "20.00", "cacheRead": "0.20", "cacheWrite": "5.00"}},
+            "claude-sonnet-5-5": {"rates": {"input": "2.00", "output": "10.00", "cacheRead": "0.20", "cacheWrite": "2.50"}},
+            "claude-haiku-4-5": {"rates": {"input": "1.00", "output": "5.00", "cacheRead": "0.10", "cacheWrite": "1.25"}}
+          }
+        }
+      }
+    }
+```
+
+Add `  - model-prices.yaml` to `infrastructure/base/agent-gateway/kustomization.yaml`. In
+`parameters.yaml`, add under `spec`:
+
+```yaml
+  # One price table (design D10). Read only from Gateway-level parameters and
+  # the Gateway's namespace (CRD agentgatewayparameters); reloaded live.
+  modelCatalog:
+    sources:
+      - configMap:
+          name: agent-model-prices
+          key: catalog.json
+```
+
+- [ ] **Step 5: Run the tests and the gate**
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py && mkdir -p /tmp/claude-agwj && kustomize build infrastructure/gcp-0/agent-gateway > /tmp/claude-agwj/a.yaml && kustomize build infrastructure/gcp-0/agent-router > /tmp/claude-agwj/b.yaml && python3 scripts/ci/flux-schema/assert-agent-gateway.py /tmp/claude-agwj`
+Expected: `all passed`; `assert-agent-gateway: 10 checks, 0 violations`. Then delete the
+`claude-opus-5-5` row from `a.yaml`, re-run the gate, and expect
+`AG10: AgentgatewayBackend agent-system/anthropic pins anthropic/claude-opus-5-5, which the price table does not price`.
+`rm -rf /tmp/claude-agwj`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add infrastructure/base/agent-gateway scripts/ci/flux-schema/assert-agent-gateway.py \
+  scripts/ci/tests/flux-schema/test-assert-agent-gateway.py scripts/AGENTS.md
+git commit -m "feat(agent-gateway): one price table for agent models, gated (AG10)"
+```
+
+### Task J.2: Budgets charge reference tokens
+
+**Files:**
+- Modify: `infrastructure/base/agent-gateway/policy-budgets.yaml`, `infrastructure/base/agent-gateway/policy-budgets-providers.yaml`,
+  `infrastructure/base/agent-gateway/ratelimit.yaml`, `scripts/ci/flux-schema/assert-agent-gateway.py`,
+  `scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+
+**Interfaces:**
+- Produces: `REF`, `BILLABLE_COST` in the gate; AG8 refuses a `Tokens` descriptor without them.
+
+- [ ] **Step 1: Write the failing tests.** In `compliant()`, both `token-budgets` descriptors gain
+`"cost": gate.BILLABLE_COST`. Before `print("main")`, add:
+
+```python
+print("AG8 reference tokens (design D11)")
+expect("a Tokens descriptor without cost fails", lambda o: find(o, "AgentgatewayPolicy", "token-budgets")["spec"]
+       ["traffic"]["rateLimit"]["global"]["descriptors"][0].pop("cost"), "AG8")
+expect("another cost expression fails", lambda o: find(o, "AgentgatewayPolicy", "token-budgets")["spec"]
+       ["traffic"]["rateLimit"]["global"]["descriptors"][1].update({"cost": "llm.totalTokens"}), "AG8")
+```
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+Expected: `AttributeError` naming `BILLABLE_COST`.
+
+- [ ] **Step 2: The gate.** After `MIN_DRAIN_MAX`, add:
+
+```python
+# Design D11: a request costs its gateway price in reference tokens (REF USD per
+# token: SP4's B1 conversion, $8.5 for 5M), or its total tokens when unpriced.
+# agentgateway skips a descriptor whose cost fails to evaluate, so the string is pinned.
+REF = "0.0000017"
+BILLABLE_COST = f"has(llm.cost) ? uint(llm.cost.total / {REF}) : uint(llm.totalTokens)"
+```
+
+In `check_budgets`, after the `unit` check, add:
+
+```python
+            if d.get("unit") == "Tokens" and d.get("cost") != BILLABLE_COST:
+                out.append(f"AG8: {ref(p)} Tokens descriptor must charge reference tokens: cost: {BILLABLE_COST}")
+```
+
+and the AG8 docstring line becomes "Every rateLimit.global fails open, charges Tokens at the
+reference-token cost (design D11), names no route or backend, …".
+
+- [ ] **Step 3: The policies.** In `policy-budgets.yaml` and `policy-budgets-providers.yaml` (or wherever
+Task I.4 Step 4 left the `provider` descriptor), every descriptor gains, after `unit: Tokens`:
+
+```yaml
+            # Reference tokens (design D11): the request's price from the one
+            # table over $1.70 per million, so cached input charges its real
+            # price on any provider. Unpriced: total tokens, as before.
+            cost: 'has(llm.cost) ? uint(llm.cost.total / 0.0000017) : uint(llm.totalTokens)'
+```
+
+In `policy-budgets.yaml`'s header, "Cost = total tokens, charged after completion" becomes "Cost =
+the request's price in reference tokens (design D11), charged after completion". In
+`ratelimit.yaml`, the header's limits line gains "in reference tokens (design D11)", and B6's
+`requests_per_unit: 10000000` becomes `33000000` with the comment
+`# B6 in reference tokens: ≈ $56/day, what 10M Opus tokens at 90 % input cost (design D11).`
+B1 and B2 keep their numbers.
+
+- [ ] **Step 4: Gate both ways**
+
+Run: Task J.1 Step 5's commands.
+Expected: `all passed`; `10 checks, 0 violations`. Then remove `cost` from B6's descriptor in the
+render, re-run, expect `AG8: … must charge reference tokens`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add infrastructure/base/agent-gateway scripts/ci/flux-schema/assert-agent-gateway.py scripts/ci/tests/flux-schema/test-assert-agent-gateway.py
+git commit -m "feat(agent-gateway): budgets charge each request's price, in reference tokens"
+```
+
+### Task J.3: Anthropic's caching intent, on its backend
+
+**Files:**
+- Modify: `infrastructure/base/agent-router/agentgateway-anthropic.yaml`, `scripts/ci/flux-schema/assert-agent-gateway.py`,
+  `scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`
+
+- [ ] **Step 1: Write the failing test.** Before `print("main")`, add:
+
+```python
+print("AG10 caching intent (design D12)")
+
+
+def anthropic_backend(o, ai_policy=None):
+    spec = {"ai": {"provider": {"anthropic": {"model": "claude-opus-5-5"}}}}
+    if ai_policy is not None:
+        spec["policies"] = {"ai": ai_policy}
+    o.append(obj("AgentgatewayBackend", "agent-system", "anthropic", spec))
+    cm = find(o, "ConfigMap", "agent-model-prices")
+    catalog = json.loads(cm["data"]["catalog.json"])
+    catalog["providers"]["anthropic"] = {"models": {"claude-opus-5-5": {"rates": {
+        "input": "4.00", "output": "20.00", "cacheRead": "0.20", "cacheWrite": "5.00"}}}}
+    cm["data"]["catalog.json"] = json.dumps(catalog)
+
+
+expect("an anthropic backend without its cache_control fails", lambda o: anthropic_backend(o), "AG10")
+v = violations_after(lambda o: anthropic_backend(
+    o, {"finalTransformations": [{"field": "cache_control", "expression": '{"type": "ephemeral"}'}]}))
+check("an anthropic backend with its cache_control passes", not any(x.startswith("AG10") for x in v), f"got {v}")
+```
+
+Task I.1's case "anthropic on internal with its /v1/models answer passes" builds an `anthropic`
+backend without the policy, which AG10 now refuses: its spec becomes
+`{"ai": {"provider": {"anthropic": {}}}, "policies": {"ai": {"finalTransformations": [{"field": "cache_control", "expression": '{"type": "ephemeral"}'}]}}}`.
+
+Run: the test file. Expected: FAIL on the first.
+
+- [ ] **Step 2: The gate.** After `CACHE_WRITE_PROVIDERS`, add:
+
+```python
+# Design D12: a provider that caches only when asked gets the mechanism from its
+# backend, never from the harness. Implicit providers (Z.ai, OpenAI) need nothing.
+CACHE_INTENT = {
+    "anthropic": ("policies.ai.finalTransformations cache_control",
+                  lambda s: any(t.get("field") == "cache_control"
+                                for t in ((s.get("policies") or {}).get("ai") or {}).get("finalTransformations") or [])),
+    "bedrock": ("policies.ai.promptCaching", lambda s: "promptCaching" in ((s.get("policies") or {}).get("ai") or {})),
+}
+```
+
+In `check_prices`, right after the `CATALOG_PROVIDER` skip, add:
+
+```python
+            if provider in CACHE_INTENT and not CACHE_INTENT[provider][1](spec_of(b)):
+                out.append(f"AG10: {ref(b)} ({provider}) lacks its caching intent "
+                           f"({CACHE_INTENT[provider][0]}, design D12)")
+```
+
+and the AG10 docstring line gains ", and a backend whose provider caches only on request carries
+that request".
+
+- [ ] **Step 3: The backend.** In `agentgateway-anthropic.yaml`, `AgentgatewayBackend anthropic`'s
+`spec.policies` gains, beside `auth`:
+
+```yaml
+    # Anthropic caches only when asked (design D12). Set after translation, so
+    # the harness sends Z.ai's request shape unchanged: a top-level cache_control
+    # is Anthropic's automatic caching, 5-minute TTL (D13). The OpenAI-to-Anthropic
+    # translation drops a client's own cache_control markers.
+    ai:
+      finalTransformations:
+        - field: cache_control
+          expression: '{"type": "ephemeral"}'
+```
+
+- [ ] **Step 4: Gate and schema**
+
+Run: Task J.1 Step 5's commands, then `mkdir -p /tmp/claude-agwj3 && kustomize build infrastructure/gcp-0/agent-router > /tmp/claude-agwj3/b.yaml && flux schema validate /tmp/claude-agwj3 --config .fluxschema.yml; echo "exit=$?"; rm -rf /tmp/claude-agwj3`
+Expected: `all passed`; `10 checks, 0 violations`; `Invalid: 0`, `exit=0` (the field path is in the
+pinned CRD: `AgentgatewayBackend.spec.policies.ai.finalTransformations`).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add infrastructure/base/agent-router/agentgateway-anthropic.yaml scripts/ci/flux-schema/assert-agent-gateway.py \
+  scripts/ci/tests/flux-schema/test-assert-agent-gateway.py
+git commit -m "feat(agent-router): the gateway asks Anthropic to cache; the harness never does"
+```
+
+### Task J.4: One token-type contract, and the run page
+
+**Files:**
+- Modify: `infrastructure/base/agent-gateway/vmpodscrape.yaml`, `observability/base/agent-platform/grafana-dashboard-agent-run.yaml`,
+  `scripts/ci/tests/test-agent-observability.py`
+
+- [ ] **Step 1: Write the failing test.** In `test-agent-observability.py`, after Task E.3's run-page
+checks (which define `raw_run`), add:
+
+```python
+    check('gen_ai_token_type=\\"cached_input\\"' in raw_run and '"Cache hit ratio"' in raw_run,
+          "the run page shows cached input and its cache-hit ratio (design D9)")
+    check("gen_ai_client_cost_usd_total" in raw_run,
+          "the run page's cost is the gateway's, priced from agent-model-prices (design D10)")
+    scrape = (ROOT / "infrastructure/base/agent-gateway/vmpodscrape.yaml").read_text()
+    check("replacement: cached_input" in scrape and "replacement: cache_creation_input" in scrape,
+          "agentgateway's cache token types join the shared contract at scrape (design D9)")
+```
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py`
+Expected: FAIL on all three.
+
+- [ ] **Step 2: The relabel.** Append to `vmpodscrape.yaml`'s `metricRelabelConfigs`:
+
+```yaml
+        # One token-type contract across both gateways (design D9): Agent
+        # Router's names, which ai-gateway still emits. `input` already means the
+        # same on both: cache reads and writes included.
+        - sourceLabels: [gen_ai_token_type]
+          regex: input_cache_read
+          targetLabel: gen_ai_token_type
+          replacement: cached_input
+        - sourceLabels: [gen_ai_token_type]
+          regex: input_cache_write
+          targetLabel: gen_ai_token_type
+          replacement: cache_creation_input
+```
+
+The existing `agentgateway_gen_ai_(.+)` rule already turns the cost counter into
+`gen_ai_client_cost_usd_total` (name UNVERIFIED until Task J.7 Step 2).
+
+- [ ] **Step 3: The run page.** In `grafana-dashboard-agent-run.yaml`, with
+`S` = `ar_agent=\"system:serviceaccount:agents:xplane-run-$${run}\"`:
+- panel 3 "Tokens vs budget", target A becomes
+  `(sum(increase(gen_ai_client_cost_usd_total{S}[$__range])) / 0.0000017) or sum(increase(gen_ai_client_token_usage_sum{S, gen_ai_token_type=~\"input|output\"}[$__range]))`,
+  legend `gateway (reference tokens)`, so it compares with `maxTokens` in the meter's unit;
+- panel 9 becomes "Tokens: uncached, cached, cache writes, output" with target A
+  `sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{S, gen_ai_token_type=~\"output|cached_input|cache_creation_input\"}[$__rate_interval]))`
+  and target B, legend `uncached input`,
+  `sum(increase(gen_ai_client_token_usage_sum{S, gen_ai_token_type=\"input\"}[$__rate_interval])) - (sum(increase(gen_ai_client_token_usage_sum{S, gen_ai_token_type=~\"cached_input|cache_creation_input\"}[$__rate_interval])) or vector(0))`;
+- panel 10 "Cost (USD)", target A becomes `sum(increase(gen_ai_client_cost_usd_total{S}[$__range])) or (<its current expression>)`,
+  so runs from before the switch keep a price;
+- a new panel with the next free id (16 on `integration/agent-factory` at `24f05fab`, where panels
+  1–15 exist), placed at `y` = the largest `y + h` in the file:
+
+```json
+{"id": <next free>, "type": "stat", "title": "Cache hit ratio",
+ "gridPos": {"x": 0, "y": <bottom>, "w": 6, "h": 5},
+ "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+ "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1}, "overrides": []},
+ "targets": [{"refId": "A", "instant": true, "expr": "sum(increase(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:xplane-run-$${run}\", gen_ai_token_type=\"cached_input\"}[$__range])) / sum(increase(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:xplane-run-$${run}\", gen_ai_token_type=\"input\"}[$__range]))"}]}
+```
+
+Expand `S` in the file; it is shorthand here only.
+
+- [ ] **Step 4: Run the tests, commit**
+
+Run: `python3 scripts/ci/tests/test-agent-observability.py && python3 scripts/ci/flux-schema/check-substitution.py`
+Expected: pass; exit 0.
+
+```bash
+git add infrastructure/base/agent-gateway/vmpodscrape.yaml observability/base/agent-platform/grafana-dashboard-agent-run.yaml \
+  scripts/ci/tests/test-agent-observability.py
+git commit -m "feat(observability): the run page shows cached input, its hit ratio and the gateway's cost"
+```
+
+### Task J.5: Run tokens, alerts and the run meter in reference tokens
+
+**Files:**
+- Modify: `infrastructure/base/agent-model-routing/vmrule-agent-budgets.yaml` (Task I.5), `observability/base/agent-platform/vmrule.yaml`,
+  `scripts/ci/flux-schema/assert-agent-gateway.py`, `scripts/ci/tests/flux-schema/test-assert-agent-gateway.py`,
+  `container-images/agent-harness/agent_run.py`, `website/content/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md`
+- Modify, on SP3's stack: `tooling/base/agent-factory/helm-values-configmap.yaml`
+
+- [ ] **Step 1: Write the failing test.** Before `print("main")`, add:
+
+```python
+print("AG8 run-token rule (design D11)")
+
+
+def run_token_rule(expr):
+    return {"apiVersion": "operator.victoriametrics.com/v1beta1", "kind": "VMRule",
+            "metadata": {"namespace": "observability", "name": "agent-budgets"},
+            "spec": {"groups": [{"name": "g", "rules": [{"record": "agent_router:run_tokens:total", "expr": expr}]}]}}
+
+
+expect("a run-token rule on raw tokens fails", lambda o: o.append(run_token_rule(
+    'sum by (ar_agent) (gen_ai_client_token_usage_sum{gen_ai_token_type=~"input|output"})')), "AG8")
+v = violations_after(lambda o: o.append(run_token_rule(
+    'sum by (ar_agent) (gen_ai_client_cost_usd_total) / 0.0000017 or sum by (ar_agent) (gen_ai_client_token_usage_sum)')))
+check("a run-token rule in reference tokens passes", v == [], f"got {v}")
+```
+
+Run: the test file. Expected: FAIL on the first.
+
+- [ ] **Step 2: The gate.** At the end of `check_budgets`, before `return out`, add:
+
+```python
+    # The run meter and the dashboards read this rule; it must count what B1 counts.
+    for rule_set in kind(objs, "VMRule"):
+        for group in spec_of(rule_set).get("groups") or []:
+            for rule in group.get("rules") or []:
+                if rule.get("record") == "agent_router:run_tokens:total" and f"/ {REF}" not in rule.get("expr", ""):
+                    out.append(f"AG8: {ref(rule_set)} agent_router:run_tokens:total must divide the gateway's "
+                               f"cost by {REF}, as the budgets do")
+```
+
+- [ ] **Step 3: The rule and the alerts.** In `vmrule-agent-budgets.yaml`, the token sum inside
+`agent_router:run_tokens:total` becomes, keeping the rule's own labels and window:
+
+```
+(sum by (ar_agent) (gen_ai_client_cost_usd_total{ar_agent=~"system:serviceaccount:agents:.+"}) / 0.0000017)
+  or sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.+", gen_ai_token_type=~"input|output"})
+```
+
+with the comment `# Reference tokens (design D11); raw tokens for a run with no priced call
+(Envoy-era runs, or an unpriced model: AgentModelUnpriced).` `AgentRunNearCeiling` and
+`FleetBudgetNearCap` follow from the rule. `AnthropicFleetNearCap`'s expression becomes
+`sum(increase(gen_ai_client_cost_usd_total{namespace="agent-gateway", gen_ai_system="anthropic"}[24h])) / 0.0000017 > 0.8 * 33e6`,
+its summary "Agents spent more than 80 % of B6 (33M reference tokens, ≈ $56) in 24h". Append:
+
+```yaml
+        - alert: AgentModelUnpriced
+          # A model the price table misses (often a dated ID in the response):
+          # its requests charge raw tokens and show no cost (design D10).
+          expr: sum by (gen_ai_request_model) (increase(agentgateway_cost_catalog_lookups_total{namespace="agent-gateway", status!="Exact"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-router cannot price {{ $labels.gen_ai_request_model }}"
+            description: "Add its row to infrastructure/base/agent-gateway/model-prices.yaml. Until then budgets count its raw tokens and the run page shows no cost for it."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: AgentBudgetNotCounting
+          # agentgateway skips a descriptor whose cost CEL fails, silently (design risks).
+          expr: sum(increase(gen_ai_client_token_usage_sum{namespace="agent-gateway"}[15m])) > 0 unless sum(increase(ratelimit_service_rate_limit_total_hits{domain="agent-router", key1="agent"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agents spend tokens and B1 counts nothing"
+            description: "The token descriptors' cost expression fails to evaluate, or agent-ratelimit is unreachable. Check infrastructure/base/agent-gateway/policy-budgets.yaml against BILLABLE_COST."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+```
+
+Use the metric and label names Task J.7 Step 2 records if they differ. In
+`observability/base/agent-platform/vmrule.yaml`, `AgentRunTokenSpendHigh` and
+`AgentFleetTokenSpendHigh` replace their token sums with the same `cost / 0.0000017 or tokens`
+form over their windows (`increase(…[8h])`, `increase(…[1h])`), and their summaries say
+"reference tokens".
+
+- [ ] **Step 4: Verify, commit**
+
+Run: `python3 scripts/ci/tests/flux-schema/test-assert-agent-gateway.py && ./scripts/ci/validate-vmrules.sh && python3 scripts/ci/flux-schema/check-substitution.py`
+Expected: 44 `ok` lines and `all passed`, the gate's own line `10 checks, 0 violations`; exit 0
+twice. (Verified 2026-10-04: Tasks A.3, I.1 and J.1–J.5's Python assembled from this plan in a
+scratch tree, and AG10 run on C.1's, I.2's and J.3's backend YAML.)
+
+```bash
+git add infrastructure/base/agent-model-routing observability/base/agent-platform/vmrule.yaml \
+  scripts/ci/flux-schema/assert-agent-gateway.py scripts/ci/tests/flux-schema/test-assert-agent-gateway.py
+git commit -m "feat(observability): run tokens, budget alerts and spend guards in reference tokens"
+```
+
+- [ ] **Step 5: The run meter (SP3 cross-edit).** In a separate `EnterWorktree` on SP3's stack head
+(the branch that carries `tooling/base/agent-factory/helm-values-configmap.yaml`; `feat/factory-pair`
+on 2026-10-04), `meter.query` becomes the rule's expression with the run selector:
+
+```yaml
+      # agent_router:run_tokens:total's expression (agentgateway design D11):
+      # reference tokens; raw tokens for a run with no priced call.
+      meter:
+        url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
+        query: '(sum by (ar_agent) (gen_ai_client_cost_usd_total{ar_agent=~"system:serviceaccount:agents:xplane-run-.+"}) / 0.0000017) or sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+```
+
+No agent-platform change: the meter accepts any query returning one series per `ar_agent`
+(`Smana/agent-platform@ddb06e02 internal/factory/meter/vm.go#L53-L55`).
+Run: `grep -c '0.0000017' tooling/base/agent-factory/helm-values-configmap.yaml` → `1`, then that
+stack's evidence gates. Commit `feat(agent-factory): the run meter counts reference tokens` and push;
+it rides SP3's PR (PR map).
+
+- [ ] **Step 6: The harness comment.** In `container-images/agent-harness/agent_run.py`, the comment
+above `DEFAULT_INPUT_USD_PER_MTOK` names `infrastructure/base/llm-gateway/vmrule-llm-gateway.yaml`
+as the source of truth; it becomes `infrastructure/base/agent-gateway/model-prices.yaml: the gateway
+prices every call, cached input included, and these figures only keep litellm quiet`. Nothing else
+in the harness changes (design D12).
+Run: `python3 -m py_compile container-images/agent-harness/agent_run.py` → exit 0.
+
+- [ ] **Step 7: ADR-0050.** Its Implementation Notes gain one dated line: `2026-10-04 (agentgateway
+plan phase J, design D11): token descriptors charge each request's price from
+infrastructure/base/agent-gateway/model-prices.yaml in reference tokens (USD ÷ $1.70 per million);
+caps keep their numbers.`
+Run: `./scripts/ci/validate-links.sh && ./scripts/ci/verify-doc-paths.sh` → exit 0.
+
+```bash
+git add container-images/agent-harness/agent_run.py website/content/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md
+git commit -m "docs(agents): reference tokens in ADR-0050 and the harness price note"
+```
+
+### Task J.6: Prompt-prefix stability, pinned
+
+**Files:**
+- Modify: `container-images/agent-harness/tests/test_agent_run.py`
+
+What caching relies on, at the harness pin (`OpenHands/software-agent-sdk@fcc102a697`, v1.49.6): the
+static system block carries nothing per run; the dynamic block ends with the start time, after our
+rules (`openhands-sdk/openhands/sdk/context/prompts/presets.py#L82-L91`). An SDK bump that moves a
+volatile value earlier would silently end every within-run hit; this test fails the image build first.
+
+- [ ] **Step 1: The test.** Append to `test_agent_run.py`:
+
+```python
+class PromptCacheStabilityTest(unittest.TestCase):
+    """Prompt caching (agentgateway design, prompt-prefix stability): the system prompt is
+    byte-stable within a run, and its one per-run value, the start time, follows the rules."""
+
+    def test_volatile_data_stays_after_the_rules(self):
+        from openhands.sdk import LLM, AgentContext
+        from openhands.tools.preset.default import get_default_agent
+
+        llm = LLM.model_validate(agent_run.build_request(ENV, "t", "r")["agent"]["llm"])
+        base = get_default_agent(llm=llm, cli_mode=True)
+        runs = [base.model_copy(update={"agent_context": AgentContext(system_message_suffix="RULES", current_datetime=t)})
+                for t in ("2026-10-04T10:00", "2026-10-04T11:00")]
+        self.assertEqual(runs[0].static_system_message, runs[1].static_system_message)
+        self.assertNotIn("2026-10-04", runs[0].static_system_message)
+        first, second = (r.dynamic_context for r in runs)
+        self.assertLess(first.index("RULES"), first.index("2026-10-04T10:00"))
+        self.assertEqual(first.split("2026-10-04T10:00")[0], second.split("2026-10-04T11:00")[0])
+```
+
+`static_system_message` and `dynamic_context` are `AgentBase` properties
+(`openhands-sdk/openhands/sdk/agent/base.py#L336`, `#L500`); `AgentContext` is re-exported at
+`openhands.sdk` (`openhands-sdk/openhands/sdk/__init__.py#L10`).
+
+- [ ] **Step 2: Run it in the image build** (the Dockerfile runs the suite)
+
+Run: `systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 timeout 600 docker build -t agent-harness:prefix-test container-images/agent-harness`
+Expected: the unittest step lists `test_volatile_data_stays_after_the_rules ... ok`; build exit 0.
+Prove it is not vacuous: in a scratch copy, put the time inside the suffix
+(`system_message_suffix="RULES 2026-10-04T10:00"`) and expect the last assertion to fail.
+(Verified 2026-10-04 against `openhands-sdk==1.49.6` in a scratch venv: the test passes, the
+variant fails on the last assertion.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add container-images/agent-harness/tests/test_agent_run.py
+git commit -m "test(agent-harness): pin the prompt prefix that caching relies on"
+```
+
+### Task J.7: Gates, AGW-9, and the live checks
+
+- [ ] **Step 1: Gates and draft.** Task A.4 Step 1's gates plus `./scripts/ci/validate-vmrules.sh`;
+expect `assert-agent-gateway: 10 checks, 0 violations`. AGW-9 as a draft on
+`feat/agent-frontier-tiers`, title `feat(agents): provider-agnostic prompt caching and cache-aware
+budgets (ADR-0053 phase J)`, with the design's Prompt caching diagram, Task J.5 Step 5's commit link,
+and the P33 hold line.
+
+- [ ] **Step 2: [LIVE] The facts the names rest on.** Merge into integration (with SP3's cross-edit);
+wait for `agent-gateway`, `agent-router` and `agent-observability` Ready. After one `public` probe
+completion:
+
+```bash
+kubectl port-forward -n agent-gateway deploy/agent-router 15020:15020 &
+curl -s localhost:15020/metrics | grep -E '^agentgateway_(gen_ai_client_cost|cost_catalog_lookups)' | sed 's/{.*//' | sort -u
+curl -s localhost:15020/metrics | grep -E '^agentgateway_cost_catalog_lookups' | grep -o 'status="[^"]*"' | sort -u
+curl -s localhost:15020/metrics | grep -E '^agentgateway_gen_ai_client_token_usage_sum' | grep -o 'gen_ai_token_type="[^"]*"' | sort -u
+```
+
+Assumptions (UNVERIFIED until here): `agentgateway_gen_ai_client_cost_usd_total` (the client library
+appends the unit and `_total`), `agentgateway_cost_catalog_lookups_total` with `status="Exact"` for
+`glm-5.3`, token types `input`, `output`, `input_cache_read`, `input_cache_write`
+(`AGW crates/agentgateway/src/telemetry/{metrics.rs#L380-L393,log.rs#L860-L899}`). If any differs, fix
+Tasks J.4 and J.5's names in one commit before going on.
+
+- [ ] **Step 3: [LIVE] SC-14, caching on both providers.** From the probe, send the same request twice,
+10 s apart, with a fixed system message of about 5 000 tokens (above every model's minimum: 512 on
+Opus 5.5 and Sonnet 5.5, 4 096 on Haiku 4.5):
+
+| Leg | Request | Expected |
+|---|---|---|
+| `public` (`:8080`) | `POST /v1/chat/completions`, model `agent-default` | the second response's `usage.prompt_tokens_details.cached_tokens` > 0, and `gen_ai_client_token_usage_sum{gen_ai_token_type="cached_input", ar_agent=~".*:agent-probe"}` rises. Z.ai publishes no minimum or TTL: if 0, record it and retry once at 10 000 tokens |
+| `internal` (`:8081`) | the same body, model `agent-default` (Claude Opus 5.5) | the first call raises `cache_creation_input`, the second `cached_input` (`sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model="claude-opus-5-5"}[5m]))`) |
+| `internal`, control | on integration only, delete the backend's `policies.ai` (commit `test(agent-router): caching intent off`), wait for Ready, repeat | neither series rises; revert the commit |
+
+The request carries no `cache_control` and no provider-specific field: the gateway's
+`finalTransformations` is the only thing that asks (design D12, UNVERIFIED until this step). If the
+`internal` leg reads nothing, go to Task J.9.
+
+- [ ] **Step 4: [LIVE] SC-15, budgets count price.** After Step 3, from Task D.3's port-forward:
+`ratelimit_service_rate_limit_total_hits{domain="agent-router", key1="agent"}` rose by
+`increase(gen_ai_client_cost_usd_total{ar_agent=~".*:agent-probe"}[15m]) / 0.0000017`, within one
+unit per request; `key1="provider"` rose for the `internal` calls only. No rise at all means the
+`cost` CEL failed and agentgateway skipped the descriptor: stop and fix it.
+
+- [ ] **Step 5: [LIVE] SC-16, a real run.** One `public` run through `task agent:run`. Its run page
+shows the cache-hit ratio, cached and uncached input and the cost ([OWNER] one look: Grafana is
+SSO-gated); `AgentModelUnpriced` and `AgentBudgetNotCounting` are inactive; its
+`agents.ogenki.io/usage-tokens` annotation equals `agent_router:run_tokens:total` for the run within
+one scrape interval.
+
+- [ ] **Step 6: [LIVE] Prefix stability in a real run.** From the same run's gateway access logs
+(field names as Task E.1 Step 4 recorded):
+
+```
+kubernetes.pod_namespace:"agent-gateway" | unpack_json | log.x_ar_agent:"system:serviceaccount:agents:xplane-run-<id>"
+  | fields _time, log.gen_ai.usage.input_tokens, log.gen_ai.usage.cache_read.input_tokens | sort by (_time)
+```
+
+Expected: cache reads grow call over call (each read ≈ the previous call's input), with a drop only
+right after a condensation. A drop with none means a prefix changed mid-run: reproduce it locally with
+the harness and a body-capturing fake server (as `test_reasoning_effort_reaches_the_wire` does) and
+diff two consecutive bodies. Never turn on prompt capture in the cluster (O-1). Across runs, the
+MCP tool list must not reorder: `AGENT_ROUTER_HOST=$H sh /tmp/mcp.sh public tools/list | sha256sum`
+from two probe sessions prints the same hash.
+
+Paste every output into AGW-9's "Live evidence".
+
+### Task J.8: [LIVE] The same task twice, at the next gcp-0 rebuild
+
+On the first gcp-0 rebuild with AGW-9 and SP3's cross-edit in integration. Every number comes from
+the normalised series, so the procedure is the same on any provider.
+
+- [ ] **Step 1: The runs.** A `triager` run (template `investigate`: it proposes issue text and never
+writes) on `public`, with a fixed task text recorded in AGW-9's body, on a fixed base commit, through
+`task agent:run`. When it ends, start the identical run at once, so its first calls can find the first
+run's cache.
+- [ ] **Step 2:** The same pair on `internal` once owner prerequisite P1 is done; otherwise record
+"internal: skipped, no key".
+- [ ] **Step 3: The table.** Per run, with `R` its `ar_agent` and every query evaluated at the run's
+finish over a window equal to its duration:
+
+| Column | Source |
+|---|---|
+| model calls | `sum(increase(gen_ai_server_request_duration_seconds_count{ar_agent="R"}[…]))` |
+| input, cached, cache writes, output | `sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{ar_agent="R"}[…]))` |
+| cache-hit ratio | cached ÷ input |
+| cost, gateway | `sum(increase(gen_ai_client_cost_usd_total{ar_agent="R"}[…]))` |
+| cost at the old rule | input × input rate + output × output rate from `agent-model-prices`: what the run page showed before J.4 |
+| reference tokens | gateway cost ÷ 0.0000017, beside the run's `agents.ogenki.io/usage-tokens` |
+| latency | p50 and p95 of `gen_ai_server_request_duration_seconds_bucket{ar_agent="R"}`; wall-clock from `agentrun_started_timestamp_seconds` / `agentrun_finished_timestamp_seconds` |
+| first-call cache reads | the run's first access-log line, `gen_ai.usage.cache_read.input_tokens` (reuse across runs) |
+| condensations | condenser summaries in the step log, if it prints them; otherwise "not visible" |
+
+- [ ] **Step 4:** Paste the table into AGW-9's "Live evidence" (SC-17). It is evidence, not a gate: no
+threshold.
+
+### Task J.9: Fallback, only if Task J.7 Step 3's `internal` leg reads nothing
+
+Design D12's fallback. Skip it when J.7 Step 3 passes.
+
+- [ ] **Step 1:** Record the failing leg (both responses' `usage`, the access-log lines) in AGW-9.
+- [ ] **Step 2: Prove the Messages path first.** From the probe, `POST http://agent-router.agent-gateway.svc.cluster.local:8081/anthropic/v1/messages`
+with an Anthropic-format body carrying `cache_control` on its system block, twice. Expected:
+`200` with a Messages-shaped body, and `cached_input` rises on the second call (agentgateway forwards
+a Messages body with its keys: `AGW crates/llm/src/types/messages.rs#L14-L30`, `llm/mod.rs#L405-L416`).
+UNVERIFIED: that the `/anthropic` prefix route detects the Messages format by path. If it fails, stop
+and report: no harness change can help.
+- [ ] **Step 3: The switch lives in config, keyed on the route's provider.** In crossplane-configuration
+(a CC-AGW3 PR on CC-AGW2), `apis/agentrun/kcl/main.k` gains one map from listener to API format,
+`{"public" = "openai", "internal" = "anthropic"}`, which sets the run's `LLM_API` env and, for
+`anthropic`, `LLM_BASE_URL` to the `/anthropic` path; `main_test.k` asserts both values.
+`agent_run.py` then reads `LLM_API`: `anthropic` selects litellm's `anthropic/` provider and sets
+`capability_overrides={"supports_prompt_cache": True}` (the alias matches no Claude name in the SDK's
+list, `openhands-sdk/openhands/sdk/llm/utils/model_features.py#L123-L151`), with a test per value.
+No `if class == "internal"` appears in the harness.
+- [ ] **Step 4:** Re-run Task J.7 Step 3's `internal` leg with a real `internal` run: `cached_input`
+rises. Keep J.3's backend policy: an explicit marker on the last block with the same TTL makes the
+top-level one a no-op ([prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)).
 
 ---
 
