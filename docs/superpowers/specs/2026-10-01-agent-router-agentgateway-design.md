@@ -28,10 +28,11 @@ composition on `Smana/crossplane-configuration@chore/room-bridge-v0.4.0`.
 | `internal` runs reach Claude through the Anthropic API on both clouds, never Z.ai | PC12 on gcp-0 |
 | aws-0 renders and deploys the same shape; nothing on the default path is cloud-specific | `validate-manifests.sh` renders both clouds |
 | The Envoy agent-router, its MCPRoutes and its gates are deleted once verified | Phase H; `kubectl get gateway -A` shows no `envoy-ai-gateway` Gateway in `agent-system` |
+| Every default provider caches prompts, and budgets, the run meter and the run page count cached input at its real price, with no provider-specific code in the harness | SC-14–SC-17 ([Prompt caching](#prompt-caching)) |
 
 **Non-goals**: moving `ai-gateway` (G5 stays UNVERIFIED and out of scope); budget enforcement (SP4
 PR 7); the optional OpenRouter, Bedrock and Vertex backends (documented, off by default); A2A; agentgateway's cost metric replacing
-our price rules.
+`ai-gateway`'s price rules (for agent traffic it does, from phase J: D10).
 
 ## Target topology
 
@@ -106,6 +107,7 @@ it proves wrong):
 | `ReferenceGrant agent-router-traces` (from `EnvoyProxy`) | `observability/base/agent-platform/` | same grant, from `AgentgatewayPolicy` in `agent-gateway` (enforced by agentgateway) | `observability` |
 | Controller | Envoy Gateway + Agent Router (shared with `ai-gateway`) | `agentgateway` + `agentgateway-crds` HelmReleases | `agentgateway-system` |
 | — (internal had no model) | — | `AgentgatewayBackend anthropic` + ExternalSecret `agents-anthropic-api-key` + internal routes (phase I) | `agent-system` |
+| Price rules `llm_gateway:price_usd_per_mtoken` (input and output only), joined in PromQL by the run page | `infrastructure/base/llm-gateway/vmrule-llm-gateway.yaml` | ConfigMap `agent-model-prices` behind `AgentgatewayParameters.spec.modelCatalog`; the gateway prices each request (phase J, D10) | `agent-gateway` |
 
 ## Providers and keys (ADR-0054)
 
@@ -137,7 +139,7 @@ so each paid provider also gets a fleet bucket, in shadow until SP4 PR 7:
 
 | Rule | Bucket | Limit/day | Mechanism |
 |---|---|---|---|
-| B6 | Anthropic, all runs | 10 000 000 tokens | descriptor `provider` = `"anthropic"` on a policy scoped to the `internal` listener (Anthropic is its only default backend) |
+| B6 | Anthropic, all runs | 10 000 000 tokens; 33 000 000 reference tokens from phase J (the same ≈ $56/day, D11) | descriptor `provider` = `"anthropic"` on a policy scoped to the `internal` listener (Anthropic is its only default backend) |
 | B7 | OpenRouter, all runs (only when enabled) | 5 000 000 tokens | descriptor `provider` = `"openrouter"`; plus a credit limit on the OpenRouter key itself |
 
 Whether a listener-scoped `rateLimit` merges with the Gateway-level B1–B2 policy or replaces it is
@@ -151,7 +153,7 @@ either way.
 
 | Gap | Closure | Proved by |
 |---|---|---|
-| **G1** budgets | `envoyproxy/ratelimit` (the image Envoy Gateway runs, digest-pinned) in `agent-gateway`, store = D4's KVStore, `REDIS_AUTH` from its Secret. Domain `agent-router`. Descriptors: **B1** key `agent` = CEL `jwt.sub`, 5 000 000/day; **B2** key `fleet` = CEL `"agents"`, 40 000 000/day; both `shadow_mode: true` until SP4 PR 7. `unit: Tokens` (cost = total tokens after completion; a zero-cost check runs before). `failureMode: FailOpen`. One Gateway-level policy, no route-identifying entry, so buckets are shared across listeners. Per-provider buckets B6 (Anthropic) and B7 (OpenRouter): see Providers and keys | P6 (PoC) + PC6 on the KVStore; SC-13 |
+| **G1** budgets | `envoyproxy/ratelimit` (the image Envoy Gateway runs, digest-pinned) in `agent-gateway`, store = D4's KVStore, `REDIS_AUTH` from its Secret. Domain `agent-router`. Descriptors: **B1** key `agent` = CEL `jwt.sub`, 5 000 000/day; **B2** key `fleet` = CEL `"agents"`, 40 000 000/day; both `shadow_mode: true` until SP4 PR 7. `unit: Tokens` (cost = total tokens after completion, reference tokens from phase J (D11); a zero-cost check runs before). `failureMode: FailOpen`. One Gateway-level policy, no route-identifying entry, so buckets are shared across listeners. Per-provider buckets B6 (Anthropic) and B7 (OpenRouter): see Providers and keys | P6 (PoC) + PC6 on the KVStore; SC-13 |
 | **G2** metrics | Scrape relabel: `agentgateway_gen_ai_(.+)` → `gen_ai_$1`; `gen_ai_server_request_duration_(bucket\|sum\|count)` → `gen_ai_server_request_duration_seconds_$1` once Task E.1 confirms the unit is seconds. No `error_type` exists: the run page's error ratio and the unauthorized-burst alert move to `agentgateway_requests_total` (`status`, `reason` labels). Guard alert `AgentRouterMetricContractBroken` fires when LLM requests flow but no `gen_ai_client_token_usage_sum{namespace="agent-gateway"}` series exists | PC8 |
 | **G3** PSS | `AgentgatewayParameters.spec`: `deployment` overlay (`seccompProfile: RuntimeDefault` on pod and container, liveness on `:15021/healthz/ready`, 2 replicas, zone and host spread), `resources` 100m/128Mi → 1/512Mi, `service.spec.type: ClusterIP`, `podDisruptionBudget.minAvailable: 1`, image by digest | Gate AG9; `kubectl get svc -n agent-gateway agent-router` type ClusterIP |
 | **G4** topology | Every selector on `gateway.envoyproxy.io/owning-gateway-*` in `envoy-gateway-system` gains, then is replaced by, `io.kubernetes.pod.namespace: agent-gateway` + `gateway.networking.k8s.io/gateway-name: agent-router`. In this repo: identity-proxy upstreams, the data-plane CNP, ingress CNPs of the 3 MCP servers, room-broker, octo-sts and the trace collector, the probe CNP, dashboards' LogsQL and the logs VMRule. In crossplane-configuration: `_ROUTER_FQDN` and the run CNP egress selector (two releases: dual, then new-only). The namespace pin keeps F1's guarantee: a tenant Gateway named `agent-router` elsewhere never matches | PC1; Hubble shows the run pod → `agent-gateway` FORWARDED |
@@ -182,6 +184,104 @@ it), N11 (access logs have no `msg`: LogsQL selects by pod labels and `log.*` fi
 | AG7 | An LLM listener has no Exact `/v1/models` direct response |
 | AG8 | A `rateLimit.global` lacks `unit: Tokens` or `failureMode: FailOpen`, names a route or backend in a descriptor, or its domain's ConfigMap lacks a matching descriptor with `shadow_mode: true` |
 | AG9 | The Gateway's `AgentgatewayParameters` lacks seccomp, a liveness probe, a memory limit, `ClusterIP`, 2 replicas, a PDB, or `shutdown.max >= 660` |
+
+## Prompt caching
+
+**Caching is the gateway's job, and so is its accounting.** The harness sends one OpenAI-format
+request whatever the provider. agentgateway adds the provider's caching mechanism where one is
+needed, normalises every provider's cached-token fields into one usage model, and prices each request
+from one table. Budgets, the run meter and the dashboards read only those normalised numbers. Plan
+phase J builds it; nothing changes before phase I has landed the Anthropic backend.
+
+Sources, pinned: `AGW` = `agentgateway/agentgateway@fe6732474a96` (v1.5.0); `OH` =
+`OpenHands/software-agent-sdk@fcc102a697` (v1.49.6, the harness pin in
+`container-images/agent-harness/requirements.in`); `AR` = `theagentrouter/agent-router@c217da8a`
+(v1.1.0); this repo at `24f05fab` (`integration/agent-factory`).
+
+```mermaid
+flowchart LR
+  H["harness (OpenHands)<br/>one OpenAI-format request<br/>+ prompt_cache_key"] --> GW
+  subgraph GW["agentgateway"]
+    T["per-backend caching intent<br/>Anthropic: top-level cache_control<br/>Bedrock: promptCaching<br/>Z.ai: nothing"]
+    U["normalised usage<br/>input (incl. cache) · cached · cache-write · output"]
+    P["price table<br/>ConfigMap agent-model-prices"]
+    U --> C["llm.cost (USD)"]
+    P --> C
+  end
+  T --> ZAI[api.z.ai] & ANT[api.anthropic.com]
+  C --> RL["B1/B2/B6 cost<br/>reference tokens"]
+  C --> M["gen_ai_client_cost<br/>gen_ai_client_token_usage"]
+  M --> RM["run meter · run-token rule · run page"]
+```
+
+### How tokens are counted
+
+| | Today (Envoy agent-router, Agent Router v1.1.0) | After phase D–E as planned | After phase J |
+|---|---|---|---|
+| Budget charge | No agent budget is wired: `agent-models` declares no `llmRequestCosts` (`infrastructure/base/agent-router/aigatewayroute-agent-models.yaml`); `ai-gateway` charges `TotalToken` (`infrastructure/base/llm-gateway/aigatewayroute.yaml#L12-L16`). `CachedInputToken`, `CacheCreationInputToken` and `CEL` exist but are unused (`AR api/v1beta1/shared_types.go#L146-L161`) | `unit: Tokens`, cost defaults to `llm.totalTokens` (`AGW crates/agentgateway/src/http/remoteratelimit.rs#L83-L88`), cache-inclusive input + output | `cost` = request price ÷ REF (D11) |
+| Run meter | `meter.query` sums `gen_ai_token_type=~"input\|output"` raw (`cloud-native-ref@ceeb6a0f tooling/base/agent-factory/helm-values-configmap.yaml#L47-L50`; `Smana/agent-platform@ddb06e02 internal/factory/meter/vm.go#L29-L31`) | unchanged | the same reference-token expression as the budgets |
+| Run page cost | tokens × `llm_gateway:price_usd_per_mtoken`, which has input and output rows only: "budgets assume no cache discount" (`infrastructure/base/llm-gateway/vmrule-llm-gateway.yaml#L10-L14`) | unchanged | `gen_ai_client_cost`, priced by the gateway |
+| What `input` holds | prompt tokens, cached included (`AR internal/translator/openai_openai.go#L165-L169`) | cache reads and writes included for every provider (`AGW crates/agentgateway/src/cel/types.rs#L1480-L1488`, normalised per wire format in `crates/agentgateway/src/llm/mod.rs#L234-L256`) | unchanged |
+| Cached tokens visible | `gen_ai_token_type="cached_input"`, `"cache_creation_input"` (`AR internal/metrics/genai.go#L52-L61`) | `input_cache_read`, `input_cache_write` (`AGW crates/agentgateway/src/telemetry/log.rs#L860-L899`); access-log and span fields `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens` (`log.rs#L1637-L1651`) | relabelled to Agent Router's names (D9) |
+
+Every row of the first two columns overcounts a cached run: a cached GLM-5.3 input token costs $0.26
+against $1.40 ([Z.ai pricing](https://docs.z.ai/guides/overview/pricing)), yet counts as a full token
+towards `maxTokens` and is priced at $1.40 on the run page.
+
+### Rulings
+
+| # | Ruling | Why | Cost if wrong |
+|---|---|---|---|
+| D9 | **One usage model, at the gateway.** agentgateway's normalised `input` (cache reads and writes included), `output`, `input_cache_read` and `input_cache_write` are the only token numbers anything reads; the scrape relabels the last two to `cached_input` and `cache_creation_input` | Both gateways then share D5's contract, and `input` already means the same on both. Consumers never see a provider's field (`prompt_tokens_details.cached_tokens`, `cache_read_input_tokens`, Bedrock's `cacheReadInputTokens`), which agentgateway maps for them (`AGW crates/llm/src/lib.rs#L270-L297`, `#L343-L360`) | `AGENTGATEWAY_LEGACY_LLM_USAGE_TOKEN_SEMANTICS=true` reverts to provider-reported input (`cel/types.rs#L1729-L1732`); we never set it |
+| D10 | **One price table.** ConfigMap `agent-model-prices` (`catalog.json`, USD per million tokens: `input`, `output`, `cacheRead`, `cacheWrite`), referenced by `AgentgatewayParameters.spec.modelCatalog`. Rows are keyed by agentgateway's provider name, so Z.ai sits under `openai`. Adding a provider or a model is a row; gate AG10 fails a pinned model without one | The gateway is the only place that holds both per-request usage and prices, so it prices once (`llm.cost`, metric `gen_ai_client_cost`; `AGW crates/agentgateway/src/telemetry/metrics.rs#L387-L393`, `schema/config.md#L11-L24`) and a missing cache rate falls back to the input rate, never to zero (`crates/agentgateway/src/llm/catalog/mod.rs#L669-L718`). `ai-gateway` keeps its VMRule rows | A model the catalog misses is unpriced: `AgentModelUnpriced` fires and budgets fall back to raw tokens (D11) |
+| D11 | **Budgets count money, in reference tokens.** Each request costs `llm.cost.total ÷ REF`, REF = $1.70 per million tokens, and `llm.totalTokens` when unpriced. The same expression is the `cost` of every token descriptor (B1, B2, B6, B7), the run-token recording rule and the run meter's query | SP4 §6 already converts B1's 5M tokens to $8.5 at that rate (GLM, 90 % input), so every cap keeps its number and its dollar meaning, while cached input charges its real price on any provider. A run that is mostly cache reads is no longer revoked early. REF is a unit, not a price: no price change ever moves it | Output and Opus tokens weigh more than one unit (a GLM output token 2.6, an uncached Opus input token 2.35), which is their real cost. Removing `cost` restores raw tokens; ADR-0050 records the unit |
+| D12 | **Caching intent is per backend, in config.** Implicit providers (Z.ai) get nothing. The `anthropic` backend sets a top-level `cache_control: {type: ephemeral}` after translation, through `spec.policies.ai.finalTransformations`, which is Anthropic's automatic caching. Bedrock, if enabled, uses `promptCaching`. The harness sends no provider-specific field | agentgateway's OpenAI-to-Anthropic translation drops an Anthropic-style `cache_control` from an OpenAI-format body: it maps only OpenAI's `prompt_cache_breakpoint`, and never on tools or tool results (`AGW crates/llm/src/conversion/messages.rs#L96-L102`, `#L259-L264`). So OpenHands' own markers (`OH openhands-sdk/openhands/sdk/llm/message.py#L200-L201`), even forced with `capability_overrides={"supports_prompt_cache": True}` (`llm.py#L430-L440`; Claude names only in `utils/model_features.py#L123-L151`), would not survive the `/v1` path. `finalTransformations` runs after the body is rendered in the provider's format (`AGW crates/agentgateway/src/llm/mod.rs#L2082-L2095`). `promptCaching` is Bedrock-only (CRD `agentgateway.dev_agentgatewaypolicies.yaml#L253-L293`). Automatic caching exists on every Claude platform ([prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)) | **UNVERIFIED live** until plan Task J.7 Step 3. Fallback, Task J.9: harness `capability_overrides` plus the Messages path `/anthropic`, whose body agentgateway forwards with unknown keys kept (`crates/llm/src/types/messages.rs#L14-L30`, `llm/mod.rs#L405-L416`), switched by the route's provider in config, never by the run class in code |
+| D13 | **5-minute TTL**, never 1 hour | Agent calls are seconds apart and a read refreshes the timer; the 1-hour write costs 2× instead of 1.25×, and the table carries one `cacheWrite` rate | A tool call longer than 5 minutes costs one re-write at 1.25×; J.8 measures how often |
+
+### What cannot be provider-agnostic
+
+These differences live in the price table and the backend rows, nowhere else:
+
+| Provider (backend) | Caching | Who applies it | Read price | Write premium | TTL | Minimum prefix | Usage fields agentgateway maps |
+|---|---|---|---|---|---|---|---|
+| Z.ai `glm-5.3` (`zai`, `openai` provider) | implicit | nobody | $0.26 vs $1.40 | none (storage "limited-time free") | unpublished | unpublished | `usage.prompt_tokens_details.cached_tokens` |
+| Anthropic `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-4-5` (`anthropic`) | on request | gateway, `finalTransformations` | $0.20 / $0.20 / $0.10 (0.05×, 0.1×, 0.1×) | 1.25× for 5 minutes ($5.00 / $2.50 / $1.25), 2× for 1 hour | 5 minutes, refreshed on read | 512 / 512 / 4 096 tokens | `cache_read_input_tokens`, `cache_creation_input_tokens`; `input_tokens` is the uncached remainder |
+| Bedrock (optional) | on request | gateway, `promptCaching` | per Bedrock pricing | yes | as Anthropic | as Anthropic | Converse `cacheReadInputTokens`, `cacheWriteInputTokens` |
+
+Sources: [Z.ai caching](https://docs.z.ai/guides/capabilities/cache) (implicit, no parameter; its "about
+50 %" discount is older than the [price table](https://docs.z.ai/guides/overview/pricing), which wins),
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and
+[prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), read
+2026-10-04. Explicit-breakpoint providers charge a write and need the gateway to ask; implicit ones
+cache on their own and charge nothing extra. A cached run on Anthropic is cheaper only after the
+second call that reuses a prefix, which every agent run passes within its first steps.
+
+### Prompt-prefix stability
+
+A cache hit needs a byte-identical prefix. What OpenHands sends, at `OH`:
+
+- **System prompt**: a static block, then a dynamic block whose sections run repo context, skills,
+  our platform rules (`system_message_suffix_append` lands in `system_message_suffix`:
+  `openhands-agent-server/openhands/agent_server/conversation_service.py#L129-L134`), secrets, and
+  last the start time to the minute (`openhands-sdk/openhands/sdk/context/prompts/presets.py#L82-L91`).
+  It is rendered once per conversation (`openhands-sdk/openhands/sdk/agent/agent.py#L523-L543`), so
+  it is stable across steps and differs across runs only in its last line.
+- **Tools**: fixed in the same event at conversation start; MCP tool order across runs is UNVERIFIED
+  (J.6 Step 3).
+- **Task**: the first user message, the rules beside it as the suffix
+  (`container-images/agent-harness/agent_run.py#L150-L151`).
+- **Neutral hint**: OpenHands sends `prompt_cache_key` = the conversation id on every call
+  (`openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py#L1602`,
+  `llm/options/common.py#L76-L77`); it passes through to OpenAI-format providers untouched.
+- **Condenser**: the default keeps the first 4 events and summarises the rest once the view passes
+  80 (`openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py#L509-L517`). Each
+  condensation keeps the cached head and misses on everything after it, which on Anthropic is one
+  re-write at 1.25×; its summarising call is charged to the run like any other.
+
+**Cross-run reuse is not a goal.** Through the `/v1` path agentgateway joins the system blocks into
+one string (`AGW crates/llm/src/conversion/messages.rs#L318-L333`), and
+that string ends with the run's start time, so only within-run hits are expected on Anthropic.
+Within a run is where the volume is: every step re-sends the whole history.
 
 ## Both clouds
 
@@ -239,6 +339,9 @@ flowchart TD
 | A listener-scoped budget replaces B1–B2 instead of merging | Task I.4: after B6 lands, `total_hits{key1="agent"}` still rises on an `internal` call |
 | OpenRouter enabled on `internal` by mistake | Gate AG5 fails the build |
 | Dual egress window widens the run CNP | Bounded by namespace + label pins; gone after H (`grep -c envoy-gateway-system` in the rendered run CNP = 0) |
+| A token descriptor's `cost` CEL fails to evaluate: agentgateway then skips the descriptor, silently (`AGW crates/agentgateway/src/http/remoteratelimit.rs#L85`) | Task J.7: `total_hits{key1="agent"}` rises by price ÷ REF; `AgentBudgetNotCounting` fires when tokens flow and B1 counts nothing |
+| A provider answers with a model name the price table misses (a dated ID) | `AgentModelUnpriced` on `cost_catalog_lookups`; budgets fall back to raw tokens for that request |
+| Anthropic ignores or rejects the gateway's top-level `cache_control` (D12) | Task J.7 Step 3, positive and negative control; fallback Task J.9 |
 
 ## Success criteria
 
@@ -257,9 +360,14 @@ flowchart TD
 | SC-11 | After H, no `envoy-ai-gateway` Gateway, MCPRoute or `owning-gateway-name: agent-router` selector remains (rendered bundle grep = 0) |
 | SC-12 | An `internal` run on gcp-0 gets completions from `claude-opus-5-5` (`gen_ai_request_model`); Hubble shows its proxy flows to `api.anthropic.com` and none to `api.z.ai` for that request |
 | SC-13 | B6's shadow counter rises by the Anthropic calls' exact token totals; B1–B2 rise too |
+| SC-14 | An `internal` probe's second identical completion reads from cache (`cached_input` > 0) while the request carries no provider-specific field; with the backend's `finalTransformations` removed it reads nothing. A `public` probe's second completion reads from Z.ai's cache |
+| SC-15 | B1, B2 and B6 rise by each request's gateway price ÷ REF (±1 per request), and a run's `agents.ogenki.io/usage-tokens` equals its run-token rule |
+| SC-16 | A real run's page shows its cache-hit ratio, cached and uncached input, and the gateway's cost; `cost_catalog_lookups` shows only exact lookups for agent traffic |
+| SC-17 | The rebuild measurement (plan Task J.8) reports cached tokens, cost and latency for the same task run twice on `public`, and on `internal` once its key exists. Evidence, not a threshold |
 
 ## Open questions for the owner
 
 None blocking. The data-terms default (standard Anthropic commercial terms, zero data retention as an
-option) is the owner's to revisit (ADR-0054). Everything else is decided above (D1–D8, N1, the
-providers table, the exit criterion for H).
+option) is the owner's to revisit (ADR-0054), and so is D11's budget unit: reference tokens are the
+default, and dropping the `cost` expression returns to raw tokens. Everything else is decided above
+(D1–D13, N1, the providers table, the exit criterion for H).
