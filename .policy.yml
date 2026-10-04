@@ -73,6 +73,9 @@ approval_rules:
         paths: ['.*']
       modified_lines:
         total: "< 21"
+      has_workflow_result:        # R42 (review G6): CI, TruffleHog included, is part of the rule
+        conclusions: ["success"]
+        workflows: [".github/workflows/ci.yaml"]
 
   - name: "low-risk: factory revert"  # live: docs-links' paths, exclusions and caps (§5.2)
     if:
@@ -113,6 +116,9 @@ approval_rules:
         paths: ['.*']
       modified_lines:
         total: "< 21"
+      has_workflow_result:        # R42 (review G6): CI, TruffleHog included, is part of the rule
+        conclusions: ["success"]
+        workflows: [".github/workflows/ci.yaml"]
 
   - name: agent change approved by a maintainer  # every other agent PR, shadow classes included
     if:
