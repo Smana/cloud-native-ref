@@ -1,5 +1,5 @@
-# agent-factory (SP3 §6.5). Default deny; one allow per flow. The RunLore intake still lands
-# in a later phase. The classifier egress is SP4's C7; the 8443 ingress and the ZITADEL and
+# agent-factory (SP3 §6.5). Default deny; one allow per flow. The 8080 RunLore intake ingress is
+# FR-9 (§1). The classifier egress is SP4's C7; the 8443 ingress and the ZITADEL and
 # VictoriaLogs egresses are FR-5.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -29,6 +29,12 @@ spec:
             app.kubernetes.io/name: room-broker
       toPorts:
         - ports: [{port: "8443", protocol: TCP}]
+    - fromEndpoints:  # RunLore's templated notifier (§1)
+        - matchLabels:
+            io.kubernetes.pod.namespace: runlore
+            app.kubernetes.io/name: runlore
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
   egress:
     - toEndpoints:
         - matchLabels:

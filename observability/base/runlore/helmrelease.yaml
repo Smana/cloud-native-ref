@@ -42,6 +42,12 @@ spec:
       reconcileStrategy: Revision
   driftDetection:
     mode: enabled
+  # The agent factory's notifier (SP3), shipped only by the agent-platform umbrella.
+  valuesFrom:
+    - kind: ConfigMap
+      name: runlore-factory-values
+      valuesKey: values.yaml
+      optional: true
   values:
     # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
     # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct

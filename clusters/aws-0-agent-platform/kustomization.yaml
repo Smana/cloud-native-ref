@@ -18,3 +18,4 @@ resources:
   - tooling-agent-factory.yaml
   - tooling-policy-bot.yaml
   - observability-agent-platform.yaml
+  - observability-runlore-factory.yaml

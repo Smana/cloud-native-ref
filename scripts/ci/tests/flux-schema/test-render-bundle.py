@@ -375,9 +375,10 @@ check(
 
 
 # --- The repo's own wiring still resolves -------------------------------------
-# Guards the contract end-to-end: these four are the ConfigMap-backed entries
-# the fix exists for, and a rename on either side must fail here rather than
-# quietly shrink the bundle.
+# Guards the contract end-to-end: these five are the entries the fix exists for, and
+# a rename on either side must fail here rather than quietly shrink the bundle. The
+# fifth is runlore's -- an OPTIONAL reference to a ConfigMap in another directory,
+# shipped only by the agent-platform umbrella, so it resolves from spec.values alone.
 
 print("real HelmReleases:")
 
@@ -396,7 +397,7 @@ for path in sorted((rb.REPO_ROOT / "observability" / "base").rglob("*.yaml")):
         if doc.get("kind") == "HelmRelease" and (doc.get("spec") or {}).get("valuesFrom"):
             real.append((path, doc))
 
-check("found the observability HelmReleases that use valuesFrom", len(real) == 4, f"got {len(real)}")
+check("found the observability HelmReleases that use valuesFrom", len(real) == 5, f"got {len(real)}")
 
 for path, doc in real:
     objects = []

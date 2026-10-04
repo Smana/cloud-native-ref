@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#16 at 8b56a62, the chart's appVersion.
+      # agent-platform#17 at d7747b2, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr16.8b56a624@sha256:983306a82dd8662769ce1a0ddbe541a1260f8ff0b7d33b877ff6ae9ddb0299bc"
+      tag: "v0.0.1-pr17.d7747b25@sha256:b1d7f9bbd1bafba406d26f48206ef40a0414f79ffb0fdffd963741de2d4015b7"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -43,6 +43,13 @@ data:
         clientIDFiles:
           - /etc/agent-factory-oidc/rooms-proxy-client-id
           - /etc/agent-factory-oidc/roomctl-client-id
+      # The RunLore intake (FR-9, §1). The strict parser requires every key below; the token
+      # is mounted from the agent-factory-intake ExternalSecret. OD-9 filters findings here.
+      runlore:
+        listen: ":8080"
+        tokenFile: /etc/agent-factory-intake/token
+        minConfidence: 0.75  # OD-9
+        dailyCap: 5          # OD-9
       poll: {issues: 60s, tasks: 30s, meter: 30s}
       # pair until a class goes live (FR-11): every task gets a reviewer (SP3 phase 3).
       defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}

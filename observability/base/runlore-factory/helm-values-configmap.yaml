@@ -1,0 +1,25 @@
+# Merged into RunLore's values only while the agent-platform umbrella ships it (optional
+# valuesFrom). notify.templated POSTs every finding to the factory, which keeps the actionable
+# ones (§1, OD-9).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runlore-factory-values
+  namespace: runlore
+data:
+  values.yaml: |
+    envFrom:
+      - secretRef: {name: runlore-credentials}
+      - secretRef: {name: runlore-slack}
+      - secretRef: {name: runlore-webhook}
+      - secretRef: {name: runlore-factory-intake}
+    config:
+      notify:
+        templated:
+          - name: agent-factory
+            url_env: AGENT_FACTORY_INTAKE_URL
+            token_env: AGENT_FACTORY_INTAKE_TOKEN  # pragma: allowlist secret
+            template: |
+              {"title": {{ toJSON .Title }}, "verdict": {{ toJSON .Verdict }}, "confidence": {{ .Confidence }},
+               "alert_name": {{ toJSON .AlertName }}, "resource_ref": {{ toJSON .ResourceRef }},
+               "severity": {{ toJSON .Severity }}, "cluster": {{ toJSON .Cluster }}, "text": {{ toJSON .Text }}}
