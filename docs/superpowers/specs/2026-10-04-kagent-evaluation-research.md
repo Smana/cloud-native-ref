@@ -39,6 +39,10 @@ and `T:` for `https://github.com/kagent-dev/kagent/blob/8878c39ac64421cb665c8e62
 - **No factory features in either edition, Solo Enterprise included.**
 - **Worth learning:** session checkpoint and fork *with a runtime snapshot*. It depends on
   Substrate, so it lands with the Substrate re-check, not before.
+- **Switching the programme to kagent + Substrate is not ruled out, only deferred.** It would
+  remove a real class of problems, and we intend to reconsider it soon. A Substrate spike at the
+  next gcp-0 rebuild settles the two unknowns that could close the path
+  ([below](#switching-to-kagent--substrate-not-now-deliberately-open)).
 
 ## Two products under one name
 
@@ -87,16 +91,74 @@ kagent added a kubernetes-sigs/agent-sandbox backend in #1640 (2026-04-09) and r
   kagent-built agentgateway as its egress router. Solo Enterprise 0.5.9 still bundles the v0.10
   line.
 
-## Re-check
+## Switching to kagent + Substrate: not now, deliberately open
 
-Fold kagent into the **2026-12-15** ax/Substrate re-check. Its v1 rides on Substrate, so Substrate's
-triggers apply first. Pilot it only if, in addition:
+The question is whether rebuilding the programme on kagent + Substrate + gVisor would simplify it.
+It is judged on the work still ahead, not on what is already built.
 
-- runtime → controller calls are authenticated (substrate#1660 merged and wired);
-- per-agent egress destinations ship ([#3019](https://github.com/kagent-dev/kagent/pull/3019));
-- open-source kagent verifies identity and authorizes actions;
-- sessions record per-message authors for several participants;
-- v1 reaches GA with a migration path.
+**What it would simplify.** These are real, and they are why we keep the option open:
+
+| Today | On Substrate |
+|---|---|
+| Four of the 18 live findings come from one pod per run with a bridge sidecar: a lost pod restarting the conversation (F12, F15), transcripts lost at exit (F10, F11) | Durable `/data`, suspend and resume, and a durable task log remove those classes |
+| A run waiting on a human holds a pod or ends | A parked agent costs nothing and resumes with its memory |
+| Fork copies the log and starts a fresh run | Fork carries a snapshot of the running agent |
+| We maintain the identity-proxy to keep provider keys out of the sandbox | Substrate's egress gateway injects them (static keys only) |
+| Cold pod start and image pull | Start from a pre-warmed snapshot |
+
+**What it would not simplify.**
+- **The factory (SP3) stays ours whole.**
+- **Rooms' core stays ours**: participants, roles, handoff and approver authorization, because
+  kagent sessions are single-owner.
+- **kagent's authorization would need our own controller build**: an `Authorizer` embedded through
+  kagent's Go library, which is in effect a fork of an alpha.
+- **Per-run GitHub tokens** need a custom Substrate credential provider (feasibility unverified).
+- **Per-run identity at the gateway** waits on
+  [substrate#1660](https://github.com/agent-substrate/substrate/issues/1660).
+- **Budgets stay at the gateway.**
+
+**What blocks it today.**
+
+| Blocker | Why it matters |
+|---|---|
+| Substrate needs `PodCertificateRequest` and `ClusterTrustBundle`. They are stable only from Kubernetes 1.37; on 1.35–1.36 they are beta APIs that must be enabled at cluster creation | The newest EKS is 1.36, so aws-0 is likely out until EKS ships 1.37 (EKS specifics unverified) |
+| A reclaimed Substrate worker leaves its awake actors `CRASHED` | Our clusters run on spot |
+| kagent reports its Python runtime crashing on snapshot restore | OpenHands is Python. A crash would push us to Claude Code (proprietary, against D2) or Codex |
+| Shared worker pods; workers need `SYS_ADMIN`, the node agent is privileged | No per-agent CNP or ServiceAccount; a constitution amendment (ADR) |
+| kagent: seven alphas in 13 days, no schema upgrade path, broken install path (#2583); its Substrate fork trails upstream | Our build would be rewritten on their schedule |
+
+**Leaning.** If we move, **Substrate as a backend behind `AgentRun`** beats kagent + Substrate: kagent
+adds little we lack (single-owner sessions, a UI without authorization) and brings its authorization
+gap. The design already keeps that door open: `AgentRun` is the abstraction, run identity is
+issuer-agnostic (C2), and the room bridge avoids WebSocket (C4).
+
+### Next step: a Substrate spike at the next gcp-0 rebuild
+
+Time box: two days, upstream Substrate rather than kagent's fork. It needs a GKE cluster serving the
+certificate APIs: 1.37 if GKE offers it, otherwise one created with those beta APIs enabled, which
+our GKE stack does not set today.
+
+1. Install Substrate with a gVisor `WorkerPool` on on-demand nodes.
+2. Run the OpenHands agent-server as an actor (bring-your-own image), with an `EgressPolicy` allowing
+   GitHub, PyPI and the gateway.
+3. Drive a real task, suspend it mid-run, resume it, and restore its snapshot on another node.
+4. Measure start latency against our sandbox pod.
+
+| Outcome | Then |
+|---|---|
+| OpenHands restores and continues its conversation | Write an `AgentRun` Substrate-backend design |
+| Python restore fails | The Substrate path stays closed for OpenHands until fixed upstream |
+
+### When to reconsider
+
+At the spike's result, on **2026-12-15**, or as soon as any of these holds:
+
+- substrate#1660 merges and Substrate enforces authorization by default;
+- EKS serves the certificate APIs at `certificates.k8s.io/v1` (EKS 1.37);
+- Substrate gains a spot story, such as suspend on preemption;
+- for kagent itself: open-source authorization, sessions with several attributed participants,
+  per-agent egress ([#3019](https://github.com/kagent-dev/kagent/pull/3019)), and v1 GA with a
+  migration path.
 
 ## Open questions
 
