@@ -44,6 +44,17 @@ Repository rules:
 - Work in a fresh worktree per repo branch (cloud-native-ref: `EnterWorktree`, then `git switch -c <branch> origin/<base>`). Never switch branches in someone else's checkout.
 - Every claim of "passing" cites the command and its exit code or counts, run in the same step.
 
+## Owner decisions (2026-10-04)
+
+- **Crossplane's wider pod read is accepted.** Crossplane gets `get`, `list` and `watch` on pods
+  cluster-wide for the required resource (Task 5), and keeps a cluster-wide pod informer; Task 13
+  measures its memory. The namespaced-watcher alternative was rejected: it races the composition's
+  latch.
+- **Merging `feat/factory-resume` into `integration/agent-factory` may bring factory phases 2–9 to
+  gcp-0** at the next rebuild (Tasks 11 and 13).
+- Owner actions the plan depends on: pushing the harness pre-release image by hand (Task 2), and
+  creating the IAM role for the aws-0 FIS test once aws-0 is rebuilt (Task 13).
+
 ## Branch map
 
 | Repo | Stack tip (base) | New branch | Draft PR base | Tasks |
