@@ -144,8 +144,11 @@ classifier cost at all.
 ## Verifying the connection
 
 ```bash
-# Smoke test — list models (works on any client)
-curl -sS https://llm.priv.aws.ogenki.io/v1/models | jq '.data[].id'
+# Smoke test — list models (works on any client). The key is required: the
+# SecurityPolicy's apiKeyAuth targets the parent Gateway, so every attached
+# route — /v1/models included — answers 401 without it.
+curl -sS https://llm.priv.aws.ogenki.io/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.data[].id'
 
 # Direct chat completion against the coder model (no Semantic Router hop)
 curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/chat/completions \

@@ -90,7 +90,8 @@ virtualisation, and lets identity be composed per run.
 ### gcp-0 amendment (2026-10-01)
 
 gcp-0 is now the live cluster (ADR-0052); aws-0 stays supported. The decision holds there with a
-different pool:
+different pool: *(reversed 2026-10-04: aws-0 is the live cluster again, ADR-0055; the gcp-0 pool and
+this amendment stand for the parity lane.)*
 
 | | aws-0 | gcp-0 |
 |---|---|---|

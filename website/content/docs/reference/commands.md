@@ -2,7 +2,7 @@
 title: Commands
 weight: 30
 description: The commands used day to day, verified to exist against the scripts and Terramate workflows in this repository.
-lastVerified: 2026-09-02
+lastVerified: 2026-10-05
 ---
 
 Every command below is either a Terramate script defined in a `workflows.tm.hcl`
@@ -26,7 +26,9 @@ tofu apply -var-file=variables.tfvars
 
 **`TM_CLOUD` picks the cloud**, and defaults to `aws`, except while `primary_cloud`
 is not `aws`: then an unset `TM_CLOUD` fails every job with exit 3
-([ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})). Both clouds share one
+(mechanism in `scripts/provision/tm-provisioner.sh`; the guard is currently inert because
+[ADR-0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}}) restored `primary_cloud = "aws"`,
+reversing [ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})). Both clouds share one
 Terramate run order; this is what stops an AWS deploy building GCP as a side
 effect, and a GCP deploy rebuilding `aws-0`:
 
@@ -63,13 +65,20 @@ default behaviour".
 | `TM_TAILNET_DESTROY` | the tailnet-wide singletons are destroyed | `[skip]`, exit 0 — tearing down one cloud does not remove tailnet access for the other | `destroy` in `opentofu/shared/tailscale/workflows.tm.hcl` |
 | `TM_FEDERATION_DESTROY` | the AWS↔GCP OIDC provider and role are destroyed | `[skip]`, exit 0 — `gcp-0`'s cert-manager and external-dns-public keep working | `destroy` in `opentofu/shared/aws-gcp-federation/workflows.tm.hcl` |
 
-Two consequences worth stating outright:
+Three consequences worth stating outright:
 
 - **A guarded destroy exits 0 when it skips.** That is deliberate — a
   `--reverse destroy` sweep must carry on to the next stack — so a teardown can
   report success having deliberately kept the expensive things. Verify against
   the provider afterwards (see the GKE teardown below) rather than trusting the
   exit code.
+- **The gates define the standard teardown's kept-by-design set.** A bare
+  `--reverse destroy` keeps the seal key and every snapshot (the four
+  lineage-bearing stacks), the tailnet singletons, and the federation — and the
+  platform convention additionally keeps the VPC and the `priv.aws.ogenki.io`
+  private zone by *not* walking `aws/network`, which no gate protects. The
+  full [AWS teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) table
+  is the authority on what a walk destroys and what it keeps.
 - **`TM_LINEAGE_DESTROY=true` is not sufficient on AWS.** Past the gate, the
   seal key carries `prevent_destroy` in `opentofu/aws/openbao/lineage/kms.tf`;
   removing that lifecycle block is a second, deliberate act. Destroying the
@@ -108,6 +117,19 @@ TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
 
 `EKS Full Destroy` runs the reverse order: `prepare-destroy` →
 `stage2-destroy-addons` → `stage1-destroy-cluster`.
+
+The exact invocation of the **full AWS walk** (permanent teardown; it deletes the VPC and the
+private zone too — see the [AWS teardown]({{< relref "/docs/get-started/aws/teardown.md" >}})
+kept-by-design table):
+
+```bash
+cd opentofu
+TM_CLOUD=aws TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
+```
+
+Always `--reverse`. A forward `terramate script run destroy` reaches `aws/network` before the
+cluster: observed 2026-10-04 it destroyed VPC endpoints and the NAT gateway under an ACTIVE EKS
+cluster, then failed on subnet dependencies.
 
 ## GKE deploy (four-job bootstrap)
 
@@ -252,6 +274,8 @@ each gate actually checks.
 | `eks-recycle-bootstrap-nodes.sh` | Recycles Stage 1 node-group nodes so they pick up Cilium prefix delegation |
 | `scripts/ops/k8s/reclaim-csi-volumes.sh` | Reclaims CSI-provisioned volumes before a cluster destroy — cloud-neutral, called by both teardown paths |
 | `scripts/ops/teardown/destroy-stage2.sh` | Graceful-then-reconcile teardown of either cloud's `configure` stack, never gating the cluster delete |
+| `scripts/ops/aws/sweep-teardown-blockers.sh` | Clears the two things that make `tofu destroy` fail and Terraform never owned — ExternalDNS Route53 records and the EKS-managed cluster security group. The destroy's `stage0` job |
+| `scripts/ops/aws/sweep-orphaned-volumes.sh` | Deletes EBS volumes orphaned by earlier teardown runs (`available`, tagged for the named cluster). The destroy's `stage3` job; by hand it is a dry run unless `--apply` |
 | `scripts/ops/gcp/purge-dns-records.sh` | Empties a Cloud DNS zone of external-dns leftovers so `tofu destroy` can delete it |
 | `scripts/docs/export-diagrams.sh` | Exports `.drawio` architecture diagrams to SVG |
 | `scripts/ops/demo/cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |

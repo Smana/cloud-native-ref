@@ -1,10 +1,10 @@
 # OpenTofu / Terramate
 
-15 stacks today. `cd opentofu && terramate list` is the source of truth, not this list:
+16 stacks today. `cd opentofu && terramate list` is the source of truth, not this list:
 
 ```
 aws/{network,eks/init,eks/configure,openbao/cluster,openbao/lineage,openbao/management,llm-platform}
-gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management}
+gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management,workforce-identity}
 shared/{tailscale,aws-gcp-federation}
 ```
 
@@ -29,9 +29,11 @@ TM_CLOUD=aws,gcp terramate script run deploy
 TM_CLOUD=all     terramate script run deploy
 ```
 
-The platform is GCP-primary
-([ADR-0052](../website/content/docs/decisions/0052-gcp-primary-platform.md)). `TM_CLOUD=gcp` is the
-normal deploy, and an unset `TM_CLOUD` fails with exit 3 rather than meaning `aws`. The GCP deploy still needs AWS
+The platform is AWS-primary again ([ADR-0055](../website/content/docs/decisions/0055-aws-primary-again.md)
+reversed [ADR-0052](../website/content/docs/decisions/0052-gcp-primary-platform.md)'s placement,
+2026-10-04, commit `5d688376`). An unset `TM_CLOUD` means `aws` and runs AWS silently; the exit-3
+guard in `scripts/provision/tm-provisioner.sh` is currently inert — it trips only while
+`primary_cloud` is not `aws`. `TM_CLOUD=gcp` is the parity deploy: it still needs AWS
 credentials, for the two shared stacks' S3 state and the federation role. Every AWS stack prints
 `[skip]`, and `aws/openbao/lineage` is kept.
 
@@ -42,7 +44,7 @@ other than tofu carry `${global.cloud_gate}` or `--tm-run`; the destructive ones
 `eks-prepare-destroy.sh` deletes every PVC.
 
 **Why not tags.** A tag filter has no committed default — `--no-tags` has to be typed, so a fresh
-clone or CI would get all 15 stacks, and `drift reconcile` runs `tofu apply -auto-approve`. Tags
+clone or CI would get all 16 stacks, and `drift reconcile` runs `tofu apply -auto-approve`. Tags
 remain right for *listing* (`terramate list --tags=gcp`), never for gating.
 
 ## The other six `TM_*` gates

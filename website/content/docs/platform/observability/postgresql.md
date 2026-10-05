@@ -107,22 +107,37 @@ ahead of that bump (SPEC-010, done). Confirmed live in
 A claim's `SQLInstance` spec (`spec.backup.schedule`, `spec.backup.bucketName`,
 `spec.objectStoreRecovery`) is unchanged by the migration; only the rendered
 `Cluster`'s internals moved from `barmanObjectStore` to
-`spec.plugins: [{name: barman-cloud.cloudnative-pg.io}]`. This is live on the
-cluster today, not just shipped code — Zitadel's `SQLInstance`
-(`security/base/zitadel/sqlinstance.yaml`) documents an actual
-promotion/recovery cycle against it:
+`spec.plugins: [{name: barman-cloud.cloudnative-pg.io}]`. Zitadel's
+`SQLInstance` (`security/base/zitadel/sqlinstance.yaml`) documents an actual
+promotion/recovery cycle against the plugin and ships:
 
 ```yaml
 objectStoreRecovery:
   bucketName: "eu-west-3-ogenki-cnpg-backups"
-  path: "zitadel-20260829"          # frozen dated snapshot, not the live prefix
+  path: "zitadel-20260904"          # frozen dated snapshot, not the live prefix
 backup:
-  schedule: "0 0 * * *"
+  schedule: "0 0 0 * * *"           # SIX fields — CNPG parses seconds first
   bucketName: "eu-west-3-ogenki-cnpg-backups"
 ```
 
+{{< callout type="warning" >}}
+**CNPG schedules take six fields, seconds first.** CNPG parses these with
+robfig/cron, not Kubernetes CronJob syntax: a five-field expression is not
+rejected, it is silently reinterpreted one position left — `"0 0 * * *"`,
+meant as daily-midnight, fires **hourly** at :00:00. Measured 2026-09-02 on
+this very cluster: six "daily" base backups before 13:00, nothing erroring.
+The full warning lives in `security/base/zitadel/sqlinstance.yaml`; when you
+copy a schedule, copy all six fields.
+{{< /callout >}}
+
+The recovery half is live; the per-cluster backup rendering is not: as of
+2026-10-05 the live CNPG clusters render no `spec.backup` and the daily
+`ScheduledBackup` fails with "no backup section" — a queued backup-config
+task closes that gap. Treat the section as shipped-code-plus-recovery until
+that task lands.
+
 Recovery deliberately reads from a **frozen, dated snapshot prefix**
-(`zitadel-20260719`), not the live cluster's own accruing backup prefix — a
+(`zitadel-20260904`), not the live cluster's own accruing backup prefix — a
 bad day on the live database (corruption, an accidental `DROP`) can't
 cascade into a poisoned recovery source, at the cost of manually promoting a
 new snapshot when the schema or data changes meaningfully. Credentials

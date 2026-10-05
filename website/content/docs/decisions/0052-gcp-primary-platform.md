@@ -6,10 +6,12 @@ description: The agent factory and the platform run on one cluster, and running 
 lastVerified: 2026-09-29
 ---
 
-**Status:** Proposed (2026-09-29): validated on `integration/agent-factory`, not merged to `main` (owner,
-2026-09-29) · **Supersedes in part, once accepted:**
-[ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}})'s "relocation carries the
-directory's data"
+**Status:** Reversed on `integration/agent-factory` (2026-10-04): the IdP placement flipped back to
+`aws-0` — see [ADR-0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}}), commit
+`5d688376`. Executed 2026-09-29..10-04 on that branch (validated, never merged to `main`); its
+GCP-parity infrastructure stands, its primary-cloud placement does not · **Superseded in part,
+once accepted:** [ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}})'s
+"relocation carries the directory's data"
 
 ## Context
 
