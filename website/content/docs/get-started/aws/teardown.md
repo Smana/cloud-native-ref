@@ -2,7 +2,7 @@
 title: Teardown
 weight: 30
 description: Tear the platform down safely, in reverse dependency order.
-lastVerified: 2026-08-20
+lastVerified: 2026-10-05
 ---
 
 Destroying by hand, stack by stack, is easy to get wrong: the EKS cluster
@@ -33,17 +33,37 @@ Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 ## Full teardown
 
-Tears down every stack — EKS, OpenBao, Network — in one command:
+The **standard** teardown is a targeted set: the [EKS-only](#eks-only) path above, plus
+`openbao/cluster` if the secrets store must go with the cluster. It keeps, by design:
+
+| Kept by design | How it is kept |
+|---|---|
+| `openbao/lineage` + `openbao/management` (both clouds) | the `TM_LINEAGE_DESTROY` gate — a walk without it skips them, exit 0 |
+| `shared/tailscale` + `shared/aws-gcp-federation` | the `TM_TAILNET_DESTROY` / `TM_FEDERATION_DESTROY` gates |
+| The VPC and the `priv.aws.ogenki.io` private zone | **convention only — nothing gates it.** The targeted teardown simply never walks `aws/network`; the full destroy below deletes the VPC and the zone with it |
+
+Reserve the full walk for a permanent teardown — leaving the region, or handing the address space
+back. It destroys every stack in the selected lane: the EKS pair (`eks/init`, whose destroy also
+tears down `eks/configure` via `stage2-destroy-addons`), `openbao/cluster` (snapshot first, unless
+`TM_OPENBAO_SKIP_SNAPSHOT=true`), and the whole `aws/network` stack — subnets, endpoints, NAT
+gateway, **VPC and private zone included**.
 
 ```bash
 cd opentofu
-terramate script run --reverse destroy          # aws (the default)
-TM_CLOUD=all terramate script run --reverse destroy   # both clouds
+TM_CLOUD=aws TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy   # aws only
+TM_CLOUD=all TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy   # both clouds
 ```
 
-Reverse dependency order, with a single confirmation prompt
+Reverse dependency order — **always `--reverse`** — with a single confirmation prompt
 (`scripts/ops/teardown/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
 sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
+
+{{< callout type="warning" >}}
+**Never run `terramate script run destroy` without `--reverse`.** Forward order reaches
+`aws/network` *before* the cluster: observed 2026-10-04, it destroyed the VPC endpoints and
+the NAT gateway while the EKS cluster was still ACTIVE, then failed on subnet dependencies —
+leaving a running cluster on a deleted network and a state file that no longer plans cleanly.
+{{< /callout >}}
 
 {{< callout type="info" >}}
 **Why `eks/configure` shows `[skip]`.** It is a registered stack
