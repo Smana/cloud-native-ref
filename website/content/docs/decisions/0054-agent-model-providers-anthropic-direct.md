@@ -19,7 +19,8 @@ lastVerified: 2026-10-01
 ADR-0046 sent internal data to Claude through each cloud's own service: Bedrock with EKS Pod
 Identity on aws-0, Vertex with Workload Identity on gcp-0. Neither has been built. The two clouds
 would serve different model IDs with different availability. The aws-0 half cannot be proven while
-aws-0 is destroyed, and gcp-0, the primary cloud (ADR-0052), had only an unstarted "Vertex
+aws-0 is destroyed, and gcp-0, the primary cloud (ADR-0052; reversed 2026-10-04, aws-0 is primary again
+— ADR-0055), had only an unstarted "Vertex
 follow-up". The internal listener therefore has no model on either cluster today.
 
 [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) moves the agent

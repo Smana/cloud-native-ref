@@ -94,8 +94,9 @@ single-file fixes never need one.
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted; Option 1 superseded for the agent router by [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) | 2026-09-25 |
 | [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
-| [0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}}) | GCP is the primary cloud; AWS keeps the essentials | Proposed | 2026-09-29 |
+| [0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}}) | GCP is the primary cloud; AWS keeps the essentials | Reversed on `integration/agent-factory` by [0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}}) (2026-10-04) | 2026-09-29 |
 | [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) | The agent router runs on agentgateway; ai-gateway stays on Envoy Gateway | Accepted | 2026-10-01 |
 | [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
+| [0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}}) | AWS is the primary cloud again; the IdP and the platform run on aws-0 | Accepted | 2026-10-04 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).
