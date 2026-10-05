@@ -23,7 +23,7 @@ New to the vocabulary (run, role, sandbox, room)? Read
 | You need | Why |
 |---|---|
 | Access to the tailnet | The room UI, Grafana and the cluster API are private |
-| SSO membership in `agents-member` | To watch rooms and runs. Requesting `internal` work or a `triager` run needs `agents-admin` |
+| SSO membership in `agents-member` | To watch rooms and runs. Requesting `internal` work or a `triager` run needs `agents-admin`. A valid login that still 403s on the room UI: see the [FAQ](#frequently-asked-questions) |
 | Maintainer rights on the repository | Labels, reviews and merges are how you steer. The agents never merge on their own, except for the low-risk classes below |
 | Rights to create `AgentRun`s in `agents` (Part 2 only) | For runs started by hand, besides the factory's; today the platform owner |
 
@@ -263,3 +263,16 @@ Every step is in the step log, the room and the trace.
 The agent runs arbitrary commands. gVisor answers their system calls in user space, so a kernel
 exploit hits gVisor, not the node. Escaping takes a gVisor bug as well; the node pool is dedicated
 and tainted to limit what that would reach.
+
+**I logged in with SSO and the room UI still gives me a 403. Why?**
+The promise above (`agents-member` watches rooms) is the target state; the check that actually
+authorises you needs two things beyond a valid token, and a 403 means one of them is missing:
+
+1. the `groupsFromRoles` ZITADEL Action must be working — it is what puts your group memberships
+   into the token the broker reads, and a broken or edited Action silently drops the claim from
+   every token;
+2. your user must hold an `agents-admin` grant on the rooms project — a fresh ZITADEL holds no
+   grants, so `scripts/provision/zitadel-oidc-clients.sh --grant agents-admin=<your email>` is
+   re-run after each build, once you have logged in there the first time.
+
+Check the Action first (it fails for everyone at once), then your grant (it fails for you alone).
