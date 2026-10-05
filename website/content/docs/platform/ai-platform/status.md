@@ -55,7 +55,10 @@ committed work — they were reference notes for when the open-weights
 ecosystem, the team's needs, or the demo scope warranted the next
 investment. This section carries forward only what is **still open**, checked
 against the [done spec archive](https://github.com/Smana/cloud-native-ref/tree/main/docs/specs/done)
-and the pinned composition source as of `2026-08-20`.
+and the pinned composition source as of `2026-10-05` (repo-side checks; the
+composition source itself lives in `Smana/crossplane-configuration` and was not
+re-read against the `v0.7.2-pr35` pin — carry that to the next session that can
+fetch it).
 
 {{< callout type="info" >}}
 When picking one of these up, choose the path whose trigger has actually
