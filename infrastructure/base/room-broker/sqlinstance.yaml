@@ -34,6 +34,9 @@ spec:
     # and crd-rooms.yaml, and 404s once that branch merges and is deleted. Phase 7 pins the release tag.
     ref: feat/room-approvals
     path: internal/store/migrations
+  # objectStoreRecovery (path: rooms-pre-destroy) lands once the destroy hook
+  # has created that alias — an empty recovery prefix fails the bootstrap
+  # instead of starting fresh. 2026-10-05 database-backup brief, Step 4.
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
     schedule: "0 0 2 * * *"
