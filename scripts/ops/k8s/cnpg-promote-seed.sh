@@ -44,20 +44,30 @@
 #     check, the archive-settle loop) fails closed and prints the CLI's own
 #     error instead of guessing.
 #
+# --rotate-alias <name> repoints a STABLE alias prefix (the `<app>-pre-destroy`
+# the claims' objectStoreRecovery.path names, so a bootstrap always restores
+# the last destroy's data with no git edit) at THIS run's seed: it clears the
+# alias prefix, copies the fresh dated seed into it and verifies the alias.
+# The invariant that makes a rotating alias safe: the alias is touched ONLY
+# after verify_seed has passed on the dated seed this same run produced --
+# never on an unverified seed, and never instead of the dated seed (the dated
+# history is the fallback chain if an alias copy goes wrong halfway).
+#
 # Dry-run unless --apply. --verify-seed is always read-only, regardless of
 # --apply, and never touches --cluster/--namespace.
 set -uo pipefail
 
-CLUSTER=""; NAMESPACE=""; CLOUD=""; BUCKET=""; SEED=""; APPLY=0; VERIFY_SEED=""
+CLUSTER=""; NAMESPACE=""; CLOUD=""; BUCKET=""; SEED=""; APPLY=0; VERIFY_SEED=""; ROTATE_ALIAS=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --cluster)     CLUSTER="$2"; shift 2 ;;
-    --namespace)   NAMESPACE="$2"; shift 2 ;;
-    --cloud)       CLOUD="$2"; shift 2 ;;
-    --bucket)      BUCKET="$2"; shift 2 ;;
-    --seed)        SEED="$2"; shift 2 ;;
-    --verify-seed) VERIFY_SEED="$2"; shift 2 ;;
-    --apply)       APPLY=1; shift ;;
+    --cluster)      CLUSTER="$2"; shift 2 ;;
+    --namespace)    NAMESPACE="$2"; shift 2 ;;
+    --cloud)        CLOUD="$2"; shift 2 ;;
+    --bucket)       BUCKET="$2"; shift 2 ;;
+    --seed)         SEED="$2"; shift 2 ;;
+    --verify-seed)  VERIFY_SEED="$2"; shift 2 ;;
+    --rotate-alias) ROTATE_ALIAS="$2"; shift 2 ;;
+    --apply)        APPLY=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -87,6 +97,25 @@ case "$SEED" in
     echo "--seed must not begin with 'xplane-': the CNPG backup buckets carry a lifecycle rule that expires every \`xplane-\`-prefixed object after 30 days (it reclaims orphaned per-generation cluster archives), so a seed named that way would be deleted silently and missed only at the next rebuild. Use a dated name such as zitadel-$(date +%Y%m%d)." >&2
     exit 2 ;;
 esac
+
+# The alias lives at the bucket root next to the dated seeds, so the same
+# lifecycle rule applies to it: an `xplane-*` alias would be expired after 30
+# days, taking the claims' recovery source with it.
+case "$ROTATE_ALIAS" in
+  xplane-*)
+    echo "--rotate-alias must not begin with 'xplane-': the bucket lifecycle rule expires every \`xplane-\`-prefixed object after 30 days, which would silently delete the alias the claims restore from." >&2
+    exit 2 ;;
+esac
+# Clearing the alias is step one of the rotation; an alias equal to the seed
+# would delete the seed this run just verified, then copy nothing.
+if [ -n "$ROTATE_ALIAS" ] && [ "$ROTATE_ALIAS" = "$SEED" ]; then
+  echo "--rotate-alias must differ from --seed: the rotation clears the alias prefix before copying the seed into it." >&2
+  exit 2
+fi
+if [ -n "$ROTATE_ALIAS" ] && [ -n "$VERIFY_SEED" ]; then
+  echo "--rotate-alias has no meaning with --verify-seed (which is read-only and touches no cluster)" >&2
+  exit 2
+fi
 
 # ---- cloud-abstraction helpers ---------------------------------------------
 #
@@ -202,6 +231,33 @@ cat_object() { # $1 = full URI to the object
     return 1
   fi
   printf '%s\n' "$out"
+}
+
+# Delete every object under a prefix (the clear half of --rotate-alias).
+# Same discipline as ls_raw: "the prefix was already empty" is a success, a
+# real API error is not, and the two are told apart the way each CLI actually
+# signals them -- measured, not assumed:
+#   aws s3 rm --recursive s3://<bucket>/<nonexistent>/
+#     rc=0, no output (aws-cli/2.15.13) -- ANY non-zero exit is a real failure.
+#   gcloud storage rm --recursive gs://<bucket>/<nonexistent>/
+#     rc=1 "matched no objects" for empty, same as ls -- the message text
+#     carries the distinction the exit code cannot.
+remove_prefix() { # $1 = URI prefix (should end in /)
+  local err rc errfile
+  errfile="$(mktemp)"
+  case "$CLOUD" in
+    aws) aws s3 rm --recursive "$1" >/dev/null 2>"$errfile"; rc=$? ;;
+    gcp) gcloud storage rm --recursive "$1" >/dev/null 2>"$errfile"; rc=$? ;;
+  esac
+  err="$(cat "$errfile")"; rm -f "$errfile"
+  if [ "$rc" -ne 0 ]; then
+    if [ "$CLOUD" = "gcp" ] && printf '%s' "$err" | grep -q "matched no objects"; then
+      return 0
+    fi
+    echo "[error] clearing $1 failed (exit $rc): $err" >&2
+    return 1
+  fi
+  return 0
 }
 
 # Whether a WAL segment is present under <prefix-root>/wals/. Barman shards by
@@ -325,6 +381,9 @@ fi
 if [ "$APPLY" != "1" ]; then
   echo "[dry-run] would create a one-shot Backup, pg_switch_wal, wait for its end_wal segment,"
   echo "[dry-run] then copy $SERVER_NAME/ -> $SEED/ and verify. Re-run with --apply."
+  if [ -n "$ROTATE_ALIAS" ]; then
+    echo "[dry-run] would then rotate alias $ROTATE_ALIAS: clear $URI/$ROTATE_ALIAS/, copy $SEED/ into it, verify."
+  fi
   exit 0
 fi
 
@@ -423,4 +482,27 @@ if verify_seed "$SEED"; then
   echo "Set spec.objectStoreRecovery.path to: $SEED"
 else
   exit 1
+fi
+
+# 8. --rotate-alias: repoint the stable alias at the seed THIS run just
+#    verified. Reachable only past the verify_seed success above -- the alias
+#    is never touched on an unverified seed, which is what lets the destroy
+#    hook warn-and-continue: a failed rotation leaves the alias holding the
+#    previous verified seed.
+if [ -n "$ROTATE_ALIAS" ]; then
+  remove_prefix "$URI/$ROTATE_ALIAS/" || exit 1
+  # Same cross-cloud copy-shape difference as step 6: rsync copies contents,
+  # so the layouts match.
+  case "$CLOUD" in
+    aws) aws s3 cp --recursive "$URI/$SEED/" "$URI/$ROTATE_ALIAS/" ;;
+    gcp) gcloud storage rsync --recursive "$URI/$SEED" "$URI/$ROTATE_ALIAS" ;;
+  esac >/dev/null \
+    || { echo "[fail] alias copy $SEED/ -> $ROTATE_ALIAS/ failed" >&2; exit 1; }
+  echo "[ok    ] copied $SEED/ -> $ROTATE_ALIAS/"
+  if verify_seed "$ROTATE_ALIAS"; then
+    echo
+    echo "Set spec.objectStoreRecovery.path to: $ROTATE_ALIAS"
+  else
+    exit 1
+  fi
 fi
