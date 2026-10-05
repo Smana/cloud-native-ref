@@ -14,9 +14,14 @@ spec:
     - name: harbor
       comment: "Harbor admin user"
       superuser: true
+  # Recovery source for the next bootstrap (bootstrap is immutable post-create).
+  # `harbor-pre-destroy` is an alias owned by the destroy hook, on the same
+  # contract as zitadel's (security/base/zitadel/sqlinstance.yaml): refreshed
+  # only from a verified dated seed, never copied into by hand; supersedes the
+  # harbor-20241111 pin, retained in the bucket as fallback.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "harbor-20241111"
+    path: "harbor-pre-destroy"
   backup:
     # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
     # CronJob syntax, so `0 1 * * *` silently meant hourly at :01.
