@@ -239,7 +239,7 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 | `roles[]` | []object | — | `name` (**required**), `superuser` (**required**), `comment`, `inRoles`. |
 | `atlasSchema` | object | — | Migration Git `url`, `ref`, `path`. |
 | `postgresql` | object | — | `parameters` (map), `pg_hba` ([]string). |
-| `backup` | object | — | `schedule`, `retentionPolicy` (default `15d`), `bucketName` (required if schedule set). |
+| `backup` | object | — | `schedule` (six fields, **seconds first** — CNPG parses robfig/cron; a 5-field value fires hourly, see `security/base/zitadel/sqlinstance.yaml`), `retentionPolicy` (default `15d`), `bucketName` (required if schedule set). |
 
 #### `sqlInstance.performanceInsights`
 
