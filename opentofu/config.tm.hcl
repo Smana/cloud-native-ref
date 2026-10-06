@@ -21,12 +21,18 @@ globals {
   #
   # It delegates rather than restating the rule: the previous gate was fifteen
   # hand-copied blocks, and four scripts ended up missing one entirely.
+  #
+  # Exit 1 is "not selected" and skips; anything higher (an unset TM_CLOUD while
+  # GCP is primary) fails the job.
   cloud_gate = <<-EOT
-    "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-check ${global.stack_cloud} || {
+    _tm_rc=0
+    "${terramate.root.path.fs.absolute}/scripts/provision/tm-provisioner.sh" --tm-check ${global.stack_cloud} || _tm_rc=$?
+    if [ "$_tm_rc" -gt 1 ]; then exit "$_tm_rc"; fi
+    if [ "$_tm_rc" -ne 0 ]; then
       echo "[skip] ${global.stack_cloud} stack — TM_CLOUD=$${TM_CLOUD:-aws} does not include it."
       echo "       Set TM_CLOUD=${global.stack_cloud}, a list like aws,gcp, or all."
       exit 0
-    }
+    fi
   EOT
 
   # A bash heredoc can't carry a command-level `sync_drift_status`, so unmapped
@@ -44,15 +50,20 @@ globals {
   eks_cluster_name = "aws-0"
 
   # Which cloud hosts the services that cannot sensibly exist twice: the public
-  # DNS zone, the cross-cloud federation trust, and ZITADEL (ADR-0027).
+  # DNS zone, the cross-cloud federation trust, and ZITADEL (ADR-0027). Stated
+  # here once and never derived from TM_CLOUD, whose value changes per
+  # invocation. Enforced by ./scripts/ci/validate-idp-topology.sh.
   #
-  # Changing this is a MIGRATION, not a toggle. The identity provider's database
-  # seed, admin credential and OIDC clients travel with it or the move
-  # half-works in silence -- which is why placement is stated here once and
-  # never derived from TM_CLOUD, whose value changes per invocation.
+  # "gcp" since 2026-09-29 (ADR-0052): AWS keeps Route53, the federation, the
+  # state bucket and the lineage stacks. gcp-0's directory is fresh on every
+  # build, so nothing migrates with this switch; the deploy re-registers the
+  # IdP and every client.
   #
-  # Enforced by ./scripts/ci/validate-idp-topology.sh.
-  primary_cloud = "aws"
+  # TM_CLOUD MUST BE SET while this is not "aws": unset means aws, so
+  # tm-provisioner.sh refuses (exit 3) rather than apply the shared stacks and
+  # skip every GCP one. `TM_CLOUD=gcp terramate script run deploy` is the
+  # normal deploy.
+  primary_cloud = "gcp"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy
@@ -64,7 +75,8 @@ globals {
   # A third cloud, or any change to what makes a lane eligible to host, is then
   # one edit here rather than a hunt across two files.
   deploy_identity_provider_gcp = global.primary_cloud == "gcp"
-  openbao_url                  = "https://bao.priv.aws.ogenki.io:8200"
+  # The AWS lineage only; the GCP path derives its URL from PRIVATE_DOMAIN.
+  openbao_url = "https://bao.priv.aws.ogenki.io:8200"
 
   # The AWS NLB's fixed private address in the first private subnet, used only
   # as a fallback when `bao.priv.aws.ogenki.io` does not resolve. A teardown
