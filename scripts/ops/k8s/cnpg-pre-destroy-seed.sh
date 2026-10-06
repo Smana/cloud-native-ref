@@ -59,9 +59,18 @@ if [ "${CNPG_SKIP_PRE_DESTROY_SEED:-false}" = "true" ]; then
   exit 0
 fi
 
+# Both API endpoints are private, so an unreachable cluster is the likeliest
+# failure here — and discovery alone cannot tell it from "no SQLInstance CRD",
+# which reads as "nothing to seed". Probe first, and say what is being lost.
+if ! kubectl --request-timeout=20s get ns >/dev/null 2>&1; then
+  echo "[warn] cluster unreachable — no pre-destroy seed taken."
+  echo "       The next restore falls back to the previous alias/seed and loses everything since."
+  exit 0
+fi
+
 SEED_DATE="$(date +%Y%m%d)"
-if kubectl api-resources --api-group=cloud.ogenki.io 2>/dev/null | grep -q sqlinstances; then
-  kubectl get sqlinstance -A -o json 2>/dev/null \
+if kubectl --request-timeout=20s api-resources --api-group=cloud.ogenki.io 2>/dev/null | grep -q sqlinstances; then
+  kubectl --request-timeout=20s get sqlinstance -A -o json 2>/dev/null \
     | jq -r '.items[] | select(.spec.backup) | "\(.metadata.namespace) \(.metadata.name)"' \
     | while read -r seed_ns seed_claim; do
       [ -z "${seed_claim}" ] && continue
