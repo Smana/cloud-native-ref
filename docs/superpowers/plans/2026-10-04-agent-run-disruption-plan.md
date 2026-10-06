@@ -85,7 +85,7 @@ flowchart LR
   T3 --> T8[8 factory vocabulary<br/>agent-platform]
   T8 --> T9[9 automatic resume] --> T10[10 verifier re-run]
   T10 --> T11[11 factory pin + dashboards<br/>cnref factory]
-  T11 --> T12[12 runbook 09<br/>cnref factory]
+  T11 --> T12[12 runbook 10<br/>cnref factory]
   T5 --> T13[13 live verification]
   T6 --> T13
   T7 --> T13
@@ -2587,17 +2587,19 @@ git commit -m "feat(agent-factory): pin automatic resume (agent-platform#<F>), r
 git push -u origin feat/factory-resume
 gh pr create --repo Smana/cloud-native-ref --draft --base feat/factory-runlore --head feat/factory-resume \
   --title "feat(agent-factory): resume runs lost to a spot reclaim or an eviction" \
-  --body "docs/superpowers/specs/2026-10-04-agent-run-disruption-design.md §4 and §6 on the factory stack: the factory pre-release with automatic resume, resume.maxPerTask: 2, agentrun_info{task} and the run page's task runs, the factory page's resumes panel, runbook 09."
+  --body "docs/superpowers/specs/2026-10-04-agent-run-disruption-design.md §4 and §6 on the factory stack: the factory pre-release with automatic resume, resume.maxPerTask: 2, agentrun_info{task} and the run page's task runs, the factory page's resumes panel, runbook 10."
 ```
 
 ---
 
-## Task 12: runbook 09, the live checks
+## Task 12: runbook 10, the live checks
+
+Runbook 09 is `09-app-key-compromise.md` on this stack, so the disruption runbook is 10.
 
 **Repo:** Smana/cloud-native-ref · **branch:** `feat/factory-resume` (continue from Task 11) · **draft PR base:** `feat/factory-runlore`
 
 **Files:**
-- Create: `docs/runbooks/agent-factory/09-disruption.md`
+- Create: `docs/runbooks/agent-factory/10-disruption.md`
 - Modify: `docs/runbooks/agent-factory/README.md` (status table after the 08 row; *What each runbook proves* table)
 - Modify: `docs/runbooks/agent-factory/01-runtime-sandbox.md` (Step 7 expectation), `docs/runbooks/agent-factory/02-identity-tokens.md` (L147)
 - Modify: `website/content/docs/platform/ai-platform/agents/user-guide.md` (*2. Follow it*)
@@ -2608,10 +2610,10 @@ gh pr create --repo Smana/cloud-native-ref --draft --base feat/factory-runlore -
 
 - [ ] **Step 1: Write the runbook**
 
-Create `docs/runbooks/agent-factory/09-disruption.md`:
+Create `docs/runbooks/agent-factory/10-disruption.md`:
 
 ````markdown
-# 09 — Disruption: a reclaimed run checkpoints and resumes
+# 10 — Disruption: a reclaimed run checkpoints and resumes
 
 Proves the [disruption design](../../superpowers/specs/2026-10-04-agent-run-disruption-design.md):
 on a reclaim the harness checkpoints its work and lets the room read the log to its end within 15 s,
@@ -2798,19 +2800,19 @@ Cleanup: `aws fis delete-experiment-template --id $TPL; aws iam delete-role-poli
 In `README.md`'s status table, after the `[08]` row:
 
 ```markdown
-| [09](09-disruption.md) | — | — | Not run yet: needs `feat/rooms-disruption` and `feat/factory-resume` on `integration/agent-factory` |
+| [10](10-disruption.md) | — | — | Not run yet: needs `feat/rooms-disruption` and `feat/factory-resume` on `integration/agent-factory` |
 ```
 
 In *What each runbook proves*, after the 08 row:
 
 ```markdown
-| [09-disruption.md](09-disruption.md) | Disruption design acceptance 1–6 | Yes — a maintainer's `factory/ready`; aws-0 Step 7 needs IAM | ~60 min |
+| [10-disruption.md](10-disruption.md) | Disruption design acceptance 1–6 | Yes — a maintainer's `factory/ready`; aws-0 Step 7 needs IAM | ~60 min |
 ```
 
 In `01-runtime-sandbox.md` Step 7, change the expectation `` `Failed PodFailed`; `` to `` `Failed PodLost` (a plain delete leaves no `DisruptionTarget`; the composition sees the pod deleted); `` and the trailing **What this proves** to the text below:
 
 ```markdown
-R7 as built. A lost pod fails closed, and `agent-run --branch` resumes the work; a factory run resumes on its own ([09](09-disruption.md)).
+R7 as built. A lost pod fails closed, and `agent-run --branch` resumes the work; a factory run resumes on its own ([10](10-disruption.md)).
 ```
 
 In `02-identity-tokens.md` L147, replace "(the `preStop` revoke still reaches" with "(agent-run's revoke on SIGTERM still reaches".
@@ -2841,7 +2843,7 @@ Expected: each exits 0.
 
 ```bash
 git add docs/runbooks/agent-factory website/content/docs/platform/ai-platform/agents/user-guide.md
-git commit -m "docs(runbooks): runbook 09, disruption live checks; the factory resumes a lost run"
+git commit -m "docs(runbooks): runbook 10, disruption live checks; the factory resumes a lost run"
 git push
 ```
 
@@ -2852,7 +2854,7 @@ git push
 **Repo:** Smana/cloud-native-ref · **branch:** `integration/agent-factory` (merges only) · then `feat/factory-resume` for the results
 
 **Files:**
-- Modify: `docs/runbooks/agent-factory/09-disruption.md` (*Results*), `docs/runbooks/agent-factory/README.md` (status row 09)
+- Modify: `docs/runbooks/agent-factory/10-disruption.md` (*Results*), `docs/runbooks/agent-factory/README.md` (status row 10)
 
 **Interfaces:**
 - Consumes: every earlier task, deployed.
@@ -2883,7 +2885,7 @@ cd opentofu && TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/integration/agent-fa
 
 On a cluster already up, `flux reconcile source git flux-system --with-source` brings the manifests; the pool's shutdown setting needs the `gcp/gke/init` stack applied with no run live (Task 6).
 
-- [ ] **Step 3: Run runbook 09, Steps 1–6, and fill its *Results***
+- [ ] **Step 3: Run runbook 10, Steps 1–6, and fill its *Results***
 
 Map each acceptance criterion to its evidence:
 
@@ -2914,18 +2916,18 @@ gcloud compute operations list --filter='operationType=compute.instances.preempt
 kubectl top pod -n crossplane-system -l app=crossplane   # before and after Task 5: the cluster-wide pod informer's memory
 ```
 
-Record the numbers in runbook 09's *Results* with the date.
+Record the numbers in runbook 10's *Results* with the date.
 
 - [ ] **Step 5: aws-0, when it is next up**
 
-Run runbook 09 Step 7. Record the outcome row and the §5 decision. If the shutdown did not complete, open the follow-up design for §5; this plan does not build it.
+Run runbook 10 Step 7. Record the outcome row and the §5 decision. If the shutdown did not complete, open the follow-up design for §5; this plan does not build it.
 
 - [ ] **Step 6: Commit the results**
 
 ```bash
 git switch feat/factory-resume && git pull --ff-only
-git add docs/runbooks/agent-factory/09-disruption.md docs/runbooks/agent-factory/README.md
-git commit -m "docs(runbooks): runbook 09 results on gcp-0 (and the aws-0 FIS decision)"
+git add docs/runbooks/agent-factory/10-disruption.md docs/runbooks/agent-factory/README.md
+git commit -m "docs(runbooks): runbook 10 results on gcp-0 (and the aws-0 FIS decision)"
 git push
 ```
 
