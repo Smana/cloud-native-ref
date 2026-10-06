@@ -7,7 +7,7 @@ The AgentRun sandbox's harness (SP1 design §5): `ghcr.io/openhands/agent-server
 | `agent_run.py` → `agent-run` | Entrypoint: start agent-server, clone and resume `$BRANCH`, POST the conversation, wait, revoke, exit 0/1. On SIGTERM, within 15 s: pause, checkpoint an implementer's work (`Agent-Checkpoint: disruption`), the room-bridge's final read, stop, revoke |
 | `git_credential_agent.py` → `git-credential-agent` | git credential helper; exchanges through identity-proxy `:4001`, caches in memory; `agent-run` calls its `revoke` on exit |
 | `gh` | gh with that token in `GH_TOKEN`; `gh pr create` (or `new`) then appends the provenance footer (`pr_footer.py`, SP2 design §5) |
-| `commit-msg` | adds `Agent-Run: $RUN_ID`, and `Agent-Task: $TASK_ID` when set |
+| `commit-msg` | adds `Agent-Run: $RUN_ID`, `Agent-Task: $TASK_ID` when set, and `Agent-Checkpoint: disruption` on agent-run's SIGTERM checkpoint |
 | `site/sitecustomize.py` | agent-server's start-up hook (F29): a 4xx to the MCP client's reply to a server `ping` is logged instead of ending the session (envoyproxy/ai-gateway#2715) |
 
 The `Agent-*` namespace is the harness's. In a commit message or a PR body, any line the model wrote that
