@@ -470,6 +470,67 @@ script "destroy" {
   }
 
   job {
+    name        = "stage2-seed-databases"
+    description = "Promote every backed-up CNPG database to a destroy-day seed and refresh its pre-destroy alias"
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        set -euo pipefail
+
+        # The CNPG counterpart of the OpenBao pre-destroy snapshot: while the
+        # cluster is still healthy, promote every SQLInstance with a
+        # spec.backup block to a destroy-day dated seed and refresh the
+        # <app>-pre-destroy alias — the same hook eks-prepare-destroy.sh runs
+        # on the AWS lane (scripts/ops/k8s/cnpg-pre-destroy-seed.sh is the
+        # shared core; CNPG_SKIP_PRE_DESTROY_SEED gates it). Without it the
+        # next rebuild falls back to the previous alias/seed and loses
+        # everything since.
+        #
+        # FIRST of the in-cluster jobs on purpose: stage2-reclaim-volumes
+        # deletes the PVCs out from under postgres, and stage2-destroy-addons
+        # takes Cilium and with it the CNPG operator's networking — past
+        # those, the one-shot Backup cannot run. Flux is suspended for the
+        # same reason as on AWS: GitOps must not shuffle resources under a
+        # running backup (stage2-destroy-addons removes Flux right after, so
+        # nothing resumes it here).
+        #
+        # Never gates the teardown, for the same reason the volume reclaim
+        # does not: the control-plane endpoint is PRIVATE, so the usual reason
+        # to be running destroy is that the cluster or the tailnet is
+        # unreachable. The hook itself also warns and continues per database —
+        # --rotate-alias only touches an alias after the fresh dated seed
+        # verifies, so a failed promotion leaves the previous verified seed
+        # in place.
+        #
+        # A throwaway KUBECONFIG so a teardown never edits the operator's own
+        # kubeconfig or leaves a context behind for a cluster that is about to
+        # stop existing.
+        KUBECONFIG="$(mktemp -t gke-teardown-kubeconfig.XXXXXX)"
+        export KUBECONFIG
+        trap 'rm -f "$${KUBECONFIG}"' EXIT
+
+        name="$(${global.provisioner} output -raw cluster_name)"
+        location="$(${global.provisioner} output -raw cluster_location)"
+        project="$(${global.provisioner} output -raw project_id)"
+
+        if gcloud container clusters get-credentials "$${name}" \
+             --location "$${location}" --project "$${project}" 2>/dev/null; then
+          if kubectl api-resources --api-group=kustomize.toolkit.fluxcd.io &>/dev/null; then
+            echo "Suspending Flux kustomizations..."
+            flux suspend kustomization --all 2>/dev/null || echo "No Flux kustomizations to suspend"
+          fi
+          bash "${terramate.root.path.fs.absolute}/scripts/ops/k8s/cnpg-pre-destroy-seed.sh" \
+            --cloud gcp --bucket "$${project}-ogenki-cnpg-backups" || true
+        else
+          echo "[warn] could not fetch credentials for $${name}; skipping the CNPG pre-destroy seed."
+          echo "       The next rebuild falls back to the previous alias/seed and loses everything since."
+        fi
+      BASH
+      ],
+    ]
+  }
+
+  job {
     name        = "stage2-reclaim-volumes"
     description = "Reclaim CSI-provisioned PD disks while the cluster still exists"
     commands = [

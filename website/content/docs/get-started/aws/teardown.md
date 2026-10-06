@@ -89,6 +89,14 @@ Before OpenTofu deletes anything, the script:
 - Disables Kyverno's and the Cilium operator's blocking admission webhooks —
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
+- Seeds every backed-up CNPG database, via
+  `scripts/ops/k8s/cnpg-pre-destroy-seed.sh` — the same hook the GKE destroy
+  runs: each SQLInstance with a `backup` block is promoted to a destroy-day
+  dated seed, then the `<app>-pre-destroy` alias the next bootstrap restores
+  from is refreshed from it once the seed verifies. A failed seed warns and
+  continues (the alias keeps the previous verified seed);
+  `CNPG_SKIP_PRE_DESTROY_SEED=true` skips. Runs here, before the CSI reclaim
+  below deletes the PVCs out from under postgres.
 - Reclaims CSI-provisioned EBS volumes, by calling
   `scripts/ops/k8s/reclaim-csi-volumes.sh` — the same script the GKE teardown
   calls, since every step of it is plain Kubernetes. It patches **every** PV's

@@ -24,21 +24,27 @@ cd opentofu/gcp/gke/init
 TM_CLOUD=gcp terramate script run destroy
 ```
 
-Six jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
+Seven jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
 
 1. **confirm + init** — `scripts/ops/teardown/terramate-destroy-confirm.sh`, then `tofu init`.
    Init runs *before* anything is destroyed on purpose: a lock file predating a
    new provider must fail here, not once resources have started disappearing.
-2. **`stage2-reclaim-volumes`** — reclaims CSI-provisioned PD disks while the
+2. **`stage2-seed-databases`** — promotes every backed-up CNPG database to a
+   destroy-day seed and refreshes the `<app>-pre-destroy` alias the next
+   bootstrap restores from; the same shared hook the AWS lane runs
+   (`scripts/ops/k8s/cnpg-pre-destroy-seed.sh`). Warns and continues per
+   database, never gates the teardown; `CNPG_SKIP_PRE_DESTROY_SEED=true`
+   skips it.
+3. **`stage2-reclaim-volumes`** — reclaims CSI-provisioned PD disks while the
    cluster still exists (see below).
-3. **`stage2-destroy-addons`** — destroys the `gke/configure` stack (Gateway API
+4. **`stage2-destroy-addons`** — destroys the `gke/configure` stack (Gateway API
    CRDs, Cilium, Flux). Never gates the cluster deletion.
-4. **`stage1-destroy-cluster`** — destroys the cluster itself. This one *is*
+5. **`stage1-destroy-cluster`** — destroys the cluster itself. This one *is*
    allowed to fail loudly: it is the billable resource.
-5. **`stage2-sweep-orphaned-disks`** — the backstop for whatever step 2 could not
+6. **`stage2-sweep-orphaned-disks`** — the backstop for whatever step 3 could not
    reclaim in time, and it runs *after* the cluster is gone precisely so nothing
    is still attached ([why](#orphaned-persistent-disks)).
-6. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
+7. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
    the cluster holding those objects is provably gone.
 
 ## Full teardown
@@ -170,11 +176,11 @@ The IAM members cost nothing and reference principals that no longer exist, so
 they are noise rather than a leak. The buckets bill.
 
 {{< callout type="warning" >}}
-**Keep `<project>-ogenki-cnpg-backups`.** It holds the dated restore seed —
-`zitadel-<date>/` — that `security/gcp-0/zitadel` bootstraps the next cluster's
-ZITADEL from. Delete it and the rebuild starts with an EMPTY identity provider,
-losing what no script can recreate: the Google IdP's user links, and any human
-user, which exists only after a first interactive login. It is ~100 MB.
+**Keep `<project>-ogenki-cnpg-backups`.** It holds the CNPG restore seeds —
+the destroy-day dated prefixes and the `<app>-pre-destroy` aliases the
+`stage2-seed-databases` job refreshes on every teardown. Delete it and a
+rebuild has nothing left to restore from; the ZITADEL directory in
+particular exists only inside these seeds. It is ~100 MB.
 {{< /callout >}}
 
 The other two are a judgement call. `<project>-ogenki-llm-models` held 18.1 GB of

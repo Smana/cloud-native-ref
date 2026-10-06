@@ -12,7 +12,8 @@ spec:
   # initial provisioning — `bootstrap` is immutable post-create).
   #
   # `zitadel-pre-destroy` is an ALIAS owned by the destroy hook
-  # (scripts/ops/aws/eks-prepare-destroy.sh, CNPG_SKIP_PRE_DESTROY_SEED gate):
+  # (scripts/ops/k8s/cnpg-pre-destroy-seed.sh, called by both clouds' destroy
+  # lanes; CNPG_SKIP_PRE_DESTROY_SEED gate):
   # at teardown it promotes this database to a dated seed and refreshes this
   # prefix from it via scripts/ops/k8s/cnpg-promote-seed.sh --rotate-alias,
   # which touches the alias only after the fresh dated seed verifies
