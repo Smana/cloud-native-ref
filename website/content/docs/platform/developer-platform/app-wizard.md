@@ -30,7 +30,7 @@ schema, stacks, and its own config) and
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
 `fetch-crossplane-configuration` init container — currently `v0.7.1`, lagging the package
-pin `v0.7.2-pr35.85a0fae` in
+pin `v0.7.2-pr35.4852542` in
 `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
 from the package the cluster actually serves, the form and its live

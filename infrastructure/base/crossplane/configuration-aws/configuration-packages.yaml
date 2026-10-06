@@ -12,7 +12,7 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-aws
 spec:
-  # CC-S4's pre-release (crossplane-configuration#35, stacked on CC-S3 #34, CC-S2 #33, CC-S1 #32 and CC-O1 #31): the room-bridge v0.0.1-pr11.eb61ce7c sidecar (SBA/SBD re-pin), the AgentRun room rules, H-S3's
+  # CC-S4's pre-release (crossplane-configuration#35, stacked on CC-S3 #34, CC-S2 #33, CC-S1 #32 and CC-O1 #31): the room-bridge v0.0.1-pr22.fe9655d9 sidecar (agent-platform#22, the integration build of both stacks), BRANCH on the bridge and the Running latch (live findings A1, B), the AgentRun room rules, H-S3's
   # harness v0.2.0 (the PR provenance footer), SQLInstance generated credentials and the room-bridge sidecar,
   # with the XRD CRDs the evidence gate (B2) uses. Phase 7 re-pins to a release tag.
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr35.85a0fae
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr35.4852542

@@ -295,8 +295,8 @@ Two findings came out of the validation and are open against the programme:
 
 | # | Finding | State |
 |---|---|---|
-| F19 | A finished run's `AgentRun` is deleted before the factory's ~80 s poll observes the terminal phase, so the task escalates as `run_unschedulable` instead of `AwaitingHuman` | Open |
-| F20 | The harness's default `ConfirmRisky(confirm_unknown=true)` blocks factory runs' git pushes until SP2 5.1/5.2 (approvals) land | Open; interim: set the conversation policy `confirm_unknown=false` |
+| F19 | The factory's own Pending bound deleted a finished run: agent-sandbox reports the Sandbox not Ready while the sidecars drain, the composition read that as `Pending`, and a run older than `maxPendingMinutes` escalated as `run_unschedulable` | Fixed, not yet verified live: agent-platform#20 (the bound spares a run seen started) and crossplane-configuration#35 (`Running` latches once started) |
+| F20 | A factory run's own-branch `git push` asked a human, and the room could not record the request: the composition never passed `BRANCH` to the room bridge, and the pinned broker build had no approvals route | Fixed, not yet verified live: crossplane-configuration#35 (`BRANCH`), agent-platform#21 (refusal text), agent-platform#22 (one build of both stacks) |
 
 ### How the PRs stack
 
