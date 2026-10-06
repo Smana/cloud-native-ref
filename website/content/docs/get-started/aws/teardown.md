@@ -58,6 +58,11 @@ Reverse dependency order — **always `--reverse`** — with a single confirmati
 (`scripts/ops/teardown/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
 sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
 
+**Expect a second prompt without it.** The cache counts from the first answer and is never
+refreshed, and the CNPG pre-destroy seed in `eks-prepare-destroy.sh` can run for several
+minutes per database before the cluster delete even starts. A later stack's `confirm` then
+asks again, or exits 1 when there is no tty.
+
 {{< callout type="warning" >}}
 **Never run `terramate script run destroy` without `--reverse`.** Forward order reaches
 `aws/network` *before* the cluster: observed 2026-10-04, it destroyed the VPC endpoints and
@@ -89,6 +94,14 @@ Before OpenTofu deletes anything, the script:
 - Disables Kyverno's and the Cilium operator's blocking admission webhooks —
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
+- Seeds every backed-up CNPG database, via
+  `scripts/ops/k8s/cnpg-pre-destroy-seed.sh` — the same hook the GKE destroy
+  runs: each SQLInstance with a `backup` block is promoted to a destroy-day
+  dated seed, then the `<app>-pre-destroy` alias the next bootstrap restores
+  from is refreshed from it once the seed verifies. A failed seed warns and
+  continues (the alias keeps the previous verified seed);
+  `CNPG_SKIP_PRE_DESTROY_SEED=true` skips. Runs here, before the CSI reclaim
+  below deletes the PVCs out from under postgres.
 - Reclaims CSI-provisioned EBS volumes, by calling
   `scripts/ops/k8s/reclaim-csi-volumes.sh` — the same script the GKE teardown
   calls, since every step of it is plain Kubernetes. It patches **every** PV's
