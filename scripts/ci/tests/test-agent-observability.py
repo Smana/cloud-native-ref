@@ -239,6 +239,8 @@ def check_ksm():
     check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
     info = metrics.get("info", {}).get("info", {}).get("labelsFromPath", {})
     check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
+    check(info.get("task") == ["metadata", "labels", "agents.ogenki.io/task"],
+          "agentrun_info carries the run's task, so a run page lists the task's other runs (disruption design §6)")
     check(metrics.get("outcome_info", {}).get("info", {}).get("labelsFromPath") == {"reason": ["status", "reason"], "pull_request": ["status", "pullRequest"]},
           "outcome_info reads status.reason and status.pullRequest")
     check(metrics.get("usage_tokens", {}).get("gauge", {}).get("path") == ["status", "usage", "tokens"], "usage_tokens reads status.usage.tokens")
@@ -315,7 +317,27 @@ def check_fleet_tier():
           "tier, tokens and steps joined on run_id")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier]
+def check_task_runs():
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml", "agent-run")
+    names = [v["name"] for v in board.get("templating", {}).get("list", [])]
+    check("task" in names, "a hidden `task` variable, read from the run's agentrun_info")
+    panel = titled(board).get("Runs of this task", {})
+    check('task=\\"${task}\\"' in json.dumps(panel.get("targets", [])), "the table filters on the run's task")
+    check("/d/agent-run/agent-run?var-run=${__value.text}" in json.dumps(panel.get("fieldConfig", {})),
+          "one click from a run of the task, the resumed one included, opens its page (disruption design §6)")
+
+
+def check_factory_resumes():
+    rel = f"{DASHBOARDS}/grafana-dashboard-agent-factory.yaml"
+    d = find(rel, "GrafanaDashboard", "agent-factory")
+    board = json.loads(d.get("spec", {}).get("json", "{}").replace("$$", "$")) if d else {}
+    panel = titled(board).get("Automatic resumes by reason", {})
+    check("agent_factory_resumes_total" in json.dumps(panel.get("targets", [])),
+          "the factory page counts automatic resumes by reason (disruption design §6)")
+
+
+CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier,
+          check_task_runs, check_factory_resumes]
 
 for run in CHECKS:
     run()

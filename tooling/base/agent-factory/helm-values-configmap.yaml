@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#17 at d7747b2, the chart's appVersion.
+      # agent-platform#25 at fae240a0, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr17.d7747b25@sha256:b1d7f9bbd1bafba406d26f48206ef40a0414f79ffb0fdffd963741de2d4015b7"
+      tag: "v0.0.1-pr25.fae240a0@sha256:c9184a40b20609bfd49bab7e7ecd19ee78e9b15d32d55d5315b5de7ede712d7b"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -118,6 +118,9 @@ data:
         enforcePrincipal: false
         factoryDaily: 25000000
         humanDaily: 5000000
+      # Disruption design §4: a run lost to a reclaim or an eviction resumes on its own, twice per task
+      # at most, and only with a RunTokens left under the task's TaskTokens (enforced on that path).
+      resume: {maxPerTask: 2}
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428

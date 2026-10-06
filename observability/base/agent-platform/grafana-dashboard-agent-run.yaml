@@ -33,7 +33,11 @@ spec:
         {"name": "run", "label": "Run", "type": "query", "refresh": 2, "sort": 1,
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "definition": "label_values(agentrun_info{namespace=\"agents\"}, run_id)",
-         "query": "label_values(agentrun_info{namespace=\"agents\"}, run_id)"}
+         "query": "label_values(agentrun_info{namespace=\"agents\"}, run_id)"},
+        {"name": "task", "label": "Task", "type": "query", "hide": 2, "refresh": 2,
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "definition": "label_values(agentrun_info{namespace=\"agents\", run_id=\"$${run}\"}, task)",
+         "query": "label_values(agentrun_info{namespace=\"agents\", run_id=\"$${run}\"}, task)"}
       ]},
       "panels": [
         {"id": 1, "type": "table", "title": "Run",
@@ -122,6 +126,21 @@ spec:
         {"id": 15, "type": "table", "title": "agent-router spans",
          "gridPos": {"x": 0, "y": 48, "w": 24, "h": 7},
          "datasource": {"type": "jaeger", "uid": "VictoriaTraces"},
-         "targets": [{"refId": "A", "queryType": "search", "service": "agent-router", "tags": "agent.principal=system:serviceaccount:agents:xplane-run-$${run}", "limit": 50}]}
+         "targets": [{"refId": "A", "queryType": "search", "service": "agent-router", "tags": "agent.principal=system:serviceaccount:agents:xplane-run-$${run}", "limit": 50}]},
+        {"id": 16, "type": "table", "title": "Runs of this task",
+         "gridPos": {"x": 0, "y": 55, "w": 24, "h": 6},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [
+           {"refId": "A", "instant": true, "format": "table", "expr": "max by (run_id, role) (last_over_time(agentrun_info{namespace=\"agents\", task=\"$${task}\", task!=\"\"}[$__range]))"},
+           {"refId": "B", "instant": true, "format": "table", "expr": "max by (run_id, phase) (last_over_time(agentrun_status_phase{namespace=\"agents\"}[$__range]) == 1) and on (run_id) max by (run_id) (last_over_time(agentrun_info{namespace=\"agents\", task=\"$${task}\", task!=\"\"}[$__range]))"},
+           {"refId": "C", "instant": true, "format": "table", "expr": "max by (run_id, reason) (last_over_time(agentrun_outcome_info{namespace=\"agents\"}[$__range])) and on (run_id) max by (run_id) (last_over_time(agentrun_info{namespace=\"agents\", task=\"$${task}\", task!=\"\"}[$__range]))"}
+         ],
+         "transformations": [
+           {"id": "merge", "options": {}},
+           {"id": "filterFieldsByName", "options": {"include": {"names": ["run_id", "role", "phase", "reason"]}}}
+         ],
+         "fieldConfig": {"defaults": {}, "overrides": [
+           {"matcher": {"id": "byName", "options": "run_id"}, "properties": [{"id": "links", "value": [{"title": "This run's page", "url": "/d/agent-run/agent-run?var-run=$${__value.text}"}]}]}
+         ]}}
       ]
     }
