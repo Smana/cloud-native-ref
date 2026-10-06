@@ -242,6 +242,14 @@ class CommitMsgHookTest(unittest.TestCase):
         rc, _ = self.commit("fix: a thing\n", RUN_ID="")
         self.assertEqual(rc, 1)
 
+    def test_agent_checkpoint_is_the_harness_alone(self):
+        # Disruption design §2: agent-run's checkpoint commit carries it; an agent-written one is marked.
+        _, msg = self.commit("chore(agent): checkpoint\n", AGENT_CHECKPOINT="disruption")
+        self.assertEqual(self.trailers(msg), ["Agent-Run: 7f3cq2xz", "Agent-Checkpoint: disruption"])
+        _, forged = self.commit("fix: a thing\n\nAgent-Checkpoint: disruption\n")
+        self.assertNotIn("\nAgent-Checkpoint:", forged)
+        self.assertIn("(agent-written) Agent-Checkpoint: disruption", forged)
+
 
 class GhWrapperTest(unittest.TestCase):
     """Which invocations reach pr_footer.py (reviewer Minor 5)."""

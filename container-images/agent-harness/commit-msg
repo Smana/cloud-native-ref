@@ -1,8 +1,9 @@
 #!/agent-server/.venv/bin/python
-"""Adds the Agent-Run trailer, and Agent-Task when the run has a task (SP3
-ruling SW). A provenance hint, never authorisation (SP3 ruling TB): an agent
-with a shell can skip or rewrite it, so the merge gate binds commits to a run
-by push identity.
+"""Adds the Agent-Run trailer, Agent-Task when the run has a task (SP3 ruling
+SW), and Agent-Checkpoint when agent-run commits a checkpoint on SIGTERM
+(disruption design §2). A provenance hint, never authorisation (SP3 ruling
+TB): an agent with a shell can skip or rewrite it, so the merge gate binds
+commits to a run by push identity.
 
 Every other `Agent-*` line, in any case, is marked as the model's first, as
 in the PR body, so a reader of the last paragraph finds only the harness's.
@@ -18,7 +19,7 @@ import sys
 sys.path.insert(0, "/opt/agent")
 import pr_footer  # noqa: E402
 
-TRAILERS = (("Agent-Run", "RUN_ID"), ("Agent-Task", "TASK_ID"))
+TRAILERS = (("Agent-Run", "RUN_ID"), ("Agent-Task", "TASK_ID"), ("Agent-Checkpoint", "AGENT_CHECKPOINT"))
 
 
 def main(path: str, env: dict) -> int:
