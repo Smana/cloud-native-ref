@@ -27,6 +27,9 @@ spec:
         port: 9090
       - name: human
         port: 8080
+      # Agents' room_* tools, reached only through agent-router's MCPRoutes (§3).
+      - name: mcp
+        port: 8090
   automountServiceAccountToken: true # the Room and AgentRun watches, the leader lease
   resources:
     requests:
@@ -61,6 +64,16 @@ spec:
         secretKeyRef:
           name: xplane-rooms-cnpg-role-rooms-broker
           key: uri
+    # The key agent-router injects on :8090 (ruling P13). Unset, :8090 refuses every call.
+    - name: ROOMS_MCP_KEY
+      valueFrom:
+        secretKeyRef:
+          name: room-broker-mcp-key
+          key: apiKey
+    # The factory App's key (verdict comments, §3). Empty until the owner writes it:
+    # verdicts wait in the room, up to 24 h.
+    - name: ROOMS_GITHUB_APP_DIR
+      value: /var/run/secrets/factory-app
   # The config sits beside the TLS pair, not above it: a mount nested in a
   # read-only ConfigMap mount cannot create its mount point.
   extraVolumes:
@@ -75,6 +88,15 @@ spec:
     - name: oidc
       secret:
         secretName: room-broker-oidc  # pragma: allowlist secret
+    # optional: the broker runs before the owner creates the App, and kubelet fills
+    # the volume once the key lands. A secretKeyRef env would need a restart (P31).
+    # 0440, not the default 0644: readable only through the pod's fsGroup (1001, set
+    # by the App composition), so the key depends on that fsGroup staying set.
+    - name: factory-app
+      secret:
+        secretName: room-broker-factory-app  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -84,6 +106,9 @@ spec:
       readOnly: true
     - name: oidc
       mountPath: /etc/room-broker/oidc
+      readOnly: true
+    - name: factory-app
+      mountPath: /var/run/secrets/factory-app
       readOnly: true
   networkPolicies:
     enabled: false
