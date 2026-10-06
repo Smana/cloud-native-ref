@@ -26,6 +26,8 @@ AGENT_SERVER = "http://127.0.0.1:8000"
 # itself switches to 0.0.0.0 by default once a session key is set.
 SERVER_CMD = ["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "127.0.0.1", "--port", "8000"]
 REPO_DIR = "/workspace/repo"
+# agent-server's start-up hook (F29, see site/sitecustomize.py), beside this file in /opt/agent.
+SITE_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "site")
 TERMINAL_OK = {"finished"}
 TERMINAL_FAIL = {"error", "stuck"}
 # The model key is a placeholder: identity-proxy overwrites Authorization (S5).
@@ -435,6 +437,7 @@ def server_env(env: dict) -> dict:
     """
     out = dict(env)
     out.setdefault("OH_SECRET_KEY", secrets.token_urlsafe(32))
+    out["PYTHONPATH"] = os.pathsep.join(p for p in (SITE_DIR, env.get("PYTHONPATH")) if p)
     return out
 
 

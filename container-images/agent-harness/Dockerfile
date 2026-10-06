@@ -46,6 +46,7 @@ RUN /usr/local/bin/python -m venv /agent-server/.venv \
  && rm /tmp/requirements.txt
 
 COPY --chmod=0755 agent_run.py git_credential_agent.py pr_footer.py /opt/agent/
+COPY --chmod=0755 site /opt/agent/site
 COPY --chmod=0755 gh /usr/local/bin/gh
 COPY --chmod=0755 commit-msg /etc/agent/git-hooks/commit-msg
 COPY gitconfig /etc/gitconfig
