@@ -18,31 +18,11 @@ rules:
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes/status"]
     verbs: ["get"]
----
-# A run's Usage holds its CNP until the run's pod is gone, so the GitHub token
-# revoke in preStop and SIGTERM still reaches api.github.com. Crossplane reads that
-# pod with a plain GET (no cache, no watch). Without this grant the Usage can never
-# release, and every run deletion hangs.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: crossplane-get-run-pods
-  namespace: agents
-rules:
+  # Two readers of a run's pod. The composition reads it as a required resource to tell why a run
+  # ended (disruption design §3); Crossplane serves that from a cluster-wide informer, so get alone
+  # loops on an informer that never syncs (trap 3). The CNP's Usage reads it with a plain GET until
+  # the pod is gone, so agent-run's revoke still reaches api.github.com. Read only, and no wider
+  # than the secrets Crossplane's own role already lists and watches cluster-wide.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: crossplane-get-run-pods
-  namespace: agents
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: crossplane-get-run-pods
-subjects:
-  - kind: ServiceAccount
-    name: crossplane
-    namespace: crossplane-system
+    verbs: ["get", "list", "watch"]
