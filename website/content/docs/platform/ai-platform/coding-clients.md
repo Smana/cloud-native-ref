@@ -145,7 +145,8 @@ classifier cost at all.
 
 ```bash
 # Smoke test — list models (works on any client)
-curl -sS https://llm.priv.aws.ogenki.io/v1/models | jq '.data[].id'
+curl -sS https://llm.priv.aws.ogenki.io/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.data[].id'
 
 # Direct chat completion against the coder model (no Semantic Router hop)
 curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/chat/completions \
