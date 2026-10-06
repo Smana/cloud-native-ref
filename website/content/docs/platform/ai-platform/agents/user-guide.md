@@ -88,6 +88,12 @@ detailed:
 | **The room** (the *watch* link) | Live: every step each agent takes, their messages, the handoffs between roles; *(planned)* approvals asked and given |
 | **The run's dashboard** in Grafana | The run's status, its step log, its model calls with tokens and latency, and a trace of where the time went. See [Observability](#observability-what-you-can-inspect) |
 
+*(Built, not yet deployed)* If a run's sandbox is reclaimed (a spot or preemptible node, an
+eviction, an upgrade drain), the factory resumes it on its own, on the same branch and in the same
+room, at most twice per task and only while the task's token budget holds another run. The issue
+says so: *resuming automatically (1/2)*. A lost review run starts again without using a review
+round. A run whose harness failed on its own is never resumed: the task escalates, as before.
+
 ### 3. Review the pull request
 
 The PR is opened by the agents' bot on a branch `agent/<task>`. *(Built, not yet deployed)* its body
