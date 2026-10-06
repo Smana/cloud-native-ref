@@ -58,6 +58,11 @@ Reverse dependency order — **always `--reverse`** — with a single confirmati
 (`scripts/ops/teardown/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
 sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
 
+**Expect a second prompt without it.** The cache counts from the first answer and is never
+refreshed, and the CNPG pre-destroy seed in `eks-prepare-destroy.sh` can run for several
+minutes per database before the cluster delete even starts. A later stack's `confirm` then
+asks again, or exits 1 when there is no tty.
+
 {{< callout type="warning" >}}
 **Never run `terramate script run destroy` without `--reverse`.** Forward order reaches
 `aws/network` *before* the cluster: observed 2026-10-04, it destroyed the VPC endpoints and

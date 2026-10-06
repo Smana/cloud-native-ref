@@ -65,6 +65,13 @@ default behaviour".
 | `TM_TAILNET_DESTROY` | the tailnet-wide singletons are destroyed | `[skip]`, exit 0 — tearing down one cloud does not remove tailnet access for the other | `destroy` in `opentofu/shared/tailscale/workflows.tm.hcl` |
 | `TM_FEDERATION_DESTROY` | the AWS↔GCP OIDC provider and role are destroyed | `[skip]`, exit 0 — `gcp-0`'s cert-manager and external-dns-public keep working | `destroy` in `opentofu/shared/aws-gcp-federation/workflows.tm.hcl` |
 
+One related gate is read by a script rather than a stack, so it carries no `TM_`
+prefix. It is **inverted**, like `TM_OPENBAO_SKIP_SNAPSHOT`:
+
+| Variable | `=true` | unset (the default) | Gates |
+|---|---|---|---|
+| `CNPG_SKIP_PRE_DESTROY_SEED` | **inverted** — no pre-destroy seed is taken; the `<app>-pre-destroy` aliases keep the previous teardown's data and everything written since is lost | every SQLInstance with a `backup` block is promoted to a dated seed and its alias refreshed; a failed seed warns and the destroy continues | `scripts/ops/k8s/cnpg-pre-destroy-seed.sh`, called by `scripts/ops/aws/eks-prepare-destroy.sh` and by the GKE destroy's `stage2-seed-databases` job |
+
 Three consequences worth stating outright:
 
 - **A guarded destroy exits 0 when it skips.** That is deliberate — a

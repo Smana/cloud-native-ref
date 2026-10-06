@@ -482,9 +482,13 @@ script "destroy" {
         # spec.backup block to a destroy-day dated seed and refresh the
         # <app>-pre-destroy alias — the same hook eks-prepare-destroy.sh runs
         # on the AWS lane (scripts/ops/k8s/cnpg-pre-destroy-seed.sh is the
-        # shared core; CNPG_SKIP_PRE_DESTROY_SEED gates it). Without it the
-        # next rebuild falls back to the previous alias/seed and loses
-        # everything since.
+        # shared core; CNPG_SKIP_PRE_DESTROY_SEED gates it).
+        #
+        # Unlike AWS, nothing restores from these yet: no gcp-0 claim sets
+        # objectStoreRecovery, so every rebuild runs initdb. This job builds
+        # the first gcp aliases (harbor's, and rooms' when the agent platform
+        # runs) that the claim-path switch needs — see
+        # tooling/gcp-0/harbor/sqlinstance.yaml.
         #
         # FIRST of the in-cluster jobs on purpose: stage2-reclaim-volumes
         # deletes the PVCs out from under postgres, and stage2-destroy-addons
@@ -523,7 +527,7 @@ script "destroy" {
             --cloud gcp --bucket "$${project}-ogenki-cnpg-backups" || true
         else
           echo "[warn] could not fetch credentials for $${name}; skipping the CNPG pre-destroy seed."
-          echo "       The next rebuild falls back to the previous alias/seed and loses everything since."
+          echo "       The <app>-pre-destroy aliases keep the previous teardown's data, losing everything since."
         fi
       BASH
       ],
