@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#25 at fae240a0, the chart's appVersion.
+      # agent-platform#25 at 642a5b12, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr25.fae240a0@sha256:c9184a40b20609bfd49bab7e7ecd19ee78e9b15d32d55d5315b5de7ede712d7b"
+      tag: "v0.0.1-pr25.642a5b12@sha256:d28b1d373a5203f5dd9762c4680522c7aa33c54a19a434ff5e9a8d7d41b5b32d"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -113,8 +113,9 @@ data:
         investigate: {roles: [triager]}  # R38: proposes a public issue text, never writes
       caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336, awaitingHumanWIP: 5}
       budgets:
-        # OD-10: a shadow week first (R3). The run cap is always enforced by the meter.
-        enforceTask: false
+        # OD-10: only the principal cap keeps its shadow week (R3); the task cap is enforced
+        # since a shadow one let a task reach 3.35 M of its 3 M. The meter always enforces the run cap.
+        enforceTask: true
         enforcePrincipal: false
         factoryDaily: 25000000
         humanDaily: 5000000
