@@ -527,6 +527,26 @@ claims:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'uid: {value}'
 
+  - id: envoy-gateway-crds-version
+    why: >-
+      `flux/sources/ocirepo-envoy-gateway.yaml` pins the controller chart the
+      HelmRelease runs, but the HelmRelease sets `crds: Skip` on both install
+      and upgrade — the CRDs come from the static bundle vendored at
+      `crds/base/crds-envoy-gateway.yaml` instead, applied once by the `crds`
+      Kustomization. The two can drift silently: the API server prunes fields
+      a stale CRD does not know about rather than rejecting them, so a newer
+      policy field (e.g. `SecurityPolicy.spec.mergeType`, added between 1.7
+      and 1.9) has no effect and no error. Found live on 2026-09-27 with the
+      controller three minors ahead of the vendored schema. Like
+      `gateway-api-version`, this is source-to-source: a page is just a path
+      and a pattern.
+    source:
+      file: flux/sources/ocirepo-envoy-gateway.yaml
+      pattern: '\n\s*tag:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+    pages:
+      - path: crds/base/kustomization.yaml
+        must_contain: 'download/v{value}/envoy-gateway-crds\.yaml'
+
   - id: victorialogs-datasource-uid
     why: >-
       The other half of the same rename. The traces datasource cross-references
@@ -568,3 +588,28 @@ claims:
     pages:
       - path: clusters/aws-0-agent-platform/README.md
         must_contain: 'suspended by default'
+
+  - id: internal-data-class-provider
+    why: >-
+      ADR-0054 (accepted on the programme branches, not yet on main) moved internal data to the
+      Anthropic API; the programme spec, the SP1/SP4 specs and the website kept "internal = Bedrock
+      EU only" for a week after it (external review R13). The source is the programme spec's OD-12
+      until ADR-0054 reaches main; then point source.file at the ADR's listener table.
+    source:
+      file: docs/superpowers/specs/2026-09-23-agent-factory-design.md
+      pattern: '^\| OD-12 \| Anthropic access \| (Anthropic API) with a gateway-held key'
+    must_not_contain:
+      - '`internal` runs only Bedrock'
+      - 'internal ops data[^|]*→ Bedrock EU'
+      - '`internal` is meant for Bedrock'
+      - 'not a native API key'
+      - '`internal` → Bedrock EU'
+    pages:
+      - path: docs/superpowers/specs/2026-09-23-agent-factory-design.md
+        must_contain: '`internal` runs reach only the providers ADR-0054 admits'
+      - docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md
+      - docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md
+      - path: website/content/docs/platform/ai-platform/gateways.md
+        must_contain: 'through the {value}'
+      - path: website/content/docs/platform/ai-platform/status.md
+        must_contain: 'through the {value}'
