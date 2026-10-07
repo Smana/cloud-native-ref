@@ -1,6 +1,8 @@
 ---
 # Agent platform health (SP1 §8). Lives in the umbrella: on a cluster with the
 # platform suspended these would only ever be silent.
+# runbook_url points at the integration branch: the agent-factory runbooks live there until
+# Phase 7 re-points them (Ruling G).
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -18,6 +20,8 @@ spec:
           annotations:
             summary: "Agent sandbox pod {{ $labels.pod }} has been Pending for 15 minutes"
             description: "Check the agents-gvisor NodePool (limit, spot capacity) and runsc on the node: kubectl describe pod -n agents {{ $labels.pod }}"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         - alert: AgentGvisorPoolNearLimit
           expr: sum by (resource_type) (karpenter_nodepools_usage{nodepool="agents-gvisor"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"}) * 100 > 90
           for: 10m
@@ -26,6 +30,8 @@ spec:
           annotations:
             summary: "agents-gvisor is above 90 % of its {{ $labels.resource_type }} limit"
             description: "New runs will stay Pending. Raise the NodePool limit or wait for runs to finish."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         # No enforced per-run cap exists until SP4 PR 2 (design spec line 162):
         # until then a run is bounded only by the gateway's 5M ceiling. These
         # watch the same gen_ai counters the SP4 llm-gateway budget uses.
@@ -37,6 +43,8 @@ spec:
           annotations:
             summary: "{{ $labels.ar_agent }} spent more than 5M tokens in 8h"
             description: "No enforced per-run cap exists until SP4 PR 2. Revoke by hand: kubectl annotate agentrun -n agents <name> agents.ogenki.io/revoked=budget-run"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
         - alert: AgentFleetTokenSpendHigh
           expr: sum(increase(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*", gen_ai_token_type=~"input|output"}[1h])) > 1e7
           for: 5m
@@ -45,3 +53,5 @@ spec:
           annotations:
             summary: "The agent fleet spent more than 10M tokens in 1h"
             description: "No enforced per-run cap exists until SP4 PR 2. Revoke the noisiest run by hand: kubectl annotate agentrun -n agents <name> agents.ogenki.io/revoked=budget-run"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
