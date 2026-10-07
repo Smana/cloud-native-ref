@@ -57,7 +57,9 @@ operator:
   # Setting to empty restarts ALL unmanaged pods (EBS CSI, etc.)
   # See: https://docs.cilium.io/en/stable/cmdref/cilium-operator/
   extraArgs:
-    - --pod-restart-selector=
+    # Every unmanaged pod except agent runs (F31): a finished run pod loses its endpoint while its
+    # sidecars drain, the watcher deleted it, agent-sandbox recreated it, and the run ended PodLost.
+    - --pod-restart-selector=!agents.ogenki.io/run-id
   unmanagedPodWatcher:
     intervalSeconds: 15
     restart: true
