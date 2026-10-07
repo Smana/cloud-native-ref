@@ -211,6 +211,9 @@ to its branch with the trailer `Agent-Checkpoint: disruption` and pushes them, a
 the transcript to its end. A factory run is then resumed on its own (see *Follow it*). Resume a run
 started by hand with `--branch`: it continues from what was pushed, the checkpoint included.
 
+Known: the same sequence runs when an implementer is revoked or deleted, so one with uncommitted
+changes pushes a checkpoint commit before its GitHub token is revoked.
+
 Known issue ([F12]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
 the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
 fix is under review. Until it is deployed, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
