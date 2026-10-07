@@ -2897,7 +2897,7 @@ _time:30d kubernetes.container_name:"harness" "agent-run step" "git push" | stat
 ```
 
 ```promql
-sum(increase(karpenter_nodeclaims_disrupted_total{reason="spot_interruption"}[30d]))
+sum(increase(karpenter_nodeclaims_disrupted_total{reason="spot_interrupted"}[30d]))
 ```
 
 ```bash

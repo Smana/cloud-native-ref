@@ -78,6 +78,15 @@ _time:30m kubernetes.pod_name:"<RUN>" kubernetes.container_name:"harness" "agent
 Expected: five lines, in order `pause`, `checkpoint`, `final-read`, `stop`, `revoke`; `checkpoint done: pushed a checkpoint commit`;
 `final-read done: {"events": …, "unmirrored": 0, …}`; the five durations sum under 15 s. Record each duration.
 
+A node that shuts down (Step 3's preemption, Step 7's FIS) can take its log shipper with it before the last lines ship: on
+aws-0, 2026-10-07, VictoriaLogs ended 4 s before the run's shutdown began, as Vector ran at priority 0
+([#2242](https://github.com/Smana/cloud-native-ref/pull/2242) makes it node-critical). Capture the harness log live before you
+disrupt the node, and read the five lines from that file:
+
+```bash
+kubectl logs -f -n agents $RUN -c harness --timestamps > $RUN-harness.log &
+```
+
 The checkpoint on the branch:
 
 ```bash
@@ -161,6 +170,42 @@ experiment cannot pick this instance up if the interruption did not take it.
 
 ## Results
 
+### aws-0, 2026-10-07
+
+Integration v3, `integration/agent-factory` @ `1d288ea6`: factory `v0.0.1-pr22.4a4abafc` (`resume.maxPerTask: 2`, `enforceTask: true`),
+crossplane-configuration `v0.7.2-pr35.0069ea6` (room-bridge `pr22.4a4abafc`, agent-harness `v0.3.0-pr2215.3aea4800`). Steps 1–6
+were written for gcp-0: they ran on aws-0, with these deviations:
+
+- **No probe task.** Steps 2–4's disruption probe was an `AgentRun` created as the factory's ServiceAccount, with no task and
+  no room. Its disruption was Step 7's FIS, since aws-0 has no `simulate-maintenance-event`. The factory legs ran on a real
+  issue, #2240, task `ry4rabmb`. Its first run was evicted through the Eviction API, so the room checks are that run's.
+- **PodFailed** (criterion 3) ran on a probe that changes nothing, as an implementer: the XRD refuses a reviewer whose task is
+  not a pull request.
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 | package, `yes`, version, `120 15`, cap | `v0.7.2-pr35.0069ea6` Healthy; `yes`; GKE checks n/a. The gVisor node's kubelet: `shutdownGracePeriod` 2m30s, critical 30s (120 s for regular pods); `maxPerTask: 2` | PASS |
+| 3 | `Failed Terminated TerminationByKubelet` | FIS on the probe, the Eviction API on `uw5nosxt`. Both pods `Failed` with `DisruptionTarget`, read by the composition; each pod was gone before kube-state-metrics scraped its phase | PASS |
+| 4 | `Failed Disrupted`; five lines < 15 s; trailer; `probe`; room tail = `events` | `Failed Disrupted`, twice. Probe: 0.12 / 4.31 / 0.01 / 0.22 / 0.28 = 4.94 s. `uw5nosxt`: 0.09 / 4.04 / 0.01 / 0.27 / 0.33 = 4.74 s. Both pushed a commit with `Agent-Checkpoint: disruption`: `probe` on the probe's branch, the issue's one-line fix on `agent/ry4rabmb` (3e83fb65). `final-read` `{"events":37,"unmirrored":0}`; room `max(origin_seq)/4` = 37 | PASS |
+| 5 | narration (1/2); `Implementing 1 resume`; same branch and room | "…resuming automatically (1/2)." 9 s after the eviction; `Implementing 1 resume`; `agent/ry4rabmb ry4rabmb`. `agent_factory_resumes_total{reason="Disrupted"}` 1 | PASS |
+| 6 | `PodLost`; `resumes` = 2; `Escalated resumes_exhausted` | `6urkxlbx` `PodLost`, "(2/2)"; `vuawv3lj` `PodLost`; `Escalated resumes_exhausted`, no fourth run. The task's `runs[].reason` reads `pod_lost` for all three, the `Disrupted` one included ([agent-platform#33](https://github.com/Smana/agent-platform/issues/33)) | PASS |
+| 7 | the outcome and the §5 decision | **The kubelet's shutdown completed.** FIS at 18:35:03Z; Karpenter tainted the node `karpenter.sh/disrupted` and evicted nothing (`do-not-disrupt`); EC2 terminated the instance at 18:37:28; five lines by 18:37:34; `Failed Disrupted`. **§5: no early warning on aws-0** | PASS |
+
+Criterion 3's `PodFailed`: the probe's harness was made to exit (`os.kill(1, SIGTERM)`). It ran the shutdown sequence, its
+pod failed with no `DisruptionTarget` and no deletion, and it read `Failed PodFailed`. Criterion 5 has no live step:
+`TestALostReviewerRunsAgainWithoutARound` passes at agent-platform `4a4abafc`.
+
+The spec's open questions, measured the same day:
+
+| Question | aws-0, 2026-10-07 |
+|---|---|
+| Each shutdown step under gVisor | pause ≤ 0.12 s; checkpoint 4.0–4.3 s when it pushes, ≤ 0.34 s otherwise; final read ≤ 0.04 s; stop 0.22–0.33 s; revoke ≤ 0.33 s. At most 4.94 s of 15 |
+| How often agents push mid-run | 15 runs pushed, each exactly once |
+| Reclaim rates | `karpenter_nodeclaims_disrupted_total{reason="spot_interrupted"}`: agents-gvisor 3 (this FIS included), default 12. The cluster was one day old |
+| Crossplane's pod informer | Crossplane sat at its 512Mi limit, OOM-killed 32 times in 24 h, with a 278 MiB live heap and about 190 pods: GC pressure, not the informer. Sized from this in [#2241](https://github.com/Smana/cloud-native-ref/pull/2241) |
+
+### gcp-0
+
 | Step | Expected | Observed | Pass/Fail |
 |---|---|---|---|
 | 1 | package, `yes`, version, `120 15`, cap | | |
@@ -168,4 +213,3 @@ experiment cannot pick this instance up if the interruption did not take it.
 | 4 | `Failed Disrupted`; five lines < 15 s; trailer; `probe`; room tail = `events` | | |
 | 5 | narration (1/2); `Implementing 1 resume`; same branch and room | | |
 | 6 | `PodLost`; `resumes` = 2; `Escalated resumes_exhausted` | | |
-| 7 | the outcome and the §5 decision | | |
