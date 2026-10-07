@@ -50,8 +50,9 @@ and returns an installation token with that policy's permissions.
   PR and comment is attributed to the App's bot, never to a human
 
 **Cons**:
-- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). The pattern alone
-  accepts a token minted in any eu-west-3 EKS cluster, an attacker's included, with a ServiceAccount
+- The trust policies' issuer has two alternatives. gcp-0's GKE issuer is fixed by project, location
+  and cluster name, so it is matched exactly. aws-0's EKS issuer changes on every rebuild, so it is
+  matched by pattern (OD-5). That pattern alone accepts a token minted in any eu-west-3 EKS cluster, an attacker's included, with a ServiceAccount
   named like a run's. A prompt-injected sandbox that could reach octo-sts could present one. So
   octo-sts admits ingress only from agent-router's data plane, whose `sts` listener pins this cluster's
   issuer (Flux-substituted) and JWKS. The pattern is safe only behind that check (owner decision,
@@ -117,8 +118,8 @@ repository it grants.
   (design T14, fix deferred as O1)
 - Dependabot is off on this repository (no `dependabot.yml`, security updates disabled, checked
   2026-09-26). Enabling it means adding its App to the bypass list, or its branches are refused
-- The trust policies' issuer is a pattern (any EKS cluster in eu-west-3, because aws-0's issuer ID
-  changes on every rebuild). That is safe only behind this self-hosted octo-sts, whose only caller,
+- The trust policies' EKS alternative is a pattern (any EKS cluster in eu-west-3, because aws-0's
+  issuer ID changes on every rebuild); the GKE alternative is gcp-0's exact issuer. That is safe only behind this self-hosted octo-sts, whose only caller,
   agent-router's `sts` listener, has already verified the token against this cluster's issuer.
   Chainguard's hosted octo-sts App (`octo-sts`, app id 801323) reads the same
   `.github/chainguard/*.sts.yaml` files with no such check: installed on a repository that

