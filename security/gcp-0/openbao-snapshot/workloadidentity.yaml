@@ -33,9 +33,15 @@ spec:
       # cross-cloud design exists to preserve. The AWS twin grants no delete
       # either; they now agree.
       #
-      # Create is all the job needs. `save()` does one `gcloud storage cp` and
-      # nothing else; the bucket listing lives in `restore()`, which is an
-      # operator action run with operator credentials, not the pod's identity.
-      # Retention is the bucket's lifecycle rules, not something the job does.
-      # Object names are timestamped, so nothing is ever overwritten.
+      # `save()` does one `gcloud storage cp`, and create alone is not enough
+      # for it: `gcloud storage cp` also reads the destination object
+      # (storage.objects.get), and with objectCreator only the upload fails
+      # with a 403 before writing anything (measured on gcp-0, 2026-09-30).
+      # objectViewer below adds get and list, still no delete. The bucket
+      # listing proper lives in `restore()`, an operator action run with
+      # operator credentials. Retention is the bucket's lifecycle rules, not
+      # something the job does. Object names are timestamped, so nothing is
+      # ever overwritten.
       role: roles/storage.objectCreator
+    - bucket: ${project_id}-ogenki-openbao-snapshot
+      role: roles/storage.objectViewer

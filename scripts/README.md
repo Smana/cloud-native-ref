@@ -9,7 +9,7 @@ directly — none of them depend on the task runner.
 | `ci/` | the gates CI runs, and you before pushing. `task check` runs every one CI runs |
 | `ci/tests/` | suites `run.sh` discovers: `test-*.sh` and `test-*.py` here, `*/test-*.py` one level down. A `# requires:` tool that is absent, or an exit 77, reports `SKIP` |
 | `ops/aws/`, `ops/gcp/`, `ops/k8s/` | day-2 operations, run by a human. Some are also called from terramate deploy or destroy scripts — `eks-recycle-bootstrap-nodes.sh` and `adopt-workforce-pool.sh` run on every deploy. `ops/k8s/agent-probe.yaml` is the throwaway identity probe for SP1 verification |
-| `ops/teardown/` | `teardown.sh` is the supported way to tear the platform down (`task ops:teardown`). The other three are called by terramate destroy scripts |
+| `ops/teardown/` | `teardown.sh` is the supported way to tear the platform down (`task ops:teardown`). The other three (`destroy-stage2.sh`, `terramate-destroy-confirm.sh` and `tofu-destroy-contained.sh`) are called by terramate destroy scripts |
 | `ops/demo/` | demo load generation and cleanup |
 | `docs/` | docs-site generators, run by hand. `build-og-card.html` opens in a browser |
 | `lib/` | sourced by the others, never run directly |

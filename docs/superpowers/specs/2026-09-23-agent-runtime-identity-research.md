@@ -234,6 +234,15 @@ these hold:
 - two minor releases ship without an architectural rewrite;
 - parking a run with `operatingMode: Suspended` plus a PVC workspace proves too lossy for rooms.
 
+> **2026-10-01 note.** Re-scored after Substrate v0.3.0: no trigger is met and 2026-12-15 stands.
+> See the [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md).
+
+> **2026-10-04 note.** Three rows above are imprecise today. ax still has a harness: it now
+> bootstraps Google's Antigravity agent, Gemini-only. Substrate actors have their own default-deny
+> `EgressPolicy`, just not a CNP. "No spot nodes" is a documented warning, not enforced. Substrate
+> `main` also supports ClusterTrustBundle v1 (#1898 closed, unreleased). See the
+> [2026-10-04 re-check](2026-10-01-agent-ecosystem-recheck-research.md#2026-10-04-re-check-ax-and-substrate-claims-against-code).
+
 ## References
 
 - agent-sandbox: [releases](https://github.com/kubernetes-sigs/agent-sandbox/releases) ·

@@ -74,6 +74,9 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    groups action, so every consumer authenticates and then has no groups.
 #    On a hosting cluster, $OPENBAO points OpenBao at whatever client ZITADEL
 #    now holds; leaving it out strands OpenBao on a client ZITADEL forgot.
+#    A client id that REPLACES one the cluster held also restarts the
+#    Deployments reading it from env (oauth2-proxy, Headlamp, Grafana), once
+#    their Secret carries it. Only with kubectl on --cluster; otherwise it warns.
 ./scripts/provision/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
 ```
 

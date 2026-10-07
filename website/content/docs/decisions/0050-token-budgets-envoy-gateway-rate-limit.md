@@ -3,7 +3,7 @@ title: Token budgets on Envoy Gateway's global rate limit, costed from response 
 linkTitle: 0050 · Token budgets
 weight: 500
 description: Per-run, per-fleet, per-human and per-client daily token budgets are Envoy Gateway global rate-limit rules, charged after each response with the token count Agent Router writes into metadata, and stored in a Valkey KVStore. Agent Router's QuotaPolicy, a custom ext_proc and LiteLLM budgets were rejected.
-lastVerified: 2026-10-01
+lastVerified: 2026-10-07
 ---
 
 **Status**: Accepted

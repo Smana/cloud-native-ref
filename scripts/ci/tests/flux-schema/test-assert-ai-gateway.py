@@ -60,10 +60,10 @@ def btp(rules, name="ai-gateway-token-budgets", target=None):
                      "rateLimit": {"global": {"rules": rules}}}}
 
 
-def gateway(name="ai-gateway", ns="envoy-ai-gateway-system", cls="envoy-ai-gateway"):
+def gateway(name="ai-gateway", ns="envoy-ai-gateway-system", cls="envoy-ai-gateway", listeners=()):
     return {"apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway",
             "metadata": {"name": name, "namespace": ns},
-            "spec": {"gatewayClassName": cls, "listeners": []}}
+            "spec": {"gatewayClassName": cls, "listeners": [{"name": n} for n in listeners]}}
 
 
 def ctp(remove, gw="ai-gateway", ns="envoy-ai-gateway-system", section=None):
@@ -124,6 +124,17 @@ other_btp = btp([rule(shared=False)], name="other-gw-policy",
                  target={"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "other-gw"})
 check("that out-of-scope policy stays out of scope alongside a compliant ai-gateway one",
       gate.check_rate_limit_rules([gateway(), btp([rule()]), other_gw, other_btp]) == [])
+route_only_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "harbor"}
+# mergeType is set on both so A4 stays silent and isolates the A1/A2 scope question.
+route_only = btp([rule(shared=False)], name="route-only-rl", target=route_only_target)
+route_only["spec"]["mergeType"] = "Merge"
+check("a BackendTrafficPolicy with no Gateway targetRef at all is out of scope for A1/A2",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), route_only]) == [])
+route_only_covers = btp([rule()], name="route-only-compliant", target=route_only_target)
+route_only_covers["spec"]["mergeType"] = "Merge"
+errs = gate.check_rate_limit_rules([gateway(), route_only_covers])
+check("a route-only BackendTrafficPolicy does not satisfy the vacuous-pass guard either",
+      len(errs) == 1 and "no BackendTrafficPolicy" in errs[0], str(errs))
 
 print("A4 — a route-level BackendTrafficPolicy must declare mergeType")
 route_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "llm-gateway"}
@@ -148,8 +159,14 @@ check("one header missing fails, naming it", len(errs) == 1 and "agent-session-i
 check("no ClientTrafficPolicy fails", len(gate.check_identity_strips([gateway()])) == 1)
 check("a policy in another namespace does not count",
       len(gate.check_identity_strips([gateway(), ctp(STRIPS, ns="other")])) == 1)
-check("a listener-scoped policy that itself fully strips satisfies the Gateway",
-      gate.check_identity_strips([gateway(), ctp(STRIPS, section="http")]) == [])
+errs = gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public")])
+check("a listener-scoped policy covers its own listener only (M6): the other one is reported",
+      len(errs) == 1 and errs[0].endswith("covers listener(s) internal"), str(errs))
+check("listener-scoped policies covering every listener satisfy the Gateway",
+      gate.check_identity_strips([gateway(listeners=["public", "internal"]), ctp(STRIPS, section="public"),
+                                  ctp(STRIPS, section="internal")]) == [])
+check("a listener-scoped policy on a Gateway that declares no listener covers nothing",
+      len(gate.check_identity_strips([gateway(), ctp(STRIPS, section="public")])) == 1)
 errs = gate.check_identity_strips([gateway(), ctp(STRIPS), ctp(None, section="http")])
 check("a listener-scoped override with no header strip fails even though the Gateway baseline is compliant",
       len(errs) == 1, str(errs))
