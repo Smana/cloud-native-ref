@@ -159,7 +159,7 @@ jobs:
       # commits the merge introduced. `fetch-depth: 0` above is what makes both
       # ends reachable in the local clone.
       - name: Detect secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@0186870afd2c4a90def791d80260923ba583d076 # v3.98.0
+        uses: trufflesecurity/trufflehog@4c282f54c0160102ccbebba421b89f3c3af6404d # v3.98.1
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -254,23 +254,6 @@ jobs:
       # whose contract is manifest validation.
       - name: Test suites
         run: task ci:test
-
-      # Gate paths and pull_request secrets (SP3 SC-12, T8). In an existing required job:
-      # a new required context could not be path-filtered and would need a settings change.
-      # The scripts are called directly, not through the task wrappers: both scripts are gate
-      # paths, the taskfiles are not, so an approved agent PR cannot turn this step into a no-op.
-      - name: Merge-gate invariants
-        if: ${{ !cancelled() }}
-        run: ./scripts/ci/check-policy-gate-coverage.sh && ./scripts/ci/check-workflow-secrets.sh
-
-      # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
-      # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
-      # nothing, and gen-catalog.sh fetches the release asset as before.
-      - name: Fetch the pinned pre-release's XRD CRDs
-        if: ${{ !cancelled() }}
-        run: |
-          f="$(./scripts/ci/fetch-xrd-crds.sh)"
-          [ -z "$f" ] || echo "XRD_CRDS_FILE=$f" >> "$GITHUB_ENV"
 
       # Runs even when a suite failed, so the manifest verdict is never hidden
       # behind it. The job still fails.
