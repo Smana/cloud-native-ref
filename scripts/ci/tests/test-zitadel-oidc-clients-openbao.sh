@@ -1049,7 +1049,7 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id stored_client_id; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id stored_client_id previous_client_id; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
@@ -1082,6 +1082,7 @@ mirror_to_openbao() {
     printf 'MIRROR %s\n' "$1" >> "$MIRROR_LOG"
     return "$MIRROR_RC"
 }
+mirror_read() { :; }   # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0
