@@ -14,7 +14,7 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.4.6
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.1
 ```
 
 `gcp-0` serves the same claims from its own package,
