@@ -427,6 +427,14 @@ class CheckpointTest(unittest.TestCase):
         _, body = self.remote_head("%B")
         self.assertTrue(body.startswith("docs: done"))
 
+    def test_a_failing_git_diff_refuses_the_checkpoint(self):
+        for failing in ("--name-only", "--text"):
+            with self.subTest(failing=failing):
+                def git(*args, env=None):
+                    return subprocess.CompletedProcess(args, 128 if failing in args else 0, "", "fatal: broken")
+
+                self.assertEqual(agent_run._unfit(git), "git diff failed")
+
     def test_no_time_left_is_an_error(self):
         with self.assertRaises(TimeoutError):
             agent_run.checkpoint(self.env, time.monotonic() - 1)
@@ -843,8 +851,24 @@ class TracedRunTest(unittest.TestCase):
                 driver.send_signal(signal.SIGTERM)
                 driver.wait(timeout=30)
                 self.assertEqual(driver.returncode, code)
-                self.assertEqual(self.shutdown_steps(), ["stop", "revoke"], "nothing to pause or checkpoint")
+                # The bridge's own flush is refused once the run latches: this read is the room's last.
+                self.assertEqual(self.shutdown_steps(), ["final-read", "stop", "revoke"], "nothing to pause or checkpoint")
+                self.assertEqual(len(FakeBridge.reads), 2, "the interrupted final read is asked for again")
                 self.assert_stopped_then_revoked()
+
+    def test_a_sigterm_after_the_final_read_returned_reads_no_more(self):
+        bridge = self.serve_bridge()
+        script = DRIVER.replace("agent_run.FLUSH_WAIT_S = 0", "agent_run.FLUSH_WAIT_S = 30")
+        driver = self.start("finished", "http://127.0.0.1:1", {"BRIDGE_URL": bridge}, script=script)
+        deadline = time.monotonic() + 30
+        while not os.path.exists(os.path.join(self.tmp, "closed")) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, "closed")), "the run never closed its conversation")
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+        self.assertEqual(driver.returncode, 0)
+        self.assertEqual(len(FakeBridge.reads), 1)
+        self.assertEqual(self.shutdown_steps(), ["final-read", "stop", "revoke"], "the run's own final read, then the signal path")
 
     def test_a_silent_collector_never_holds_the_pod_past_the_revoke(self):
         # M2: listening, never answering, the collector makes each export wait out its timeout.

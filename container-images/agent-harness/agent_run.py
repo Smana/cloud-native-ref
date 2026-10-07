@@ -321,9 +321,10 @@ def report(name: str, status: str, started: float, box: float) -> None:
           file=sys.stderr, flush=True)
 
 
-def timed(name: str, box: float, step) -> None:
+def timed(name: str, box: float, step) -> bool:
     """Runs one shutdown step for at most box seconds (disruption design §2). A step that overruns
-    is left behind in its thread, never waited for, so no step can hold up the next."""
+    is left behind in its thread, never waited for, so no step can hold up the next. True when it
+    is done."""
     out = {}
 
     def run():
@@ -343,6 +344,7 @@ def timed(name: str, box: float, step) -> None:
     else:
         status = "done" + (": " + _short(out["done"], 200) if out.get("done") else "")
     report(name, status, started, box)
+    return status.startswith("done")
 
 
 def pause(cid: str) -> None:
@@ -353,7 +355,10 @@ def pause(cid: str) -> None:
 
 def _unfit(git) -> str | None:
     """Why the staged tree must not be committed, or None. Never quotes what it found."""
-    names = git("diff", "--cached", "--name-only", "-z").stdout.split("\0")[:-1]
+    listed = git("diff", "--cached", "--name-only", "-z")
+    if listed.returncode:
+        return "git diff failed"
+    names = listed.stdout.split("\0")[:-1]
     if len(names) > CHECKPOINT_MAX_FILES:
         return "%d files staged" % len(names)
     paths = [os.path.join(REPO_DIR, n) for n in names]
@@ -361,8 +366,10 @@ def _unfit(git) -> str | None:
     if size > CHECKPOINT_MAX_BYTES:
         return "%d bytes staged" % size
     # --text so a binary file is searched too; what textconv or an external diff shows may differ.
-    diff = git("diff", "--cached", "--text", "--irreversible-delete", "--no-textconv", "--no-ext-diff").stdout
-    return "a GitHub token is staged" if redact(diff) != diff else None
+    diff = git("diff", "--cached", "--text", "--irreversible-delete", "--no-textconv", "--no-ext-diff")
+    if diff.returncode:
+        return "git diff failed"
+    return "a GitHub token is staged" if redact(diff.stdout) != diff.stdout else None
 
 
 def checkpoint(env: dict, deadline: float) -> str:
@@ -479,7 +486,7 @@ def main() -> int:
     span, provider, trace_env = start_run_span(env)
     trace_id = format(span.get_span_context().trace_id, "032x") if span else ""
     server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env({**env, **trace_env}))
-    cid, steps, code, signalled = None, None, None, False
+    cid, steps, code, signalled, read = None, None, None, False, False
     try:
         wait_ready()
         clone(env)
@@ -491,7 +498,7 @@ def main() -> int:
         steps()
         steps.summary()
         if env.get("BRIDGE_URL"):
-            timed("final-read", FINAL_READ_S, lambda: final_read(env))
+            read = timed("final-read", FINAL_READ_S, lambda: final_read(env))
         # Never on SIGTERM: the close can outlast the grace period and the revoke must not wait.
         if span:
             close_conversation(cid)
@@ -508,6 +515,11 @@ def main() -> int:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         if signalled and cid and code is None:
             disrupted(env, cid, steps)
+        elif signalled and code is not None and env.get("BRIDGE_URL") and not read:
+            # Exit 0 latches the run Succeeded at once, and the broker takes the bridge's writes only
+            # while the run is live: the bridge's own flush may come too late, so this read is the
+            # room's last. Nothing is paused or checkpointed on this path, which leaves it time.
+            timed("final-read", FINAL_READ_S, lambda: final_read(env))
         if signalled:
             started = time.monotonic()
             report("stop", "done: " + stop(server, STOP_S), started, STOP_S)
