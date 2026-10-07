@@ -97,6 +97,12 @@ spec:
         secretName: room-broker-factory-app  # pragma: allowlist secret
         optional: true
         defaultMode: 0440
+    # roomctl's client id (phase 6), re-read at use. optional: until the sync
+    # creates the client, roomctl's tokens are refused and nothing else changes.
+    - name: roomctl
+      secret:
+        secretName: room-broker-roomctl  # pragma: allowlist secret
+        optional: true
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -109,6 +115,9 @@ spec:
       readOnly: true
     - name: factory-app
       mountPath: /var/run/secrets/factory-app
+      readOnly: true
+    - name: roomctl
+      mountPath: /etc/room-broker/roomctl
       readOnly: true
   networkPolicies:
     enabled: false

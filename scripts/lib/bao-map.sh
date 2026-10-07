@@ -46,6 +46,7 @@ bao_target_for() {
         apps-app-wizard-oauth) printf 'apps/app-wizard/oauth' ;;
         apps/image-gallery/config) printf 'apps/image-gallery/config' ;;
         agents-rooms-proxy) printf 'agents/rooms-proxy' ;;
+        agents-roomctl) printf 'agents/roomctl' ;;
         *) return 1 ;;
     esac
 }
