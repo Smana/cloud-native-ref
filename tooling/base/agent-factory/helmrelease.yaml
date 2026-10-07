@@ -6,6 +6,11 @@ metadata:
 spec:
   interval: 30m
   releaseName: agent-factory
+  # Corrects a kubectl scale or edit on the next reconcile: Helm's 3-way merge re-applies only what
+  # the chart changed, so a drill's scale to 0 outlived its resume by 8.5 h. No ignore rules: no
+  # HPA, Kyverno mutates Pods only, and the factory writes its ledger ConfigMaps, not the chart's.
+  driftDetection:
+    mode: enabled
   chartRef:
     kind: OCIRepository
     name: agent-factory
