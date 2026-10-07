@@ -12,8 +12,9 @@ role. Approvers decide pending actions, first decision wins. Anyone who can read
 **Architecture:** A stateless Go `room-broker` (an `App` claim, 2 replicas, `agent-system`) owns a
 namespaced `Room` CRD. It keeps the log of record in a CNPG `SQLInstance`, with a Valkey `KVStore`
 carrying fan-out hints. A Go `room-bridge` native sidecar in every sandbox that has `spec.roomRef`
-polls the OpenHands agent-server on loopback. It pushes events to the broker over plain HTTP, which
-Cilium's WireGuard encrypts on aws-0 (TLS on :8443 is gcp-0's, ruling P2), and takes
+polls the OpenHands agent-server on loopback. The bridge → broker `:8443` serves TLS on both
+clouds (GCP parity GP-18). The broker's certificate comes from cert-manager's internal issuer, the
+`openbao` ClusterIssuer, and the bridge trusts `openbao-ca`. It takes
 steering, interrupts and decisions back over one SSE stream. Humans reach the broker's embedded
 TypeScript UI through the Tailscale Gateway and oauth2-proxy. Agents reach the broker's MCP port
 only through the `agent-router` Gateway. The elected replica posts agents' review verdicts to their
@@ -41,8 +42,15 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
 
 ## Global Constraints
 
-- **Target** aws-0 only. The spec's phase 7 (gcp-0: TLS on :8443, issuer variable, umbrella) is out
-  of this plan (ruling P2).
+- **Target** gcp-0 (GCP parity cross-plan edit, 2026-09-29): the GCP parity plan makes gcp-0 the
+  platform, and aws-0 is not deployed. **Ruling P2 is reversed**: gcp-0 is in scope, not out of it.
+  GP-18's TLS listener lands in Tasks 1.9, 1.11, 1.14, 1.18 and 1.20; GP-12's per-cloud issuer
+  variables in ruling P11 and its egress rule. Conflict: this overrides every "aws-0 only" reading
+  of this plan's tasks below; where a task still names aws-0 verbatim, gcp-0 applies instead.
+- **Live-check routine (GCP parity cross-plan edit, 2026-09-29).** Hand-patch the core package on
+  **gcp-0**. Every child an S PR adds to `clusters/aws-0-agent-platform/` gets its twin in
+  `clusters/gcp-0-agent-platform/`, with `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it
+  substitutes (GP-14).
 - **Code location (OD-4).** `Smana/agent-platform`, public, Apache-2.0 like this repo. Go module
   `github.com/Smana/agent-platform`. Binaries `room-broker`, `room-bridge`, `roomctl`. Images
   `ghcr.io/smana/room-broker` and `ghcr.io/smana/room-bridge`. Tool versions from its own
@@ -113,15 +121,18 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
   release tag, and pinned **by digest** (`skopeo inspect --raw docker://<ref> | sha256sum`).
   `Smana/agent-platform`'s CI names them after the PR **head** (Task 0.2, review M1); with no tag
   before Phase 7 they are all `v0.0.1-pr<N>.<sha8>`. The harness pre-release is pushed by hand with
-  the head's `sha8` (Task 3.6). A new ghcr package starts private: the owner makes it public
-  (Task 0.3).
+  the head's `sha8` (Task 3.6). A package the repository's Actions create inherits the repository's
+  visibility, so agent-platform's are public from their first push (Task 0.3: no owner step).
 - **No merge, no release tag before Phase 7 (ruling P33).** The owner, 2026-09-27: "I don't want to
-  merge any SPx until I get the whole picture done and we agree on the ux".
+  merge any SPx until I get the whole picture done and we agree on the ux". **Exception (owner,
+  2026-09-29): `Smana/agent-platform` only.** Its PRs are re-reviewed and merge to `main` when green; its
+  tags still wait for Phase 7. cloud-native-ref and crossplane-configuration keep P33.
   - One stack per repo, **merge-only, never rebased**: each PR is based on the previous open branch
     of its repo (the PR map's *Base* column). H-S3 is the one exception (PR map).
   - Every live gate runs on `integration/agent-factory` with the stack tips' pre-releases: image
     digests, the crossplane-configuration package, `crd-rooms.yaml` copied from the agent-platform
-    branch, `atlasSchema.ref` set to that branch, and `XRD_CRDS_FILE` for `validate-manifests.sh`.
+    branch, `atlasSchema.ref` set to that branch (agent-platform `main` once the AP PR has merged:
+    the branch is deleted on merge, S1), and `XRD_CRDS_FILE` for `validate-manifests.sh`.
   - Nothing is released: no `v0.n.0` tag, no release asset, no "published on merge". Phase 7 is an
     [OWNER] UX sign-off, then one merge wave in dependency order that re-pins everything to release
     tags and deletes the branches last.
@@ -147,11 +158,13 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
   CC-2 (crossplane-configuration#29, `feat/agentrun-harness`, draft). CC-2's head is `c304bbf`, which
   adds the harness `preStop` revoke and keys the CNP `Usage` on the run's Pod; its package pre-release is `v0.7.2-pr29.3ad168a`.
 - **Live gotchas.** A live `flux resume` is reverted by drift correction: unsuspend in git.
-  `flux get kustomization a b` reads only the first name. Curls to `*.priv.aws.ogenki.io` need
-  `--cacert opentofu/aws/openbao/management/.tls/ca.pem`. VictoriaLogs stores parsed JSON as `log.*`
-  at ingest. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an
-  `integration/agent-factory` checkout: a deploy from `main` destroys the `agents` and `merge-gate`
-  mounts and every key in them (P38).
+  `flux get kustomization a b` reads only the first name. Curls to `*.priv.gcp.ogenki.io` (GCP
+  parity cross-plan edit, 2026-09-29: was `*.priv.aws.ogenki.io`) need
+  `--cacert opentofu/gcp/openbao/management/.tls/ca.pem`. VictoriaLogs stores parsed JSON as `log.*`
+  at ingest. Until G-5 merges (GCP parity cross-plan edit, 2026-09-29; was "until S1 merges in
+  Phase 7"), `openbao/management` is deployed only from an `integration/agent-factory` checkout: a
+  deploy from `main` destroys the `agents` mount (GP-8) and, once Task 1.15a lands, `merge-gate`
+  too, and every key in them (P38).
 - **Constitution on every workload.** Default-deny CNP per endpoint, with DNS L7
   (`rules.dns matchPattern "*"`) wherever a `toFQDNs` rule exists; requests **and** limits; liveness,
   readiness and startup probes; restricted securityContext with `seccompProfile: RuntimeDefault`;
@@ -171,6 +184,30 @@ OD-15, OD-16 and OD-17 are accepted at their recommended defaults), the
     convert;
   - `noctx` on `http.NewRequest` and `httptest.NewRequest` in tests: use the `…WithContext`
     variants with `t.Context()`.
+
+  The engineering standard (agent-platform #3, Ruling AC) adds `errorlint`, `forbidigo` (bans
+  `http.DefaultClient`, `http.Get|Head|Post|PostForm`, `fmt.Print*` outside `cmd/`, and `time.Sleep`
+  outside tests), `gocritic` and `revive` (doc comments on exported identifiers), plus an SPDX header
+  check. Lint only through `task lint` (`hack/lint.sh`).
+- **Engineering standard (Ruling AC, owner 2026-09-29).** `Smana/agent-platform`'s `AGENTS.md`, derived from
+  RunLore's conventions, **outranks this plan's sample Go code** in every AP task. Where a snippet below
+  disagrees, the standard wins:
+  - wiring lives in `internal/app`; `cmd/<bin>/main.go` builds the root context and logger and calls
+    `app.Run<Bin>(ctx, args, stdout)`;
+  - metrics use the OpenTelemetry metric API with the Prometheus exporter, every name `rooms_`-prefixed
+    and byte-identical to what this plan's VMRules query (check the exporter's suffixes), plus
+    `rooms_build_info{version}`;
+  - time comes from an injected clock or ticker; no `time.Sleep` outside tests (wait on `select` over
+    `ctx.Done()` and a timer). **Exception (Ruling AD):** lease freshness and `closed_at` use the
+    database's `now()`;
+  - one egress client, `internal/httpx`, arrives with the first outbound call, Task 1.6's JWKS fetch; no
+    hand-built `&http.Client{}` elsewhere, and tests use `httptest.Server.Client()`;
+  - `errors.Is(err, http.ErrServerClosed)`, errors wrapped with `%w`;
+  - every `http.Server` sets `ReadHeaderTimeout`, `ReadTimeout`, `IdleTimeout`, `MaxHeaderBytes` and
+    `WriteTimeout`; a streaming listener (SSE on :8443, WebSocket on :8080) sets `WriteTimeout: 0` and
+    bounds each non-streaming route instead;
+  - :8443 is `ListenAndServeTLS` with a `GetCertificate` that reloads the pair (GP-18);
+  - a doc comment on every exported identifier; `log/slog` injected; `ctx` first on any I/O.
 - **Git.**
   - Every PR starts in a fresh worktree (`EnterWorktree`) on its stack parent (the PR map's *Base*).
     Before each push, **merge** the parent branch and `origin/main` into it; never rebase, so
@@ -206,7 +243,7 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | # | Spec says / gap | Ruling | Why | Cost if wrong |
 |---|---|---|---|---|
 | P1 | Phases 1 log · 2 viewers · 3 driver · 4 approvals · 5 room tools · 6 fork | **Room tools move to phase 3**; driver becomes 4, approvals 5 | The UX reviews' top gap after "no live view" is "reviewer, tester and triager output has no destination". Tools only append to the room and need no driver token, so nothing earlier depends on phase 3–4 | One extra composition release (CC-S3) lands before driver work; none of phases 4–6 uses the tools |
-| P2 | Phase 7: gcp-0 | Out of this plan, as SP1 did | Programme: aws-0 first, gcp-0 a follow-up per sub-project | gcp-0 needs its own plan: TLS on :8443 (no WireGuard), the GKE issuer in the allowlist |
+| P2 | Phase 7: gcp-0 | **Reversed (GCP parity cross-plan edit, 2026-09-29): gcp-0 is IN scope, and aws-0 is not deployed.** TLS on :8443 (GP-18) and the GKE issuer in the allowlist (GP-11/GP-12) are built here, in Tasks 1.9, 1.11, 1.14, 1.18, 1.20 | The GCP parity plan makes gcp-0 the platform | Conflict with the original ruling: every "aws-0" reference below this row is superseded by the GCP parity plan's Global Constraints edit |
 | P3 | :8443 takes "JWT (allowlisted issuer, audience `room-broker`) → … or `system:factory`" | Runs present audience `room-broker`; **system callers present `rooms-system`**, and their `sub` must be in an explicit allowlist | SP1's Kyverno `agent-audience-reservation` and `agent-audience-token-request` refuse any `room-broker*` audience outside namespace `agents`, so the factory could never mint one | SP3's factory projects `rooms-system` instead of `room-broker`: one line in its manifest |
 | P4 | Bridge reads `WS /sockets/session/{id}?after_seq=` | The bridge **polls `GET …/events/search` every 1 s** (cursor = last event id, inclusive) and `GET /api/conversations/{id}` for `execution_status`. `StreamingDeltaEvent`s are not forwarded | The search API is durable, paged and restart-safe, and the bridge needs no WebSocket client. The harness keeps its own store, so polling loses nothing while the sandbox lives | ≤ 1 s extra latency; the UI shows whole messages, not token streaming. Adding the socket later changes only `internal/bridge/harness.go` |
 | P5 | SP1 lists "the harness session key on a shared in-memory volume" | **No change to the harness's agent-server contract and no session-key volume** (the one image change is P32's footer). The bridge sets `AlwaysConfirm` itself when the conversation appears (phase 5). On SIGTERM it flushes its buffer within the 30 s grace period | agent-server has no session key (SP1 P13: loopback only). `agent-run` detects a terminal status every 15 s; the bridge polls every 1 s, so it has mirrored the final events first. Approvals are oversight, not a boundary (S9, T6) | An action taken in the first ~250 ms of a conversation escapes confirmation (it is still logged). Final events are lost only if the broker is down for the whole grace period, the spec's own "while the sandbox lives" bound |
@@ -215,8 +252,9 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P8 | `objectStoreRecovery` "lets the log survive routine rebuilds" | The first deploy has **no** recovery source; nothing exists to recover. After a day of real rooms, the seed is promoted with `cnpg-promote-seed.sh` and the claim gains `objectStoreRecovery.path: rooms-<date>` (Task 2.12). Every later teardown promotes a fresh seed first | Recovery needs a seed, and the repo's seed discipline (zitadel) is the proven path | Events after the last promoted seed are lost on a rebuild |
 | P9 | `KVStore` `auth.existingSecret` from `platform/agents/*` | The Valkey password comes from an ESO `Password` generator, `CreatedOnce` | Valkey carries hints only, so a per-cluster password loses nothing. An `agents/*` path would need a manual seed | None found |
 | P10 | S11: `App` claim "with its own route off … The App XRD takes custom CNP rules and extra ports" | The App claim is named **`room-broker`**. Its `networkPolicies` are **disabled** and a standalone CNP sits beside it; metrics and probes are on `:9090` with a standalone `VMServiceScrape` | SP1 as built hardcodes `app.kubernetes.io/name: room-broker` in every run CNP and the data-plane CNP, and the FQDN `room-broker.agent-system.svc.cluster.local`. The App egress schema has no `rules.dns`, without which the IdP `toFQDNs` rule never matches (`security/AGENTS.md` trap 1) | Renaming later is a delete-and-create of a stateless Deployment plus three selector edits |
-| P11 | §9 broker egress lists "toFQDNs identity provider 443" | It also allows `oidc.eks.${region}.amazonaws.com:443` | Offline validation of run tokens needs the EKS JWKS (`${oidc_issuer_url}/keys`), as `agent-router` already does | None |
-| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the aws-0 sync already opens | That script runs on every deploy (`opentofu/aws/eks/init/workflows.tm.hcl`) and OpenBao restores the path. Every other consumer goes to AWS Secrets Manager, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
+| P11 | §9 broker egress lists "toFQDNs identity provider 443" | It also allows `${oidc_jwks_host}:443` (GCP parity GP-12, cross-plan edit 2026-09-29: was `oidc.eks.${region}.amazonaws.com:443`), and the JWKS URI is `${oidc_jwks_uri}` (was `${oidc_issuer_url}/keys`) | Offline validation of run tokens needs the run issuer's JWKS, as `agent-router` already does. GKE serves it at `<issuer>/jwks`, not `<issuer>/keys`, so a per-cloud host/URI pair replaces the EKS-shaped derivation | None |
+| P11a | §9 broker egress, gcp-0 hairpin (GCP parity cross-plan edit, GP-11/`gcp_gateway_hairpin_cross_node`) | On gcp-0, `toFQDNs: auth.gcp.cloud.ogenki.io` with `toPorts: 443` reaches gcp-0's own ZITADEL Gateway and hits the socket-LB hairpin. Use `toEntities: [all]` with no `toPorts` for that one rule, as `tooling/gcp-0/headlamp/network-policy.yaml` does | Per-packet LB rewrites the port before policy runs on gcp-0's gVisor nodes, so any `toPorts` on this rule fails | A port-scoped rule silently blocks the broker's own IdP calls on gcp-0 only |
+| P12 | "the `rooms-proxy` client is written under that path" | `zitadel-oidc-clients.sh` gains a `rooms-proxy` consumer that issues **JWT** access tokens and writes `{client-id, client-secret, cookie-secret}` to **OpenBao** `agents/rooms-proxy` (the `agents` mount, P38) through the root-token session the gcp-0 sync already opens (GCP parity cross-plan edit, 2026-09-29: gcp-0's stage 3 already opens the OpenBao session with `--openbao-url`, GCP parity G-3; the `rooms-proxy` write uses it the same way — was "the aws-0 sync already opens") | That script runs on every deploy and OpenBao restores the path. Every other consumer goes to the cloud's own secret store, which C1 forbids to `agent-system` | The first sync after a ZITADEL restore from a seed lacking the app rotates the client; the script already handles that |
 | P13 | Room MCP: "Injected credential plus `x-ar-agent`"; fallback: bridge relay | The MCPRoute backend injects a generated key in header `x-room-mcp-key` (`securityPolicy.apiKey`). **The relay fallback is not built** | SP1 confirmed from source that `x-ar-agent` reaches MCP backends (SP1 §6). A key in a custom header keeps `Authorization` out of every MCP hop (gate A6's intent) | If Task 3.11 finds no `x-ar-agent`, ruling P36 applies: the relay is not built in this plan |
 | P14 | Before SP3, "the broker shows the `AgentRun` for the owner to create" (fork) | The same holds for **hand to role** and **add agent**. The broker renders the claim; the owner runs it. `task agent:run` gains `--room <id>` | C3: only the factory creates runs, and it does not exist yet. The broker's RBAC never includes `create` | The owner is in the loop for every run until SP3; the factory client (`POST /v1/runs`) is built and unit-tested, and switches on with `factoryURL` |
 | P15 | `state_changed{run_phase}` | When a run ends, the broker appends `state_changed{kind: run_phase, phase, reason}` with reason `agent_finished`, `agent_error`, `agent_stuck`, `deadline`, `pod_lost`, `room_busy` (P17 refused the run, which never started: F15), `revoked`, `deleted` (the claim was deleted first, review M15) or `budget-*`. It derives the reason from the harness's last status in the log, the run's timings and any `room_busy` refusal | UX finding H3: every failure reads `Failed/PodFailed`. The log is the only place that knows whether the agent ended its conversation | A pod lost within 30 s of its deadline reads `deadline` |
@@ -237,13 +275,13 @@ what it costs if it is wrong. None edits the spec; the ones worth promoting into
 | P30 | Δ1: "one PR comment" | The leader sweeps every 15 s over the last 24 h of agent-authored verdicts that have no outcome. It posts each one with a hidden marker, and reuses a comment by the App that already carries the marker. The outcome is appended as `state_changed{verdict_posted \| verdict_not_posted}` with origin `(broker:verdicts, <verdict seq>)`. An internal room's comment carries the verdict and the link but never the summary, and `@` mentions are neutralised | Restart-safe with no new table, and a new leader writes nothing twice. The log already holds C7's data class | ≤ 15 s from verdict to comment. A verdict older than 24 h when the key lands, or in a room sealed before it posts, stays in the room |
 | P31 | Constitution: every secret generated or restored, never a manual seed | The App key is the plan's one owner-written secret: `agents/factory-app` (`app_id`, `private_key`) through `agents-secrets`. The broker mounts it as an **optional** Secret volume and reads it on every mint | GitHub issues the key, so nothing in-cluster can make it. OpenBao keeps it across rebuilds, as it does SP1's `agents/github-app`. The optional volume lets phases 1–3 run before the App exists and picks the key up without a restart, where an env var from the Secret would keep the empty value it started with | Until the owner step, verdicts stay in the room; `RoomVerdictsNotReachingGitHub` fires only once posting has been attempted <!-- pragma: allowlist secret --> |
 | P32 | Δ4 (accepted 2026-09-27): "a footer with `Agent-Room`, the run id, role, task link and model": `privateDomainName` in the core composition environment, or a harness `gh pr create` wrapper | **The harness wrapper.** After a successful `gh pr create`, `pr_footer.py` appends `Agent-Room: <roomId>`, `Agent-Run`, `Agent-Role`, `Agent-Task` and `Agent-Model` to the body. CC-S3 passes `ROOM_ID` and `TASK_URL`. The room is named by id; the verdict comment (P30) carries the full link | Deterministic whatever flags write the body: #2114's body carries only OpenHands' own line. Every field is in the pod, and the `AgentRun` composition stays cloud-neutral with no EnvironmentConfig step | A pull request with no verdict yet shows the room id, not a link. A pull request opened through `gh api` has no footer: it is guidance, like the `commit-msg` hook |
-| P33 | The owner, 2026-09-27: "I don't want to merge any SPx until I get the whole picture done and we agree on the ux" | **No SP2 PR merges and no release tag before Phase 7.** One stack per repo, merge-only, each PR on the previous open branch (PR map). Live gates run on `integration/agent-factory` with CI pre-releases pinned by digest; a branch CRD, a branch `atlasSchema.ref` and `XRD_CRDS_FILE` stand in for release assets. Phase 7: [OWNER] UX sign-off, then one merge wave in dependency order, re-pinned to release tags, branches deleted last | The owner's rule. Pre-releases and branch refs are what SP1's live gates already ran on | Long-lived stacks need `origin/main` merged in regularly. The `Kubernetes validation` check no longer stays red on a pre-release pin: P40 publishes its `xrd-crds.yaml` |
+| P33 | The owner, 2026-09-27: "I don't want to merge any SPx until I get the whole picture done and we agree on the ux" | **No SP2 PR merges and no release tag before Phase 7.** **Lifted for `Smana/agent-platform` only (owner, 2026-09-29): its PRs merge to `main` when green and reviewed; its tags stay in Phase 7.** One stack per repo, merge-only, each PR on the previous open branch (PR map). Live gates run on `integration/agent-factory` with CI pre-releases pinned by digest; a branch CRD, a branch `atlasSchema.ref` and `XRD_CRDS_FILE` stand in for release assets. Phase 7: [OWNER] UX sign-off, then one merge wave in dependency order, re-pinned to release tags, branches deleted last | The owner's rule. Pre-releases and branch refs are what SP1's live gates already ran on | Long-lived stacks need `origin/main` merged in regularly. The `Kubernetes validation` check no longer stays red on a pre-release pin: P40 publishes its `xrd-crds.yaml` |
 | P34 | Review M10: least privilege for the factory App | The App keeps the owner's permissions: Issues write, Pull requests write, Contents read, Metadata read. The broker mints every installation token for **the one repository and only the permission that call needs**: `pull_requests: write` for a verdict comment | SP3 reuses the App for issue narration (Δ6), and a permission requested later makes the owner re-accept the installation | Whoever steals the private key can still mint the App's full permissions; only the tokens the broker holds are narrow |
 | P35 | Review M14: agent-server 1.49.6 skips an event file it cannot read (`_get_searchable_event` returns `None`) | **A known limit, not fixed.** The bridge keys items by event position (`SeqFor`), so a transiently skipped event shifts every later position by one. The live cursor moves on by event id; a restarted bridge's `Skip` recounts | The window is a partly written event file on the sandbox's own disk, and keying by event id would need another idempotency scheme in the store | For that run only: one event can be missed, or the events after it re-appended under new keys (visible duplicates) |
 | P36 | Spec §3 fallback: "the bridge relays these calls over its authenticated socket" (C5, unverified) | **The relay is not built.** Room tools rely on `agent-router` projecting `x-ar-agent` to MCP backends, which SP1 confirmed from source (P13). Task 3.11 Step 1 proves it live before anything depends on it | A relay needs a loopback MCP server in the bridge, a harness MCP configuration pointing at it (an image and a composition change) and an `mcp` SSE frame: a phase of its own | If Step 1 finds no `x-ar-agent`, phase 3 stops there. Agents cannot record handoffs or verdicts, and SC-4 and SC-14 wait for a follow-up plan that builds the relay. Phases 4–6 use no room tool (P1) and continue |
 | P37 | External reviews, 2026-09-27: SP1's gaps M2–M4, M6–M9, N3, N8 and B2 | **One PR, H-1 (`fix/agent-review-hardening`), stacked on SP1's `feat/agent-e2e` (#2111); S1 and H-S3 stack on H-1** instead of #2111 and #2110. H-1 carries M4's redaction in the harness source and bumps it to `v0.1.1`; the image that runs it is H-S3's `v0.2.0` | S3's MCPRoute edits then sit on H-1's trimmed tool lists without a conflict, and `v0.2.0` ships M4 with the footer. H-1 pins no crossplane-configuration release of SP2's, so Phase 7 stays acyclic: #2111 → H-1 → H-S3 → CC release → S1. The bump keeps H-1's merge from republishing SP1's `v0.1.0` tag | M4 is not live before phase 3's harness pre-release: until then an injected agent can print its ≤ 1 h, one-repository token into VictoriaLogs (T3) |
-| P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`, created with `merge-gate` (SP3 R44) in Task 1.15a, before this plan writes a new secret. [OWNER] moves `github-app`, `zai` and `factory-app` (`bao kv get` → `bao kv put -mount=agents`) and deletes the old keys once every ExternalSecret is Ready. The raft snapshot carries every mount, so a rebuild restores it with no seed. Until S1 merges in Phase 7, `aws/openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before S1 merges destroys both mounts and every key in them**; its preview shows `2 to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
-| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and not before R04's internal egress (no direct GitHub or profile egress, the read-only route; Task 0.5.15) passes its proof *(external review R04)*. SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. A tenant or a per-run filter is backlog |
+| P38 | Review M1: SP1 S9 put the agents' secrets under `platform/agents/*`, and `external-secrets` reads all of `platform/` through `openbao-platform`, a ClusterSecretStore with no `conditions`, so any namespace allowed to create an `ExternalSecret` can read the agents' App key | **A kv-v2 mount of their own, `agents`**, named only by `agents-secrets` and `secrets-admin`. **GCP parity cross-plan edit (2026-09-29): the `agents` mount, `agents-secrets.hcl`, the SecretStore path and the ExternalSecret keys landed in GCP parity G-5 (GP-8), for both clouds — not in Task 1.15a.** Task 1.15a now only creates `merge-gate` (SP3 R44). [OWNER] moves `github-app`, `zai` and `factory-app` and deletes the old keys once every ExternalSecret is Ready, as `aws-0 only, if it is ever rebuilt` (Task 1.15a Steps 8–11). The raft snapshot carries every mount, so a rebuild restores it with no seed. **Until G-5 merges** (was: until S1 merges in Phase 7), `openbao/management` is deployed only from an `integration/agent-factory` checkout | A mount is a boundary no prefix grant elsewhere can widen: `external-secrets.hcl` grants `platform/data/*`. The review's other option, a `namespaceSelector` on `openbao-platform`, would still let every namespace it admits read the App keys | **A deploy of the management stack from `main` before G-5 merges destroys the `agents` mount and every key in it**; its preview shows `to destroy` first, and the recovery is a raft restore of the last snapshot. During the migration the ExternalSecrets cannot refresh for a few minutes (their Secrets are `Retain`) |
+| P39 | Reviews M2, M3: an `internal` run reads VictoriaMetrics' operator introspection, and, as an implementer, any ConfigMap, ServiceAccount or node in the cluster (`get_kubernetes_resources` over a cluster-wide ClusterRole) | H-1 removes `tsdb_status`, `active_queries` and `top_queries` from every role and `get_kubernetes_resources` from the implementer, and trims the ClusterRole of `configmaps`, `serviceaccounts`, `nodes` and `pods/log` (the first and last stay readable in `flux-system`). **No `internal` run gets a model route (SP4 PR 2) before H-1's live gate passes on `integration/agent-factory`**, and not before R04's internal egress (no direct GitHub or profile egress, the read-only route; Task 0.5.15) passes its proof *(external review R04)*. SP4 PR 2 merges after H-1 in the programme's wave | Today no `internal` run can call a model, so this surface has no reader yet; SP4 PR 2 creates one, and its output reaches pull requests on a public repository | Reviewer, tester and triager keep VictoriaLogs `query`, `hits` and `facets` over every namespace: `security`'s and other runs' log lines stay readable by an internal run. They also keep `get_kubernetes_resources` cluster-wide, which still reaches pod specs (including inline `env`), workload specs (Deployment/StatefulSet/DaemonSet/ReplicaSet), and `agentruns`' task text — none namespace-scoped. A tenant or a per-run filter is backlog |
 | P40 | Review B2: `validate-manifests.sh` cannot run on a pre-release crossplane-configuration pin, because `gen-catalog.sh` fetches `releases/download/<ver>/xrd-crds.yaml`, which only a release publishes | **CC-H1: the pre-release job also pushes `xrd-crds.yaml` as the OCI artifact `ghcr.io/smana/crossplane-configuration-xrd-crds:<version>`**, and this repo's CI puts it in `XRD_CRDS_FILE` through `scripts/ci/fetch-xrd-crds.sh` when the pin is a pre-release. CC-S1 stacks on CC-H1, so every later CC pre-release carries it | An OCI artifact, not a GitHub pre-release asset: a pre-release creates a `v*` tag, and the pre-release job derives the next version from the newest `v*` tag. `gen-catalog.sh` keeps its single seam, the variable it already reads | One more ghcr package the owner makes public once. CC-2's own `v0.7.2-pr29.3ad168a` has no artifact, so H-1 pins CC-H1's pre-release (the same XRDs) |
 | P41 | External review R16 (2026-10-02): `atlasSchema.ref` follows the moving branch `feat/room-driver` (ruling ST, amended 2026-10-01), so a push to it migrates an unchanged deployment within ~10 min, and branch deletion 404s the source | **A frozen pin branch `pin/room-broker-<sha8>`**, cut at the commit of the pinned broker image and protected by an agent-platform ruleset (no update, no deletion on `pin/**`). A re-pin cuts a new pin branch at the new image's commit and moves image, retention CronJob, `crd-rooms.yaml` and `atlasSchema.ref` together. Applied at the next integration re-pin (`pin/room-broker-5bd18d02` at the F10/F11 live re-verify). The wave still pins the release tag (Phase 7). Still never a SHA | The composition maps a non-`v` ref to a GitRepository `branch`; a frozen branch cannot move or be deleted. A pre-release tag would fire agent-platform's release workflow, and a broker schema-hash check detects only after Atlas migrated | One `git push` and one ruleset for the owner. Optional guard: a doc-claims-style check that the `<sha8>` in `atlasSchema.ref` equals the room-broker image tag's |
 
@@ -290,31 +328,36 @@ merge-only, never rebased.
 
 | # | Repo · branch | Base (stack parent) | Phase | Needs | Carries | Live gate (aws-0) |
 |---|---|---|---|---|---|---|
-| AP-0 | agent-platform · `chore/bootstrap` | `main` | 0 | [OWNER] repo created | Go module, mise, taskfile, CI, pre-release image workflow, stub binaries | Pre-release images pull from ghcr anonymously |
+| AP-0 | agent-platform · `chore/bootstrap` | `main` | 0 | [OWNER] repo created | Go module, mise, taskfile, CI, pre-release image workflow, stub binaries. **Merged** (`f563882d`) with the hardened CI (Ruling X); the engineering standard (#3) and the docs (#2) followed | Pre-release images pull from ghcr anonymously |
 | CC-H1 | crossplane-configuration · `ci/prerelease-xrd-crds` | `feat/agentrun-harness` (SP1 CC-2, head `c304bbf`) | 0.5 | CC-2 (#29) open | The pre-release job also publishes `xrd-crds.yaml` as `oci://ghcr.io/smana/crossplane-configuration-xrd-crds:<version>` (B2, P40) | via H-1: its `Kubernetes validation ☸` green |
-| H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | The next aws-0 rebuild: runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
-| AP-1 | agent-platform · `feat/room-log` | `chore/bootstrap` | 1 | AP-0 | Envelope, redaction, store + migrations, Room CRD, authn, run watch, Room controller, :8443, bridge | via S1 |
+| H-1 | this · `fix/agent-review-hardening` | `feat/agent-e2e` (SP1 PR 6, #2111) | 0.5 | #2111 open; CC-H1's pre-release | External review fixes to SP1: M2, M3, M4 (harness source `v0.1.1`), M6, M7, M8, M9, B1's doc-claim, B2's CI step, N3, N8 | gcp-0, after GCP parity Task 8.6 (GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild"): runbook 08 with a real PASS, the MCP seed, tool lists and RBAC, the sandbox verbs (Task 0.5.14) |
+| AP-1 | agent-platform · `feat/room-log` | `main` (rebased onto it once AP-0 merged) | 1 | AP-0 | Envelope, redaction, store + migrations, Room CRD, authn, run watch, Room controller, :8443, bridge | via S1 |
 | CC-S1 | crossplane-configuration · `feat/sqlinstance-generated-credentials` | `feat/agentrun-observability` (the observability plan's CC-O1, on CC-H1; O12) | 1 | CC-1 (#27), CC-2 (#29), CC-H1 and CC-O1, open | `SQLInstance.spec.credentials.source: generated`, roles without a database | via S1: `xplane-rooms` Ready with no seed |
 | CC-S2 | crossplane-configuration · `feat/agentrun-room-bridge` | `feat/sqlinstance-generated-credentials` | 1 | CC-S1; AP-1's bridge pre-release | `room-bridge` native sidecar, room token, bridge health ingress | via S1 |
 | S1 | this · `feat/rooms-log` | `feat/agent-observability` (the observability plan's O-1, on H-1; O12) | 1 | O-1, H-1 and #2111 open; AP-1 and CC-S2 pre-releases | The `agents` and `merge-gate` OpenBao mounts (M1, P38), ADR-0044, CRD + catalog, `xplane-rooms`, CNPG CNP, broker App + RBAC + CNP, retention, VMRule, `agent:run --room`, ESO generator RBAC | M1's migration; SC-1, SC-8, SC-10; the transcript and end reason outlive the pod; P17 |
-| AP-2 | agent-platform · `feat/room-viewers` | `feat/room-log` | 2 | AP-1 | Policy matrix, human auth, fan-out hub, WebSocket replay, read-only UI | via S2 |
+| AP-2 | agent-platform · `feat/room-viewers` | `main` once AP-1 merges | 2 | AP-1 | Policy matrix, human auth, fan-out hub, WebSocket replay, read-only UI | via S2 |
 | S2 | this · `feat/rooms-viewers` | `feat/rooms-log` | 2 | S1; AP-2 pre-release | ADR-0049, ZITADEL roles + `rooms-proxy`, oauth2-proxy, route, `KVStore`, 2 replicas, recovery seed | SC-2, SC-9, SC-11, SC-12; P17 across two replicas |
-| AP-3 | agent-platform · `feat/room-tools` | `feat/room-viewers` | 3 | AP-2 | MCP server :8090 with `room_*`; GitHub App client; verdict poster (Δ1) | via S3 |
+| AP-3 | agent-platform · `feat/room-tools` | `main` once AP-2 merges | 3 | AP-2 | MCP server :8090 with `room_*`; GitHub App client; verdict poster (Δ1) | via S3 |
 | H-S3 | this · `feat/agent-harness-pr-footer` | `feat/agent-observability` (O-1, which stacks on H-1; P37, observability plan O13), **beside** the S stack | 3 | H-1 and O-1 open | `gh pr create` provenance footer (Δ4), with H-1's M4 redaction; harness pre-release `v0.2.0-pr<N>.<sha8>`, pushed by hand | via S3 |
 | CC-S3 | crossplane-configuration · `feat/agentrun-room-rules` | `feat/agentrun-room-bridge` | 3 | CC-S2; H-S3's pre-release | Room rules in `rules.md`; `ROOM_ID` and `TASK_URL` for the harness; the H-S3 harness pin | via S3 |
 | S3 | this · `feat/rooms-tools` | `feat/rooms-viewers` | 3 | S2; AP-3 and CC-S3 pre-releases; [OWNER] factory App (Task 3.9) | `room-broker` MCP backend on both MCPRoutes, MCP key, CNP; factory App key, `api.github.com` egress, `RoomVerdictsNotReachingGitHub` | SC-4 (owner-sequenced), tool lists per role, SC-14, SC-15 |
-| AP-4 | agent-platform · `feat/room-driver` | `feat/room-tools` | 4 | AP-3 | Driver token, queue, steering, interrupt, brief, hand to role, new room | via S4 |
+| AP-4 | agent-platform · `feat/room-driver` | `main` once AP-3 merges | 4 | AP-3 | Driver token, queue, steering, interrupt, brief, hand to role, new room | via S4 |
 | CC-S4 | crossplane-configuration · `chore/room-bridge-v0.4.0` | `feat/agentrun-room-rules` | 4 | CC-S3; AP-4's bridge pre-release | Bridge digest bump | via S4 |
 | S4 | this · `feat/rooms-driver` | `feat/rooms-tools` | 4 | S3; CC-S4 and AP-4 pre-releases | Pins | SC-3, SC-4 (hand to role) |
-| AP-5 | agent-platform · `feat/room-approvals` | `feat/room-driver` | 5 | AP-4 | Classification, confirmation loop, first-wins, four-eyes, TTL, cards | via S5 |
+| AP-5 | agent-platform · `feat/room-approvals` | `main` once AP-4 merges | 5 | AP-4 | Classification, confirmation loop, first-wins, four-eyes, TTL, cards | via S5 |
 | CC-S5 | crossplane-configuration · `chore/room-bridge-v0.5.0` | `chore/room-bridge-v0.4.0` | 5 | CC-S4; AP-5's bridge pre-release | Bridge digest bump, `BRANCH` for the bridge | via S5 |
 | S5 | this · `feat/rooms-approvals` | `feat/rooms-driver` | 5 | S4; CC-S5 and AP-5 pre-releases | VMRule `RoomApprovalPendingTooLong`, pins | SC-5, SC-6 |
-| AP-6 | agent-platform · `feat/room-fork` | `feat/room-approvals` | 6 | AP-5 | Fork, `roomctl` | via S6 |
+| AP-6 | agent-platform · `feat/room-fork` | `main` once AP-5 merges | 6 | AP-5 | Fork, `roomctl` | via S6 |
 | S6 | this · `feat/rooms-fork` | `feat/rooms-approvals` | 6 | S5; AP-6 pre-release | `roomctl` ZITADEL native app, oauth2-proxy JWT bearer, pins, verification | SC-7, SC-13, `/verify-spec` |
 | — | all three repos | — | 7 | [OWNER] UX sign-off of the whole programme | The merge wave: merges in dependency order, release tags, re-pins, branch deletion (Phase 7) | The re-pinned integration branch reconciles; SC-13 on `main` |
 
 The branch names `chore/room-bridge-v0.4.0` and `-v0.5.0` are kept for stability; no such tag is
 cut (P33).
+
+**agent-platform merges as it goes (owner, 2026-09-29).** P33 is lifted for `Smana/agent-platform` only:
+each AP PR is re-reviewed and merges to `main` (squash) when green, and the next AP branch starts from `main`.
+Tags stay in Phase 7: every image is still a `v0.0.1-pr<N>.<sha8>` pre-release pinned by digest.
+cloud-native-ref and crossplane-configuration keep P33.
 
 **Why H-S3 sits beside the S stack.** In Phase 7 the harness must be released before the
 crossplane-configuration release, because CC-S3 pins that harness. S1 in turn pins the CC release.
@@ -390,9 +433,12 @@ tags and merges it.
 | `internal/mcp/` | 3 | :8090 MCP server, `room_*` tools |
 | `internal/github/`, `internal/verdictpost/` | 3 | The factory App client; the leader's verdict comments (Δ1) |
 | `internal/brief/`, `internal/runrequest/` | 4 | Fenced brief; manifest and factory run requesters |
-| `internal/metrics/` | 1 | The §9 metric set |
-| `cmd/room-broker/` | 1 | `serve` and `retention` subcommands |
-| `cmd/roomctl/` | 6 | Human CLI |
+| `internal/metrics/` | 1 | The §9 metric set, on the OTel metric API with the Prometheus exporter (`rooms_` prefix, `rooms_build_info`; Ruling AC) |
+| `internal/httpx/` | 1 (Task 1.6) | The one audited egress client: timeout, redirect cap, credential headers stripped on a cross-host redirect, metadata addresses refused (Ruling AC) |
+| `internal/app/` | 1 (Task 1.12) | Wiring per binary: the only importer of every adapter; `cmd/<bin>/main.go` only calls `app.Run<Bin>` (Ruling AC) |
+| `cmd/room-broker/` | 1 | `serve` and `retention` subcommands, thin |
+| `cmd/roomctl/`, `internal/roomctl/` | 6 | Human CLI and its client |
+| `AGENTS.md` (+ `CLAUDE.md` symlink), `CONTRIBUTING.md`, `docs/` | 0 | The engineering standard (Ruling AC), contribution rules, the platform guide |
 
 **`Smana/crossplane-configuration`**
 
@@ -453,14 +499,16 @@ tags and merges it.
 | Marker | Task | What |
 |---|---|---|
 | [OWNER] | 0.1 | Create the public repo `Smana/agent-platform` (OD-4, approved 2026-09-27) with a README on `main` |
-| [OWNER] | 0.3 | Make the ghcr packages `room-broker` and `room-bridge` public after their first push |
+| — | 0.3 | ~~Make the ghcr packages public~~: not needed. Actions-created packages inherit the repository's visibility, so both were public on first push (2026-09-29) |
 | [OWNER] | 0.5.2 | Make the ghcr package `crossplane-configuration-xrd-crds` public after its first push |
 | [OWNER] | 0.5.14 | Rebuild aws-0 from an `integration/agent-factory` checkout (P38) with H-1 merged in: H-1's live gate runs on it |
 | [OWNER] | 1.15a | Apply `aws/openbao/management` from the integration checkout; move `github-app`, `zai` and `factory-app` to the `agents` mount; run the two capability probes; delete the old `platform/agents/*` keys once every ExternalSecret is Ready |
 | [OWNER] | 3.9 | Create SP3's factory App `ogenki-agent-factory` early (ruling P28): Contents read, Issues write, Pull requests write, Metadata read; webhook off; installed on `Smana/cloud-native-ref` only; on no bypass list. Then `bao kv put -mount=agents factory-app app_id=<id> private_key=@<pem>` and `shred -u <pem>` (done 2026-09-27 on `platform/agents/factory-app`; Task 1.15a moves it) |
 | [OWNER] | 3.6 | Only if the session's gh token lacks `write:packages`: push H-S3's harness pre-release (four commands, given in the task) |
 | [OWNER] | 2.14 | Grant `agents-admin` to yourself and `agents-member` to each developer: `scripts/provision/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws --grant agents-admin=<email> --grant agents-member=<email> --apply` (each user must have logged in once) |
-| [OWNER] | 7.1 | Sign off the whole programme's UX (ruling P33). Nothing merges before it |
+| [OWNER] | 1.3, 1.4 | Run `atlas migrate hash` after every change to the migration SQL: the session's guard refuses the bare `hash` token, so the owner runs `! atlas migrate hash --dir file://internal/store/migrations` in the AP-1 worktree (done twice, 2026-09-29) |
+| [OWNER] | 7.1 | Sign off the whole programme's UX (ruling P33). Nothing in this repo or crossplane-configuration merges before it |
+| [OWNER] | 7.2 | Allow or add agent-platform's release `crd` job (publishes `crd-rooms.yaml`), which the permission classifier blocked in Task 1.5; add a `v*` tag ruleset (admin-only); then tag |
 | [OWNER] | before the first `internal` run | Re-confirm `agents-member` watches everywhere (spec §1, D1) for `internal` rooms before the first internal run, or ask for a follow-up gating `Read`/`Fork` on `dataClass` (external review R12) |
 | [OWNER] | 7.2–7.6 | The merge wave: turn off auto-delete, retarget and merge each PR (a ruleset bypass here), push each release tag, delete the branches last |
 
@@ -771,18 +819,27 @@ Expected: `check` and both `prerelease` jobs pass. The job summary prints two
 `ghcr.io/smana/<image>:v0.0.1-pr1.<sha8>@sha256:…` lines, `<sha8>` being the PR head's
 (`gh pr view 1 --repo Smana/agent-platform --json headRefOid --jq '.headRefOid[:8]'`).
 
-- [ ] **Step 3: [OWNER] Make both packages public**
+- [ ] **Step 3: The packages are already public** (no owner step)
 
-A new ghcr package starts private. Ask the owner to set `room-broker` and `room-bridge` to public in
-the package settings (`https://github.com/users/Smana/packages/container/<name>/settings`).
+A package created by the repository's own Actions inherits the repository's visibility, so on a public
+`Smana/agent-platform` both are public on first push (verified 2026-09-29). Step 4 proves it.
 
 - [ ] **Step 4: Verify an anonymous pull**
 
 Run: `skopeo inspect --no-creds docker://ghcr.io/smana/room-bridge:v0.0.1-pr1.<sha8> | jq -r .Architecture`
 Expected: `amd64`, no `unauthorized`. The same for `room-broker`.
 
-- [ ] **Step 5: Leave AP-0 open (ruling P33).** AP-1 is stacked on `chore/bootstrap`; AP-0 merges in
-  Phase 7.
+- [ ] **Step 5: Harden, review, merge (owner, 2026-09-29: P33 lifted for agent-platform).** Before the
+  merge (Ruling X), AP-0 carries the CI hardening and a README that says what the repository is for:
+  - every `uses:` pinned to a 40-hex SHA, least-privilege `permissions` per job (the release job
+    `contents: read` + `packages: write`), `concurrency`, `timeout-minutes`, `persist-credentials: false`;
+  - `govulncheck` and a `go mod tidy` drift check, CodeQL, Scorecard, an SBOM and provenance, keyless
+    `cosign` signatures, Dependabot;
+  - a `main` ruleset: PR with the `check` and `analyze` contexts required, linear history, no
+    force-push or deletion, admin-only bypass.
+
+  Re-review, then squash-merge when green (`f563882d`). AP-1 then starts from `main`. The
+  engineering standard (#3, Ruling AC) and the platform guide (#2) merged the same way.
 
 ---
 
@@ -795,9 +852,9 @@ in this repo, **H-1** (`fix/agent-review-hardening`, stacked on SP1's `feat/agen
 mount, is not here: it lands with S1, before this plan writes its first new secret (Task 1.15a,
 ruling P38).
 
-Gate: H-1's CI green, `Kubernetes validation ☸` included (B2). On the next aws-0 rebuild: runbook 08
-re-run with a real PASS, and the seed, MCP-scope and RBAC checks of Task 0.5.14. Nothing merges
-(P33).
+Gate: H-1's CI green, `Kubernetes validation ☸` included (B2). On gcp-0, after GCP parity Task 8.6
+(GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild"): runbook 08 re-run with a
+real PASS, and the seed, MCP-scope and RBAC checks of Task 0.5.14. Nothing merges (P33).
 
 ### Task 0.5.1: H-1 — worktree
 
@@ -1499,6 +1556,13 @@ triager: logs by role is the design, and the unscoped residual is named in P39.
 
 - [ ] **Step 1: Write the failing test**
 
+> **Superseded (final-review fix wave, 2026-09-29):** the denylist snippet below (three
+> introspection tool names, plus a spot-check on the implementer's `get_kubernetes_resources`) was
+> replaced on H-1 by the allowlist version in `774e022b` — an exact expected-set comparison per
+> backend and per role, which also catches an addition the denylist never could. Task 3.8 must
+> extend *that* version (with the `room-broker` backend and `room_*` grants), not reintroduce this
+> one.
+
 `scripts/ci/tests/test-agent-mcp-scope.sh`:
 
 ```bash
@@ -1661,12 +1725,33 @@ Run: `gh pr checks <H-1> --watch`
 Expected: every check green, `Kubernetes validation ☸` included; its log shows
 `==> Using pre-built Crossplane XRD CRDs from`. That check was red on every SP1 PR (B2).
 
-### Task 0.5.14: [LIVE] H-1 on the next aws-0 rebuild
+### Task 0.5.14: [LIVE] H-1 on gcp-0, after GCP parity Task 8.6
 
 Merge H-1 into `integration/agent-factory` (live-check routine step 1) and hand-patch the core
-package to CC-H1's pre-release (Global Constraints). The owner's next rebuild of aws-0, deployed from
-the `integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
+package to CC-H1's pre-release (Global Constraints). gcp-0, after GCP parity Task 8.6 (GCP parity
+cross-plan edit, 2026-09-29; was "the owner's next rebuild of aws-0"), deployed from the
+`integration/agent-factory` checkout (P38), is the gate. Record every output in H-1's "Live
 evidence".
+
+> **Amendments (final-review fix wave, 2026-09-29):**
+> - CC-2's pre-release `v0.7.2-pr29.3ad168a` has no `xrd-crds` artifact (it predates CC-H1). When
+>   H-1 merges into `integration/agent-factory`, move the crossplane-configuration git pin to a
+>   pre-release that does publish one — CC-O1's `v0.7.2-pr31.988146f` or later — and hand-patch the
+>   core package to the same pre-release (I3). The ghcr package `crossplane-configuration-xrd-crds`
+>   must be public first, or run `docker login ghcr.io` before the fetch.
+> - Add a live check for M4's residual (I4/M4): after a run completes, grep the harness container's
+>   logs for `gh[posu]_[A-Za-z0-9_]{20,}` and expect 0 matches (the token pattern from runbook 07,
+>   applied to `agent-server`'s inherited stdout rather than the harness's own log stream).
+> - **Ruling B: the live gates for this fix wave run on gcp-0, not aws-0.** Step 2's hard-coded
+>   `grafana\.priv\.aws\.ogenki\.io` regex will not match on that cluster — substitute the gcp
+>   Grafana host before running the check, or the step reports a false failure.
+> - Runbook 06's Results row 130 (`4 — internal tools`) records a pre-fix observation — the
+>   implementer's tool list still shows `get_kubernetes_resources`, which M2/M3 (H-1) removed. This
+>   task's Step 3 below must re-run Step 4 and overwrite that row, not only the runbook 08 table.
+> - **GCP parity cross-plan edit (2026-09-29), superseding Ruling B's generic substitution with the
+>   literal check:** Step 1's pool check is `kubectl get nodes -l sandbox.gke.io/runtime=gvisor`
+>   instead of `karpenter_nodepools_*` (gcp-0 has no Karpenter). Step 2's regex becomes
+>   `^https://grafana\.priv\.gcp\.ogenki\.io/d/agent-platform$`.
 
 - [ ] **Step 1: Runbook 08, a real PASS**
 
@@ -2129,7 +2214,7 @@ Expected: `ok`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git switch -c feat/room-log origin/chore/bootstrap   # stacked on AP-0 (P33)
+git switch -c feat/room-log origin/main   # AP-0 merged: P33 is lifted for agent-platform
 git add internal/envelope
 git commit -m "feat(envelope): C4 v1 event envelope and Appendix A payloads"
 ```
@@ -2385,6 +2470,27 @@ git commit -m "feat(redact): gitleaks redaction with the four pinned rules"
 - Produces: tables `rooms` and `events`, and the grants for `rooms_broker` and `rooms_retention`.
   The directory is the `atlasSchema.path` of `SQLInstance xplane-rooms` (Task 1.17). The ConfigMap
   name `atlas-db-migrations` is the composition's contract (`apps/AGENTS.md`).
+- **The database enforces the append-only guarantees, not only the grants (Ruling Y).** The spec's T12
+  ("nothing can rewrite history") and its retention-safe roles outrank a broad `UPDATE` grant: with
+  `UPDATE` on every `rooms` column and `FOR ALL USING (true)`, the broker's credential could back-date
+  `closed_at`, zero `retention` (so retention deletes an open room's events), unseal a room, or jump
+  `last_seq`. So:
+  - `rooms_broker` gets `UPDATE` on the columns the store moves only: `last_seq`, `bytes`,
+    `last_event_at`, `sealed`, `closed_at`, `bridge_run`, `bridge_seen_at`; `INSERT` on the four a new row
+    sets; a policy that refuses a pre-sealed or pre-advanced row;
+  - `rooms_move_forward`, a `BEFORE UPDATE` trigger owned by `rooms_owner`: `room_id`, `retention` and
+    `created_at` never change; sealing is never undone; a sealed room takes no event; `last_seq` moves by
+    exactly one; `bytes` never shrinks; `closed_at` is set once, to `now()`, and only when sealing;
+  - `rooms_seq_has_event`, a deferred constraint trigger: every seq a room takes has its event by commit;
+  - `events_take_next_seq`, `BEFORE INSERT ON events`: the event takes exactly the room's `last_seq`, and
+    never enters a sealed room (gapless);
+  - `events_are_immutable`: no `UPDATE` or `TRUNCATE` on `events`, whoever asks;
+  - retention deletes only **sealed** rooms whose `closed_at` is past their retention;
+  - every trigger function names its tables by schema and pins `search_path = pg_catalog, public,
+    pg_temp`, so a temporary table cannot shadow the table it checks (found and closed by a test).
+- The driver columns (`driver`, `driver_epoch`, `driver_seen_at`, `fallback_driver`) get **no** `UPDATE`
+  grant here. Task 4.1 adds that grant and extends the trigger in a **new** migration: this one is
+  released by then.
 
 - [ ] **Step 1: Write the migration**
 
@@ -2395,6 +2501,12 @@ git commit -m "feat(redact): gitleaks redaction with the four pinned rules"
 -- rooms_owner. The login roles rooms_broker and rooms_retention are created by
 -- CNPG's managed roles, not here: rooms_owner has no CREATEROLE. Until CNPG has
 -- created them the GRANTs fail and the Atlas operator retries.
+--
+-- Nothing can rewrite history (T12, SC-10): the grants, row-level security and
+-- triggers below hold the invariants even against the broker's own credential.
+-- The functions run as their caller, are owned by rooms_owner (so no login role can
+-- replace or drop them), and name every table by schema with a pinned search_path,
+-- so a temporary table cannot shadow the one they check.
 
 -- The per-room sequencer. `last_seq` is incremented under the row lock, so
 -- writers serialise per room, and a rolled-back append also undoes the counter.
@@ -2412,7 +2524,7 @@ CREATE TABLE rooms (
   bridge_seen_at  timestamptz,
   sealed          boolean     NOT NULL DEFAULT false,
   closed_at       timestamptz,
-  retention       interval    NOT NULL DEFAULT interval '90 days',
+  retention       interval    NOT NULL DEFAULT interval '90 days' CHECK (retention > interval '0'),
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -2436,10 +2548,100 @@ CREATE TABLE events (
   UNIQUE (room_id, origin_client, origin_seq)
 );
 
+-- A room only moves forward: its id, retention and creation never change, last_seq
+-- steps by one, bytes never shrink, and it is sealed and closed once, at now().
+CREATE FUNCTION rooms_move_forward() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF NEW.room_id <> OLD.room_id OR NEW.retention <> OLD.retention OR NEW.created_at <> OLD.created_at THEN
+    RAISE EXCEPTION 'room log: room_id, retention and created_at never change' USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.sealed AND NOT NEW.sealed THEN
+    RAISE EXCEPTION 'room log: room % stays sealed', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.sealed AND (NEW.last_seq <> OLD.last_seq OR NEW.bytes <> OLD.bytes) THEN
+    RAISE EXCEPTION 'room log: room % is sealed and takes no event', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.last_seq NOT IN (OLD.last_seq, OLD.last_seq + 1) THEN
+    RAISE EXCEPTION 'room log: last_seq of room % moves by one, not % to %', OLD.room_id, OLD.last_seq, NEW.last_seq
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.bytes < OLD.bytes THEN
+    RAISE EXCEPTION 'room log: bytes of room % never shrink', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.closed_at IS NOT NULL AND NEW.closed_at IS DISTINCT FROM OLD.closed_at THEN
+    RAISE EXCEPTION 'room log: closed_at of room % is set once', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL AND (NEW.closed_at <> now() OR NOT NEW.sealed) THEN
+    RAISE EXCEPTION 'room log: closed_at of room % is now(), set when sealing', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.sealed AND NEW.closed_at IS NULL THEN
+    RAISE EXCEPTION 'room log: sealing room % sets closed_at', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER rooms_move_forward BEFORE UPDATE ON rooms
+  FOR EACH ROW EXECUTE FUNCTION rooms_move_forward();
+
+-- Gapless: every seq a room takes has its event by commit, so last_seq cannot be
+-- advanced alone. Deferred, because the append increments before it inserts.
+CREATE FUNCTION rooms_seq_has_event() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.events WHERE room_id = NEW.room_id AND seq = NEW.last_seq) THEN
+    RAISE EXCEPTION 'room log: seq % of room % has no event', NEW.last_seq, NEW.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE CONSTRAINT TRIGGER rooms_seq_has_event AFTER UPDATE OF last_seq ON rooms
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (NEW.last_seq <> OLD.last_seq) EXECUTE FUNCTION rooms_seq_has_event();
+
+-- An event takes exactly the seq its room just reached, and never enters a sealed room.
+CREATE FUNCTION events_take_next_seq() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE
+  next_seq bigint;
+  is_sealed boolean;
+BEGIN
+  SELECT last_seq, sealed INTO next_seq, is_sealed FROM public.rooms WHERE room_id = NEW.room_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'room log: no room %', NEW.room_id USING ERRCODE = 'foreign_key_violation';
+  END IF;
+  IF is_sealed THEN
+    RAISE EXCEPTION 'room log: room % is sealed', NEW.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.seq <> next_seq THEN
+    RAISE EXCEPTION 'room log: seq % is not the next of room % (last_seq %)', NEW.seq, NEW.room_id, next_seq
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER events_take_next_seq BEFORE INSERT ON events
+  FOR EACH ROW EXECUTE FUNCTION events_take_next_seq();
+
+-- Events are never rewritten or truncated, whoever asks. Only retention deletes them.
+CREATE FUNCTION events_are_immutable() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  RAISE EXCEPTION 'room log: events are append-only (%)', TG_OP USING ERRCODE = 'check_violation';
+END $$;
+
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+  FOR EACH ROW EXECUTE FUNCTION events_are_immutable();
+CREATE TRIGGER events_no_truncate BEFORE TRUNCATE ON events
+  FOR EACH STATEMENT EXECUTE FUNCTION events_are_immutable();
+
 -- The broker appends and reads; it can never rewrite history (SC-10, T12).
 GRANT SELECT, INSERT ON events TO rooms_broker;
--- INSERT on rooms: a Room CR creates its row (ruling P7).
-GRANT SELECT, INSERT, UPDATE ON rooms TO rooms_broker;
+-- A Room CR creates its row (ruling P7); every other column takes its default.
+GRANT SELECT ON rooms TO rooms_broker;
+GRANT INSERT (room_id, driver, fallback_driver, retention) ON rooms TO rooms_broker;
+-- Only the columns the store moves: the sequencer, the seal and the bridge lease.
+GRANT UPDATE (last_seq, bytes, last_event_at, sealed, closed_at, bridge_run, bridge_seen_at) ON rooms TO rooms_broker;
 -- The retention job deletes, and only what RLS below lets it see as expired.
 GRANT SELECT, DELETE ON events, rooms TO rooms_retention;
 
@@ -2448,14 +2650,19 @@ ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY broker_read_events   ON events FOR SELECT TO rooms_broker USING (true);
 CREATE POLICY broker_append_events ON events FOR INSERT TO rooms_broker WITH CHECK (true);
-CREATE POLICY broker_rooms         ON rooms  FOR ALL    TO rooms_broker USING (true) WITH CHECK (true);
+CREATE POLICY broker_read_rooms    ON rooms  FOR SELECT TO rooms_broker USING (true);
+CREATE POLICY broker_create_rooms  ON rooms  FOR INSERT TO rooms_broker
+  WITH CHECK (last_seq = 0 AND bytes = 0 AND NOT sealed AND closed_at IS NULL AND bridge_run IS NULL);
+-- Permissive on purpose: a policy cannot compare a row with its previous version.
+-- The column grants and rooms_move_forward decide which moves are legal.
+CREATE POLICY broker_move_rooms    ON rooms  FOR UPDATE TO rooms_broker USING (true) WITH CHECK (true);
 
 CREATE POLICY retention_read_rooms  ON rooms  FOR SELECT TO rooms_retention USING (true);
 CREATE POLICY retention_read_events ON events FOR SELECT TO rooms_retention USING (true);
 CREATE POLICY retention_purge_rooms ON rooms  FOR DELETE TO rooms_retention
-  USING (closed_at IS NOT NULL AND closed_at < now() - retention);
+  USING (sealed AND closed_at < now() - retention);
 CREATE POLICY retention_purge_events ON events FOR DELETE TO rooms_retention
-  USING (room_id IN (SELECT room_id FROM rooms WHERE closed_at IS NOT NULL AND closed_at < now() - retention));
+  USING (room_id IN (SELECT room_id FROM rooms WHERE sealed AND closed_at < now() - retention));
 ```
 
 `internal/store/migrations/kustomization.yaml`:
@@ -2480,8 +2687,10 @@ configMapGenerator:
 Run: `mise use "aqua:ariga/atlas@$(mise latest aqua:ariga/atlas)" && atlas migrate hash --dir file://internal/store/migrations`
 Expected: `internal/store/migrations/atlas.sum` exists and lists the SQL file.
 
-If the session's worktree guard refuses the `atlas migrate hash` line (it reacts to the bare word
-`hash`), stop and hand the owner the command as `! atlas migrate hash --dir file://internal/store/migrations`.
+**[OWNER] step.** The session's worktree guard refuses the `atlas migrate hash` line (it reacts to the
+bare word `hash`): stop and hand the owner `! atlas migrate hash --dir file://internal/store/migrations`,
+then check with `atlas migrate validate --dir file://internal/store/migrations` (exit 0). Every later
+edit of the SQL needs the same owner step (twice on 2026-09-29).
 
 The SQL itself is exercised in Task 1.4, whose tests apply it to PostgreSQL 18 as `rooms_owner`,
 after creating the login roles the way CNPG does. The migration never creates a role.
@@ -2490,21 +2699,26 @@ after creating the login roles the way CNPG does. The migration never creates a 
 
 ```bash
 git add internal/store/migrations mise.toml
-git commit -m "feat(store): log schema, broker and retention grants, row-level security"
+git commit -m "feat(store): log schema, broker and retention grants, row-level security, append-only triggers"
 ```
 
 ### Task 1.4: The store
 
 **Files:**
 - Create: `internal/store/store.go`, `internal/store/rooms.go`, `internal/store/bridges.go`
-- Test: `internal/store/store_test.go`, `internal/store/testdb_test.go`, `internal/store/bridges_test.go`
+- Test: `internal/store/store_test.go`, `internal/store/testdb_test.go`, `internal/store/bridges_test.go`,
+  `internal/store/schema_test.go` (Ruling Y: what the database refuses)
 
 **Interfaces:**
 - Consumes: `envelope.Draft`, `envelope.Event`, the migrations of Task 1.3.
 - Produces:
   - `store.Open(ctx, url string) (*store.Store, error)`, `(*Store).Close()`, `(*Store).Ping(ctx) error`.
   - `(*Store).SchemaReady(ctx) (bool, error)`.
-  - `(*Store).Append(ctx, envelope.Draft) (envelope.Event, bool /*duplicate*/, error)`.
+  - `(*Store).Append(ctx, envelope.Draft) (envelope.Event, bool /*duplicate*/, error)`, for writers that
+    hold no bridge lease (humans, the broker, system callers).
+  - `(*Store).AppendAsBridge(ctx, bridgeRun string, envelope.Draft) (envelope.Event, bool, error)`: the
+    same, fenced by the room's bridge lease under the row lock; `ErrLeaseLost` once another run holds it
+    (Ruling Y, review I7). Task 1.9's events handler maps it to `409`.
   - `(*Store).Range(ctx, roomID string, afterSeq int64, limit int) ([]envelope.Event, error)`.
   - `(*Store).Cursor(ctx, roomID, originClient string) (int64, error)`: the highest `origin_seq`,
     0 if none.
@@ -2512,20 +2726,30 @@ git commit -m "feat(store): log schema, broker and retention grants, row-level s
   - `(*Store).Room(ctx, id) (store.RoomState, error)`, where `RoomState` is
     `{ID; LastSeq; Driver; DriverEpoch; Sealed; ClosedAt *time.Time; LastEventAt time.Time}`.
   - `(*Store).CloseRoom(ctx, roomID, reason string) error`: appends the final
-    `state_changed{room_phase: Closed}` and seals the room; `Close()` releases the pool.
+    `state_changed{room_phase: Closed}`, then seals the room with `closed_at = now()` (the database's clock,
+    Ruling AD); closing twice is a no-op. `Close()` releases the pool.
   - `(*Store).LastHarnessStatus(ctx, roomID, runID string) (string, error)`.
-  - The errors `store.ErrNoRoom`, `store.ErrSealed`, and `store.IsDataError(error) bool` (SQLSTATE
-    class 22: a value PostgreSQL refuses outright, review I6).
+  - The errors `store.ErrNoRoom`, `store.ErrSealed`, `store.ErrLeaseLost`, `store.ErrInvalidRetention`
+    (`EnsureRoom` refuses a retention of zero or less), and `store.IsDataError(error) bool` (SQLSTATE
+    class 22: a value PostgreSQL refuses outright, review I6). Every other error is wrapped with `%w`.
   - The room's bridge lease (ruling P17, review I7):
-    `(*Store).ClaimBridge(ctx, roomID, runID string, stale time.Duration, live func(runID string) bool) (holder string, ok bool, err error)`
-    and `(*Store).TouchBridge(ctx, roomID, runID string) error`, in `internal/store/bridges.go`.
-  - The fields `Store.MaxEvents` (default 100 000) and `Store.MaxBytes` (default 256 MiB).
+    `(*Store).ClaimBridge(ctx, roomID, runID string, stale time.Duration, live func(ctx context.Context, runID string) bool) (holder string, ok bool, err error)`,
+    where `live` (which may call the Kubernetes API) runs **outside** the row lock and the takeover is a
+    compare-and-swap on the holder it asked about; and
+    `(*Store).TouchBridge(ctx, roomID, runID string) (held bool, err error)`: `held` is false once another
+    run took the lease. Both in `internal/store/bridges.go`. Lease freshness uses the database's `now()`
+    (Ruling AD).
+  - The fields `Store.MaxEvents` (default 100 000) and `Store.MaxBytes` (default 256 MiB). `Open` bounds
+    every pooled session: `statement_timeout` 15 s, `lock_timeout` 5 s,
+    `idle_in_transaction_session_timeout` 30 s, unless the URL sets them.
 
 - [ ] **Step 1: Write the test database helper**
 
 `internal/store/testdb_test.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
@@ -2565,7 +2789,7 @@ func testDB(t *testing.T) (owner, broker, retention, super string) {
 	files, _ := filepath.Glob("migrations/*.sql")
 	sort.Strings(files)
 	for _, f := range files {
-		sql, err := os.ReadFile(f)
+		sql, err := os.ReadFile(filepath.Clean(f))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2586,10 +2810,18 @@ func exec(t *testing.T, dsn, sql string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(context.Background())
+	defer func() { _ = conn.Close(context.Background()) }()
 	if _, err := conn.Exec(context.Background(), sql); err != nil {
 		t.Fatalf("%v\n%s", err, sql)
 	}
+}
+
+// forge rewrites rooms as the superuser with triggers off (session_replication_role =
+// replica): the only way to build a state the schema otherwise refuses, such as an
+// expired close date.
+func forge(t *testing.T, super, sql string) {
+	t.Helper()
+	exec(t, super, "SET session_replication_role = replica; "+sql)
 }
 ```
 
@@ -2598,6 +2830,8 @@ func exec(t *testing.T, dsn, sql string) {
 `internal/store/store_test.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
@@ -2607,8 +2841,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/Smana/agent-platform/internal/envelope"
 )
@@ -2630,10 +2862,25 @@ func open(t *testing.T) (*Store, string, string, string) {
 }
 
 func draft(client string, n int64) envelope.Draft {
-	return envelope.Draft{RoomID: room, RunID: "7f3cq2xz",
+	return draftIn(room, client, n)
+}
+
+func draftIn(roomID, client string, n int64) envelope.Draft {
+	return envelope.Draft{RoomID: roomID, RunID: "7f3cq2xz",
 		Actor: envelope.Actor{Kind: envelope.ActorAgent, ID: "agent:7f3cq2xz", Role: "implementer"},
 		Type:  envelope.Message, Origin: envelope.OriginHarness, OriginClient: client, OriginSeq: n,
 		Payload: envelope.Must(envelope.MessagePayload{Kind: envelope.KindChat, Text: fmt.Sprint("m", n), Delivery: envelope.DeliveryNone})}
+}
+
+// gapless reports whether the room's seqs are exactly 1..last_seq.
+func gapless(t *testing.T, s *Store, roomID string) bool {
+	t.Helper()
+	var ok bool
+	if err := s.pool.QueryRow(context.Background(), `SELECT coalesce(max(e.seq), 0) = count(e.*) AND count(e.*) = r.last_seq
+		FROM rooms r LEFT JOIN events e USING (room_id) WHERE r.room_id = $1 GROUP BY r.last_seq`, roomID).Scan(&ok); err != nil {
+		t.Fatal(err)
+	}
+	return ok
 }
 
 // SC-1: gapless under concurrent writers.
@@ -2652,10 +2899,8 @@ func TestAppendIsGapless(t *testing.T) {
 		}(w)
 	}
 	wg.Wait()
-	var gapless bool
-	if err := s.pool.QueryRow(context.Background(),
-		`SELECT max(seq) = count(*) FROM events WHERE room_id = $1`, room).Scan(&gapless); err != nil || !gapless {
-		t.Fatalf("gapless = %v, err = %v", gapless, err)
+	if !gapless(t, s, room) {
+		t.Fatal("the log has a gap")
 	}
 }
 
@@ -2671,25 +2916,10 @@ func TestAppendIsIdempotentAndStaysGapless(t *testing.T) {
 	}
 	next, _, _ := s.Append(context.Background(), draft("agent:7f3cq2xz", 2))
 	if next.Seq != first.Seq+1 {
-		t.Fatalf("a rolled-back duplicate left a gap: %d after %d", next.Seq, first.Seq)
+		t.Fatalf("a duplicate left a gap: %d after %d", next.Seq, first.Seq)
 	}
 	if c, _ := s.Cursor(context.Background(), room, "agent:7f3cq2xz"); c != 2 {
 		t.Fatalf("cursor = %d", c)
-	}
-}
-
-// SC-10: the broker role cannot rewrite history.
-func TestBrokerRoleIsAppendOnly(t *testing.T) {
-	s, broker, _, _ := open(t)
-	_, _, _ = s.Append(context.Background(), draft("agent:7f3cq2xz", 1))
-	for _, sql := range []string{`UPDATE events SET payload = '{}'`, `DELETE FROM events`} {
-		conn, _ := Open(context.Background(), broker)
-		_, err := conn.pool.Exec(context.Background(), sql)
-		conn.Close()
-		var pg *pgconn.PgError
-		if !errors.As(err, &pg) || pg.Code != "42501" {
-			t.Fatalf("%s: want permission denied (42501), got %v", sql, err)
-		}
 	}
 }
 
@@ -2701,23 +2931,40 @@ func TestSealedRoomRefusesAppends(t *testing.T) {
 	if _, _, err := s.Append(context.Background(), draft("agent:x", 1)); !errors.Is(err, ErrSealed) {
 		t.Fatalf("want ErrSealed, got %v", err)
 	}
-	evs, _ := s.Range(context.Background(), room, 0, 10)
+	evs, err := s.Range(context.Background(), room, 0, 10)
+	if err != nil || len(evs) == 0 {
+		t.Fatalf("range: %d events, %v", len(evs), err)
+	}
 	if last := evs[len(evs)-1]; last.Type != envelope.StateChanged {
 		t.Fatalf("closing appends a final state_changed, got %s", last.Type)
+	}
+	if err := s.CloseRoom(context.Background(), room, "again"); err != nil {
+		t.Fatalf("closing twice is a no-op, got %v", err)
 	}
 }
 
 func TestLimitSealsTheRoom(t *testing.T) {
 	s, _, _, _ := open(t)
 	s.MaxEvents = 3
+	var sealing envelope.Event
 	for i := int64(1); i <= 2; i++ {
-		if _, _, err := s.Append(context.Background(), draft("agent:x", i)); err != nil {
+		ev, _, err := s.Append(context.Background(), draft("agent:x", i))
+		if err != nil {
 			t.Fatal(err)
 		}
+		sealing = ev
 	}
-	st, _ := s.Room(context.Background(), room)
-	if !st.Sealed || st.LastSeq != 3 {
-		t.Fatalf("want sealed at seq 3 with a limit event, got %+v", st)
+	st, err := s.Room(context.Background(), room)
+	if err != nil || !st.Sealed || st.LastSeq != 3 || st.ClosedAt == nil {
+		t.Fatalf("want sealed at seq 3 with a limit event, got %+v, %v", st, err)
+	}
+	// A retry of the append that sealed the room is a duplicate, not a refusal.
+	replay, dup, err := s.Append(context.Background(), draft("agent:x", 2))
+	if err != nil || !dup || replay.Seq != sealing.Seq {
+		t.Fatalf("replay of the sealing append: seq=%d dup=%v err=%v", replay.Seq, dup, err)
+	}
+	if _, _, err := s.Append(context.Background(), draft("agent:x", 3)); !errors.Is(err, ErrSealed) {
+		t.Fatalf("a new append after the seal: want ErrSealed, got %v", err)
 	}
 }
 
@@ -2731,41 +2978,275 @@ func TestOversizePayloadIsStubbed(t *testing.T) {
 	}
 }
 
-func TestRetentionDeletesOnlyExpiredClosedRooms(t *testing.T) {
-	s, _, retention, super := open(t)
-	_, _, _ = s.Append(context.Background(), draft("agent:x", 1))
-	r, _ := Open(context.Background(), retention)
-	defer r.Close()
-	tag, _ := r.pool.Exec(context.Background(), `DELETE FROM events`)
-	if tag.RowsAffected() != 0 {
-		t.Fatalf("an open room's events were deletable")
+// Appends racing a close either land before the closing event or get ErrSealed:
+// the log stays gapless and the close is its last event.
+func TestAppendRacesCloseRoom(t *testing.T) {
+	s, _, _, _ := open(t)
+	ctx := context.Background()
+	started := make(chan struct{})
+	var once sync.Once
+	var wg sync.WaitGroup
+	errs := make(chan error, 4*40)
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := int64(1); i <= 40; i++ {
+				_, _, err := s.Append(ctx, draft(fmt.Sprint("agent:w", w), i))
+				errs <- err
+				if i == 5 {
+					once.Do(func() { close(started) })
+				}
+			}
+		}(w)
 	}
-	_ = s.CloseRoom(context.Background(), room, "done")
-	exec(t, super, `UPDATE rooms SET closed_at = now() - interval '91 days'`)
-	tag, _ = r.pool.Exec(context.Background(), `DELETE FROM events`)
-	if tag.RowsAffected() == 0 {
-		t.Fatalf("an expired room's events survived")
+	<-started
+	if err := s.CloseRoom(ctx, room, "closed mid-stream"); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	close(errs)
+	var refused int
+	for err := range errs {
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrSealed):
+			refused++
+		default:
+			t.Errorf("an append racing the close: %v", err)
+		}
+	}
+	if refused == 0 {
+		t.Fatal("no append ran after the close: the race was not exercised")
+	}
+	if !gapless(t, s, room) {
+		t.Fatal("the log has a gap")
+	}
+	var typ, kind string
+	if err := s.pool.QueryRow(ctx, `SELECT type, payload->>'kind' FROM events WHERE room_id = $1
+		ORDER BY seq DESC LIMIT 1`, room).Scan(&typ, &kind); err != nil {
+		t.Fatal(err)
+	}
+	if typ != string(envelope.StateChanged) || kind != "room_phase" {
+		t.Fatalf("the last event is %s/%s, want the close", typ, kind)
+	}
+}
+
+func TestEnsureRoomRefusesNonPositiveRetention(t *testing.T) {
+	s, _, _, _ := open(t)
+	for _, retention := range []time.Duration{0, -time.Hour} {
+		t.Run(retention.String(), func(t *testing.T) {
+			created, err := s.EnsureRoom(context.Background(), NewRoom{ID: "zzzzzzzz", Driver: "system:factory", Retention: retention})
+			if created || !errors.Is(err, ErrInvalidRetention) {
+				t.Fatalf("created=%v err=%v, want ErrInvalidRetention", created, err)
+			}
+		})
+	}
+}
+
+// Every pooled session is bounded, so no statement, lock wait or abandoned
+// transaction can hold a room's row lock indefinitely.
+func TestPoolBoundsEverySession(t *testing.T) {
+	s, _, _, _ := open(t)
+	for _, tc := range []struct{ param, want string }{
+		{"statement_timeout", "15s"},
+		{"lock_timeout", "5s"},
+		{"idle_in_transaction_session_timeout", "30s"},
+	} {
+		t.Run(tc.param, func(t *testing.T) {
+			var got string
+			if err := s.pool.QueryRow(context.Background(), "SHOW "+tc.param).Scan(&got); err != nil || got != tc.want {
+				t.Fatalf("%s = %q, %v; want %q", tc.param, got, err, tc.want)
+			}
+		})
+	}
+}
+```
+
+`internal/store/schema_test.go` (Ruling Y: the database refuses every rewrite, even one the store never
+issues; each case runs as `rooms_broker` in one transaction, so the deferred check runs at commit):
+
+```go
+// SPDX-License-Identifier: Apache-2.0
+
+package store
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+const (
+	sealedRoom = "sealedaa"
+	// A legitimate append done by hand: the next seq, then its event.
+	handAppend = `UPDATE rooms SET last_seq = last_seq + 1 WHERE room_id = '3kq7x2ma';
+		INSERT INTO events (room_id, seq, id, actor_kind, actor_id, type, origin, origin_client, origin_seq, ts, payload)
+		SELECT room_id, last_seq, 'hand', 'system', 'system:test', 'message', 'broker', 'test:hand', 1, now(), '{}'
+		FROM rooms WHERE room_id = '3kq7x2ma'`
+)
+
+func eventInto(roomID, seq string) string {
+	return `INSERT INTO events (room_id, seq, id, actor_kind, actor_id, type, origin, origin_client, origin_seq, ts, payload)
+		SELECT room_id, ` + seq + `, 'forged', 'system', 'system:test', 'message', 'broker', 'test:forged', 1, now(), '{}'
+		FROM rooms WHERE room_id = '` + roomID + `'`
+}
+
+// SC-10, T12, Ruling Y: the broker role can append and move a room forward, and
+// nothing else. The database refuses every rewrite, even one the store never issues.
+func TestBrokerRoleIsAppendOnly(t *testing.T) {
+	s, _, _, _ := open(t)
+	ctx := context.Background()
+	for i := int64(1); i <= 2; i++ {
+		if _, _, err := s.Append(ctx, draft("agent:x", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.EnsureRoom(ctx, NewRoom{ID: sealedRoom, Driver: "system:factory", Retention: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseRoom(ctx, sealedRoom, "sealed for the test"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name, sql, code, msg string
+	}{
+		{"update an event", `UPDATE events SET payload = '{}'`, "42501", ""},
+		{"delete an event", `DELETE FROM events`, "42501", ""},
+		{"truncate the log", `TRUNCATE events`, "42501", ""},
+		{"delete a room", `DELETE FROM rooms`, "42501", ""},
+		{"shorten retention", `UPDATE rooms SET retention = '0' WHERE room_id = '3kq7x2ma'`, "42501", ""},
+		{"backdate and shorten together", `UPDATE rooms SET closed_at = now() - interval '1000 days', retention = '0' WHERE room_id = '3kq7x2ma'`, "42501", ""},
+		{"create a sealed room", `INSERT INTO rooms (room_id, driver, fallback_driver, sealed) VALUES ('zzzzzzzz', 'x', '', true)`, "42501", ""},
+		{"create a room with no retention", `INSERT INTO rooms (room_id, driver, fallback_driver, retention) VALUES ('zzzzzzzz', 'x', '', '0')`, "23514", "retention"},
+		{"backdate a close", `UPDATE rooms SET closed_at = now() - interval '1000 days' WHERE room_id = '3kq7x2ma'`, "23514", "closed_at"},
+		{"close without sealing", `UPDATE rooms SET closed_at = now() WHERE room_id = '3kq7x2ma'`, "23514", "closed_at"},
+		{"move a close date", `UPDATE rooms SET closed_at = now() - interval '1000 days' WHERE room_id = 'sealedaa'`, "23514", "closed_at"},
+		{"reopen a sealed room", `UPDATE rooms SET sealed = false WHERE room_id = 'sealedaa'`, "23514", "sealed"},
+		{"jump last_seq", `UPDATE rooms SET last_seq = last_seq + 100 WHERE room_id = '3kq7x2ma'`, "23514", "last_seq"},
+		{"rewind last_seq", `UPDATE rooms SET last_seq = last_seq - 1 WHERE room_id = '3kq7x2ma'`, "23514", "last_seq"},
+		{"skip a seq", `UPDATE rooms SET last_seq = last_seq + 1 WHERE room_id = '3kq7x2ma'`, "23514", "no event"},
+		{"skip a seq behind a temporary table", `CREATE TEMP TABLE events (room_id text, seq bigint) ON COMMIT DROP;
+			INSERT INTO events SELECT room_id, last_seq + 1 FROM rooms WHERE room_id = '3kq7x2ma';
+			UPDATE rooms SET last_seq = last_seq + 1 WHERE room_id = '3kq7x2ma'`, "23514", "no event"},
+		{"shrink bytes", `UPDATE rooms SET bytes = 0 WHERE room_id = '3kq7x2ma'`, "23514", "bytes"},
+		{"advance a sealed room", `UPDATE rooms SET last_seq = last_seq + 1 WHERE room_id = 'sealedaa'`, "23514", "sealed"},
+		{"insert out of sequence", eventInto(room, "99"), "23514", "next"},
+		{"insert into a sealed room", eventInto(sealedRoom, "last_seq + 1"), "23514", "sealed"},
+		{"a legitimate append by hand", handAppend, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := inTx(ctx, s, tc.sql)
+			if tc.code == "" {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			var pg *pgconn.PgError
+			if !errors.As(err, &pg) || pg.Code != tc.code || !strings.Contains(pg.Message, tc.msg) {
+				t.Fatalf("want SQLSTATE %s mentioning %q, got %v", tc.code, tc.msg, err)
+			}
+		})
+	}
+	if !gapless(t, s, room) {
+		t.Fatal("the log has a gap")
+	}
+}
+
+// inTx runs sql as the broker in one transaction, so deferred checks run at commit.
+func inTx(ctx context.Context, s *Store, sql string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// OD-17: the retention role deletes a room's log only once it is sealed and its
+// close date is older than its retention.
+func TestRetentionDeletesOnlyExpiredSealedRooms(t *testing.T) {
+	s, _, retention, super := open(t)
+	ctx := context.Background()
+	rooms := map[string]bool{ // room -> purged
+		"openaaaa": false, // open, with events
+		"unsealed": false, // a close date past retention, forged, but never sealed
+		"freshaaa": false, // sealed within retention
+		"expiredx": true,  // sealed, past retention
+	}
+	for id := range rooms {
+		if _, err := s.EnsureRoom(ctx, NewRoom{ID: id, Driver: "system:factory", Retention: 90 * 24 * time.Hour}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.Append(ctx, draftIn(id, "agent:x", 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"freshaaa", "expiredx"} {
+		if err := s.CloseRoom(ctx, id, "done"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	forge(t, super, `UPDATE rooms SET closed_at = now() - interval '91 days' WHERE room_id IN ('unsealed', 'expiredx')`)
+
+	r, err := Open(ctx, retention)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if _, err := r.pool.Exec(ctx, `DELETE FROM events`); err != nil {
+		t.Fatalf("retention delete of events: %v", err)
+	}
+	if _, err := r.pool.Exec(ctx, `DELETE FROM rooms`); err != nil {
+		t.Fatalf("retention delete of rooms: %v", err)
+	}
+	for id, purged := range rooms {
+		t.Run(id, func(t *testing.T) {
+			var events, roomRows int
+			if err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM events WHERE room_id = $1),
+				(SELECT count(*) FROM rooms WHERE room_id = $1)`, id).Scan(&events, &roomRows); err != nil {
+				t.Fatal(err)
+			}
+			if gone := events == 0 && roomRows == 0; gone != purged {
+				t.Fatalf("events=%d room rows=%d, want purged=%v", events, roomRows, purged)
+			}
+		})
 	}
 }
 ```
 
 - [ ] **Step 3: Run them to see them fail**
 
-Run: `go get github.com/jackc/pgx/v5@latest github.com/oklog/ulid/v2@latest github.com/testcontainers/testcontainers-go/modules/postgres@latest && go test ./internal/store/`
-Expected: FAIL, `undefined: Open`.
+Run: `go get github.com/jackc/pgx/v5@latest github.com/oklog/ulid/v2@latest github.com/testcontainers/testcontainers-go/modules/postgres@latest && go mod tidy && go test ./internal/store/`
+Expected: FAIL, `undefined: Open`. `go get …@latest` also bumps existing indirect dependencies: review
+the `go.mod` diff, and keep `govulncheck` clean (Step 5).
 
 - [ ] **Step 4: Implement**
 
 `internal/store/store.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store is the log of record (SP2 §4): one gapless, append-only
-// sequence per room, in PostgreSQL.
+// sequence per room, in PostgreSQL. The database enforces the invariants too
+// (migrations/20260927120000_rooms.sql), so a bug or a stolen broker credential
+// cannot rewrite history.
 package store
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -2775,27 +3256,51 @@ import (
 	"github.com/Smana/agent-platform/internal/envelope"
 )
 
+// The store's sentinel errors; callers compare with errors.Is.
 var (
-	ErrNoRoom = errors.New("no such room")
-	ErrSealed = errors.New("room is sealed")
+	ErrNoRoom           = errors.New("no such room")
+	ErrSealed           = errors.New("room is sealed")
+	ErrLeaseLost        = errors.New("the bridge lease is held by another run")
+	ErrInvalidRetention = errors.New("retention must be positive")
 )
 
+// Store is the room log over a PostgreSQL pool, connected as rooms_broker.
 type Store struct {
 	pool      *pgxpool.Pool
 	MaxEvents int64
 	MaxBytes  int64
-	Now       func() time.Time
+	// Now stamps event timestamps. Lease freshness and close dates use the
+	// database's now() instead: one clock for every broker replica.
+	Now func() time.Time
 }
 
+// Open connects with every session bounded, so no statement, lock queue or
+// abandoned transaction holds a room's row lock for long. A value set in the URL wins.
 func Open(ctx context.Context, url string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, url)
+	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: parse database url: %w", err)
+	}
+	for param, value := range map[string]string{
+		"statement_timeout":                   "15s",
+		"lock_timeout":                        "5s",
+		"idle_in_transaction_session_timeout": "30s",
+	} {
+		if _, set := cfg.ConnConfig.RuntimeParams[param]; !set {
+			cfg.ConnConfig.RuntimeParams[param] = value
+		}
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("store: connect: %w", err)
 	}
 	return &Store{pool: pool, MaxEvents: 100_000, MaxBytes: 256 << 20, Now: time.Now}, nil
 }
 
-func (s *Store) Close()                         { s.pool.Close() }
+// Close releases the pool.
+func (s *Store) Close() { s.pool.Close() }
+
+// Ping backs /readyz: PostgreSQL answers.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 // SchemaReady backs /startupz: the Atlas migration has run.
@@ -2822,49 +3327,73 @@ func scan(row pgx.Row, roomID string) (envelope.Event, error) {
 	return e, err
 }
 
-// Append is one transaction: take the room's row lock by incrementing last_seq,
-// return the existing event for a replayed idempotency key (the rollback undoes the
-// increment), insert, and seal the room with a final limit event when it is full.
+// Append adds d to its room's log, for writers that hold no bridge lease (humans,
+// the broker, system callers). dup is true for a replayed idempotency key.
 func (s *Store) Append(ctx context.Context, d envelope.Draft) (envelope.Event, bool, error) {
+	return s.append(ctx, d, "")
+}
+
+// AppendAsBridge appends for the bridge of bridgeRun, and refuses with ErrLeaseLost
+// once another run holds the room's bridge lease (ruling P17, review I7).
+func (s *Store) AppendAsBridge(ctx context.Context, bridgeRun string, d envelope.Draft) (envelope.Event, bool, error) {
+	return s.append(ctx, d, bridgeRun)
+}
+
+// append is one transaction under the room's row lock: a replayed idempotency key
+// returns the stored event, a sealed room or a lost lease refuses, and otherwise the
+// event takes the next seq. A full room is then sealed with a final limit event.
+func (s *Store) append(ctx context.Context, d envelope.Draft, fence string) (envelope.Event, bool, error) {
 	if err := d.Validate(); err != nil {
 		return envelope.Event{}, false, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return envelope.Event{}, false, err
+		return envelope.Event{}, false, fmt.Errorf("store: append to room %s: %w", d.RoomID, err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	ev, dup, err := s.appendTx(ctx, tx, d)
-	if err != nil || dup {
-		return ev, dup, err
+	ev, dup, err := s.appendTx(ctx, tx, d, fence)
+	if err == nil && !dup {
+		err = tx.Commit(ctx)
 	}
-	return ev, false, tx.Commit(ctx)
+	if err != nil {
+		return envelope.Event{}, false, fmt.Errorf("store: append to room %s: %w", d.RoomID, err)
+	}
+	return ev, dup, nil
 }
 
-func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, d envelope.Draft) (envelope.Event, bool, error) {
+func (s *Store) appendTx(ctx context.Context, tx pgx.Tx, d envelope.Draft, fence string) (envelope.Event, bool, error) {
 	if len(d.Payload) > envelope.MaxPayload {
 		d.Payload = envelope.Oversize(d.Type, len(d.Payload))
 	}
-	var seq, size int64
+	// The row lock serialises this room's writers, CloseRoom and ClaimBridge, so
+	// none of the checks below can race them.
 	var sealed bool
-	err := tx.QueryRow(ctx, `UPDATE rooms SET last_seq = last_seq + 1, bytes = bytes + $2, last_event_at = now()
-		WHERE room_id = $1 RETURNING last_seq, bytes, sealed`, d.RoomID, len(d.Payload)).Scan(&seq, &size, &sealed)
+	var holder *string
+	err := tx.QueryRow(ctx, `SELECT sealed, bridge_run FROM rooms WHERE room_id = $1 FOR UPDATE`, d.RoomID).Scan(&sealed, &holder)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return envelope.Event{}, false, ErrNoRoom
 	}
 	if err != nil {
 		return envelope.Event{}, false, err
 	}
-	if sealed {
-		return envelope.Event{}, false, ErrSealed
-	}
-	// The row lock above serialises writers of this room, so this read cannot race.
+	// Before the seal check: a retry of the append that sealed the room is a duplicate.
 	existing, err := scan(tx.QueryRow(ctx, `SELECT `+cols+` FROM events
 		WHERE room_id = $1 AND origin_client = $2 AND origin_seq = $3`, d.RoomID, d.OriginClient, d.OriginSeq), d.RoomID)
 	if err == nil {
 		return existing, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
+		return envelope.Event{}, false, err
+	}
+	if sealed {
+		return envelope.Event{}, false, ErrSealed
+	}
+	if fence != "" && (holder == nil || *holder != fence) {
+		return envelope.Event{}, false, ErrLeaseLost
+	}
+	var seq, size int64
+	if err := tx.QueryRow(ctx, `UPDATE rooms SET last_seq = last_seq + 1, bytes = bytes + $2, last_event_at = now()
+		WHERE room_id = $1 RETURNING last_seq, bytes`, d.RoomID, len(d.Payload)).Scan(&seq, &size); err != nil {
 		return envelope.Event{}, false, err
 	}
 	ev := envelope.Event{V: envelope.Version, ID: ulid.Make().String(), Seq: seq, RoomID: d.RoomID,
@@ -2900,37 +3429,47 @@ func insert(ctx context.Context, tx pgx.Tx, ev envelope.Event, client string, n 
 	return err
 }
 
-// sealTx appends the room's last event and seals it, inside the caller's transaction.
+// sealTx appends the room's last event, then seals it, inside the caller's
+// transaction. The order matters: the database refuses any event into a sealed room.
 func (s *Store) sealTx(ctx context.Context, tx pgx.Tx, roomID, kind string, fields map[string]any) error {
 	var seq int64
-	if err := tx.QueryRow(ctx, `UPDATE rooms SET last_seq = last_seq + 1, sealed = true,
-		closed_at = coalesce(closed_at, now()) WHERE room_id = $1 RETURNING last_seq`, roomID).Scan(&seq); err != nil {
+	if err := tx.QueryRow(ctx, `UPDATE rooms SET last_seq = last_seq + 1, last_event_at = now()
+		WHERE room_id = $1 RETURNING last_seq`, roomID).Scan(&seq); err != nil {
 		return err
 	}
 	ev := envelope.Event{V: envelope.Version, ID: ulid.Make().String(), Seq: seq, RoomID: roomID,
 		Actor: envelope.Actor{Kind: envelope.ActorSystem, ID: "system:room-broker"}, Type: envelope.StateChanged,
 		Origin: envelope.OriginBroker, TS: s.Now().UTC().Truncate(time.Microsecond), Redactions: []string{},
 		Payload: envelope.StatePayload(kind, fields)}
-	return insert(ctx, tx, ev, "broker:seal", 1)
+	if err := insert(ctx, tx, ev, "broker:seal", 1); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `UPDATE rooms SET sealed = true, closed_at = now() WHERE room_id = $1`, roomID)
+	return err
 }
 
 // CloseRoom seals the log with a final state_changed{room_phase: Closed}. Its
 // retention clock starts now (OD-17). Closing twice is a no-op.
 func (s *Store) CloseRoom(ctx context.Context, roomID, reason string) error {
+	if err := s.closeRoom(ctx, roomID, reason); err != nil {
+		return fmt.Errorf("store: close room %s: %w", roomID, err)
+	}
+	return nil
+}
+
+func (s *Store) closeRoom(ctx context.Context, roomID, reason string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var sealed bool
-	if err := tx.QueryRow(ctx, `SELECT sealed FROM rooms WHERE room_id = $1 FOR UPDATE`, roomID).Scan(&sealed); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNoRoom
-		}
-		return err
+	err = tx.QueryRow(ctx, `SELECT sealed FROM rooms WHERE room_id = $1 FOR UPDATE`, roomID).Scan(&sealed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNoRoom
 	}
-	if sealed {
-		return nil
+	if err != nil || sealed {
+		return err
 	}
 	if err := s.sealTx(ctx, tx, roomID, "room_phase", map[string]any{"phase": "Closed", "reason": reason}); err != nil {
 		return err
@@ -2938,24 +3477,27 @@ func (s *Store) CloseRoom(ctx context.Context, roomID, reason string) error {
 	return tx.Commit(ctx)
 }
 
+// Range returns up to limit events of the room after afterSeq, in seq order.
 func (s *Store) Range(ctx context.Context, roomID string, afterSeq int64, limit int) ([]envelope.Event, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+cols+` FROM events WHERE room_id = $1 AND seq > $2
 		ORDER BY seq LIMIT $3`, roomID, afterSeq, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: range of room %s: %w", roomID, err)
 	}
 	defer rows.Close()
 	var out []envelope.Event
 	for rows.Next() {
 		ev, err := scan(rows, roomID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("store: range of room %s: %w", roomID, err)
 		}
 		out = append(out, ev)
 	}
 	return out, rows.Err()
 }
 
+// Cursor is the highest origin_seq stored for originClient in the room, 0 if none:
+// where a reconnecting writer resumes.
 func (s *Store) Cursor(ctx context.Context, roomID, originClient string) (int64, error) {
 	var n int64
 	err := s.pool.QueryRow(ctx, `SELECT coalesce(max(origin_seq), 0) FROM events
@@ -2979,22 +3521,27 @@ func (s *Store) LastHarnessStatus(ctx context.Context, roomID, runID string) (st
 `internal/store/rooms.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
+// NewRoom is what EnsureRoom needs from a Room CR.
 type NewRoom struct {
 	ID        string
 	Driver    string // spec.driver: the initial holder, and the system fallback
 	Retention time.Duration
 }
 
+// RoomState is a room's row as the broker reads it.
 type RoomState struct {
 	ID          string
 	LastSeq     int64
@@ -3008,14 +3555,22 @@ type RoomState struct {
 // EnsureRoom inserts the room's row once. created is false when it already existed.
 // fallback_driver is the system holder a lapsed human driver falls back to (§2);
 // a room that starts with a human driver has none until a system principal holds it.
+// A retention of zero or less is refused: the Room CRD always defaults it (90d).
 func (s *Store) EnsureRoom(ctx context.Context, r NewRoom) (bool, error) {
+	if r.Retention <= 0 {
+		return false, fmt.Errorf("store: room %s: %w", r.ID, ErrInvalidRetention)
+	}
 	tag, err := s.pool.Exec(ctx, `INSERT INTO rooms (room_id, driver, fallback_driver, retention)
 		VALUES ($1, $2, CASE WHEN $2 LIKE 'system:%' THEN $2 ELSE '' END, make_interval(secs => $3))
 		ON CONFLICT (room_id) DO NOTHING`,
 		r.ID, r.Driver, r.Retention.Seconds())
-	return tag.RowsAffected() == 1, err
+	if err != nil {
+		return false, fmt.Errorf("store: ensure room %s: %w", r.ID, err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
+// Room reads a room's state, or ErrNoRoom.
 func (s *Store) Room(ctx context.Context, id string) (RoomState, error) {
 	st := RoomState{ID: id}
 	err := s.pool.QueryRow(ctx, `SELECT last_seq, driver, driver_epoch, sealed, closed_at, last_event_at
@@ -3030,21 +3585,66 @@ func (s *Store) Room(ctx context.Context, id string) (RoomState, error) {
 `internal/store/bridges.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const (
+	// claimAttempts bounds how often ClaimBridge re-decides after the lease moved
+	// under it; the caller retries later with ok false.
+	claimAttempts = 3
+	// liveTimeout bounds one liveness check, on top of the caller's ctx.
+	liveTimeout = 5 * time.Second
+)
+
 // ClaimBridge takes the room's bridge lease for runID (ruling P17). It lives in the
 // room's row, so every broker replica agrees (review I7). Another run keeps it while
-// live(holder) is true and it was seen within stale; a run that ended frees it at once.
-func (s *Store) ClaimBridge(ctx context.Context, roomID, runID string, stale time.Duration, live func(runID string) bool) (string, bool, error) {
+// it was seen within stale and live(holder) is true; a run that ended frees it at once.
+// live may call the Kubernetes API, so it runs outside any transaction, and the
+// takeover that follows is a compare-and-swap on the holder it asked about.
+func (s *Store) ClaimBridge(ctx context.Context, roomID, runID string, stale time.Duration, live func(ctx context.Context, runID string) bool) (string, bool, error) {
+	var holder string
+	for range claimAttempts {
+		var took bool
+		var err error
+		holder, took, err = s.claimFree(ctx, roomID, runID, stale)
+		if err != nil {
+			return "", false, fmt.Errorf("store: claim the bridge of room %s: %w", roomID, err)
+		}
+		if took {
+			return runID, true, nil
+		}
+		lctx, cancel := context.WithTimeout(ctx, liveTimeout)
+		alive := live(lctx, holder)
+		cancel()
+		if alive {
+			return holder, false, nil
+		}
+		tag, err := s.pool.Exec(ctx, `UPDATE rooms SET bridge_run = $3, bridge_seen_at = now()
+			WHERE room_id = $1 AND bridge_run = $2`, roomID, holder, runID)
+		if err != nil {
+			return "", false, fmt.Errorf("store: claim the bridge of room %s: %w", roomID, err)
+		}
+		if tag.RowsAffected() == 1 {
+			return runID, true, nil
+		}
+	}
+	return holder, false, nil
+}
+
+// claimFree takes the lease when nobody else holds a fresh one. Otherwise it returns
+// the other holder, with took false and the row lock already released.
+func (s *Store) claimFree(ctx context.Context, roomID, runID string, stale time.Duration) (string, bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return "", false, err
@@ -3060,7 +3660,7 @@ func (s *Store) ClaimBridge(ctx context.Context, roomID, runID string, stale tim
 	if err != nil {
 		return "", false, err
 	}
-	if holder != nil && *holder != runID && fresh && live(*holder) {
+	if holder != nil && *holder != runID && fresh {
 		return *holder, false, nil
 	}
 	if _, err := tx.Exec(ctx, `UPDATE rooms SET bridge_run = $2, bridge_seen_at = now() WHERE room_id = $1`, roomID, runID); err != nil {
@@ -3069,10 +3669,14 @@ func (s *Store) ClaimBridge(ctx context.Context, roomID, runID string, stale tim
 	return runID, true, tx.Commit(ctx)
 }
 
-// TouchBridge renews the lease of the run that holds it; anyone else's push renews nothing.
-func (s *Store) TouchBridge(ctx context.Context, roomID, runID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE rooms SET bridge_seen_at = now() WHERE room_id = $1 AND bridge_run = $2`, roomID, runID)
-	return err
+// TouchBridge renews the lease of the run that holds it. held is false when another
+// run took it: that bridge is displaced, and its appends fail with ErrLeaseLost.
+func (s *Store) TouchBridge(ctx context.Context, roomID, runID string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE rooms SET bridge_seen_at = now() WHERE room_id = $1 AND bridge_run = $2`, roomID, runID)
+	if err != nil {
+		return false, fmt.Errorf("store: touch the bridge of room %s: %w", roomID, err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // IsDataError reports a value PostgreSQL refuses outright (SQLSTATE class 22, such as
@@ -3086,33 +3690,104 @@ func IsDataError(err error) bool {
 `internal/store/bridges_test.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
+
+func alive(context.Context, string) bool { return true }
+func ended(context.Context, string) bool { return false }
 
 // Ruling P17 across replicas (review I7): the lease lives in the room's row.
 func TestBridgeLeaseIsSharedAndExpires(t *testing.T) {
 	s, _, _, _ := open(t)
 	ctx := context.Background()
-	live := func(string) bool { return true }
-	if _, ok, err := s.ClaimBridge(ctx, room, "7f3cq2xz", 2*time.Minute, live); err != nil || !ok {
+	for _, step := range []struct {
+		name       string
+		run        string
+		stale      time.Duration
+		live       func(context.Context, string) bool
+		wantOK     bool
+		wantHolder string
+	}{
+		{"the first claim takes the lease", "7f3cq2xz", 2 * time.Minute, alive, true, "7f3cq2xz"},
+		{"a second run cannot take a fresh lease", "aaaaaaaa", 2 * time.Minute, alive, false, "7f3cq2xz"},
+		{"the holder re-claims its own lease", "7f3cq2xz", 2 * time.Minute, alive, true, "7f3cq2xz"},
+		{"a run that ended frees the lease at once", "aaaaaaaa", 2 * time.Minute, ended, true, "aaaaaaaa"},
+		{"a stale lease is free", "7f3cq2xz", 0, alive, true, "7f3cq2xz"},
+	} {
+		holder, ok, err := s.ClaimBridge(ctx, room, step.run, step.stale, step.live)
+		if err != nil || ok != step.wantOK || holder != step.wantHolder {
+			t.Fatalf("%s: holder=%s ok=%v err=%v", step.name, holder, ok, err)
+		}
+	}
+}
+
+// live may call the Kubernetes API: it must never run while the room's row is locked.
+func TestClaimBridgeAsksLivenessOutsideTheRowLock(t *testing.T) {
+	s, _, _, _ := open(t)
+	ctx := context.Background()
+	if _, ok, err := s.ClaimBridge(ctx, room, "7f3cq2xz", time.Minute, alive); err != nil || !ok {
 		t.Fatalf("first claim: %v %v", ok, err)
 	}
-	if holder, ok, _ := s.ClaimBridge(ctx, room, "aaaaaaaa", 2*time.Minute, live); ok || holder != "7f3cq2xz" {
-		t.Fatalf("a second run took a fresh lease: %v %s", ok, holder)
+	var lockErr error
+	probe := func(ctx context.Context, _ string) bool {
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			lockErr = err
+			return true
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		_, lockErr = tx.Exec(ctx, `SELECT 1 FROM rooms WHERE room_id = $1 FOR UPDATE NOWAIT`, room)
+		return true
 	}
-	if _, ok, _ := s.ClaimBridge(ctx, room, "7f3cq2xz", 2*time.Minute, live); !ok {
-		t.Fatal("the holder re-claims its own lease")
+	if _, _, err := s.ClaimBridge(ctx, room, "aaaaaaaa", time.Minute, probe); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok, _ := s.ClaimBridge(ctx, room, "aaaaaaaa", 2*time.Minute, func(string) bool { return false }); !ok {
-		t.Fatal("a run that ended frees the lease at once")
+	if lockErr != nil {
+		t.Fatalf("live ran under the row lock: %v", lockErr)
 	}
-	if _, ok, _ := s.ClaimBridge(ctx, room, "7f3cq2xz", 0, live); !ok {
-		t.Fatal("a stale lease is free")
+}
+
+// A displaced bridge learns it from TouchBridge, and its appends are fenced off.
+func TestDisplacedBridgeIsFenced(t *testing.T) {
+	s, _, _, _ := open(t)
+	ctx := context.Background()
+	if _, ok, err := s.ClaimBridge(ctx, room, "7f3cq2xz", time.Minute, alive); err != nil || !ok {
+		t.Fatalf("A claims: %v %v", ok, err)
+	}
+	if _, _, err := s.AppendAsBridge(ctx, "7f3cq2xz", draft("agent:7f3cq2xz", 1)); err != nil {
+		t.Fatalf("the holder appends: %v", err)
+	}
+	if _, ok, err := s.ClaimBridge(ctx, room, "aaaaaaaa", 0, alive); err != nil || !ok {
+		t.Fatalf("B takes the stale lease: %v %v", ok, err)
+	}
+	for _, tc := range []struct {
+		run      string
+		wantHeld bool
+	}{{"7f3cq2xz", false}, {"aaaaaaaa", true}} {
+		if held, err := s.TouchBridge(ctx, room, tc.run); err != nil || held != tc.wantHeld {
+			t.Fatalf("TouchBridge(%s) = %v, %v; want %v", tc.run, held, err, tc.wantHeld)
+		}
+	}
+	before, err := s.Room(ctx, room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AppendAsBridge(ctx, "7f3cq2xz", draft("agent:7f3cq2xz", 2)); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("the displaced bridge appends: want ErrLeaseLost, got %v", err)
+	}
+	if after, _ := s.Room(ctx, room); after.LastSeq != before.LastSeq {
+		t.Fatalf("a fenced append wrote: last_seq %d -> %d", before.LastSeq, after.LastSeq)
+	}
+	if _, _, err := s.AppendAsBridge(ctx, "aaaaaaaa", draft("agent:aaaaaaaa", 1)); err != nil {
+		t.Fatalf("the new holder appends: %v", err)
 	}
 }
 
@@ -3129,14 +3804,15 @@ func TestNULIsADataError(t *testing.T) {
 
 - [ ] **Step 5: Run the tests to see them pass**
 
-Run: `go test -race ./internal/store/`
-Expected: `ok` (Docker must be running for testcontainers).
+Run: `go test -race ./internal/store/ && atlas migrate validate --dir file://internal/store/migrations && task check`
+Expected: `ok` (Docker must be running for testcontainers), `atlas` exit 0, and `task check` exit 0
+(lint, `govulncheck`, SPDX, tidy).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add internal/store go.mod go.sum
-git commit -m "feat(store): gapless idempotent append, sealing, retention-safe roles, bridge lease"
+git commit -m "feat(store): gapless idempotent append, sealing, retention-safe roles, a fenced bridge lease"
 ```
 
 ### Task 1.5: The `Room` CRD
@@ -3156,7 +3832,10 @@ git commit -m "feat(store): gapless idempotent append, sealing, retention-safe r
   `Approvals{Profile string; Overrides map[string]string; TTL string; FourEyes bool}`,
   `RoomStatus{Phase string; LastSeq int64; Driver string; DriverEpoch int64; PendingApprovals int32; ObservedGeneration int64}`,
   `v1alpha1.AddToScheme`, `v1alpha1.GroupVersion`. The file `config/crd/agents.ogenki.io_rooms.yaml`
-  is attached to every release as `crd-rooms.yaml`.
+  is attached to every release as `crd-rooms.yaml` (the release `crd` job: see Step 4).
+- **Bounds (review, 2026-09-29):** `approvals.ttl` is `^[1-9][0-9]{0,3}(m|h)$` (four digits at most, so it
+  never overflows a `time.Duration`), and `owner`, `driver` and `members[].principal` carry `MaxLength: 261`
+  (`human:` plus an OIDC `sub` of at most 255). The CRD test parses field paths rather than substrings.
 
 `spec.repository` is not in the spec's §1 example. A human room needs it for its first run request
 (`POST /v1/runs` takes `repository`), so it defaults to OD-6's only repository, `Smana/cloud-native-ref`.
@@ -3195,6 +3874,7 @@ func TestCRDCarriesTheDesignRules(t *testing.T) {
 		"default: 4h",
 		"default: {}",
 		"maxItems: 20",
+		"maxLength: 261",
 		"subresources:",
 	} {
 		if !strings.Contains(crd, want) {
@@ -3220,13 +3900,15 @@ Expected: FAIL, `no such file or directory`.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
+// SchemeBuilder uses the apimachinery builder directly: controller-runtime's
+// pkg/scheme.Builder is deprecated for api packages (SA1019, lint budget).
 var (
 	GroupVersion  = schema.GroupVersion{Group: "agents.ogenki.io", Version: "v1alpha1"}
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	AddToScheme   = SchemeBuilder.AddToScheme
 )
 ```
@@ -3236,7 +3918,10 @@ var (
 ```go
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
 
 // Room is one append-only session log (SP2 §1). Rooms are runtime objects, created
 // by SP3's factory or the broker, never committed to Git.
@@ -3264,10 +3949,14 @@ type RoomList struct {
 }
 
 type RoomSpec struct {
+	// A principal, "human:<sub>" or "system:<name>". OIDC Core §2 caps a sub at 255
+	// characters, hence 261 with the "human:" prefix, here and for every principal.
 	// +kubebuilder:validation:Pattern=`^(human:[A-Za-z0-9@._-]+|system:[a-z0-9-]+)$`
+	// +kubebuilder:validation:MaxLength=261
 	Owner string `json:"owner"`
 	// The initial driver-token holder; afterwards the log decides.
 	// +kubebuilder:validation:Pattern=`^(human:[A-Za-z0-9@._-]+|system:[a-z0-9-]+)$`
+	// +kubebuilder:validation:MaxLength=261
 	Driver string `json:"driver"`
 	// Runs join through their own spec.roomRef, never through this list.
 	// +kubebuilder:validation:MaxItems=20
@@ -3294,6 +3983,7 @@ type RoomSpec struct {
 
 type Member struct {
 	// +kubebuilder:validation:Pattern=`^human:[A-Za-z0-9@._-]+$`
+	// +kubebuilder:validation:MaxLength=261
 	Principal string `json:"principal"`
 	// Cumulative: watcher < collaborator < owner (§1).
 	// +kubebuilder:validation:Enum=watcher;collaborator;owner
@@ -3313,7 +4003,8 @@ type Approvals struct {
 	// +optional
 	Overrides map[string]string `json:"overrides,omitempty"`
 	// +kubebuilder:default="4h"
-	// +kubebuilder:validation:Pattern=`^[1-9][0-9]*(m|h)$`
+	// At most four digits: an unbounded count overflows time.Duration.
+	// +kubebuilder:validation:Pattern=`^[1-9][0-9]{0,3}(m|h)$`
 	// +optional
 	TTL string `json:"ttl,omitempty"`
 	// OD-16: approver must differ from the humans who prompted the turn.
@@ -3333,12 +4024,17 @@ type RoomStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
-func init() { SchemeBuilder.Register(&Room{}, &RoomList{}) }
+func addKnownTypes(scheme *runtime.Scheme) error {
+	scheme.AddKnownTypes(GroupVersion, &Room{}, &RoomList{})
+	metav1.AddToGroupVersion(scheme, GroupVersion)
+	return nil
+}
 ```
 
 - [ ] **Step 4: Generate and wire the tasks**
 
 Run: `go get -tool sigs.k8s.io/controller-tools/cmd/controller-gen@latest && go tool controller-gen object crd paths=./api/... output:crd:dir=./config/crd`
+(`v0.22.0` on 2026-09-29; `crd:gen` also prepends the SPDX header, idempotently, Ruling AC)
 Expected: `api/v1alpha1/zz_generated.deepcopy.go` and `config/crd/agents.ogenki.io_rooms.yaml` exist.
 
 Add to `taskfile.yaml`:
@@ -3356,7 +4052,12 @@ Add to `taskfile.yaml`:
 ```
 
 and add `- task: crd:check` to `check`. In `release.yaml`, after the image build, add a job step
-that attaches the CRD. It runs once, in its own job with `needs: release`:
+that attaches the CRD. It runs once, in its own job with `needs: release`.
+
+**Blocked on 2026-09-29, and a Phase 7 gap.** The session's permission classifier denied this job
+("Create Public Surface"), so AP-1 landed without it. Nothing needs it before Phase 7: Task 1.16 vendors
+the CRD from the agent-platform branch. **[OWNER]** allows it or adds it before the merge wave (Task 7.2),
+pinning `actions/checkout` by SHA like every other `uses:` (AP-0's hardening):
 
 ```yaml
   crd:
@@ -3386,8 +4087,18 @@ git commit -m "feat(api): Room CRD agents.ogenki.io/v1alpha1"
 
 ### Task 1.6: Offline authentication for runs and system callers
 
+> **Engineering standard (Ruling AC, 2026-09-29).** This task makes the first outbound call, the JWKS
+> fetch, so **`internal/httpx` lands here**: the one audited egress client (timeout, redirect cap,
+> credential headers stripped on a cross-host redirect, cloud metadata addresses refused). Every later
+> outbound call reuses it, the bridge → broker hop with GP-18's CA included (Task 1.11). `NewVerifier`
+> hands the JWKS storage an `httpx` client and a bounded refresh (keyfunc v3's `Options.Storage` over
+> jwkset's HTTP storage), instead of `keyfunc.NewDefaultCtx`'s own client. Signing
+> algorithms stay pinned (`RS256`, `ES256`). Token expiry and leeway read an injected `now func() time.Time`,
+> never `time.Now` directly. Tests use `httptest.Server.Client()`.
+
 **Files:**
 - Create: `internal/authn/jwt.go`, `internal/authn/runs.go`, `internal/authn/systems.go`
+- Create: `internal/httpx/client.go`, test `internal/httpx/client_test.go` (Ruling AC)
 - Test: `internal/authn/authn_test.go`, `internal/authn/keys_test.go`
 
 **Interfaces:**
@@ -3395,7 +4106,8 @@ git commit -m "feat(api): Room CRD agents.ogenki.io/v1alpha1"
   - `authn.AudienceRun = "room-broker"`, `authn.AudienceSystem = "rooms-system"`,
     `authn.ErrUnauthenticated`, `authn.ErrForbidden`.
   - `authn.Claims{jwt.RegisteredClaims; Groups []string; AuthorizedParty string}`.
-  - `authn.NewVerifier(ctx, issuer, jwksURL) (*Verifier, error)`,
+  - `httpx.New(httpx.Options{Timeout; RootCAs *x509.CertPool}) *http.Client` (Ruling AC).
+  - `authn.NewVerifier(ctx, issuer, jwksURL, *http.Client) (*Verifier, error)`,
     `authn.NewVerifierWithKeyfunc(issuer, jwt.Keyfunc) *Verifier`,
     `(*Verifier).Verify(raw, audience string) (*Claims, error)`.
   - `authn.Principal{Kind envelope.ActorKind; ID, RunID, Sub string; Groups []string; ClientID string; Expiry time.Time; AccessToken string}`.
@@ -3541,11 +4253,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/Smana/agent-platform/internal/envelope"
 )
+
+// jwksRefresh bounds how stale a rotated signing key can be.
+const jwksRefresh = time.Hour
 
 const (
 	AudienceRun    = "room-broker"  // fixed by SP1 (C2); Kyverno reserves it to namespace agents
@@ -3568,11 +4284,19 @@ type Verifier struct {
 	keyfunc jwt.Keyfunc
 }
 
-// NewVerifier fetches and refreshes the issuer's JWKS in the background.
-func NewVerifier(ctx context.Context, issuer, jwksURL string) (*Verifier, error) {
-	k, err := keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
+// NewVerifier fetches the issuer's JWKS through hc, the httpx egress client
+// (Ruling AC), and refreshes it in the background every jwksRefresh.
+// Check the jwkset option names against the pinned version.
+func NewVerifier(ctx context.Context, issuer, jwksURL string, hc *http.Client) (*Verifier, error) {
+	storage, err := jwkset.NewStorageFromHTTP(jwksURL, jwkset.HTTPClientStorageOptions{
+		Ctx: ctx, Client: hc, RefreshInterval: jwksRefresh,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("authn: JWKS of %s: %w", issuer, err)
+	}
+	k, err := keyfunc.New(keyfunc.Options{Ctx: ctx, Storage: storage})
+	if err != nil {
+		return nil, fmt.Errorf("authn: JWKS of %s: %w", issuer, err)
 	}
 	return &Verifier{issuer: issuer, keyfunc: k.Keyfunc}, nil
 }
@@ -4610,6 +5334,30 @@ git commit -m "feat(roomctrl): Room reconciler with log row, finalizer and statu
 
 ### Task 1.9: The bridge and system API on :8443
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** the :8443 listener is
+> `ListenAndServeTLS` on `/etc/room-broker/tls/{tls.crt,tls.key}` (Task 1.18's `Certificate
+> room-broker-tls`). It reloads the pair when cert-manager renews it: a `GetCertificate` that
+> re-reads the files once they change. The unit test serves a self-signed pair and asserts a
+> plain-HTTP request fails. :8080 (humans, behind oauth2-proxy) and the MCP port are unchanged.
+>
+> **Applied in this task (2026-09-29).** GP-18 is a requirement of Step 3, not an option: a
+> `bridgeapi.TLSConfig(certFile, keyFile string) (*tls.Config, error)` whose `GetCertificate` re-reads the
+> pair when either file's modification time changes, served by `ListenAndServeTLS("", "")` in Task 1.12's
+> wiring. The test `TestPlainHTTPIsRefused` serves a self-signed pair with `httptest.NewUnstartedServer`
+> plus that config, and asserts a plain `http://` request fails and a rotated pair is picked up without
+> a restart.
+>
+> **The fenced lease (Ruling Y).** The store's bridge lease is fenced (Task 1.4): `ClaimBridge`'s
+> `live` takes a `ctx`, `TouchBridge` returns `held`, and a bridge's pushes go through
+> `AppendAsBridge(ctx, run.ID, draft)`. `POST /v1/bridge/events` answers **`409 lease_lost`** when
+> `TouchBridge` reports the lease gone or an append returns `store.ErrLeaseLost`: a displaced bridge must
+> never keep appending (review of Task 1.4). Task 1.11's bridge handles that 409 explicitly.
+>
+> **The standard (Ruling AC).** `errors.Is` for every sentinel, `%w` wrapping, a doc comment on every
+> exported identifier, `ctx` first, `slog` injected; the SSE stream's keep-alive waits on a `select`
+> over `ctx.Done()` and an injected ticker, never `time.Sleep`. The :8443 server's timeouts are set in
+> Task 1.12 (the SSE route is the documented `WriteTimeout: 0` exception).
+
 **Files:**
 - Create: `internal/wire/bridge.go`
 - Create: `internal/bridgeapi/server.go`, `internal/bridgeapi/registry.go`, `internal/bridgeapi/system.go`
@@ -4629,7 +5377,9 @@ git commit -m "feat(roomctrl): Room reconciler with log row, finalizer and statu
   - `bridgeapi.RoomPolicy func(roomID string) wire.ApprovalPolicy` (a no-op until phase 5).
   - Routes: `POST /v1/bridge/hello`, `POST /v1/bridge/events`, `GET /v1/bridge/stream`,
     `GET /v1/rooms/{id}/events`, `POST /v1/rooms/{id}/messages`.
-  - `bridgeapi.Log` also needs the store's `ClaimBridge` and `TouchBridge` (ruling P17, review I7).
+  - `bridgeapi.Log` also needs the store's `AppendAsBridge`, `ClaimBridge` and `TouchBridge` (ruling P17,
+    review I7, Ruling Y), with the signatures of Task 1.4.
+  - `bridgeapi.TLSConfig(certFile, keyFile string) (*tls.Config, error)` (GP-18).
   - What a bridge may push (review M5): `message{kind: chat, delivery: none}`, `turn`, `tool_call`,
     `tool_result`, and `state_changed` of kinds `harness_status`, `harness_error`, `harness_paused`,
     `harness_event`, `delivered`, `interrupted`, `policy_decision` and `decision_applied` (the last
@@ -4808,16 +5558,29 @@ func (m *memLog) Cursor(_ context.Context, room, client string) (int64, error) {
 func (m *memLog) Room(_ context.Context, id string) (store.RoomState, error) {
 	return store.RoomState{ID: id, LastSeq: int64(len(m.events[id]))}, nil
 }
-func (m *memLog) ClaimBridge(_ context.Context, room, run string, _ time.Duration, live func(string) bool) (string, bool, error) {
+func (m *memLog) AppendAsBridge(ctx context.Context, bridgeRun string, d envelope.Draft) (envelope.Event, bool, error) {
+	m.mu.Lock()
+	holder := m.leases[d.RoomID]
+	m.mu.Unlock()
+	if holder != bridgeRun {
+		return envelope.Event{}, false, store.ErrLeaseLost
+	}
+	return m.Append(ctx, d)
+}
+func (m *memLog) ClaimBridge(ctx context.Context, room, run string, _ time.Duration, live func(context.Context, string) bool) (string, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if h, ok := m.leases[room]; ok && h != run && live(h) {
+	if h, ok := m.leases[room]; ok && h != run && live(ctx, h) {
 		return h, false, nil
 	}
 	m.leases[room] = run
 	return run, true, nil
 }
-func (m *memLog) TouchBridge(context.Context, string, string) error { return nil }
+func (m *memLog) TouchBridge(_ context.Context, room, run string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.leases[room] == run, nil
+}
 
 func run(id, room, phase string) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{Object: map[string]any{
@@ -5126,8 +5889,9 @@ type Log interface {
 	Range(ctx context.Context, roomID string, afterSeq int64, limit int) ([]envelope.Event, error)
 	Cursor(ctx context.Context, roomID, originClient string) (int64, error)
 	Room(ctx context.Context, id string) (store.RoomState, error)
-	ClaimBridge(ctx context.Context, roomID, runID string, stale time.Duration, live func(runID string) bool) (string, bool, error)
-	TouchBridge(ctx context.Context, roomID, runID string) error
+	AppendAsBridge(ctx context.Context, bridgeRun string, d envelope.Draft) (envelope.Event, bool, error)
+	ClaimBridge(ctx context.Context, roomID, runID string, stale time.Duration, live func(ctx context.Context, runID string) bool) (string, bool, error)
+	TouchBridge(ctx context.Context, roomID, runID string) (held bool, err error)
 }
 
 // bridgeKinds are the state_changed kinds a bridge produces: its status tracker and
@@ -5225,7 +5989,7 @@ func (s *Server) hello(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ruling P17: the room's bridge lease, in the log's database so that every replica
 	// agrees (review I7). A holder still live and seen within connectedWindow keeps it.
-	holder, ok, err := s.Log.ClaimBridge(r.Context(), run.Room, run.ID, connectedWindow, func(id string) bool {
+	holder, ok, err := s.Log.ClaimBridge(r.Context(), run.Room, run.ID, connectedWindow, func(_ context.Context, id string) bool {
 		_, live := s.Watch.Live(id)
 		return live
 	})
@@ -5265,9 +6029,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad_batch")
 		return
 	}
-	// The holder's pushes renew the room's bridge lease (P17). Best effort: a missed
-	// renewal costs at most a second hello after connectedWindow.
-	_ = s.Log.TouchBridge(r.Context(), run.Room, run.ID)
+	// The holder's pushes renew the room's bridge lease (P17). A bridge another run
+	// displaced learns it here, and must stop: 409, never a silent append (Ruling Y).
+	held, err := s.Log.TouchBridge(r.Context(), run.Room, run.ID)
+	if err != nil {
+		fail(w, http.StatusServiceUnavailable, "log_unavailable")
+		return
+	}
+	if !held {
+		fail(w, http.StatusConflict, "lease_lost")
+		return
+	}
 	var ack wire.BatchAck
 	for _, it := range b.Items {
 		if !it.Type.Valid() || it.Seq <= 0 || (it.Stream != wire.StreamEvents && it.Stream != wire.StreamStatus) || !allowedFromBridge(it) {
@@ -5286,17 +6058,20 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		draft := envelope.Draft{RoomID: run.Room, RunID: run.ID,
 			Actor: s.actor(p, run), Type: it.Type, Origin: envelope.OriginHarness, OriginClient: client,
 			OriginSeq: it.Seq, Redactions: rules, Payload: payload}
-		ev, dup, err := s.Log.Append(r.Context(), draft)
+		ev, dup, err := s.Log.AppendAsBridge(r.Context(), run.ID, draft)
 		if store.IsDataError(err) {
 			// A value PostgreSQL refuses can never be stored: keep the slot with a stub, as
 			// for an oversize payload, so the bridge's cursor moves on (review I6).
 			s.Logger.Error("payload refused by the database", "room", run.Room, "run", run.ID, "type", it.Type, "err", err)
 			draft.Payload, draft.Redactions = envelope.Must(map[string]any{"refused": true, "type": it.Type}), nil
-			ev, dup, err = s.Log.Append(r.Context(), draft)
+			ev, dup, err = s.Log.AppendAsBridge(r.Context(), run.ID, draft)
 		}
 		switch {
 		case errors.Is(err, store.ErrSealed):
 			fail(w, http.StatusGone, "sealed")
+			return
+		case errors.Is(err, store.ErrLeaseLost):
+			fail(w, http.StatusConflict, "lease_lost")
 			return
 		case err != nil:
 			s.Logger.Error("append failed", "room", run.Room, "run", run.ID, "type", it.Type, "err", err)
@@ -6206,23 +6981,45 @@ git commit -m "feat(bridge): agent-server adapter, event mapping, status transit
 
 ### Task 1.11: The `room-bridge` binary
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `bridge.NewBroker` builds its `http.Client`
+> with a `tls.Config{RootCAs: …}` loaded from `$BROKER_CA_FILE` (default
+> `/etc/room-broker-ca/ca.crt`). It refuses to start if the file is absent or `BROKER_URL` is not
+> `https://`. Unit test: a `httptest.NewTLSServer` whose CA is and is not in the file.
+>
+> **Applied in this task (2026-09-29).** The client is `httpx.New(httpx.Options{RootCAs: …})` (Task 1.6's
+> egress client, Ruling AC), built in `internal/app/bridge.go` and handed to `NewBroker`; no
+> `&http.Client{}` here. `app.RunBridge` refuses to start on a missing CA file or a non-`https://`
+> `BROKER_URL` (test `TestRunBridgeRefusesPlainBroker`).
+>
+> **A 409 never drops a batch (Ruling Y).** :8443 answers `409` for `room_busy` (hello) and `lease_lost`
+> (events): another run holds the room. The bridge keeps its buffer, stops pushing, and says hello again on
+> the next tick; the plan's first draft fell through to "any unknown 4xx: drop the batch". Test
+> `TestConflictKeepsTheBatch`.
+>
+> **The standard (Ruling AC).** Wiring moves to `internal/app/bridge.go`; `cmd/room-bridge/main.go` only
+> calls `app.RunBridge`. No `time.Sleep` outside tests: waits go through the injected `After` (default
+> `time.After`) in a `select` on `ctx.Done()`. The health server sets all four timeouts.
+
 **Files:**
-- Create: `internal/bridge/broker.go`, `internal/bridge/bridge.go`
+- Create: `internal/bridge/broker.go`, `internal/bridge/bridge.go`, `internal/app/bridge.go` (Ruling AC)
 - Modify: `cmd/room-bridge/main.go`
-- Test: `internal/bridge/bridge_test.go`
+- Test: `internal/bridge/bridge_test.go`, `internal/app/bridge_test.go`
 
 **Interfaces:**
 - Consumes: `Harness`, `Map`, `StatusTracker`, `SeqFor`, `wire.*`.
 - Produces:
-  - `bridge.NewBroker(base, tokenFile string) *Broker`, with `Hello(ctx) (wire.Resume, int, error)`,
+  - `bridge.NewBroker(base, tokenFile string, hc, stream *http.Client) *Broker` (both `httpx` clients;
+    `stream` has no overall timeout), with `Hello(ctx) (wire.Resume, int, error)`,
     `Send(ctx, wire.Batch) (wire.BatchAck, int, error)` and
     `Stream(ctx, handle func(event string, data []byte)) error`. The token is re-read before
     every request.
-  - `bridge.Bridge{Harness *Harness; Broker *Broker; RunID string; Interval time.Duration; MaxBuffer int; Logger *slog.Logger}`,
+  - `bridge.Bridge{Harness *Harness; Broker *Broker; RunID string; Interval time.Duration; MaxBuffer int; Logger *slog.Logger; After func(time.Duration) <-chan time.Time}`,
     with `Run(ctx) error`, `Healthy(now time.Time) bool` and the optional hooks `OnDeliver`,
     `OnDecision`, `OnInterrupt` (nil until phases 4–5).
-  - Environment: `ROOM_ID`, `RUN_ID`, `CONVERSATION_ID`, `BROKER_URL`, `HARNESS_URL`,
-    `ROOM_TOKEN_FILE`, `EGRESS_PROFILES`, `HEALTH_ADDR` (default `:8085`).
+  - `app.RunBridge(ctx context.Context, getenv func(string) string, log *slog.Logger) error`.
+  - Environment: `ROOM_ID`, `RUN_ID`, `CONVERSATION_ID`, `BROKER_URL` (`https://` only), `BROKER_CA_FILE`
+    (default `/etc/room-broker-ca/ca.crt`), `HARNESS_URL`, `ROOM_TOKEN_FILE`, `EGRESS_PROFILES`,
+    `HEALTH_ADDR` (default `:8085`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -6249,6 +7046,12 @@ type fakeBroker struct {
 	tokens    []string
 	resume    wire.Resume
 	failFirst int
+}
+
+// brokerFor points a Broker at a test server with that server's own client
+// (Ruling AC: tests never build an http.Client).
+func brokerFor(srv *httptest.Server, tokenFile string) *Broker {
+	return NewBroker(srv.URL, tokenFile, srv.Client(), srv.Client())
 }
 
 func (b *fakeBroker) start(t *testing.T) *httptest.Server {
@@ -6299,7 +7102,7 @@ func TestBridgeMirrorsEverythingOnceAndSurvivesABrokerOutage(t *testing.T) {
 	}
 	fb := &fakeBroker{failFirst: 2}
 	dir := t.TempDir()
-	b := &Bridge{Harness: NewHarness(f.start(t, conv).URL, conv), Broker: NewBroker(fb.start(t).URL, token(t, dir, "v1")),
+	b := &Bridge{Harness: NewHarness(f.start(t, conv).URL, conv), Broker: brokerFor(fb.start(t), token(t, dir, "v1")),
 		RunID: "7f3cq2xz", Interval: 10 * time.Millisecond, MaxBuffer: 1 << 20}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -6337,7 +7140,7 @@ func TestBridgeResumesWhereTheLogIs(t *testing.T) {
 		f.add(map[string]any{"kind": "MessageEvent", "source": "agent"})
 	}
 	fb := &fakeBroker{resume: wire.Resume{RoomID: "3kq7x2ma", AfterHarnessSeq: SeqFor(3, 0)}}
-	b := &Bridge{Harness: NewHarness(f.start(t, conv).URL, conv), Broker: NewBroker(fb.start(t).URL, token(t, t.TempDir(), "v1")),
+	b := &Bridge{Harness: NewHarness(f.start(t, conv).URL, conv), Broker: brokerFor(fb.start(t), token(t, t.TempDir(), "v1")),
 		RunID: "7f3cq2xz", Interval: 10 * time.Millisecond, MaxBuffer: 1 << 20}
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
@@ -6409,8 +7212,10 @@ type Broker struct {
 	stream    *http.Client
 }
 
-func NewBroker(base, tokenFile string) *Broker {
-	return &Broker{base: base, tokenFile: tokenFile, hc: &http.Client{Timeout: 15 * time.Second}, stream: &http.Client{}}
+// NewBroker takes its clients from internal/httpx (Ruling AC), carrying the
+// broker's CA (GP-18); tests pass their httptest server's Client().
+func NewBroker(base, tokenFile string, hc, stream *http.Client) *Broker {
+	return &Broker{base: base, tokenFile: tokenFile, hc: hc, stream: stream}
 }
 
 func (b *Broker) request(ctx context.Context, method, path string, in any) (*http.Request, error) {
@@ -6539,6 +7344,7 @@ type Bridge struct {
 	status    StatusTracker
 	statusSeq int64
 	sealed    bool
+	needHello bool // a 409: another run holds the lease; hello again before pushing
 	lastSeen  atomic.Int64
 }
 
@@ -6582,7 +7388,15 @@ func (b *Bridge) Run(ctx context.Context) error {
 	defer tick.Stop()
 	for {
 		b.poll(ctx)
-		b.flush(ctx)
+		if b.needHello {
+			// One attempt per tick; the buffer waits, bounded by MaxBuffer.
+			if _, code, err := b.Broker.Hello(ctx); err == nil && code == http.StatusOK {
+				b.needHello = false
+			}
+		}
+		if !b.needHello {
+			b.flush(ctx)
+		}
 		select {
 		case <-ctx.Done():
 			return b.shutdown()
@@ -6662,6 +7476,12 @@ func (b *Bridge) flush(ctx context.Context) {
 			b.sealed, b.buf, b.bufBytes = true, nil, 0
 			b.log().Warn("the room is sealed; the bridge stops mirroring")
 			return
+		case code == http.StatusConflict:
+			// Another run holds the room's lease (Ruling Y): keep the batch, stop
+			// pushing, and say hello again on the next tick. Never drop it.
+			b.needHello = true
+			b.log().Warn("the room's bridge lease is held by another run; holding the buffer")
+			return
 		case code != http.StatusOK:
 			b.log().Error("batch refused, dropping it", "code", code) // a 400 would block forever
 		}
@@ -6681,7 +7501,7 @@ func (b *Bridge) shutdown() error {
 	for len(b.buf) > 0 && ctx.Err() == nil && !b.sealed {
 		b.flush(ctx)
 		if len(b.buf) > 0 {
-			time.Sleep(500 * time.Millisecond)
+			b.wait(ctx, 500*time.Millisecond)
 		}
 	}
 	return nil
@@ -6714,15 +7534,30 @@ func (b *Bridge) consume(ctx context.Context) {
 			return
 		}
 		b.log().Info("stream ended, re-dialling", "err", err)
-		time.Sleep(backoff)
+		b.wait(ctx, backoff)
 		backoff = min(2*backoff, 10*time.Second)
+	}
+}
+
+// wait blocks for d or until ctx ends, on the injected clock (Ruling AC: no
+// time.Sleep outside tests).
+func (b *Bridge) wait(ctx context.Context, d time.Duration) {
+	after := b.After
+	if after == nil {
+		after = time.After
+	}
+	select {
+	case <-ctx.Done():
+	case <-after(d):
 	}
 }
 ```
 
-`cmd/room-bridge/main.go`:
+`cmd/room-bridge/main.go` (thin, Ruling AC):
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 // Command room-bridge is the native sidecar of an AgentRun sandbox with a
 // roomRef (SP2 §3): it mirrors the harness into the room and carries the room's
 // steering, interrupts and decisions back.
@@ -6731,42 +7566,84 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/Smana/agent-platform/internal/bridge"
-	"github.com/Smana/agent-platform/internal/version"
+	"github.com/Smana/agent-platform/internal/app"
 )
-
-func env(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("run", os.Getenv("RUN_ID"), "room", os.Getenv("ROOM_ID"))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	if err := app.RunBridge(ctx, os.Getenv, log); err != nil {
+		log.Error("room-bridge", "err", err)
+		os.Exit(1)
+	}
+}
+```
+
+`internal/app/bridge.go`:
+
+```go
+// SPDX-License-Identifier: Apache-2.0
+
+package app
+
+import (
+	"context"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Smana/agent-platform/internal/bridge"
+	"github.com/Smana/agent-platform/internal/httpx"
+	"github.com/Smana/agent-platform/internal/version"
+)
+
+// RunBridge wires room-bridge and runs it until ctx ends. It refuses a plain
+// broker URL and a missing CA: the :8443 hop is TLS on both clouds (GP-18).
+func RunBridge(ctx context.Context, getenv func(string) string, log *slog.Logger) error {
+	env := func(k, def string) string {
+		if v := getenv(k); v != "" {
+			return v
+		}
+		return def
+	}
 	for _, k := range []string{"RUN_ID", "ROOM_ID", "CONVERSATION_ID", "BROKER_URL", "ROOM_TOKEN_FILE"} {
-		if os.Getenv(k) == "" {
-			log.Error("missing environment", "var", k)
-			os.Exit(2)
+		if getenv(k) == "" {
+			return fmt.Errorf("missing environment %s", k)
 		}
 	}
+	if !strings.HasPrefix(getenv("BROKER_URL"), "https://") {
+		return errors.New("BROKER_URL must be https:// (GP-18)")
+	}
+	pem, err := os.ReadFile(filepath.Clean(env("BROKER_CA_FILE", "/etc/room-broker-ca/ca.crt")))
+	if err != nil {
+		return fmt.Errorf("broker CA: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		return errors.New("broker CA: no certificate in the file")
+	}
 	b := &bridge.Bridge{
-		Harness:   bridge.NewHarness(env("HARNESS_URL", "http://127.0.0.1:8000"), os.Getenv("CONVERSATION_ID")),
-		Broker:    bridge.NewBroker(os.Getenv("BROKER_URL"), os.Getenv("ROOM_TOKEN_FILE")),
-		RunID:     os.Getenv("RUN_ID"),
+		Harness: bridge.NewHarness(env("HARNESS_URL", "http://127.0.0.1:8000"), getenv("CONVERSATION_ID")),
+		Broker: bridge.NewBroker(getenv("BROKER_URL"), getenv("ROOM_TOKEN_FILE"),
+			httpx.New(httpx.Options{Timeout: 15 * time.Second, RootCAs: roots}),
+			httpx.New(httpx.Options{RootCAs: roots})), // the SSE stream: no overall timeout
+		RunID:     getenv("RUN_ID"),
 		Interval:  time.Second,
 		MaxBuffer: 8 << 20,
 		Logger:    log,
 	}
 	b.Harness.MaxPages = 2 // at most 200 events per poll (review M13)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
-	defer stop()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !b.Healthy(time.Now()) {
@@ -6775,33 +7652,56 @@ func main() {
 		}
 		_, _ = w.Write([]byte("ok " + version.Version))
 	})
-	srv := &http.Server{Addr: env("HEALTH_ADDR", ":8085"), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.ListenAndServe() }()
+	srv := &http.Server{Addr: env("HEALTH_ADDR", ":8085"), Handler: mux, ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	errc := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errc <- err
+		}
+	}()
 	log.Info("room-bridge starting", "version", version.Version)
-	_ = b.Run(ctx)
-	_ = srv.Shutdown(context.Background())
+	runErr := b.Run(ctx)
+	drain, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(drain)
+	select {
+	case err := <-errc:
+		return fmt.Errorf("health server: %w", err)
+	default:
+		return runErr
+	}
 }
 ```
 
 - [ ] **Step 4: Run the tests to see them pass**
 
-Run: `go test -race ./internal/bridge/ && go build ./cmd/room-bridge`
+Run: `go test -race ./internal/bridge/ ./internal/app/ && go build ./cmd/room-bridge && task check`
 Expected: `ok`; the build exits 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/bridge cmd/room-bridge
+git add internal/bridge internal/app cmd/room-bridge
 git commit -m "feat(bridge): room-bridge sidecar with resume, back-pressure and SIGTERM flush"
 ```
 
 ### Task 1.12: The broker binary, metrics, and AP-1's pre-release
 
+> **Engineering standard (Ruling AC, 2026-09-29).** The wiring lives in `internal/app`, where tests can
+> call it; `cmd/room-broker/main.go` only picks `app.RunBroker` or `app.RunRetention`. Metrics use the
+> OpenTelemetry metric API with the Prometheus exporter, every name unchanged from the §9 set the VMRules
+> query, plus `rooms_build_info{version}`. The retention job goes through the store, the only package
+> that speaks SQL, and deletes only **sealed** rooms past retention (Ruling Y). :8443 serves TLS with the
+> reloading certificate (GP-18); every server sets all four timeouts, :8443's `WriteTimeout: 0` being the
+> SSE exception; `errors.Is(err, http.ErrServerClosed)`.
+
 **Files:**
 - Create: `internal/config/config.go`, `internal/config/config_test.go`
-- Create: `internal/metrics/metrics.go`
-- Create: `cmd/room-broker/main.go` (replace the stub), `cmd/room-broker/leader.go`,
-  `cmd/room-broker/retention.go`
+- Create: `internal/metrics/metrics.go`, `internal/metrics/metrics_test.go`
+- Create: `internal/app/broker.go`, `internal/app/leader.go`, `internal/app/retention.go`,
+  `internal/store/retention.go`
+- Modify: `cmd/room-broker/main.go` (replace the stub; thin)
 
 **Interfaces:**
 - Produces:
@@ -6809,9 +7709,13 @@ git commit -m "feat(bridge): room-bridge sidecar with resume, back-pressure and 
     `{PublicURL string; RunIssuers []IssuerConfig; SystemIssuer IssuerConfig; SystemPrincipals map[string]string; Human HumanConfig; FactoryURL string}`,
     `IssuerConfig` is `{Issuer, JWKSURL, SubPattern string}` and `HumanConfig` is
     `{Issuer, JWKSURL, ClientIDFile, RoomctlClientIDFile, Origin string}`.
-  - `metrics.New(prometheus.Registerer) *metrics.Set`, carrying the §9 names plus
+  - `metrics.New(metric.MeterProvider, version string) (*metrics.Set, error)` and
+    `(*Set).ObserveRoom(room, phase string, last time.Time)`, carrying the §9 names plus
     `rooms_append_errors_total`, `rooms_last_event_timestamp_seconds{room}` and
-    `rooms_approvals_oldest_pending_seconds`, which the alerts need.
+    `rooms_approvals_oldest_pending_seconds`, which the alerts need, and `rooms_build_info{version}`.
+    `TestNamesMatchTheAlerts` scrapes the exporter and asserts every name the VMRules query.
+  - `app.RunBroker` and `app.RunRetention`, both `func(ctx, getenv func(string) string, *slog.Logger) error`.
+  - `(*store.Store).PurgeExpired(ctx) (rooms, events int64, err error)`.
   - Binary: `room-broker serve` (default) and `room-broker retention`.
   - Environment: `ROOMS_CONFIG`, `ROOMS_DATABASE_URL`, `POD_NAMESPACE`.
 
@@ -6856,7 +7760,7 @@ systemPrincipals:
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `go get sigs.k8s.io/yaml@latest github.com/prometheus/client_golang@latest && go test ./internal/config/`
+Run: `go get sigs.k8s.io/yaml@latest github.com/prometheus/client_golang@latest go.opentelemetry.io/otel/sdk/metric@latest go.opentelemetry.io/otel/exporters/prometheus@latest && go test ./internal/config/`
 Expected: FAIL, `undefined: Load`.
 
 - [ ] **Step 3: Implement config, metrics and the binary**
@@ -6921,57 +7825,149 @@ func Load(path string) (Config, error) {
 `internal/metrics/metrics.go`:
 
 ```go
-// Package metrics is the §9 metric set, plus the three the alerts need.
+// SPDX-License-Identifier: Apache-2.0
+
+// Package metrics is the §9 metric set, plus the three the alerts need, on the
+// OpenTelemetry metric API (Ruling AC). The names are the contract with the
+// VMRules: TestNamesMatchTheAlerts scrapes the exporter and fails on any drift.
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"context"
+	"sync"
+	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+)
+
+// Set holds every instrument the broker records. A no-op MeterProvider makes it
+// inert in tests.
 type Set struct {
-	Rooms            *prometheus.GaugeVec
-	Participants     prometheus.Gauge
-	Connections      *prometheus.GaugeVec
-	Appended         *prometheus.CounterVec
-	AppendSeconds    prometheus.Histogram
-	AppendErrors     prometheus.Counter
-	FanoutLag        prometheus.Histogram
-	ApprovalsPending prometheus.Gauge
-	ApprovalsOldest  prometheus.Gauge
-	DecisionSeconds  prometheus.Histogram
-	DriverChanges    prometheus.Counter
-	Redactions       *prometheus.CounterVec
-	Rejected         *prometheus.CounterVec
-	Dropped          *prometheus.CounterVec
-	LastEvent        *prometheus.GaugeVec
+	Participants     metric.Int64UpDownCounter
+	Connections      metric.Int64UpDownCounter // attribute kind
+	Appended         metric.Int64Counter       // attributes type, origin
+	AppendSeconds    metric.Float64Histogram
+	AppendErrors     metric.Int64Counter
+	FanoutLag        metric.Float64Histogram
+	ApprovalsPending metric.Int64Gauge
+	ApprovalsOldest  metric.Float64Gauge
+	DecisionSeconds  metric.Float64Histogram
+	DriverChanges    metric.Int64Counter
+	Redactions       metric.Int64Counter // attribute rule
+	Rejected         metric.Int64Counter // attribute reason
+	Dropped          metric.Int64Counter // attribute reason
+
+	mu     sync.Mutex
+	phases map[string]string    // room -> phase
+	last   map[string]time.Time // Active room -> its last durable event
 }
 
-func New(reg prometheus.Registerer) *Set {
-	s := &Set{
-		Rooms:            prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "rooms", Help: "Rooms by phase."}, []string{"phase"}),
-		Participants:     prometheus.NewGauge(prometheus.GaugeOpts{Name: "rooms_participants", Help: "Live participants."}),
-		Connections:      prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "rooms_connections", Help: "Open connections."}, []string{"kind"}),
-		Appended:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rooms_events_appended_total", Help: "Durable events appended."}, []string{"type", "origin"}),
-		AppendSeconds:    prometheus.NewHistogram(prometheus.HistogramOpts{Name: "rooms_append_seconds", Help: "Append latency.", Buckets: prometheus.ExponentialBuckets(0.001, 2, 12)}),
-		AppendErrors:     prometheus.NewCounter(prometheus.CounterOpts{Name: "rooms_append_errors_total", Help: "Appends that failed on the database."}),
-		FanoutLag:        prometheus.NewHistogram(prometheus.HistogramOpts{Name: "rooms_fanout_lag_seconds", Help: "Append to delivery on a viewer connection.", Buckets: prometheus.ExponentialBuckets(0.005, 2, 10)}),
-		ApprovalsPending: prometheus.NewGauge(prometheus.GaugeOpts{Name: "rooms_approvals_pending", Help: "Undecided approvals."}),
-		ApprovalsOldest:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "rooms_approvals_oldest_pending_seconds", Help: "Age of the oldest undecided approval."}),
-		DecisionSeconds:  prometheus.NewHistogram(prometheus.HistogramOpts{Name: "rooms_approval_decision_seconds", Help: "Request to decision.", Buckets: prometheus.ExponentialBuckets(1, 2, 14)}),
-		DriverChanges:    prometheus.NewCounter(prometheus.CounterOpts{Name: "rooms_driver_changes_total", Help: "Driver token changes."}),
-		Redactions:       prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rooms_redactions_total", Help: "Secrets redacted, by rule."}, []string{"rule"}),
-		Rejected:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rooms_rejected_actions_total", Help: "Actions refused."}, []string{"reason"}),
-		Dropped:          prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rooms_connections_dropped_total", Help: "Connections the broker closed."}, []string{"reason"}),
-		LastEvent:        prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "rooms_last_event_timestamp_seconds", Help: "Last durable event of each Active room."}, []string{"room"}),
+// exp returns n bucket bounds from start, each factor times the last.
+func exp(start, factor float64, n int) []float64 {
+	b := make([]float64, n)
+	for i := range b {
+		b[i] = start
+		start *= factor
 	}
-	reg.MustRegister(s.Rooms, s.Participants, s.Connections, s.Appended, s.AppendSeconds, s.AppendErrors, s.FanoutLag,
-		s.ApprovalsPending, s.ApprovalsOldest, s.DecisionSeconds, s.DriverChanges, s.Redactions, s.Rejected, s.Dropped, s.LastEvent)
-	return s
+	return b
+}
+
+// New creates the instruments on mp. Counters carry their `_total` in the name:
+// the exporter is built WithoutCounterSuffixes and WithoutUnits (internal/app), so
+// what the VMRules query is exactly what is registered here.
+func New(mp metric.MeterProvider, version string) (*Set, error) {
+	m := mp.Meter("github.com/Smana/agent-platform/room-broker")
+	s := &Set{phases: map[string]string{}, last: map[string]time.Time{}}
+	var errs []error
+	must := func(err error) {
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	var err error
+	s.Participants, err = m.Int64UpDownCounter("rooms_participants", metric.WithDescription("Live participants."))
+	must(err)
+	s.Connections, err = m.Int64UpDownCounter("rooms_connections", metric.WithDescription("Open connections."))
+	must(err)
+	s.Appended, err = m.Int64Counter("rooms_events_appended_total", metric.WithDescription("Durable events appended."))
+	must(err)
+	s.AppendSeconds, err = m.Float64Histogram("rooms_append_seconds", metric.WithDescription("Append latency."),
+		metric.WithExplicitBucketBoundaries(exp(0.001, 2, 12)...))
+	must(err)
+	s.AppendErrors, err = m.Int64Counter("rooms_append_errors_total", metric.WithDescription("Appends that failed on the database."))
+	must(err)
+	// SC-12's threshold, 0.5 s, falls between two bounds of this family.
+	s.FanoutLag, err = m.Float64Histogram("rooms_fanout_lag_seconds", metric.WithDescription("Append to delivery on a viewer connection."),
+		metric.WithExplicitBucketBoundaries(exp(0.005, 2, 10)...))
+	must(err)
+	s.ApprovalsPending, err = m.Int64Gauge("rooms_approvals_pending", metric.WithDescription("Undecided approvals."))
+	must(err)
+	s.ApprovalsOldest, err = m.Float64Gauge("rooms_approvals_oldest_pending_seconds", metric.WithDescription("Age of the oldest undecided approval."))
+	must(err)
+	s.DecisionSeconds, err = m.Float64Histogram("rooms_approval_decision_seconds", metric.WithDescription("Request to decision."),
+		metric.WithExplicitBucketBoundaries(exp(1, 2, 14)...))
+	must(err)
+	s.DriverChanges, err = m.Int64Counter("rooms_driver_changes_total", metric.WithDescription("Driver token changes."))
+	must(err)
+	s.Redactions, err = m.Int64Counter("rooms_redactions_total", metric.WithDescription("Secrets redacted, by rule."))
+	must(err)
+	s.Rejected, err = m.Int64Counter("rooms_rejected_actions_total", metric.WithDescription("Actions refused."))
+	must(err)
+	s.Dropped, err = m.Int64Counter("rooms_connections_dropped_total", metric.WithDescription("Connections the broker closed."))
+	must(err)
+
+	// Observable gauges, so a room that leaves a phase (or Active) drops its series.
+	rooms, err := m.Int64ObservableGauge("rooms", metric.WithDescription("Rooms by phase."))
+	must(err)
+	lastEvent, err := m.Float64ObservableGauge("rooms_last_event_timestamp_seconds",
+		metric.WithDescription("Last durable event of each Active room."))
+	must(err)
+	build, err := m.Int64ObservableGauge("rooms_build_info", metric.WithDescription("Always 1; the version as a label."))
+	must(err)
+	_, err = m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		count := map[string]int64{}
+		for _, p := range s.phases {
+			count[p]++
+		}
+		for p, n := range count {
+			o.ObserveInt64(rooms, n, metric.WithAttributes(attribute.String("phase", p)))
+		}
+		for room, t := range s.last {
+			o.ObserveFloat64(lastEvent, float64(t.Unix()), metric.WithAttributes(attribute.String("room", room)))
+		}
+		o.ObserveInt64(build, 1, metric.WithAttributes(attribute.String("version", version)))
+		return nil
+	}, rooms, lastEvent, build)
+	must(err)
+	if len(errs) > 0 {
+		return nil, errs[0]
+	}
+	return s, nil
+}
+
+// ObserveRoom records a room's phase, and its last event while it is Active: the
+// only metric labelled by room (bounded by the Active rooms).
+func (s *Set) ObserveRoom(room, phase string, last time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.phases[room] = phase
+	if phase == "Active" {
+		s.last[room] = last
+	} else {
+		delete(s.last, room)
+	}
 }
 ```
 
-`cmd/room-broker/leader.go`:
+`internal/app/leader.go`:
 
 ```go
-package main
+// SPDX-License-Identifier: Apache-2.0
+
+package app
 
 import (
 	"context"
@@ -6986,6 +7982,7 @@ type leader struct {
 	replay func(ctx context.Context)
 }
 
+// Start runs while this replica leads.
 func (l leader) Start(ctx context.Context) error {
 	l.flag.Store(true)
 	l.replay(ctx)
@@ -6994,56 +7991,83 @@ func (l leader) Start(ctx context.Context) error {
 	return nil
 }
 
+// NeedLeaderElection makes the manager run it on the leader only.
 func (leader) NeedLeaderElection() bool { return true }
 ```
 
-`cmd/room-broker/retention.go`:
+`internal/store/retention.go`:
 
 ```go
-package main
+// SPDX-License-Identifier: Apache-2.0
+
+package store
 
 import (
 	"context"
-	"log/slog"
-	"os"
-
-	"github.com/jackc/pgx/v5"
+	"fmt"
 )
 
-// retention is the daily DELETE-only job (§4, OD-17). It connects as
-// rooms_retention, whose row-level security only exposes rooms closed longer ago
-// than their retention: the WHERE clauses below are belt, RLS is braces.
-func retention() int {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, os.Getenv("ROOMS_DATABASE_URL"))
+// expired is a sealed room past its retention (OD-17, Ruling Y): an open room is
+// never purged, whatever its close date says.
+const expired = `SELECT room_id FROM rooms WHERE sealed AND closed_at < now() - retention`
+
+// PurgeExpired is the daily DELETE-only job (§4). Run it on a Store opened as
+// rooms_retention, whose row-level security exposes nothing else: the WHERE
+// clause is belt, RLS is braces.
+func (s *Store) PurgeExpired(ctx context.Context) (rooms, events int64, err error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM events WHERE room_id IN (`+expired+`)`)
 	if err != nil {
-		log.Error("connect", "err", err)
-		return 1
+		return 0, 0, fmt.Errorf("store: purge events: %w", err)
 	}
-	defer conn.Close(ctx)
-	expired := `SELECT room_id FROM rooms WHERE closed_at IS NOT NULL AND closed_at < now() - retention`
-	for _, q := range []string{
-		`DELETE FROM events WHERE room_id IN (` + expired + `)`,
-		`DELETE FROM rooms WHERE room_id IN (` + expired + `)`,
-	} {
-		tag, err := conn.Exec(ctx, q)
-		if err != nil {
-			log.Error("purge", "err", err)
-			return 1
-		}
-		log.Info("purged", "rows", tag.RowsAffected(), "statement", q[:20])
+	events = tag.RowsAffected()
+	tag, err = s.pool.Exec(ctx, `DELETE FROM rooms WHERE room_id IN (`+expired+`)`)
+	if err != nil {
+		return 0, events, fmt.Errorf("store: purge rooms: %w", err)
 	}
-	return 0
+	return tag.RowsAffected(), events, nil
+}
+```
+
+`internal/app/retention.go`:
+
+```go
+// SPDX-License-Identifier: Apache-2.0
+
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+
+	"github.com/Smana/agent-platform/internal/store"
+)
+
+// RunRetention is `room-broker retention`, the CronJob's entry point. It connects
+// as rooms_retention (ROOMS_DATABASE_URL in that Job).
+func RunRetention(ctx context.Context, getenv func(string) string, log *slog.Logger) error {
+	st, err := store.Open(ctx, getenv("ROOMS_DATABASE_URL"))
+	if err != nil {
+		return fmt.Errorf("database: %w", err)
+	}
+	defer st.Close()
+	rooms, events, err := st.PurgeExpired(ctx)
+	if err != nil {
+		return err
+	}
+	log.Info("purged", "rooms", rooms, "events", events)
+	return nil
 }
 ```
 
 Phases 4 and 5 add `queue` and `approvals`; each adds its `DELETE … WHERE room_id IN (expired)`
-line before the `rooms` one, and a matching RLS policy in its migration.
+statement to `PurgeExpired` before the `rooms` one, and a matching RLS policy in its migration.
 
 `cmd/room-broker/main.go`:
 
 ```go
+// SPDX-License-Identifier: Apache-2.0
+
 // Command room-broker is the room broker (SP2): the log of record, its bridges,
 // its viewers and its tools.
 package main
@@ -7051,17 +8075,53 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
-	"sync"
-	"sync/atomic"
 	"syscall"
+
+	"github.com/Smana/agent-platform/internal/app"
+)
+
+func main() {
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	run := app.RunBroker
+	if len(os.Args) > 1 && os.Args[1] == "retention" {
+		run = app.RunRetention
+	}
+	err := run(ctx, os.Getenv, log)
+	stop()
+	if err != nil {
+		log.Error("room-broker", "err", err)
+		os.Exit(1)
+	}
+}
+```
+
+`internal/app/broker.go`:
+
+```go
+// SPDX-License-Identifier: Apache-2.0
+
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"regexp"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/attribute"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -7075,6 +8135,7 @@ import (
 	"github.com/Smana/agent-platform/internal/bridgeapi"
 	"github.com/Smana/agent-platform/internal/config"
 	"github.com/Smana/agent-platform/internal/envelope"
+	"github.com/Smana/agent-platform/internal/httpx"
 	"github.com/Smana/agent-platform/internal/metrics"
 	"github.com/Smana/agent-platform/internal/redact"
 	"github.com/Smana/agent-platform/internal/roomctrl"
@@ -7083,49 +8144,57 @@ import (
 	"github.com/Smana/agent-platform/internal/version"
 )
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "retention" {
-		os.Exit(retention())
-	}
-	os.Exit(serve())
-}
+// drainTimeout stays under the pod's terminationGracePeriodSeconds (30 s).
+const drainTimeout = 20 * time.Second
 
-func serve() int {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
-	defer stop()
-	fail := func(msg string, err error) int { log.Error(msg, "err", err); return 1 }
-
-	cfg, err := config.Load(os.Getenv("ROOMS_CONFIG"))
+// RunBroker wires `room-broker serve` and runs it until ctx ends.
+func RunBroker(ctx context.Context, getenv func(string) string, log *slog.Logger) error {
+	cfg, err := config.Load(getenv("ROOMS_CONFIG"))
 	if err != nil {
-		return fail("config", err)
+		return fmt.Errorf("config: %w", err)
 	}
-	st, err := store.Open(ctx, os.Getenv("ROOMS_DATABASE_URL"))
+	st, err := store.Open(ctx, getenv("ROOMS_DATABASE_URL"))
 	if err != nil {
-		return fail("database", err)
+		return fmt.Errorf("database: %w", err)
 	}
 	defer st.Close()
 	red, err := redact.New()
 	if err != nil {
-		return fail("redaction rules", err)
+		return fmt.Errorf("redaction rules: %w", err)
 	}
+	hc := httpx.New(httpx.Options{Timeout: 10 * time.Second}) // every outbound call (Ruling AC)
 	var issuers []authn.RunIssuer
 	for _, is := range cfg.RunIssuers {
-		v, err := authn.NewVerifier(ctx, is.Issuer, is.JWKSURL)
+		v, err := authn.NewVerifier(ctx, is.Issuer, is.JWKSURL, hc)
 		if err != nil {
-			return fail("run issuer "+is.Issuer, err)
+			return fmt.Errorf("run issuer %s: %w", is.Issuer, err)
 		}
 		issuers = append(issuers, authn.RunIssuer{Verifier: v, SubPattern: regexp.MustCompile(is.SubPattern)})
 	}
-	sysV, err := authn.NewVerifier(ctx, cfg.SystemIssuer.Issuer, cfg.SystemIssuer.JWKSURL)
+	sysV, err := authn.NewVerifier(ctx, cfg.SystemIssuer.Issuer, cfg.SystemIssuer.JWKSURL, hc)
 	if err != nil {
-		return fail("system issuer", err)
+		return fmt.Errorf("system issuer: %w", err)
+	}
+
+	// OTel metrics through the Prometheus exporter, names exactly as registered
+	// (metrics.New): no counter suffix, no unit suffix, no scope labels.
+	reg := prometheus.NewRegistry()
+	exp, err := otelprom.New(otelprom.WithRegisterer(reg), otelprom.WithoutCounterSuffixes(),
+		otelprom.WithoutUnits(), otelprom.WithoutScopeInfo(), otelprom.WithoutTargetInfo())
+	if err != nil {
+		return fmt.Errorf("metrics exporter: %w", err)
+	}
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
+	defer func() { _ = mp.Shutdown(context.Background()) }()
+	m, err := metrics.New(mp, version.Version)
+	if err != nil {
+		return fmt.Errorf("metrics: %w", err)
 	}
 
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = v1alpha1.AddToScheme(scheme)
-	ns := os.Getenv("POD_NAMESPACE")
+	ns := getenv("POD_NAMESPACE")
 	// Rooms are watched in agent-system only, AgentRuns in agents only: the RBAC
 	// (Task 1.18) grants exactly that, so a namespace-wide default would be refused.
 	runObj := &unstructured.Unstructured{}
@@ -7139,14 +8208,12 @@ func serve() int {
 		}},
 	})
 	if err != nil {
-		return fail("manager", err)
+		return fmt.Errorf("manager: %w", err)
 	}
-	reg := prometheus.NewRegistry()
-	m := metrics.New(reg)
 
 	watch := runwatch.New()
 	if err := runwatch.Register(ctx, mgr.GetCache(), watch); err != nil {
-		return fail("agentrun informer", err)
+		return fmt.Errorf("agentrun informer: %w", err)
 	}
 	var isLeader atomic.Bool
 	events := &runwatch.Events{Store: st}
@@ -7170,35 +8237,24 @@ func serve() int {
 			_ = events.Observe(ctx, r)
 		}
 	}})
-	phases := map[string]string{}
-	var phasesMu sync.Mutex
-	observe := func(room string, s v1alpha1.RoomStatus, last time.Time) {
-		phasesMu.Lock()
-		defer phasesMu.Unlock()
-		phases[room] = s.Phase
-		m.Rooms.Reset()
-		for _, p := range phases {
-			m.Rooms.WithLabelValues(p).Inc()
-		}
-		if s.Phase == "Active" {
-			m.LastEvent.WithLabelValues(room).Set(float64(last.Unix()))
-		} else {
-			m.LastEvent.DeleteLabelValues(room)
-		}
-	}
+	observe := func(room string, s v1alpha1.RoomStatus, last time.Time) { m.ObserveRoom(room, s.Phase, last) }
 	if err := (&roomctrl.Reconciler{Client: mgr.GetClient(), Store: st, Runs: watch, Observe: observe}).SetupWithManager(mgr); err != nil {
-		return fail("room controller", err)
+		return fmt.Errorf("room controller: %w", err)
 	}
 
 	bridge := &bridgeapi.Server{Log: st, Redactor: red, Runs: authn.NewRuns(issuers...),
 		Systems: authn.NewSystems(sysV, cfg.SystemPrincipals), Watch: watch, Logger: log,
 		OnAppend: func(t envelope.Type, o envelope.Origin, rules []string) {
-			m.Appended.WithLabelValues(string(t), string(o)).Inc()
+			m.Appended.Add(ctx, 1, metric.WithAttributes(attribute.String("type", string(t)), attribute.String("origin", string(o))))
 			for _, r := range rules {
-				m.Redactions.WithLabelValues(r).Inc()
+				m.Redactions.Add(ctx, 1, metric.WithAttributes(attribute.String("rule", r)))
 			}
 		}}
 	watch.OnGone(bridge.Drop)
+	tlsCfg, err := bridgeapi.TLSConfig("/etc/room-broker/tls/tls.crt", "/etc/room-broker/tls/tls.key") // GP-18
+	if err != nil {
+		return fmt.Errorf("the :8443 certificate: %w", err)
+	}
 
 	ops := http.NewServeMux()
 	ops.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
@@ -7217,27 +8273,45 @@ func serve() int {
 		}
 		_, _ = w.Write([]byte("started"))
 	})
-	for addr, h := range map[string]http.Handler{":8443": bridge.Routes(), ":9090": ops} {
-		srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
-		go func() {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Error("listener", "addr", addr, "err", err)
-				stop()
-			}
-		}()
-		go func() { <-ctx.Done(); _ = srv.Shutdown(context.Background()) }()
-	}
-	log.Info("room-broker starting", "version", version.Version)
-	if err := mgr.Start(ctx); err != nil {
-		return fail("manager stopped", err)
-	}
-	return 0
+	// Every server sets its bounds (Ruling AC). :8443 carries the SSE stream, so its
+	// WriteTimeout is 0; its non-streaming routes are bounded by bridgeapi itself.
+	bridgeSrv := &http.Server{Addr: ":8443", Handler: bridge.Routes(), TLSConfig: tlsCfg,
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0,
+		IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	opsSrv := &http.Server{Addr: ":9090", Handler: ops,
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second,
+		IdleTimeout: 60 * time.Second, MaxHeaderBytes: 8 << 10}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		if err := bridgeSrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf(":8443: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		if err := opsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf(":9090: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		<-gctx.Done()
+		drain, cancel := context.WithTimeout(context.Background(), drainTimeout)
+		defer cancel()
+		return errors.Join(bridgeSrv.Shutdown(drain), opsSrv.Shutdown(drain))
+	})
+	g.Go(func() error {
+		log.Info("room-broker starting", "version", version.Version)
+		return mgr.Start(gctx)
+	})
+	return g.Wait()
 }
 ```
 
 - [ ] **Step 4: Run the gate**
 
-Run: `go test ./internal/config/ && go build ./cmd/... && task check`
+Run: `go test ./internal/config/ ./internal/metrics/ ./internal/store/ && go build ./cmd/... && task check`
 Expected: `ok`; exit 0. Expect `gosec` G304 on `config.Load` and the bridge's token read, G115 on the
 reconciler's `int32(pending)`, and `noctx` on the tests' requests. Fix them as Global Constraints'
 lint budget says, never by disabling a rule (review M12).
@@ -7245,10 +8319,10 @@ lint budget says, never by disabling a rule (review M12).
 - [ ] **Step 5: Commit, open AP-1, and read the pre-release digests**
 
 ```bash
-git add internal/config internal/metrics cmd/room-broker go.mod go.sum
+git add internal/config internal/metrics internal/app internal/store cmd/room-broker go.mod go.sum
 git commit -m "feat(broker): room-broker serve and retention, metrics, leader-only run events"
 git push -u origin feat/room-log
-gh pr create --repo Smana/agent-platform --base chore/bootstrap --title "feat: the room log, the bridge and the :8443 API (SP2 phase 1)" \
+gh pr create --repo Smana/agent-platform --base main --title "feat: the room log, the bridge and the :8443 API (SP2 phase 1)" \
   --body "SP2 phase 1 (cloud-native-ref docs/superpowers/plans/2026-09-27-agent-collaboration-rooms-plan.md). Live gate runs from cloud-native-ref S1."
 gh pr checks --repo Smana/agent-platform --watch
 ```
@@ -7256,10 +8330,11 @@ gh pr checks --repo Smana/agent-platform --watch
 Expected: `check` and both `prerelease` jobs pass. Record both `…:v0.0.1-pr<N>.<sha8>@sha256:…` lines
 from the job summary; CC-S2 pins the bridge one and S1 the broker one.
 
-- [ ] **Step 6: Leave AP-1 open (ruling P33)**
+- [ ] **Step 6: Review, then merge AP-1 when green (owner, 2026-09-29: P33 lifted for agent-platform)**
 
-No merge and no tag: AP-2 stacks on `feat/room-log`, and S1's live gate runs on these pre-releases.
-Phase 7 merges AP-0…AP-6 and tags the one release whose workflow attaches `crd-rooms.yaml`.
+Merge `origin/main` first (the engineering standard's lint applies, Ruling AA), then squash-merge once the
+review is clean and CI is green. No tag: S1's live gate runs on these pre-releases, and Phase 7 tags the one
+release. **Before S1 pins `atlasSchema.ref`, read Task 1.17**: `feat/room-log` is deleted on merge.
 
 ---
 ### Task 1.13: CC-S1 — `SQLInstance` generated credentials (crossplane-configuration)
@@ -7607,6 +8682,13 @@ synthetic merge commit: copy it from there.
 SP1 left this to SP2 (SP1 plan P8): with `roomRef`, the sandbox also runs `room-bridge`, the only
 container that mounts a token with audience `room-broker`.
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `BROKER_URL` becomes
+> `https://{_BROKER_FQDN}:8443` (the `main_test.k` assertion changes with it). The bridge sidecar
+> mounts the Secret `room-broker-ca` (namespace `agents`, key `ca.crt`, from Task 1.18's
+> ExternalSecret) read-only at `/etc/room-broker-ca`, and sets `BROKER_CA_FILE`. New golden
+> renders, then a CC pre-release pinned on the integration branch. Applied in the steps below
+> (2026-09-29): the plain `http://` URL of the first draft is gone.
+
 **Files** (branch `feat/agentrun-room-bridge`, stacked on `feat/sqlinstance-generated-credentials`
 with a merge, never a rebase):
 - Modify: `apis/agentrun/kcl/main.k`, `apis/agentrun/kcl/main_test.k`, `apis/agentrun/kcl/README.md`
@@ -7634,7 +8716,8 @@ test_room_bridge_only_with_a_room = lambda {
     _env = {e.name: e.value for e in _b.env}
     assert _env.ROOM_ID == "3kq7x2ma" and _env.RUN_ID == "7f3cq2xz"
     assert _env.CONVERSATION_ID == "0b3c6f0e-5d1a-4b8e-9f41-2a7c3e9d8b10", "the harness's conversation id"
-    assert _env.BROKER_URL == "http://room-broker.agent-system.svc.cluster.local:8443"
+    assert _env.BROKER_URL == "https://room-broker.agent-system.svc.cluster.local:8443", "TLS on both clouds (GP-18)"
+    assert _env.BROKER_CA_FILE == "/etc/room-broker-ca/ca.crt"
     assert _env.HARNESS_URL == "http://127.0.0.1:8000" and _env.ROOM_TOKEN_FILE == "/var/run/secrets/agents/room/token"
     assert _b.resources.requests.cpu == "20m" and _b.resources.limits.memory == "64Mi"
     assert _b.startupProbe and _b.readinessProbe and _b.livenessProbe
@@ -7646,8 +8729,11 @@ test_only_the_bridge_mounts_the_room_token = lambda {
     assert sorted([v.name for v in _p.volumes if _projectsToken(v)]) == ["gateway-token", "room-token", "sts-token"]
     _room = [v for v in _p.volumes if v.name == "room-token"][0].projected.sources[0].serviceAccountToken
     assert _room.audience == "room-broker" and _room.expirationSeconds == 600
+    _ca = [v for v in _p.volumes if v.name == "room-broker-ca"][0].secret
+    assert _ca.secretName == "room-broker-ca" and _ca.items == [{key = "ca.crt", path = "ca.crt"}], "GP-18's trust anchor"  # pragma: allowlist secret
     _all = _p.initContainers + _p.containers
     assert [c.name for c in _all if any m in c.volumeMounts { m.name == "room-token" }] == ["room-bridge"]
+    assert [c.name for c in _all if any m in c.volumeMounts { m.name == "room-broker-ca" }] == ["room-bridge"]
     assert not any c in _p.containers {
         any m in c.volumeMounts {
             m.name in ["room-token", "gateway-token", "sts-token"]
@@ -7697,7 +8783,8 @@ Inside `_render`, after `_roomRef = _spec.roomRef`:
             {name = "RUN_ID", value = _runId}
             {name = "ROOM_ID", value = _roomRef}
             {name = "CONVERSATION_ID", value = _oxr.metadata?.uid or ""}
-            {name = "BROKER_URL", value = "http://{}:8443".format(_BROKER_FQDN)}
+            {name = "BROKER_URL", value = "https://{}:8443".format(_BROKER_FQDN)}
+            {name = "BROKER_CA_FILE", value = "/etc/room-broker-ca/ca.crt"}
             {name = "HARNESS_URL", value = "http://127.0.0.1:{}".format(_profile.port)}
             {name = "ROOM_TOKEN_FILE", value = "/var/run/secrets/agents/room/token"}
             {name = "EGRESS_PROFILES", value = ",".join(_profiles)}
@@ -7710,9 +8797,16 @@ Inside `_render`, after `_roomRef = _spec.roomRef`:
         livenessProbe = {httpGet = {path = "/healthz", port = _BRIDGE_HEALTH_PORT}, periodSeconds = 20, failureThreshold = 3}
         resources = {requests = {cpu = "20m", memory = "32Mi"}, limits = {cpu = "100m", memory = "64Mi"}}
         securityContext = _CONTAINER_SECURITY
-        volumeMounts = [{name = "room-token", mountPath = "/var/run/secrets/agents/room", readOnly = True}]
+        volumeMounts = [
+            {name = "room-token", mountPath = "/var/run/secrets/agents/room", readOnly = True}
+            # GP-18: the broker's :8443 serves TLS on both clouds; this is its CA (Task 1.18).
+            {name = "room-broker-ca", mountPath = "/etc/room-broker-ca", readOnly = True}
+        ]
     }] if _roomRef else []
-    _roomVolumes = [{name = "room-token", projected = {defaultMode = 288, sources = [{serviceAccountToken = {audience = "room-broker", expirationSeconds = _ROOM_TOKEN_TTL, path = "token"}}]}}] if _roomRef else []
+    _roomVolumes = [
+        {name = "room-token", projected = {defaultMode = 288, sources = [{serviceAccountToken = {audience = "room-broker", expirationSeconds = _ROOM_TOKEN_TTL, path = "token"}}]}}
+        {name = "room-broker-ca", secret = {secretName = "room-broker-ca", defaultMode = 292, items = [{key = "ca.crt", path = "ca.crt"}]}}  # pragma: allowlist secret
+    ] if _roomRef else []
     _bridgeIngress = [{fromEntities = ["host"], toPorts = [{ports = [{port = str(_BRIDGE_HEALTH_PORT), protocol = "TCP"}]}]}] if _roomRef else []
 ```
 
@@ -7912,6 +9006,14 @@ git commit -m "docs(adr): 0044 room session protocol"
 
 ### Task 1.15a: M1 — the agents' own OpenBao mount (ruling P38)
 
+> **GCP parity cross-plan edit (2026-09-29):** the `agents` mount, `agents-secrets.hcl`, the
+> SecretStore path, the ExternalSecret keys and `test-openbao-agent-mounts.sh` landed in GCP
+> parity G-5 (GP-8), for both clouds — the steps below that build them are superseded by that
+> plan. This task now keeps only: the `merge-gate` mount, its `secrets-admin` paths, and a
+> `merge-gate` line in `test-openbao-agent-mounts.sh`. Steps 8–11 (the live migration) are
+> **aws-0 only, if it is ever rebuilt**. Every "until S1 merges" footgun below reads "until G-5
+> merges".
+
 Review M1: SP1 put the agents' GitHub App key and Z.ai key under `platform/agents/*`. The identity
 behind `openbao-platform`, `external-secrets`, reads `platform/data/*`, and that ClusterSecretStore
 has no `conditions`: anything allowed to create an `ExternalSecret` in any namespace can pull the
@@ -8084,7 +9186,7 @@ The comment in `infrastructure/base/llm-gateway/externalsecret-zai.yaml` names `
 | File | Change |
 |---|---|
 | `clusters/aws-0-agent-platform/README.md` | the `agent-secrets` row: "`SecretStore agents-secrets` → the `agents` OpenBao mount"; the App paragraph: "key written to `github-app` on the `agents` mount" |
-| `docs/runbooks/agent-factory/README.md` | owner action 2: `bao kv put -mount=agents zai api_key=-`; action 4: `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`. The footgun note gains: "Until SP2's S1 merges, deploy `aws/openbao/management` from this checkout only: a deploy from `main` destroys the `agents` and `merge-gate` mounts and every key in them (SP2 P38)." |
+| `docs/runbooks/agent-factory/README.md` | owner action 2: `bao kv put -mount=agents zai api_key=-`; action 4: `bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>`. The footgun note gains: "Until GCP parity G-5 merges, deploy `openbao/management` from this checkout only: a deploy from `main` destroys the `agents` mount and, once this task lands, `merge-gate` too, and every key in them (SP2 P38, GCP parity GP-8)." |
 | `docs/runbooks/agent-factory/04-gateway-secrets-budgets.md` | lines 4, 15 and 81 name the `agents` mount. Step 3's probes: `agents/data/zai`, `platform/data/agents/zai`, `platform/data/llm/zai`, `apps/data/anything`, Expected `read`, `deny`, `deny`, `deny` |
 | `docs/runbooks/agent-factory/05-github-octo-sts.md` | line 18: "`github-app` on the `agents` mount" |
 | ADR-0043 (line 145), ADR-0046 (line 94) | "…at `github-app` (resp. `zai`) on the `agents` OpenBao mount, moved from `platform/agents/` by SP2 ruling P38 (external review M1)" |
@@ -8102,7 +9204,8 @@ git add scripts/ci/tests/test-openbao-agent-mounts.sh opentofu security infrastr
 git commit -m "fix(openbao): the agents' secrets on a mount only their own store reads"
 ```
 
-- [ ] **Step 8: [OWNER] + [LIVE] Migrate, after S1 is merged into integration**
+- [ ] **Step 8: [OWNER] + [LIVE] Migrate, after S1 is merged into integration (aws-0 only, if it
+  is ever rebuilt — GCP parity cross-plan edit, 2026-09-29)**
 
 Run it right after the live-check routine's step 1 for S1, before Task 1.22 Step 2. From the
 **integration checkout** (P38), after `git pull`:
@@ -8140,7 +9243,8 @@ is absent, Task 3.9 writes it straight to `agents`); every ExternalSecret on `ag
 `Retain`, so octo-sts and agent-router keep running. Task 1.22's runs are the end-to-end proof: they
 mint GitHub tokens through octo-sts and call the model with the agents' key.
 
-- [ ] **Step 9: [OWNER] Only the agents' store reads the mount**
+- [ ] **Step 9: [OWNER] Only the agents' store reads the mount (aws-0 only, if it is ever
+  rebuilt)**
 
 The probe logs in with two roles, a write to OpenBao an agent session never makes (runbook 04):
 
@@ -8154,7 +9258,8 @@ bao token capabilities "$T" merge-gate/data/policy-bot; bao token revoke "$T"
 
 Expected: `deny`, `deny`; then `read`, `deny`, `deny`.
 
-- [ ] **Step 10: [OWNER] Delete the old keys once every ExternalSecret is Ready**
+- [ ] **Step 10: [OWNER] Delete the old keys once every ExternalSecret is Ready (aws-0 only, if
+  it is ever rebuilt)**
 
 ```bash
 for k in github-app zai factory-app; do bao kv metadata delete -mount=platform "agents/$k"; done
@@ -8164,7 +9269,7 @@ bao kv list -mount=platform agents; echo "exit $?"
 Expected: `No value found at platform/metadata/agents` and a non-zero exit: nothing is left under
 the prefix `openbao-platform` can read.
 
-- [ ] **Step 11: [LIVE] The first rebuild after Step 10**
+- [ ] **Step 11: [LIVE] The first rebuild after Step 10 (aws-0 only, if it is ever rebuilt)**
 
 Before anyone writes a secret on the rebuilt cluster:
 `bao kv get -format=json -mount=agents github-app | jq -c '.data.data | keys'` → `["app_id","private_key"]`,
@@ -8229,6 +9334,13 @@ git commit -m "feat(rooms): vendor the Room CRD and add it to the schema catalog
 ```
 
 ### Task 1.17: The log's storage
+
+> **`atlasSchema.ref` after AP-1 merges (S1 forward, 2026-09-29).** With P33 lifted for agent-platform and
+> delete-branch-on-merge on, `feat/room-log` is deleted when AP-1 merges, and no tag exists before Phase 7.
+> So `atlasSchema.ref` points at agent-platform **`main`** once AP-1 has merged, or at a commit SHA if the
+> SQLInstance composition resolves one: confirm in crossplane-configuration first (it may resolve a `v*`
+> tag or a branch only). Phase 7 moves it to `v0.6.0`. A ref on a deleted branch 404s the Atlas source and
+> the migration never runs.
 
 **Files:**
 - Create: `infrastructure/base/room-broker/sqlinstance.yaml`
@@ -8481,9 +9593,19 @@ step shows the flow is allowed.
 
 ### Task 1.18: The broker: App claim, config, RBAC, policy, retention, scrape, umbrella child
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** the broker's :8443 listener serves TLS on
+> both clouds. This task adds `certificate.yaml` (a `Certificate room-broker-tls` in
+> `agent-system`, `issuerRef: {kind: ClusterIssuer, name: openbao}`, `dnsNames:
+> [room-broker.agent-system.svc.cluster.local, room-broker.agent-system.svc]`, `duration: 720h`,
+> `renewBefore: 240h`, `secretName: room-broker-tls`) and an ExternalSecret `room-broker-ca` in
+> `agents` that copies the private CA the way `security/base/agent-secrets/externalsecret-openbao-ca.yaml`
+> does. `app.yaml` mounts the `room-broker-tls` Secret at `/etc/room-broker/tls`. The `openbao`
+> ClusterIssuer's egress is already allowed; the broker CNP is unchanged — the port stays 8443.
+
 **Files:**
 - Create in `infrastructure/base/room-broker/`: `kustomization.yaml`, `app.yaml`, `config.yaml`,
-  `rbac.yaml`, `network-policy.yaml`, `retention-cronjob.yaml`, `vmservicescrape.yaml`
+  `rbac.yaml`, `network-policy.yaml`, `retention-cronjob.yaml`, `vmservicescrape.yaml`,
+  `certificate.yaml` (GCP parity GP-18)
 - Create: `clusters/aws-0-agent-platform/infrastructure-room-broker.yaml`
 - Modify: `clusters/aws-0-agent-platform/kustomization.yaml`, `clusters/aws-0-agent-platform/README.md`
 
@@ -8510,6 +9632,7 @@ resources:
   - rbac.yaml
   - app.yaml
   - network-policy.yaml
+  - certificate.yaml # GCP parity GP-18: TLS on the bridge/system :8443 listener, both clouds
   - sqlinstance.yaml
   - network-policy-cnpg.yaml
   - retention-cronjob.yaml
@@ -8530,14 +9653,16 @@ data:
     publicURL: https://rooms.${private_domain_name}
     # The only run issuer today is this cluster's (C2 r5). A runtime with its own
     # workload JWTs is one more entry here, not a new code path.
+    # jwksURL is ${oidc_jwks_uri}, not <issuer>/keys (GCP parity GP-12, ruling P11): GKE
+    # serves its JWKS at <issuer>/jwks, EKS at <issuer>/keys, so the path is per-cloud.
     runIssuers:
       - issuer: ${oidc_issuer_url}
-        jwksURL: ${oidc_issuer_url}/keys
+        jwksURL: ${oidc_jwks_uri}
         subPattern: '^system:serviceaccount:agents:xplane-run-([a-z2-7]{8})$'
     # System callers present audience rooms-system (ruling P3).
     systemIssuer:
       issuer: ${oidc_issuer_url}
-      jwksURL: ${oidc_issuer_url}/keys
+      jwksURL: ${oidc_jwks_uri}
     # SP3's factory, commented until SP3 ships its ServiceAccount (Interfaces table,
     # review M9). Task 1.22 Step 8 enables it for its probe only, then comments it again.
     systemPrincipals: {}
@@ -8674,12 +9799,60 @@ spec:
     - name: config
       configMap:
         name: room-broker-config
+    # GCP parity GP-18: the bridge/system :8443 listener's TLS pair, both clouds.
+    - name: tls
+      secret:
+        secretName: room-broker-tls
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker
       readOnly: true
+    - name: tls
+      mountPath: /etc/room-broker/tls
+      readOnly: true
   networkPolicies:
     enabled: false
+```
+
+`infrastructure/base/room-broker/certificate.yaml` (GCP parity GP-18, both clouds):
+
+```yaml
+# The broker's :8443 TLS pair. Reloaded by the server's GetCertificate (Task 1.9) when
+# cert-manager renews it; no restart on renewal.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: room-broker-tls
+  namespace: agent-system
+spec:
+  secretName: room-broker-tls
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    kind: ClusterIssuer
+    name: openbao
+  dnsNames:
+    - room-broker.agent-system.svc.cluster.local
+    - room-broker.agent-system.svc
+---
+# The bridge's and the run CNP's trust anchor for the broker's certificate (GCP parity
+# GP-18), copied the way security/base/agent-secrets/externalsecret-openbao-ca.yaml does.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: room-broker-ca
+  namespace: agents
+spec:
+  secretStoreRef:
+    kind: SecretStore
+    name: agents-secrets
+  target:
+    name: room-broker-ca
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: openbao-ca
+        property: ca.crt
 ```
 
 The tag is AP-1's pre-release (`v0.0.1-pr<N>.<sha8>@sha256:…`, from its CI summary). Task 1.21
@@ -8763,14 +9936,20 @@ spec:
         - ports:
             - port: "5432"
               protocol: TCP
-    # The run issuer's JWKS, checked offline (ruling P11). Not ${oidc_issuer_host}:
-    # it carries the /id/<ID> path, which matchName rejects.
+    # The run issuer's JWKS, checked offline (ruling P11; GCP parity GP-12). A dedicated
+    # host var, not derived from the issuer: EKS serves it at <issuer>/keys, GKE at
+    # <issuer>/jwks, and matchName rejects the issuer's own /id/<ID> path anyway.
     - toFQDNs:
-        - matchName: oidc.eks.${region}.amazonaws.com
+        - matchName: ${oidc_jwks_host}
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+    # gcp-0 only (ruling P11a, GCP parity GP-11/GP-26): the IdP FQDN rule above hairpins
+    # through per-packet LB back to this cluster's own ZITADEL Gateway. toEntities: [all]
+    # with no toPorts, as tooling/gcp-0/headlamp/network-policy.yaml does.
+    - toEntities:
+        - all
 ---
 # The retention job reaches the log and nothing else.
 apiVersion: cilium.io/v2
@@ -9019,6 +10198,13 @@ git commit -m "feat(rooms): room log alerts"
 
 ### Task 1.20: `task agent:run -- --room`
 
+> **GCP parity cross-plan edit (2026-09-29), GP-18:** `task agent:run -- --room`, and the live
+> steps that curl :8443 (Task 1.22 and its runbook), use `https://` with `--cacert` on the CA from
+> the `openbao-ca` ExternalSecret, not plain HTTP. Applied (2026-09-29): `agent-run.sh` itself never
+> calls the broker; Task 1.22 Step 8 now pipes `room-broker-ca`'s `ca.crt` into the probe's
+> `curl --cacert /dev/stdin`, and Task 2.14's network probe dials `https://`. The runbook copies follow on
+> `integration/agent-factory`.
+
 **Files:**
 - Modify: `scripts/ops/k8s/agent-run.sh`, `scripts/ci/tests/test-agent-run.sh`
 
@@ -9091,7 +10277,7 @@ sed -i "s|tag: \"v0\.[^\"]*\"|tag: \"${TAG}@sha256:${DIGEST}\"|" infrastructure/
 ```
 
 Re-vendor `crd-rooms.yaml` from `feat/room-log` (Task 1.16 Step 2) and keep
-`atlasSchema.ref: feat/room-log`. Every later phase repeats Steps 1–2 with its own stack tips.
+`atlasSchema.ref: feat/room-log` until AP-1 merges, then agent-platform `main` (Task 1.17). Every later phase repeats Steps 1–2 with its own stack tips.
 
 - [ ] **Step 3: Run every gate**
 
@@ -9227,13 +10413,16 @@ kubectl run factory-probe -n agent-system --restart=Never --labels=app.kubernete
       "resources":{"requests":{"cpu":"10m","memory":"16Mi"},"limits":{"cpu":"100m","memory":"32Mi"}}}]}}'
 kubectl wait -n agent-system pod/factory-probe --for=condition=Ready --timeout=2m
 TOKEN=$(kubectl create token agent-factory -n agent-system --audience rooms-system --duration 10m)
-kubectl exec -n agent-system factory-probe -- curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://room-broker.agent-system.svc:8443/v1/rooms/$ROOM/events?afterSeq=0&limit=3"
-kubectl exec -n agent-system factory-probe -- curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
-  -X POST -d '{"kind":"task_state","text":"Reviewing","clientSeq":1}' "http://room-broker.agent-system.svc:8443/v1/rooms/$ROOM/messages"
+# GP-18: :8443 is TLS on both clouds; the probe trusts the broker's CA, read from stdin.
+ca() { kubectl get secret -n agents room-broker-ca -o jsonpath='{.data.ca\.crt}' | base64 -d; }
+B=https://room-broker.agent-system.svc:8443
+ca | kubectl exec -i -n agent-system factory-probe -- curl -s --cacert /dev/stdin -H "Authorization: Bearer $TOKEN" \
+  "$B/v1/rooms/$ROOM/events?afterSeq=0&limit=3"
+ca | kubectl exec -i -n agent-system factory-probe -- curl -s --cacert /dev/stdin -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  -X POST -d '{"kind":"task_state","text":"Reviewing","clientSeq":1}' "$B/v1/rooms/$ROOM/messages"
 OTHER=$(kubectl create token default -n agent-system --audience rooms-system --duration 10m)
-kubectl exec -n agent-system factory-probe -- curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $OTHER" \
-  "http://room-broker.agent-system.svc:8443/v1/rooms/$ROOM/events"
+ca | kubectl exec -i -n agent-system factory-probe -- curl -s --cacert /dev/stdin -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $OTHER" \
+  "$B/v1/rooms/$ROOM/events"
 kubectl delete pod -n agent-system factory-probe && kubectl delete serviceaccount -n agent-system agent-factory
 ```
 
@@ -9260,6 +10449,17 @@ merge. S1 stays open until Phase 7 (P33).
 
 ---
 ## Phase 2 — Live viewers (AP-2, S2)
+
+> **Engineering standard (Ruling AC, 2026-09-29).** agent-platform's `AGENTS.md` outranks the sample Go
+> code of this phase, as in phase 1:
+> - wiring the snippets place in `cmd/room-broker/main.go` or `cmd/room-bridge/main.go` goes into
+>   `internal/app/broker.go` or `internal/app/bridge.go`;
+> - metric call sites use Task 1.12's OTel instruments: `X.WithLabelValues(v).Inc()` becomes
+>   `X.Add(ctx, 1, metric.WithAttributes(attribute.String("<label>", v)))`, `.Observe(s)` and `.Set(n)`
+>   become `.Record(ctx, …)`; names stay byte-identical to what the VMRules query;
+> - every outbound call takes an `internal/httpx` client, and tests use `httptest.Server.Client()`;
+> - loops wait on `select` over `ctx.Done()` and an injected ticker or `After`, never `time.Sleep`;
+> - `errors.Is` for sentinels, `%w` wrapping, a doc comment on every exported identifier.
 
 A developer in `agents-member` opens `https://rooms.<private domain>/r/<id>` and watches a run
 live. They read its transcript, its tool calls and results, and why it ended, from any past run
@@ -9382,7 +10582,7 @@ func TestResolve(t *testing.T) {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `git switch -c feat/room-viewers origin/feat/room-log && go test ./internal/policy/` (stacked on AP-1, P33)
+Run: `git switch -c feat/room-viewers origin/main && go test ./internal/policy/` (from `main` once AP-1 has merged; P33 is lifted for agent-platform)
 Expected: FAIL, `undefined: Allowed`.
 
 - [ ] **Step 3: Implement**
@@ -9975,10 +11175,11 @@ type Hub struct {
 	healthy   atomic.Bool
 	mu        sync.Mutex
 	rooms     map[string]*room
+	after     func(time.Duration) <-chan time.Time // the clock (Ruling AC); tests replace it
 }
 
 func New(r Reader, rdb *redis.Client) *Hub {
-	return &Hub{r: r, rdb: rdb, PollEvery: time.Second, Budget: 2 << 20, rooms: map[string]*room{}}
+	return &Hub{r: r, rdb: rdb, PollEvery: time.Second, Budget: 2 << 20, rooms: map[string]*room{}, after: time.After}
 }
 
 // Publish follows a local append. Without Valkey, at least this replica is immediate.
@@ -10062,7 +11263,11 @@ func (h *Hub) Run(ctx context.Context) {
 		if _, err := ps.Receive(ctx); err != nil {
 			h.healthy.Store(false)
 			_ = ps.Close()
-			time.Sleep(time.Second)
+			select { // Ruling AC: no time.Sleep outside tests
+			case <-ctx.Done():
+				return
+			case <-h.after(time.Second):
+			}
 			continue
 		}
 		h.healthy.Store(true)
@@ -10208,6 +11413,7 @@ package humanapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10363,11 +11569,16 @@ func TestStrangersAndUnknownRoomsAreRefused(t *testing.T) {
 	if err == nil || resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a user without an agents group: %v %v", err, resp)
 	}
-	req, _ := http.NewRequest("GET", ts.URL+"/api/rooms", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), "GET", ts.URL+"/api/rooms", nil)
 	req.Header.Set("X-Test-User", "dev")
-	r, _ := http.DefaultClient.Do(req)
-	if r.StatusCode != 200 {
-		t.Fatalf("room list: %d", r.StatusCode)
+	r, err := ts.Client().Do(req) // never http.DefaultClient (Ruling AC)
+	if err != nil || r.StatusCode != 200 {
+		t.Fatalf("room list: %v %v", r, err)
+	}
+	defer r.Body.Close()
+	var rows []map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&rows); err != nil || len(rows) == 0 || rows[0]["id"] == nil || rows[0]["lastSeq"] == nil {
+		t.Fatalf("the room list is keyed by its json tags (id, lastSeq, …): %v %v", rows, err)
 	}
 }
 ```
@@ -10521,10 +11732,15 @@ func (s *Server) listRooms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rooms unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	// JSON tags, like every wire type: Go's field names are not the API (AP-2 review).
 	type row struct {
-		ID, Phase, Owner, Driver, DataClass string
-		LastSeq                             int64
-		You                                 wire.You
+		ID        string   `json:"id"`
+		Phase     string   `json:"phase"`
+		Owner     string   `json:"owner"`
+		Driver    string   `json:"driver"`
+		DataClass string   `json:"dataClass"`
+		LastSeq   int64    `json:"lastSeq"`
+		You       wire.You `json:"you"`
 	}
 	out := []row{}
 	for i := range rooms.Items {
@@ -11058,14 +12274,14 @@ import { renderEvent } from "./render";
 const app = document.getElementById("app")!;
 
 async function list() {
-  const rooms = (await (await fetch("/api/rooms")).json()) as { ID: string; Phase: string; Owner: string; LastSeq: number }[];
+  const rooms = (await (await fetch("/api/rooms")).json()) as { id: string; phase: string; owner: string; lastSeq: number }[];
   app.replaceChildren();
   const ul = document.createElement("ul");
   for (const r of rooms) {
     const li = document.createElement("li");
     const a = document.createElement("a");
-    a.href = `/r/${r.ID}`;
-    a.textContent = `${r.ID} · ${r.Phase || "Open"} · ${r.LastSeq} events · owner ${r.Owner}`;
+    a.href = `/r/${r.id}`;
+    a.textContent = `${r.id} · ${r.phase || "Open"} · ${r.lastSeq} events · owner ${r.owner}`;
     li.append(a);
     ul.append(li);
   }
@@ -11192,7 +12408,7 @@ git commit -m "feat(ui): read-only room view with markdown HTML off and a seq ch
 ### Task 2.6: Wire the human side, and AP-2's pre-release
 
 **Files:**
-- Modify: `cmd/room-broker/main.go`, `internal/runwatch/events.go`, `internal/roomctrl/reconciler.go`
+- Modify: `internal/app/broker.go` (was `cmd/room-broker/main.go`, Ruling AC), `internal/runwatch/events.go`, `internal/roomctrl/reconciler.go`
 
 **Interfaces:**
 - Produces:
@@ -11269,13 +12485,13 @@ Expected: exit 0. Expect `gosec` and `noctx` findings; fix them as Global Constr
 git add cmd internal
 git commit -m "feat(broker): human listener, fan-out hub, notify on every append"
 git push -u origin feat/room-viewers
-gh pr create --repo Smana/agent-platform --base feat/room-log --title "feat: live viewers (SP2 phase 2)" --body "SP2 phase 2. Live gate from cloud-native-ref S2."
+gh pr create --repo Smana/agent-platform --base main --title "feat: live viewers (SP2 phase 2)" --body "SP2 phase 2. Live gate from cloud-native-ref S2."
 gh pr checks --repo Smana/agent-platform --watch
 ```
 
 Expected: green, with two pre-release digests recorded.
 
-- [ ] **Step 3: Leave AP-2 open (ruling P33).** S2 pins its pre-release; Phase 7 merges it.
+- [ ] **Step 3: Review, then merge AP-2 when green** (owner, 2026-09-29: P33 lifted for agent-platform). S2 pins its pre-release; no tag before Phase 7.
 
 ### Task 2.7: S2 — worktree and ADR-0049
 
@@ -12247,7 +13463,7 @@ EOF
 kubectl apply -f /tmp/rooms-netprobe.yaml
 kubectl wait -n agents pod -l agents.ogenki.io/probe=rooms-netprobe --for=condition=Ready --timeout=5m
 kubectl exec -n agents "$(kubectl get pod -n agents -l agents.ogenki.io/probe=rooms-netprobe -o name)" -- \
-  curl -s -m 5 -o /dev/null -w '%{http_code}\n' -X POST http://room-broker.agent-system.svc:8443/v1/bridge/hello
+  curl -sk -m 5 -o /dev/null -w '%{http_code}\n' -X POST https://room-broker.agent-system.svc:8443/v1/bridge/hello
 kubectl delete -f /tmp/rooms-netprobe.yaml
 ```
 
@@ -12278,6 +13494,17 @@ Expected: below `0.5`.
 
 ---
 ## Phase 3 — Room tools, verdicts on GitHub, PR provenance (AP-3, H-S3, CC-S3, S3); spec phase 5, moved by ruling P1
+
+> **Engineering standard (Ruling AC, 2026-09-29).** agent-platform's `AGENTS.md` outranks the sample Go
+> code of this phase, as in phase 1:
+> - wiring the snippets place in `cmd/room-broker/main.go` or `cmd/room-bridge/main.go` goes into
+>   `internal/app/broker.go` or `internal/app/bridge.go`;
+> - metric call sites use Task 1.12's OTel instruments: `X.WithLabelValues(v).Inc()` becomes
+>   `X.Add(ctx, 1, metric.WithAttributes(attribute.String("<label>", v)))`, `.Observe(s)` and `.Set(n)`
+>   become `.Record(ctx, …)`; names stay byte-identical to what the VMRules query;
+> - every outbound call takes an `internal/httpx` client, and tests use `httptest.Server.Client()`;
+> - loops wait on `select` over `ctx.Done()` and an injected ticker or `After`, never `time.Sleep`;
+> - `errors.Is` for sentinels, `%w` wrapping, a doc comment on every exported identifier.
 
 A reviewer, tester or triager run finally has somewhere to put its output. `room_verdict` and
 `room_handoff` land in the log, where SP3's factory, the next run and every human read them. A
@@ -12420,7 +13647,7 @@ func TestOneCallPerSecondPerRun(t *testing.T) {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `git switch -c feat/room-tools origin/feat/room-viewers && go get golang.org/x/time@latest && go test ./internal/mcp/` (stacked on AP-2, P33)
+Run: `git switch -c feat/room-tools origin/main && go get golang.org/x/time@latest && go test ./internal/mcp/` (from `main` once AP-2 has merged)
 Expected: FAIL, `undefined: Server`.
 
 - [ ] **Step 3: Implement**
@@ -12635,7 +13862,7 @@ git commit -m "feat(mcp): tools-only room MCP server behind agent-router"
 **Files:**
 - Create: `internal/mcp/tools.go`
 - Test: `internal/mcp/tools_test.go`
-- Modify: `cmd/room-broker/main.go`
+- Modify: `internal/app/broker.go` (Ruling AC)
 
 **Interfaces:**
 - Consumes: the store methods `Append` and `Range`, and `Notify`.
@@ -12927,7 +14154,7 @@ Expected: `ok`; exit 0.
 git add internal/mcp cmd/room-broker
 git commit -m "feat(mcp): room_read, room_post, room_handoff, room_verdict"
 git push -u origin feat/room-tools
-gh pr create --repo Smana/agent-platform --base feat/room-viewers --title "feat: room tools (SP2 phase 3)" --body "SP2 phase 3 (spec phase 5, ruling P1). Live gate from cloud-native-ref S3."
+gh pr create --repo Smana/agent-platform --base main --title "feat: room tools (SP2 phase 3)" --body "SP2 phase 3 (spec phase 5, ruling P1). Live gate from cloud-native-ref S3."
 gh pr checks --repo Smana/agent-platform --watch
 ```
 
@@ -13638,7 +14865,7 @@ git commit -m "feat(rooms): a verdict names its pull request; the store lists un
 **Files:**
 - Create: `internal/verdictpost/poster.go`
 - Test: `internal/verdictpost/poster_test.go`
-- Modify: `internal/metrics/metrics.go`, `cmd/room-broker/leader.go`, `cmd/room-broker/main.go`
+- Modify: `internal/metrics/metrics.go`, `internal/app/leader.go`, `internal/app/broker.go` (Ruling AC)
 
 **Interfaces:**
 - Consumes: `github.App` (Task 3.3), `store.VerdictsClient` and `(*Store).UnpostedVerdicts` (Task 3.4).
@@ -13967,9 +15194,9 @@ func (p *Poster) result(r string) {
 }
 ```
 
-In `internal/metrics/metrics.go`, `Set` gains `VerdictPosts *prometheus.CounterVec`, built as
-`prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rooms_verdict_posts_total", Help: "Agent verdicts carried to GitHub, by result."}, []string{"result"})`
-and added to `MustRegister`.
+In `internal/metrics/metrics.go`, `Set` gains `VerdictPosts metric.Int64Counter` (attribute `result`), built in
+`New` like the other counters (Ruling AC):
+`m.Int64Counter("rooms_verdict_posts_total", metric.WithDescription("Agent verdicts carried to GitHub, by result."))`.
 
 `cmd/room-broker/leader.go` gains the periodic leader job (phase 4's lease sweeper and phase 5's
 expiry sweeper reuse it):
@@ -14002,7 +15229,7 @@ func (leaderLoop) NeedLeaderElection() bool { return true }
 ```go
 	// SP2 design §3: agents' verdicts to their pull request, as SP3's factory App (P28).
 	if dir := os.Getenv("ROOMS_GITHUB_APP_DIR"); dir != "" {
-		gh := &github.App{Dir: dir, API: "https://api.github.com", HC: &http.Client{Timeout: 20 * time.Second}, Now: time.Now}
+		gh := &github.App{Dir: dir, API: "https://api.github.com", HC: httpx.New(httpx.Options{Timeout: 20 * time.Second}), Now: time.Now}
 		poster := &verdictpost.Poster{Log: st, GitHub: gh, PublicURL: cfg.PublicURL, Now: time.Now,
 			DataClass: func(ctx context.Context, room string) string {
 				var r v1alpha1.Room
@@ -14012,7 +15239,7 @@ func (leaderLoop) NeedLeaderElection() bool { return true }
 				return r.Spec.DataClass
 			},
 			Notify:   func(room string, seq int64) { hub.Publish(ctx, room, seq) },
-			OnResult: func(r string) { m.VerdictPosts.WithLabelValues(r).Inc() }}
+			OnResult: func(r string) { m.VerdictPosts.Add(ctx, 1, metric.WithAttributes(attribute.String("result", r))) }}
 		_ = mgr.Add(leaderLoop{every: 15 * time.Second, run: func(ctx context.Context) {
 			if err := poster.Once(ctx); err != nil {
 				log.Error("verdict poster", "err", err)
@@ -14387,6 +15614,10 @@ gh pr create --repo Smana/crossplane-configuration --base feat/agentrun-room-bri
 - Create: `infrastructure/base/room-broker/externalsecret-mcp-key.yaml`
 - Modify: `infrastructure/base/agent-mcp/mcproutes.yaml`
 - Modify: `infrastructure/base/room-broker/app.yaml`, `network-policy.yaml`, `kustomization.yaml`
+- Modify: `scripts/ci/tests/test-agent-mcp-scope.sh` — the allowlist test (H-1, `774e022b`) fails
+  closed on any backend it does not already know, so this task must add `room-broker`'s expected
+  tool set and the `room_*` grants per role to `EXPECTED_BACKEND_TOOLS` / `EXPECTED_ROLE_TOOLS`
+  (I4), not just extend the MCPRoutes.
 
 **Interfaces:**
 - Produces: the MCPRoute backend `room-broker` (port 8090, path `/mcp`), which injects the header
@@ -14834,7 +16065,8 @@ Expected:
 - within 15 s, one `verdict_posted|$PR#issuecomment-…` row;
 - a count of `1`;
 - a body that opens with `### Agent review:`, quotes the summary (the room is public), links
-  `https://rooms.priv.aws.ogenki.io/r/$ROOM` and ends with the marker.
+  `https://rooms.priv.gcp.ogenki.io/r/$ROOM` (GCP parity cross-plan edit, 2026-09-29: was
+  `priv.aws.ogenki.io`) and ends with the marker.
 
 A new leader posts nothing twice. Run
 `kubectl delete pod -n agent-system -l app.kubernetes.io/name=room-broker && kubectl wait -n agent-system --for=condition=Ready pod -l app.kubernetes.io/name=room-broker --timeout=5m`,
@@ -14857,7 +16089,9 @@ Expected: `FORWARDED` flows from `room-broker` to `api.github.com:443`, and no `
 
 Steps 2 and 3 ran H-S3's harness, which carries H-1's redaction.
 
-Run: `curl -s --cacert opentofu/aws/openbao/management/.tls/ca.pem https://vl.priv.aws.ogenki.io/select/logsql/query --data-urlencode 'query=_time:3h kubernetes.pod_namespace:"agents" kubernetes.container_name:"harness" _msg:~"gh[posu]_[A-Za-z0-9_]{20,}" | stats count() as leaked'`
+Run (GCP parity cross-plan edit, 2026-09-29: `opentofu/gcp/openbao/management/.tls/ca.pem` and
+`vl.priv.gcp.ogenki.io`, were `opentofu/aws/...` and `vl.priv.aws.ogenki.io`):
+`curl -s --cacert opentofu/gcp/openbao/management/.tls/ca.pem https://vl.priv.gcp.ogenki.io/select/logsql/query --data-urlencode 'query=_time:3h kubernetes.pod_namespace:"agents" kubernetes.container_name:"harness" _msg:~"gh[posu]_[A-Za-z0-9_]{20,}" | stats count() as leaked'`
 Expected: `{"leaked":"0"}`. Quiet is not proof, so check that the pinned image redacts:
 `docker run --rm --entrypoint /agent-server/.venv/bin/python ghcr.io/smana/agent-harness:<H-S3 tag>@sha256:<digest> -c 'import sys; sys.path.insert(0, "/opt/agent"); import agent_run; print(agent_run.redact("x ghs_" + "A" * 36))'`
 → `x [REDACTED:github-token]`.
@@ -14871,6 +16105,17 @@ review (`ship-it`'s review and gates, not its merge). S3, H-S3 and CC-S3 stay op
 ---
 ## Phase 4 — Driver and messages (AP-4, CC-S4, S4); spec phase 3
 
+> **Engineering standard (Ruling AC, 2026-09-29).** agent-platform's `AGENTS.md` outranks the sample Go
+> code of this phase, as in phase 1:
+> - wiring the snippets place in `cmd/room-broker/main.go` or `cmd/room-bridge/main.go` goes into
+>   `internal/app/broker.go` or `internal/app/bridge.go`;
+> - metric call sites use Task 1.12's OTel instruments: `X.WithLabelValues(v).Inc()` becomes
+>   `X.Add(ctx, 1, metric.WithAttributes(attribute.String("<label>", v)))`, `.Observe(s)` and `.Set(n)`
+>   become `.Record(ctx, …)`; names stay byte-identical to what the VMRules query;
+> - every outbound call takes an `internal/httpx` client, and tests use `httptest.Server.Client()`;
+> - loops wait on `select` over `ctx.Done()` and an injected ticker or `After`, never `time.Sleep`;
+> - `errors.Is` for sentinels, `%w` wrapping, a doc comment on every exported identifier.
+
 Take-over stops being a design. A collaborator queues work for the next run; the driver steers or
 interrupts the running one, hands the room to the next role, and gives or loses the token; a new
 room is one click. Gate: SC-3, and SC-4 with "hand to role".
@@ -14881,8 +16126,9 @@ room is one click. Gate: SC-3, and SC-4 with "hand to role".
 - Create: `internal/store/migrations/20261001120000_driver_queue.sql`
 - Modify: `internal/store/migrations/kustomization.yaml`, `internal/store/migrations/atlas.sum`
 - Create: `internal/store/driver.go`, `internal/store/queue.go`
-- Modify: `internal/store/rooms.go` (`RoomState.FallbackDriver`), `cmd/room-broker/retention.go`
-- Test: `internal/store/driver_test.go`
+- Modify: `internal/store/rooms.go` (`RoomState.FallbackDriver`), `internal/store/retention.go`
+  (`PurgeExpired`, Task 1.12)
+- Test: `internal/store/driver_test.go`, and new cases in `internal/store/schema_test.go`
 
 **Interfaces:**
 - Produces:
@@ -14908,6 +16154,31 @@ room is one click. Gate: SC-3, and SC-4 with "hand to role".
 -- idle > 15 min falls back to fallback_driver, the previous system holder.
 ALTER TABLE rooms ADD COLUMN driver_acted_at timestamptz NOT NULL DEFAULT now();
 
+-- Ruling Y, extended to the driver token: the phase-1 migration granted no UPDATE on
+-- these columns and is released, so this one adds the column grant and the rules.
+GRANT UPDATE (driver, driver_epoch, driver_seen_at, driver_acted_at, fallback_driver) ON rooms TO rooms_broker;
+
+-- The driver token only moves forward: every change of holder bumps driver_epoch by
+-- exactly one, and a sealed room keeps its last holder.
+CREATE FUNCTION rooms_driver_moves_forward() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF NEW.driver_epoch NOT IN (OLD.driver_epoch, OLD.driver_epoch + 1) THEN
+    RAISE EXCEPTION 'room log: driver_epoch of room % moves by one', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF (NEW.driver <> OLD.driver) <> (NEW.driver_epoch = OLD.driver_epoch + 1) THEN
+    RAISE EXCEPTION 'room log: a new driver of room % takes the next epoch, and only then', OLD.room_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.sealed AND (NEW.driver <> OLD.driver OR NEW.fallback_driver <> OLD.fallback_driver) THEN
+    RAISE EXCEPTION 'room log: room % is sealed', OLD.room_id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER rooms_driver_moves_forward BEFORE UPDATE ON rooms
+  FOR EACH ROW EXECUTE FUNCTION rooms_driver_moves_forward();
+
 CREATE TABLE queue (
   room_id text   NOT NULL REFERENCES rooms (room_id),
   ref     bigint NOT NULL, -- the queued message's seq
@@ -14924,12 +16195,16 @@ ALTER TABLE queue ENABLE ROW LEVEL SECURITY;
 CREATE POLICY broker_queue         ON queue FOR ALL    TO rooms_broker    USING (true) WITH CHECK (true);
 CREATE POLICY retention_read_queue ON queue FOR SELECT TO rooms_retention USING (true);
 CREATE POLICY retention_purge_queue ON queue FOR DELETE TO rooms_retention
-  USING (room_id IN (SELECT room_id FROM rooms WHERE closed_at IS NOT NULL AND closed_at < now() - retention));
+  USING (room_id IN (SELECT room_id FROM rooms WHERE sealed AND closed_at < now() - retention));
 ```
 
-List it in `internal/store/migrations/kustomization.yaml` and re-run
-`atlas migrate hash --dir file://internal/store/migrations` (hand it to the owner as a `!` command
-if the session's guard refuses it, as in Task 1.3). In `cmd/room-broker/retention.go`, add
+`schema_test.go` gains the refusals: a driver change without the next epoch, an epoch jump, a new driver on
+a sealed room (each `23514`), and a legitimate `ChangeDriver`. `driver_seen_at`/`driver_acted_at` compare
+against the database's `now()` (Ruling AD).
+
+List it in `internal/store/migrations/kustomization.yaml`, then **[OWNER]** runs
+`! atlas migrate hash --dir file://internal/store/migrations` (the session's guard refuses the `hash`
+token, as in Task 1.3). In `PurgeExpired` (`internal/store/retention.go`), add
 `DELETE FROM queue WHERE room_id IN (` + expired + `)` before the `rooms` delete.
 
 - [ ] **Step 2: Write the failing tests**
@@ -15005,7 +16280,7 @@ func TestQueueIsFIFOAndStateful(t *testing.T) {
 
 - [ ] **Step 3: Run them to see them fail**
 
-Run: `git switch -c feat/room-driver origin/feat/room-tools && go test ./internal/store/` (stacked on AP-3, P33)
+Run: `git switch -c feat/room-driver origin/main && go test ./internal/store/` (from `main` once AP-3 has merged)
 Expected: FAIL, `undefined: ChangeDriver`.
 
 - [ ] **Step 4: Implement**
@@ -15184,7 +16459,7 @@ Expected: `ok`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add internal/store cmd/room-broker/retention.go
+git add internal/store
 git commit -m "feat(store): fenced driver token, lapsed drivers, FIFO queue"
 ```
 
@@ -15696,7 +16971,7 @@ git commit -m "feat(humanapi): messages, queue, steering, interrupt, driver toke
 
 **Files:**
 - Create: `internal/bridgeapi/deliver.go`
-- Modify: `internal/bridgeapi/server.go` (`stream`), `internal/bridge/bridge.go`, `cmd/room-bridge/main.go`
+- Modify: `internal/bridgeapi/server.go` (`stream`), `internal/bridge/bridge.go`, `internal/app/bridge.go` (Ruling AC)
 - Create: `internal/bridge/steer.go`
 - Test: `internal/bridgeapi/deliver_test.go`, `internal/bridge/steer_test.go`
 
@@ -15980,7 +17255,7 @@ func (b *Bridge) Push(it wire.Item) {
 
 `poll` calls `b.Push` (status items leave `Seq` 0), and `flush` takes `b.mu` around every read and
 write of `b.buf`, `b.bufBytes` and `b.sealed`, releasing it during the HTTP call. In
-`cmd/room-bridge/main.go`:
+`internal/app/bridge.go` (`RunBridge`, Ruling AC):
 
 ```go
 	steer := &bridge.Steering{Harness: b.Harness, RunID: b.RunID, Push: b.Push}
@@ -16009,7 +17284,7 @@ git commit -m "feat(bridge): log-derived steering and interrupts, acknowledged i
 - Create: `internal/brief/brief.go`, `internal/brief/brief_test.go`
 - Create: `internal/runrequest/runrequest.go`, `internal/runrequest/runrequest_test.go`
 - Modify: `internal/humanapi/acts.go` (`startRun`), `internal/humanapi/rooms.go` (`POST /api/rooms`),
-  `cmd/room-broker/main.go` (the lease sweeper, the requester)
+  `internal/app/broker.go` (the lease sweeper, the requester)
 
 **Interfaces:**
 - Produces:
@@ -16325,7 +17600,7 @@ func (f Factory) Request(ctx context.Context, r Request) (Result, error) {
 	req.Header.Set("Content-Type", "application/json")
 	hc := f.HC
 	if hc == nil {
-		hc = &http.Client{Timeout: 15 * time.Second}
+		hc = httpx.New(httpx.Options{Timeout: 15 * time.Second}) // Ruling AC
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -16672,7 +17947,7 @@ Expected: all vitest tests pass; exit 0. Expect `gosec` and `noctx` findings; fi
 git add web internal/humanapi/ui
 git commit -m "feat(ui): composer, queue, driver token, interrupt, hand to role, new room"
 git push -u origin feat/room-driver
-gh pr create --repo Smana/agent-platform --base feat/room-tools --title "feat: driver and messages (SP2 phase 4)" --body "SP2 phase 4 (spec phase 3). Live gate from cloud-native-ref S4."
+gh pr create --repo Smana/agent-platform --base main --title "feat: driver and messages (SP2 phase 4)" --body "SP2 phase 4 (spec phase 3). Live gate from cloud-native-ref S4."
 gh pr checks --repo Smana/agent-platform --watch
 ```
 
@@ -16748,6 +18023,17 @@ Expected: within 3 minutes, a `driver` event back to `system:factory` with `reas
 
 ---
 ## Phase 5 — Approvals (AP-5, CC-S5, S5); spec phase 4
+
+> **Engineering standard (Ruling AC, 2026-09-29).** agent-platform's `AGENTS.md` outranks the sample Go
+> code of this phase, as in phase 1:
+> - wiring the snippets place in `cmd/room-broker/main.go` or `cmd/room-bridge/main.go` goes into
+>   `internal/app/broker.go` or `internal/app/bridge.go`;
+> - metric call sites use Task 1.12's OTel instruments: `X.WithLabelValues(v).Inc()` becomes
+>   `X.Add(ctx, 1, metric.WithAttributes(attribute.String("<label>", v)))`, `.Observe(s)` and `.Set(n)`
+>   become `.Record(ctx, …)`; names stay byte-identical to what the VMRules query;
+> - every outbound call takes an `internal/httpx` client, and tests use `httptest.Server.Client()`;
+> - loops wait on `select` over `ctx.Done()` and an injected ticker or `After`, never `time.Sleep`;
+> - `errors.Is` for sentinels, `%w` wrapping, a doc comment on every exported identifier.
 
 Every pending action is classified by the bridge. It is allowed, denied, or escalated to the
 room's approvers, and the first valid decision wins. Approvals are oversight, not a boundary (S9):
@@ -16836,7 +18122,7 @@ func TestDecideFollowsTheProfileTable(t *testing.T) {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `git switch -c feat/room-approvals origin/feat/room-driver && go test ./internal/bridge/` (stacked on AP-4, P33)
+Run: `git switch -c feat/room-approvals origin/main && go test ./internal/bridge/` (from `main` once AP-4 has merged)
 Expected: FAIL, `undefined: Classifier`.
 
 - [ ] **Step 3: Implement**
@@ -17011,7 +18297,7 @@ git commit -m "feat(bridge): deterministic action classes and the section 6 prof
 **Files:**
 - Create: `internal/bridge/confirm.go`
 - Modify: `internal/bridge/bridge.go` (hooks `OnReady`, `OnRaw`, `OnStatus`, `Classify`),
-  `internal/bridge/broker.go` (`RequestApproval`), `internal/wire/bridge.go`, `cmd/room-bridge/main.go`
+  `internal/bridge/broker.go` (`RequestApproval`), `internal/wire/bridge.go`, `internal/app/bridge.go`
 - Test: `internal/bridge/confirm_test.go`
 
 **Interfaces:**
@@ -17334,7 +18620,7 @@ In `bridge.go`, add the hooks `OnReady func(ctx)`, `OnRaw func(RawEvent)`,
 			}
 ```
 
-In `cmd/room-bridge/main.go`:
+In `internal/app/bridge.go` (`RunBridge`, Ruling AC):
 
 ```go
 	egress := map[string]bool{}
@@ -17373,8 +18659,8 @@ git commit -m "feat(bridge): AlwaysConfirm, local allow and deny, escalation to 
 - Create: `internal/bridgeapi/approvals.go`
 - Modify: `internal/bridgeapi/deliver.go` (`decision`), `internal/humanapi/acts.go` (`decide`),
   `internal/store/driver.go` (`LastAck` counts `decision_applied`),
-  `cmd/room-broker/main.go` (`RoomPolicy`, the expiry sweeper, metrics),
-  `cmd/room-broker/retention.go`, `web/src/room-state.ts`, `web/src/controls.ts`, `web/src/render.ts`
+  `internal/app/broker.go` (`RoomPolicy`, the expiry sweeper, metrics),
+  `internal/store/retention.go`, `web/src/room-state.ts`, `web/src/controls.ts`, `web/src/render.ts`
 
 **Interfaces:**
 - Produces:
@@ -17422,11 +18708,11 @@ ALTER TABLE approvals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY broker_approvals         ON approvals FOR ALL    TO rooms_broker    USING (true) WITH CHECK (true);
 CREATE POLICY retention_read_approvals ON approvals FOR SELECT TO rooms_retention USING (true);
 CREATE POLICY retention_purge_approvals ON approvals FOR DELETE TO rooms_retention
-  USING (room_id IN (SELECT room_id FROM rooms WHERE closed_at IS NOT NULL AND closed_at < now() - retention));
+  USING (room_id IN (SELECT room_id FROM rooms WHERE sealed AND closed_at < now() - retention));
 ```
 
 List it in the kustomization, re-hash, and add `DELETE FROM approvals WHERE room_id IN (…expired…)`
-to `retention.go` before the `rooms` delete.
+to `PurgeExpired` (`internal/store/retention.go`) before the `rooms` delete.
 
 - [ ] **Step 2: Write the failing tests** (SC-5 offline)
 
@@ -17800,7 +19086,7 @@ Expected: all pass; exit 0. Expect `gosec` and `noctx` findings; fix them as Glo
 git add internal cmd web
 git commit -m "feat(approvals): first decision wins, four-eyes, TTL expiry, approval cards"
 git push -u origin feat/room-approvals
-gh pr create --repo Smana/agent-platform --base feat/room-driver --title "feat: approvals (SP2 phase 5)" --body "SP2 phase 5 (spec phase 4). Live gate from cloud-native-ref S5."
+gh pr create --repo Smana/agent-platform --base main --title "feat: approvals (SP2 phase 5)" --body "SP2 phase 5 (spec phase 4). Live gate from cloud-native-ref S5."
 gh pr checks --repo Smana/agent-platform --watch
 ```
 
@@ -17863,6 +19149,17 @@ with no card and no human.
 
 ---
 ## Phase 6 — Fork and `roomctl` (AP-6, S6)
+
+> **Engineering standard (Ruling AC, 2026-09-29).** agent-platform's `AGENTS.md` outranks the sample Go
+> code of this phase, as in phase 1:
+> - wiring the snippets place in `cmd/room-broker/main.go` or `cmd/room-bridge/main.go` goes into
+>   `internal/app/broker.go` or `internal/app/bridge.go`;
+> - metric call sites use Task 1.12's OTel instruments: `X.WithLabelValues(v).Inc()` becomes
+>   `X.Add(ctx, 1, metric.WithAttributes(attribute.String("<label>", v)))`, `.Observe(s)` and `.Set(n)`
+>   become `.Record(ctx, …)`; names stay byte-identical to what the VMRules query;
+> - every outbound call takes an `internal/httpx` client, and tests use `httptest.Server.Client()`;
+> - loops wait on `select` over `ctx.Done()` and an injected ticker or `After`, never `time.Sleep`;
+> - `errors.Is` for sentinels, `%w` wrapping, a doc comment on every exported identifier.
 
 Anyone who can read a room can branch it at any seq, into a room of their own, on their own
 budget, with extra egress if the task needs it. A developer can follow and feed rooms from a
@@ -17954,7 +19251,7 @@ func TestAForkedRoomsBriefAsksForTheForkedFromTrailer(t *testing.T) {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `git switch -c feat/room-fork origin/feat/room-approvals && go test ./internal/store/ ./internal/brief/` (stacked on AP-5, P33)
+Run: `git switch -c feat/room-fork origin/main && go test ./internal/store/ ./internal/brief/` (from `main` once AP-5 has merged)
 Expected: FAIL, `undefined: Fork`; the brief test fails its assertion.
 
 - [ ] **Step 3: Implement**
@@ -18365,6 +19662,7 @@ import (
 type Client struct {
 	C     Config
 	Token string
+	HC    *http.Client // an internal/httpx client (Ruling AC); tests pass their server's Client()
 }
 
 func (c Client) header() http.Header {
@@ -18376,7 +19674,7 @@ func (c Client) header() http.Header {
 func (c Client) Rooms(ctx context.Context, out io.Writer) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", c.C.URL+"/api/rooms", nil)
 	req.Header = c.header()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.HC.Do(req)
 	if err != nil {
 		return err
 	}
@@ -18385,8 +19683,10 @@ func (c Client) Rooms(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("rooms: %s", resp.Status)
 	}
 	var rows []struct {
-		ID, Phase, Owner string
-		LastSeq         int64
+		ID      string `json:"id"`
+		Phase   string `json:"phase"`
+		Owner   string `json:"owner"`
+		LastSeq int64  `json:"lastSeq"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
 		return err
@@ -18572,7 +19872,7 @@ Expected: all `ok`; exit 0. Expect `gosec` and `noctx` findings; fix them as Glo
 git add cmd/roomctl internal/roomctl internal/humanapi web .github/workflows/release.yaml go.mod go.sum
 git commit -m "feat(roomctl): device-flow login, rooms, watch, post, fork"
 git push -u origin feat/room-fork
-gh pr create --repo Smana/agent-platform --base feat/room-approvals --title "feat: fork and roomctl (SP2 phase 6)" --body "SP2 phase 6. Live gate from cloud-native-ref S6."
+gh pr create --repo Smana/agent-platform --base main --title "feat: fork and roomctl (SP2 phase 6)" --body "SP2 phase 6. Live gate from cloud-native-ref S6."
 gh pr checks --repo Smana/agent-platform --watch
 ```
 
@@ -18767,7 +20067,7 @@ Gate: SC-13 on `main`, and `integration/agent-factory` reconciling on release ta
 ```mermaid
 flowchart LR
   FIX["7.0 UX fixes A1–C3"] --> UX
-  UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: AP-0…AP-6, one release"]
+  UX["7.1 [OWNER] UX sign-off"] --> AP["7.2 agent-platform: already on main; close the gaps, one release"]
   UX --> H1["7.2a H-1 after SP1 #2111: harness v0.1.1; then O-1"]
   H1 --> H["7.3 H-S3 after H-1: harness v0.2.0"]
   AP --> CC["7.4 crossplane-configuration: CC-1, CC-2, CC-H1, CC-O1, CC-S1…CC-S5, one release"]
@@ -18813,12 +20113,23 @@ change. Each item lands test-first. **Task 7.1 does not start until A1–C3 are 
   source still tracking it, `atlasSchema.ref` first. Task 7.6 deletes the branches, once nothing
   tracks them.
 
-### Task 7.2: agent-platform: merge AP-0…AP-6, then one release
+### Task 7.2: agent-platform: close the release gaps, then one release
 
-- [ ] **Step 1:** Merge in order AP-0, AP-1, …, AP-6, squash. After each merge, retarget the next
-  PR's base to `main` (`gh api -X PATCH repos/Smana/agent-platform/pulls/<n> -f base=main`). Merge
-  `origin/main` into its branch (never rebase), push, and wait for CI green.
-- [ ] **Step 2:** [OWNER] tags `v0.6.0` on `main`. The release workflow publishes `room-broker` and
+AP-0…AP-6 are already on `main`: P33 is lifted for agent-platform (owner, 2026-09-29), so each merged when
+green and reviewed.
+
+> **Status (2026-10-07):** the lift was not used past AP-0. AP-1…AP-6 are still open (agent-platform #5, #6, #8, #9, #11) and merge in the programme's wave, in order, before Step 4's tag; Step 1's `crd-rooms.yaml` gap is closed by agent-platform#35. What is left is the release, and three gaps found during execution:
+
+- [ ] **Step 1: The release `crd` job.** [OWNER] allows or adds Task 1.5's `crd` job in `release.yaml`
+  (the session's permission classifier blocked it), with every `uses:` pinned by SHA. Without it no
+  release carries `crd-rooms.yaml`, and Task 7.5 cannot re-vendor the CRD.
+- [ ] **Step 2: A `v*` tag ruleset.** [OWNER] adds a tag ruleset on `refs/tags/v*`: creation, update and
+  deletion restricted, admin-only bypass. A tag is what the release workflow signs and publishes from.
+- [ ] **Step 3: A release-only cosign verify.** The documented verification anchors on the release
+  workflow's identity (`release.yaml@refs/tags/v*`), so a PR pre-release signed by `ci.yaml` never
+  verifies as a release. Also: fix `ci.yaml`'s inaccurate comment about Dependabot tokens, and check
+  Scorecard's first run on `main` (AP-0 review minors).
+- [ ] **Step 4:** [OWNER] tags `v0.6.0` on `main`. The release workflow publishes `room-broker` and
   `room-bridge` `v0.6.0`, and attaches `crd-rooms.yaml`, the four `roomctl` binaries and
   `roomctl.sha256`.
 
@@ -18891,6 +20202,13 @@ check is green on every S PR from here on.
 - [ ] **Step 3: Merge** S1 (after H-1 and O-1, Task 7.2a), then S2, S3, S4, S5 and S6, in order. Retarget each
   one to `main` with `gh api -X PATCH`, merge `origin/main` in, and wait for CI green. H-S3 already
   merged in Task 7.3. [OWNER] merges each one (a ruleset bypass).
+- [ ] **Step 4: Re-point the agent-platform runbook links (Ruling G)** — H-1 pointed every
+  `runbook_url` in `observability/base/agent-platform/vmrule.yaml` and `vmrule-logs.yaml` at
+  `blob/integration/agent-factory/docs/runbooks/agent-factory/...` because that is where the
+  runbooks lived pre-merge. Once S6 lands on `main`, repoint each `runbook_url` at
+  `blob/main/docs/runbooks/agent-factory/...` if the runbook files merged to that path unchanged,
+  or at the design's relevant section on `main` if they did not (e.g. were folded into design docs
+  instead). Re-run `bash scripts/ci/tests/test-agent-alert-annotations.sh` after.
 
 ### Task 7.6: integration on tags, then delete the branches
 
@@ -18902,7 +20220,7 @@ Run: `flux get kustomization room-broker -n flux-system && kubectl get sqlinstan
 Expected: `Ready True` throughout; the Atlas GitRepository tracks the tag `v0.6.0`, not a branch.
 
 - [ ] **Step 2:** Delete the branches, once nothing tracks them:
-  - agent-platform: `chore/bootstrap` and `feat/room-*`;
+  - agent-platform: nothing: its branches were deleted as each AP PR merged;
   - crossplane-configuration: `ci/prerelease-xrd-crds`, `feat/agentrun-observability`,
     `feat/sqlinstance-generated-credentials`, `feat/agentrun-room-bridge`, `feat/agentrun-room-rules`,
     `chore/room-bridge-v0.4.0` and `chore/room-bridge-v0.5.0`;
@@ -18918,7 +20236,7 @@ Expected: `Ready True` throughout; the Atlas GitRepository tracks the tag `v0.6.
 
 | Item | Owner | Why here it is only named |
 |---|---|---|
-| gcp-0: TLS on :8443, the GKE issuer in `runIssuers`, the umbrella | SP2 follow-up plan | Ruling P2 |
+| ~~gcp-0: TLS on :8443, the GKE issuer in `runIssuers`, the umbrella~~ | now in this plan (GP-18) and the GCP parity plan (G-5) | Ruling P2, reversed 2026-09-29 |
 | `POST /v1/runs` server, Kyverno one-creator rule, the factory's `rooms-system` token | SP3 | C3, C4; `runrequest.Factory` switches on with `factoryURL` |
 | Δ5 (review feedback enters the room) and Δ6 (rooms narrate on GitHub or Slack) | SP3 plan | Moved there by the owner, 2026-09-27; both need SP3's PR watcher and its factory App, which phase 3 creates |
 | Budget enforcement on `agent-router` (B1–B2) | SP4 PR 2/7 | A parked or steered run spends under SP4's caps |
@@ -19052,3 +20370,54 @@ SP3's share (G2, G3, G5, G6, G8, and M1 for its keys) is in the SP3 plan.
 | N8 | Task 0.5.11 | Crossplane's verbs on sandboxes enumerated |
 | — | PR map; Tasks 1.13, 1.15, 3.6, 7.2a–7.6 | The new stack order: CC-2 ← CC-H1 ← CC-S1, and #2111 ← H-1 ← S1 and H-S3 |
 | — | PR map; Tasks 1.13, 1.15, 7.2a, 7.4, 7.5 | Stacking updated for the observability plan (O12): CC-H1 ← CC-O1 ← CC-S1, and H-1 ← O-1 ← S1; H-S3 stays on H-1 |
+
+## GCP parity cross-plan edits (2026-09-29)
+
+Applied from the GCP parity plan's [Cross-plan edits](2026-09-29-gcp-parity-plan.md#cross-plan-edits) (SP2 share).
+
+| ID | Where | What | Conflict |
+|---|---|---|---|
+| — | Global Constraints (Target) | gcp-0 is the target; aws-0 is not deployed | **Yes** — reverses "Target aws-0 only" |
+| — | Architecture paragraph | TLS on the bridge → broker :8443 on both clouds, terminated with the `openbao` ClusterIssuer's certificate; drops the WireGuard-on-aws-0 wording | **Yes** — replaces "plain HTTP … which Cilium's WireGuard encrypts on aws-0" |
+| P2 | Ruling P2 | **Reversed**: gcp-0 is in scope, not out of it | **Yes** — the ruling's own outcome flips |
+| GP-18 | Tasks 1.9, 1.11, 1.14, 1.18, 1.20 | TLS on :8443: `Certificate room-broker-tls` (`openbao` ClusterIssuer), `ExternalSecret room-broker-ca`, `GetCertificate` reload, `BROKER_CA_FILE`, `BROKER_URL=https://`, `--cacert` on the CLI and live curls | No |
+| P11, GP-12 | Ruling P11; Task 1.18's config and CNP | `${oidc_jwks_host}`/`${oidc_jwks_uri}` replace the EKS-shaped `oidc.eks.${region}.amazonaws.com` and `${oidc_issuer_url}/keys` | No |
+| P11a, GP-11/GP-26 | New ruling P11a; Task 1.18's CNP | `toEntities: [all]` egress rule for gcp-0's IdP hairpin (`gcp_gateway_hairpin_cross_node`) | No |
+| P38, GP-8 | Ruling P38; Task 1.15a | The `agents` mount, its policy, SecretStore and test moved to GCP parity G-5 (both clouds); Task 1.15a keeps only `merge-gate`; Steps 8–11 are aws-0-only, if it is ever rebuilt; the footgun reads "until G-5 merges" | **Yes** — Task 1.15a no longer builds the `agents` mount itself |
+| — | Global Constraints (Live gotchas, new Live-check routine bullet); PR map H-1 row; Phase 0.5 gate; Task 0.5.14; Task 3.11 Step 3 | Every [LIVE] step's `priv.aws.ogenki.io`, `opentofu/aws/openbao/management/.tls/ca.pem` and "the next aws-0 rebuild" replaced with `priv.gcp.ogenki.io`, `opentofu/gcp/...` and "gcp-0, after GCP parity Task 8.6" | No |
+| GP-14 | Global Constraints (new Live-check routine bullet) | Every child an S PR adds to `clusters/aws-0-agent-platform/` gets a `clusters/gcp-0-agent-platform/` twin, `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it substitutes | No |
+| P12, G-3 | Ruling P12 | The `rooms-proxy` OpenBao write uses gcp-0's stage 3 session (`--openbao-url`) the same way | No |
+
+**Not applied here:** the GCP parity plan's SP3 bullet ("when `merge-gate` lands, it lands on GCP's
+management stack too") — out of scope, a different plan.
+
+## Rulings applied during execution (2026-09-29)
+
+One line per ruling of this plan's execution ledger, plus the owner's decisions of the day. Where a ruling
+changes a task, the task text above already carries it. Ids are the ledger's; H-1's (A–G) predate AP-1's.
+
+| # | What changed | Why | Lands in |
+|---|---|---|---|
+| A | Task 0.5.11 replaces only the ClusterRole's `rules:`; the `crossplane-get-run-pods` Role and binding stay | SC-07: Crossplane must GET the run pod for the CNP Usage, or every run deletion hangs | H-1 |
+| B | Every [LIVE] step of Phase 0.5 runs on the gcp-0 rebuild, not aws-0 | Owner decision: the rebuild moved to gcp-0 | Task 0.5.14 |
+| C | Phase 0.5's review-doc path is informational; the triage record is PR #2116's body | The file does not exist; no task reads it | Phase 0.5 header |
+| D | Tasks in different repositories may run in parallel | Separate repos cannot conflict on files | execution only |
+| E | Task 0.5.3's pin of CC-H1's pre-release moves to Task 0.5.13 | It needed the `xrd-crds` package public first | H-1 |
+| F | Runbook edits of 0.5.4, 0.5.8 and 0.5.12 go to `integration/agent-factory`, where the runbooks live | They are on no PR branch | integration branch |
+| G | agent-platform alerts' `runbook_url` point at `integration/agent-factory`; Phase 7 re-points them | The owner declined moving runbooks to `main` (Δ7) | H-1; Task 7.5 Step 4 |
+| S | CC-S1 (Task 1.13) started ahead of AP-0/AP-1 | Base CC-O1 existed; no shared file, no AP dependency | CC-S1 (crossplane-configuration#32) |
+| V | AP-1 runs task by task, batching the pure-library pairs (1.1 + 1.2, 1.3 + 1.4) | Small, self-contained packages | AP-1 |
+| X | The CI hardening and a README land on AP-0 before its review and merge | Merging first would ship `main` without them | Task 0.3 Step 5; AP-0 |
+| Y | The database enforces append-only: a column-level `UPDATE` grant on `rooms`; `rooms_move_forward` (sealing never undone, `closed_at` set once to `now()`, `retention`/`room_id` immutable, `last_seq` +1 only, `bytes` never shrink); a deferred seq-has-event check; `events_take_next_seq` (gapless, never into a sealed room); no `UPDATE`/`TRUNCATE` on `events`; retention purges only sealed rooms; schema-qualified trigger SQL with a pinned `search_path`; the bridge lease fenced by `AppendAsBridge` → `ErrLeaseLost` | Spec T12 and SC-10 outrank the first draft's broad grant, which let the broker's credential back-date `closed_at`, zero retention, unseal, jump `last_seq`, and let a displaced bridge keep appending | Tasks 1.3, 1.4, 1.9 (409 `lease_lost`), 1.11 (never drops the batch), 1.12, 4.1; spec Appendix C |
+| AA | AP-1 adopts the engineering standard; its branch merges agent-platform `main` so the stricter lint applies | The owner asked for RunLore's conventions | AP-1 onwards |
+| AC | agent-platform's `AGENTS.md` outranks this plan's sample code: wiring in `internal/app`; OTel metrics, `rooms_` names unchanged, `rooms_build_info`; injected clock, no `time.Sleep`; one egress client `internal/httpx`, arriving with Task 1.6's JWKS fetch; `errors.Is(err, http.ErrServerClosed)`; all four server timeouts with the SSE/WS exception; `ListenAndServeTLS` with a reloading certificate; doc comments; `internal/roomctl` in the file map | The owner's "best practices … take example from RunLore" | Global Constraints; File structure; Tasks 1.6, 1.9, 1.11, 1.12; phases 2–6 notes and snippets |
+| AD | Lease freshness and `closed_at` use the database's `now()`, not the injected Go clock; tests forge old timestamps as the superuser | One clock across broker replicas, and the trigger requires `closed_at = now()`: the one exception to AC's clock rule | Task 1.4; Global Constraints |
+| Owner | P33 is lifted for `Smana/agent-platform` only: its PRs merge to `main` when green and reviewed; tags stay in Phase 7 | Owner, 2026-09-29 | Global Constraints, P33, PR map, AP tasks, Task 7.2 |
+| AP-0 | Merged (`f563882d`) with the hardened CI, then the engineering standard (#3) and the platform guide (#2). The "make the packages public" owner step was not needed | Actions-created packages inherit the repository's visibility | Task 0.3; Owner actions |
+| GP-18 | TLS on :8443 applied in the task bodies, not only as notes | GCP parity: gcp-0 has no WireGuard | Tasks 1.9, 1.11, 1.14, 1.18, 1.20 (Task 1.22 Step 8 and 2.14's probe) |
+| 1.5 | The Room CRD bounds: `approvals.ttl` at most four digits, `MaxLength: 261` on `owner`, `driver` and `members[].principal` | An unbounded TTL overflows `time.Duration`; an OIDC `sub` is at most 255 | Task 1.5 |
+| Phase 7 gaps | The release `crd` job (blocked by the permission classifier: the owner adds or allows it), a `v*` tag ruleset, a release-only cosign verify | AP-1 landed without the job; AP-0's review minors | Tasks 1.5, 7.2 |
+| S1 | `atlasSchema.ref` points at agent-platform `main` (or a SHA, if the composition resolves one) once AP-1 merges | The branch is deleted on merge, and no tag exists before Phase 7 | Task 1.17; Global Constraints |
+| AP-2 | The `/api/rooms` row struct carries json tags; the UI and `roomctl` read `id`, `phase`, `owner`, `lastSeq` | Go field names are not an API | Tasks 2.4, 2.5, 6.2 |
+| Owner step | `atlas migrate hash` is run by the owner with `!` | The session's guard refuses the bare `hash` token | every task that edits a migration (1.3, 4.1 and later); Owner actions |
+| Forward | Task 4.1's migration adds the driver columns' `UPDATE` grant and a `rooms_driver_moves_forward` trigger | The phase-1 migration is released by then and grants no driver update | Task 4.1 |
