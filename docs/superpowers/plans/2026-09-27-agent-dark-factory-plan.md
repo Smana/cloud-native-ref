@@ -16123,12 +16123,18 @@ full scope: the stop stops every run, human-started ones included (owner, 2026-0
 - [ ] **Step 2: The control issue** — [OWNER] applies `factory/stop` to the pinned issue: the same
   result in ≤ 60 s; removing the label resumes intake.
 - [ ] **Step 3: Kueue, independent of the factory** — scale the factory to 0 first
-  (`flux suspend kustomization agent-factory -n flux-system && kubectl scale deploy -n agent-system agent-factory --replicas 0`),
+  (`flux suspend helmrelease agent-factory -n agent-system && kubectl scale deploy -n agent-system agent-factory --replicas 0`;
+  the HelmRelease, not its Kustomization: its drift detection would restore 2 replicas mid-drill),
   then `flux suspend kustomization kueue-queues -n flux-system` and
   `kubectl patch clusterqueue agents-factory agents-interactive --type merge -p '{"spec":{"stopPolicy":"HoldAndDrain"}}'`.
   Expected: the admitted sandbox pods are evicted within seconds
-  (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, resume both
-  Kustomizations.
+  (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, then
+  `flux resume kustomization kueue-queues -n flux-system && flux resume helmrelease agent-factory -n agent-system`,
+  and check the factory is back at 2/2:
+  `kubectl rollout status deploy -n agent-system agent-factory --timeout=180s && kubectl get deploy -n agent-system agent-factory -o jsonpath='{.spec.replicas} {.status.readyReplicas}{"\n"}'`
+  → `2 2`. `rollout status` alone passes at 0 of 0: a drill once restored a factory still scaled to
+  0, which stayed there 8.5 h, because Helm corrects a `kubectl scale` only with drift detection on
+  (`tooling/base/agent-factory/helmrelease.yaml`).
 - [ ] **Step 4: The gateway, independent of the factory and of the ratelimit store** *(external
   review, stop drills)*. A budget is not a stop: the fleet bucket fails open and is shadow until SP4
   PR 7. Scale the `agent-router` data plane to 0 (or delete its listener's HTTPRoutes): the next model
