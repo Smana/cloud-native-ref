@@ -204,6 +204,16 @@ spec:
         - ports:
             - port: "9443"
               protocol: TCP
+    # GKE's konnectivity-agent path, as for the metrics apiserver above: without it
+    # every ScaledObject change on gcp-0 times out at admission.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: konnectivity-agent
+      toPorts:
+        - ports:
+            - port: "9443"
+              protocol: TCP
     # Metrics scrape.
     - fromEndpoints:
         - matchLabels:
