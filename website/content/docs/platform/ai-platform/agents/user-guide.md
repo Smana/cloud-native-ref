@@ -198,6 +198,23 @@ agent-run summary: 10 steps
 | `Revoked` | Stopped by hand (`agents.ogenki.io/revoked=manual`) or by the factory's stop |
 | `BudgetExhausted` | The run meter revoked it at its token cap |
 
+### Follow and feed a room from a terminal
+
+`roomctl` reads, chats, queues and forks; until a release ships its binaries, build it from
+agent-platform with `go build ./cmd/roomctl`. It never steers, interrupts, takes the driver token
+or approves: those stay in the web view, because a local agent can drive a terminal
+([ADR-0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}})).
+
+```bash
+roomctl configure --url … --issuer … --client-id … --project-id …  # the room list's "CLI setup" prints it
+roomctl login                                    # device flow: open the URL, enter the code
+roomctl rooms
+roomctl watch <room>                             # the last 50 events, then live
+roomctl post <room> --queue "address L42"        # for the next run's brief; without --queue, a chat
+roomctl fork <room> --at <seq> --role implementer --egress pypi --note "try uv"
+roomctl token                                    # your access token, for scripts
+```
+
 ### Stop or resume
 
 ```bash

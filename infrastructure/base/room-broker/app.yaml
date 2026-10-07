@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # AP-5's pre-release (agent-platform#11 at eb61ce7), by digest (P33). Move it with the
+    # AP-6's pre-release (agent-platform#28 at 91a6fb3), by digest (P33). Move it with the
     # retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr11.eb61ce7c@sha256:f96eacf3cffd9bbd354b84978c6bf0961cab577589ac0039810fb1e96198bf08"
+    tag: "v0.0.1-pr28.91a6fb39@sha256:2889162f2dcbacb637769c6b3f7653e9a689a61e8bb5a39224a08a105cbfe884"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2
@@ -96,6 +96,12 @@ spec:
         secretName: room-broker-factory-app  # pragma: allowlist secret
         optional: true
         defaultMode: 0440
+    # roomctl's client id (phase 6), re-read at use. optional: until the sync
+    # creates the client, roomctl's tokens are refused and nothing else changes.
+    - name: roomctl
+      secret:
+        secretName: room-broker-roomctl  # pragma: allowlist secret
+        optional: true
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -108,6 +114,9 @@ spec:
       readOnly: true
     - name: factory-app
       mountPath: /var/run/secrets/factory-app
+      readOnly: true
+    - name: roomctl
+      mountPath: /etc/room-broker/roomctl
       readOnly: true
   networkPolicies:
     enabled: false

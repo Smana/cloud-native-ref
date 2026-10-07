@@ -18712,6 +18712,22 @@ Expected: no `FAILED:`; all exit 0.
 
 ### Task 6.4: [LIVE] SC-7, `roomctl`, SC-13, `/verify-spec`
 
+- [ ] **Step 0: The sync, then the proxy**
+
+The deploy's `scripts/provision/zitadel-oidc-clients.sh sync` creates the `roomctl` client and
+mirrors `agents/roomctl`; re-run it as `opentofu/aws/eks/init/workflows.tm.hcl` does if S6 reached
+the cluster after it. Only then:
+
+```bash
+flux reconcile hr rooms-oauth2-proxy -n agent-system --force
+kubectl get deploy -n agent-system rooms-oauth2-proxy -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -o 'skip-jwt-bearer-tokens=true'
+```
+
+Expected: the HelmRelease `Ready`, and `skip-jwt-bearer-tokens=true`. A reconcile before the sync
+leaves the new pod waiting for `rooms-proxy-extra-issuers`; after three failed upgrades Helm rolls
+back to `skip-jwt-bearer-tokens=false` and the release stalls, and nothing retries it once the
+Secret appears.
+
 - [ ] **Step 1: SC-7, fork**
 
 In a room with a handoff at seq H, fork at seq N > H with role `implementer` and egress `pypi`
