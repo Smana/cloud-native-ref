@@ -114,42 +114,11 @@ kubectl delete validatingadmissionpolicybinding --all --wait=false 2>/dev/null |
 # drain below — past those, the operator and barman-plugin pods the backup
 # needs may already be unschedulable.
 #
-# Failure posture is warn-not-block: cnpg-promote-seed.sh's --rotate-alias only
-# touches the alias AFTER verify_seed passes on the fresh dated seed, so a
-# failed promotion leaves the alias holding the previous verified seed. A
-# same-day re-run hits the promote script's dated-collision guard and skips —
-# correct, the alias is already refreshed. Skipping the hook entirely is the
-# operator's explicit data-loss decision via CNPG_SKIP_PRE_DESTROY_SEED.
-echo "Seeding CNPG databases before destroy..."
-if [ "${CNPG_SKIP_PRE_DESTROY_SEED:-false}" = "true" ]; then
-	echo "[skip] CNPG_SKIP_PRE_DESTROY_SEED=true — databases will be destroyed without a fresh seed."
-	echo "       The next restore falls back to the previous alias/seed and loses everything since."
-else
-	# The only cloud-specific line in this hook. The gcp lane has no
-	# gke-prepare-destroy.sh yet (scripts/ops/gcp holds sweeps only); when one
-	# appears it resolves ${project_id}-ogenki-cnpg-backups here instead —
-	# the rest of the block is cloud-neutral and cnpg-promote-seed.sh already
-	# speaks both clouds via --cloud.
-	CNPG_SEED_BUCKET="${REGION}-ogenki-cnpg-backups"
-	SEED_DATE="$(date +%Y%m%d)"
-	if kubectl api-resources --api-group=cloud.ogenki.io 2>/dev/null | grep -q sqlinstances; then
-		# Discovery, not an enumerated list: select(.spec.backup) catches every
-		# backed-up claim, including the next database nobody remembered to add
-		# here.
-		kubectl get sqlinstance -A -o json 2>/dev/null \
-			| jq -r '.items[] | select(.spec.backup) | "\(.metadata.namespace) \(.metadata.name)"' \
-			| while read -r seed_ns seed_claim; do
-				[ -z "${seed_claim}" ] && continue
-				seed_app="${seed_claim#xplane-}"
-				"$(dirname "$0")/../k8s/cnpg-promote-seed.sh" --cloud aws --bucket "${CNPG_SEED_BUCKET}" \
-					--cluster "${seed_claim}" --namespace "${seed_ns}" --apply \
-					--seed "${seed_app}-${SEED_DATE}" --rotate-alias "${seed_app}-pre-destroy" \
-					|| echo "[warn] seed for ${seed_claim} failed — destroy continues; the alias still holds the last verified seed"
-			done
-	else
-		echo "SQLInstance CRD not available, skipping CNPG pre-destroy seed."
-	fi
-fi
+# The hook itself is shared with the GKE destroy lane:
+# scripts/ops/k8s/cnpg-pre-destroy-seed.sh carries the gate
+# (CNPG_SKIP_PRE_DESTROY_SEED), the discovery and the warn-not-block posture;
+# the bucket name is the only cloud-specific input.
+"$(dirname "$0")/../k8s/cnpg-pre-destroy-seed.sh" --cloud aws --bucket "${REGION}-ogenki-cnpg-backups" || true
 
 # Reclaim CSI-provisioned volumes BEFORE any node teardown. Must run while the
 # CSI controller is still schedulable, i.e. before the Karpenter NodePool
