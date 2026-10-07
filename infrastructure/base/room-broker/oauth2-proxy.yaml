@@ -77,7 +77,10 @@ spec:
         value: "openid profile email offline_access urn:zitadel:iam:org:project:id:$(ZITADEL_PROJECT_ID):aud"
       # <issuer>=<roomctl client id>. Not optional: an unset issuer would start a
       # proxy that refuses roomctl until someone restarts it. Until the sync has
-      # created the client, the new pod waits for the Secret and the old one serves.
+      # created the client, the new pod waits for the Secret and the old one serves;
+      # after 3 failed upgrades Helm rolls back to skip-jwt-bearer-tokens "false"
+      # and the release stalls. So after the sync:
+      # flux reconcile hr rooms-oauth2-proxy -n agent-system --force
       - name: OAUTH2_PROXY_EXTRA_JWT_ISSUERS
         valueFrom:
           secretKeyRef:
