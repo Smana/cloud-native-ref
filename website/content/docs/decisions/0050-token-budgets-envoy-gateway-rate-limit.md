@@ -3,7 +3,7 @@ title: Token budgets on Envoy Gateway's global rate limit, costed from response 
 linkTitle: 0050 · Token budgets
 weight: 500
 description: Per-run, per-fleet, per-human and per-client daily token budgets are Envoy Gateway global rate-limit rules, charged after each response with the token count Agent Router writes into metadata, and stored in a Valkey KVStore. Agent Router's QuotaPolicy, a custom ext_proc and LiteLLM budgets were rejected.
-lastVerified: 2026-09-25
+lastVerified: 2026-10-07
 ---
 
 **Status**: Accepted
@@ -81,8 +81,8 @@ make it both correct and safe to roll out.
 ### Negative
 
 - The exact per-run cap (`spec.budget.maxTokens`) cannot live at the gateway, because a
-  ServiceAccount token carries only `sub`. The gateway holds a 5M ceiling, and SP3's run meter revokes
-  a run at its own cap.
+  ServiceAccount token carries only `sub`. The gateway will hold a 5M per-run ceiling (B1, SP4 PR 2);
+  until then SP3's run meter, which revokes a run at its own cap, is the only per-run cap.
 - A store outage admits traffic (`failClosed: false`).
 - Envoy Gateway accepts one Gateway-level `BackendTrafficPolicy` per Gateway, so all of a Gateway's
   budgets live in one object.
@@ -96,9 +96,14 @@ make it both correct and safe to roll out.
 
 ## Implementation Notes
 
-- SP4 PR 1: the rate limit, the `KVStore`, and B3–B5 on `ai-gateway`, all in shadow.
-- SP4 PR 2: B1–B2 on `agent-router`, in shadow.
-- SP4 PR 7: enforcement.
+| Step | Scope | State |
+|---|---|---|
+| SP4 PR 1 | The rate limit, the `KVStore`, and B3–B5 on `ai-gateway`, all in shadow | Built |
+| SP4 PR 2 | B1–B2 on `agent-router`, in shadow; the oidc listener that sets `x-ar-human` | Not built |
+| SP4 PR 7 | Enforcement | Not built |
+
+B3, the per-human budget, counts nothing until PR 2's oidc listener sets `x-ar-human`: today that
+header is only stripped from client requests.
 
 ---
 

@@ -145,6 +145,17 @@ other_btp = btp([rule(shared=False)], name="other-gw-policy",
                  target={"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "other-gw"})
 check("that out-of-scope policy stays out of scope alongside a compliant ai-gateway one",
       gate.check_rate_limit_rules([gateway(), btp([rule()]), other_gw, other_btp]) == [])
+route_only_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "harbor"}
+# mergeType is set on both so A4 stays silent and isolates the A1/A2 scope question.
+route_only = btp([rule(shared=False)], name="route-only-rl", target=route_only_target)
+route_only["spec"]["mergeType"] = "Merge"
+check("a BackendTrafficPolicy with no Gateway targetRef at all is out of scope for A1/A2",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), route_only]) == [])
+route_only_covers = btp([rule()], name="route-only-compliant", target=route_only_target)
+route_only_covers["spec"]["mergeType"] = "Merge"
+errs = gate.check_rate_limit_rules([gateway(), route_only_covers])
+check("a route-only BackendTrafficPolicy does not satisfy the vacuous-pass guard either",
+      len(errs) == 1 and "no BackendTrafficPolicy" in errs[0], str(errs))
 
 print("A4 — a route-level BackendTrafficPolicy must declare mergeType")
 route_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "llm-gateway"}

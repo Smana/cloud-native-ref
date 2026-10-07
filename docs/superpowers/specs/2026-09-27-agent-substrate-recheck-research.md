@@ -16,6 +16,15 @@ Upstream was read at `google/ax@d0bc38b`: `gh api repos/google/ax/compare/d0bc38
 was read at `agent-substrate/substrate@ed6d2a1`, 2 commits after SP1's `c7b5469`. Anything not confirmed is marked
 **UNVERIFIED**.
 
+> **2026-10-01 note.** The triggers were re-scored after Substrate v0.3.0 in the
+> [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md): still none met. That pass also corrects the no-spot trigger, which
+> should name the rule in Substrate's `tools/setup-gcp/README.md`, not #1528 (the PR that added it).
+
+> **2026-10-04 note.** Finding 3 described v0.2.0. v0.3.0 can enforce OpenFGA authorization behind
+> `--experimental-enable-authz`, off by default. Finding 9's #1898 closed on 2026-10-02 (v1
+> ClusterTrustBundle on `main`, unreleased). See the
+> [2026-10-04 re-check](2026-10-01-agent-ecosystem-recheck-research.md#2026-10-04-re-check-ax-and-substrate-claims-against-code).
+
 ## TL;DR
 
 - **No re-check trigger is met; the SP1 verdict stands.** ax `main` has not moved. ax#376 (unauthenticated control

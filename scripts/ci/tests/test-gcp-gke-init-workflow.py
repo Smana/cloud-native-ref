@@ -60,6 +60,23 @@ if any("|| true" in l or "2>/dev/null" in l for l in state_lines):
 if not any("state rm -lock-timeout=" in l for l in state_lines):
     fails.append("the destroy's custom-role state rm waits for the state lock")
 
+# The CNPG pre-destroy seed needs a healthy cluster: past the volume reclaim the
+# PVCs are gone, past the addon teardown Cilium is. And it must never gate the
+# cluster deletion, the one billable thing here.
+destroy = re.search(r'\nscript "destroy" \{(.*?)(?=\nscript "|\Z)', TEXT, re.S)
+destroy = destroy.group(1) if destroy else ""
+seed = job_body(destroy, "stage2-seed-databases")
+if not seed:
+    fails.append("script destroy has a stage2-seed-databases job")
+before(destroy, '"confirm"', '"stage2-seed-databases"', "the seed runs after the destroy is confirmed")
+before(destroy, '"stage2-seed-databases"', '"stage2-reclaim-volumes"', "the seed runs before the volume reclaim deletes the PVCs")
+before(destroy, '"stage2-seed-databases"', '"stage2-destroy-addons"', "the seed runs before the addon teardown removes Cilium")
+if "${global.cloud_gate}" not in seed:
+    fails.append("the seed job carries the cloud gate")
+seed_call = next((l for l in re.sub(r"\\\n\s*", " ", seed).splitlines() if 'cnpg-pre-destroy-seed.sh"' in l), "")
+if "--cloud gcp" not in seed_call or not seed_call.rstrip().endswith("|| true"):
+    fails.append("the seed job calls cnpg-pre-destroy-seed.sh --cloud gcp and never fails the teardown (|| true)")
+
 s3 = job_body(TEXT, "stage3-secrets-and-oidc")
 before(s3, 'zitadel-idp.sh" sync', "== registering the OIDC clients", "a hosting stage 3 configures the IdP and Action before its clients")
 # One flag list per sync, expanded by both the real call and the printed

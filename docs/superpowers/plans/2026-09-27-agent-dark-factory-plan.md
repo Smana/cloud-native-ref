@@ -254,7 +254,7 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R34 | §6.3: "the daily cap reached → Escalated; no new tasks until the next day"; §6.2: "SP3 at admission" | The reconciler sums today's `system:factory` runs before every run it starts. Once `budgets.enforcePrincipal` is on, a task past the cap **stays `Queued`** with reason `waiting_daily_budget` and starts after 00:00 UTC; in shadow it is counted (`budget-principal-shadow`). A running run past the cap is still revoked by the meter (`budget-principal`) | Holding in `Queued` is "no new run until the next day" without a `/factory retry` per task; the meter alone would start each run and revoke it 30 s later | The day's last tasks wait for midnight UTC instead of escalating; `status.reason` says why |
 | R35 | §6.1: the stop object "pauses intake; every running task goes to `Stopped`, its `AgentRun`s … deleted"; SC-5: "deletes every factory `AgentRun`" | **Owner, 2026-09-27: the stop stops everything.** While the stop object or the control issue holds, `POST /v1/runs` answers `503 kill_switch`, and a leader loop (`killswitch.Sweeper`, every 15 s) writes `revoked: manual` on every non-terminal `AgentRun` in `agents` and deletes it, human-requested runs included. A stopped human run resumes, once the stop is lifted, with `task agent:run -- … --branch agent/<id>`: the API then accepts that one branch (`resumeBranch`), only as `agent/<8 chars>`, never a task's branch (tasks resume with `/factory retry`), never a room the caller cannot start a run in, never one a live run holds | After phase 5 every run in `agents` is a factory-created run; a kill switch that spares a class of runs is not one. The harness resumes `origin/$BRANCH`, so the branch is all a resumed run needs | A human loses the stopped run's context beyond its pushed commits. A caller-chosen branch is a narrow exception to C3's "derived, never taken": it can name only an `agent/**` branch no task or live run owns |
 | R36 | §3: "A **human's** `review_verdict` in the room supersedes the agent reviewer's" | **Owner, 2026-09-27: GitHub reviews only.** The factory reads only the reviewer or tester run's own `review_verdict`. Humans steer through GitHub: "Request changes" starts a revision (Δ5, Task 2.3) and "Approve" is the merge gate's (policy-bot). No SP2 amendment | SP2 builds no human verdict action (its human actions write chat messages only), and one steering channel is easier to reason about than two | A human watching the room steers by reviewing on GitHub, not in the room |
-| R37 | §4 admission lists "`dataClass`" and "role" without saying who may ask for what | **Owner default, 2026-09-27:** through `POST /v1/runs`, only `agents-admin` may request `dataClass: internal` or a `triager` run (`403 admin_only` otherwise); `agents-member` gets public implementer, reviewer and tester runs | An `internal` run reads the cluster over MCP and reaches Bedrock, and a triager exists to read internal data (OD-13) | A developer who needs an internal investigation asks an admin |
+| R37 | §4 admission lists "`dataClass`" and "role" without saying who may ask for what | **Owner default, 2026-09-27:** through `POST /v1/runs`, only `agents-admin` may request `dataClass: internal` or a `triager` run (`403 admin_only` otherwise); `agents-member` gets public implementer, reviewer and tester runs | An `internal` run reads the cluster over MCP and reaches the `internal` model backend, and a triager exists to read internal data (OD-13) | A developer who needs an internal investigation asks an admin |
 | R38 | §2–§3: the `investigate` template is triager → implementer → reviewer, all `internal`, on a public repository | **Owner default, 2026-09-27: an internal-origin task never feeds an implementer run on a public repository.** The `investigate` template is the triager alone. Its handoff summary is a proposed public issue text (no log line, hostname, address, secret or other cluster detail); the task ends `Done` (`proposal_ready`) and narrates the room link. A maintainer reads the proposal on the tailnet, opens a public issue with the text they approve, and labels it `factory/ready`: an ordinary public task, snapshotted from what the human wrote | An internal implementer's commits and PR body would publish whatever internal data the run read; R33 only protected the issue. SP2's approvals are run-scoped (a bridge asks, a human decides) and the factory cannot open one, so the gate is the §1 trust anchor, a maintainer's label on text a human wrote | One human step per RunLore finding that needs a change; the dark factory stays dark for public work only |
 | R39 | External review G3: "the stop object doesn't revoke credentials" | **An honest residual.** After a stop, the run's gateway JWT stays valid until the run's deadline (SP1 R2: its lifetime is the deadline), because agent-router validates it offline against the cluster JWKS. What the stop does remove: it deletes the `AgentRun`, so the pod and its ServiceAccount go, octo-sts mints nothing more for it, and the harness's `preStop` revokes its GitHub token. The run's CNP goes with the pod, and agent-router's data-plane CNP admits only pods in `agents` carrying `agents.ogenki.io/run-id`, so nothing is left that can present the JWT. A denylist on agent-router is backlog | Every live credential needs the run's pod to be used, and the pod is what the stop deletes. A denylist is state on the gateway's hot path, which no Envoy Gateway primitive offers | A JWT copied out before the stop works only from a run-labelled pod in `agents`, which only the composition creates, and only until the deadline: light 20, standard 45, frontier 90 minutes (§6.2). A force-deleted pod skips `preStop`, so its GitHub token (one repository, `agent/**` only) lives out its hour |
 | R40 | External review G8: "a kill switch that fails open is not a kill switch" | **An honest residual, deliberate.** SP4's token budgets on agent-router and llm-gateway are Envoy global rate limits backed by Valkey with `failClosed: false` (`infrastructure/aws-0/envoy-gateway/helmrelease-ratelimit.yaml`): while Valkey is down, requests pass uncounted. The factory's run meter (R12: the gateway's `gen_ai` counters in VictoriaMetrics, `budget-run` at `maxTokens`) and each run's deadline still bound a run, and the stop object depends on neither | Failing closed turns a Valkey restart into an outage of every model call, agents' and humans' alike. The meter is a second counter with its own store | While Valkey is down, principal and fleet budgets are not enforced; a run can pass `maxTokens` by one meter tick (30 s) and runs to its deadline at most. With VictoriaMetrics down too, only the deadline bounds it |
@@ -265,6 +265,12 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | R45 | R18: the RunLore intake token is "one value, read by the factory from `platform/agents/*` and by RunLore from its own store" | **Written twice from one value (Task 9.3): `agents/runlore-intake` for the factory, `platform/runlore/factory-intake` for RunLore's `openbao-platform`** | After M1 no store reads both mounts, and C1 keeps agent-system off the ClusterSecretStore | RunLore's copy stays readable from any namespace through `openbao-platform` (T14), as before M1: a thief can post at most `runlore.dailyCap` (5) findings a day, each a triager-only task ending on a proposal a maintainer reads (R38). A rotation writes both paths |
 | R46 | Further review (2026-09-29): "a trigger-rooted trace per task" | **One root span per accepted task (Task 1.10b).** When `received` admits a task, it mints a trace id and a span id into `status.trace`. It passes W3C `traceparent` `00-<trace>-<span>-01` to every run it creates, as the claim annotation `agents.ogenki.io/traceparent` (Task 1.5a). The composition hands that to the harness as `TRACEPARENT`, and the harness's `agent-run` span parents on it (observability plan Tasks 1.3a, 2.8a, O21). When `end()` reaches a terminal phase, the factory exports the task span once, to the collector's platform port :4317 (observability plan O20). The span runs from the Task's creation, when the label was accepted, to now. Its only attributes are `agent.task_id`, `agent.tier`, `agent.task.phase` and `agent.task.reason`, never issue text. Export is best effort, and an empty `tracing.otlpEndpoint` turns tracing off | A span held in memory would not survive a restart or a leader change over a task's hours; recorded ids and a span built at the end do. The annotation is set at CREATE, and the patch-limit policy (Task 5.5) governs UPDATEs only. It clashes with no SP1 annotation (`revoked`, `usage-tokens`, `pull-request`, `finished-phase`, `principal`) and no SP3 one (`stop`, `revert`). The trace id is correlation only (observability plan O22) | The task span arrives only when the task ends, so Grafana shows a live task's runs under a missing parent until then. An escalated task that never closes has no task span. An export that succeeds before a lost status write is repeated once, with the same ids |
 | R47 | Further review (2026-09-29): "routing tier vs spend"; triage already decides the tier (§2, tier fit) | **A run's tier is recorded, and fixed.** `runs.Build` writes the label `agents.ogenki.io/tier` (Task 1.5a): an implementer carries the task's triaged tier, a reviewer the other tier it runs on (Task 4.2a). **Agents are never re-routed per request within a run.** The tier becomes `spec.model` (R11), which the XRD's CEL makes immutable, and agent-router routes on the model name only. The observability plan exposes the label as `agentrun_info{tier}` and draws tier against tokens and steps (its O23, O24) | A mid-run switch would split one conversation across models and discard the provider's prompt cache, and it would make tier fit (SC-10) unmeasurable. It is a label, not `spec.model`, because every tier maps to `agent-default` until SP4 PR 2 (R11) | An under-tiered run cannot be rescued mid-flight: it ends at its budget, and the task's next run can take another tier. The label is set at CREATE and never patched (Task 5.5's patch-limit forbids label changes). Runs requested through `POST /v1/runs` (Task 5.2) belong to no task, so they carry no tier and start their own trace |
+| R48 | External review R05 (2026-10-02): run created before its intent is persisted | **A run's id is derived, not random: `taskid.Name(<task>:run:<len(status.runs)>)`.** CREATE writes `agents.ogenki.io/start-seq` and `agents.ogenki.io/head` (CREATE-only, like the traceparent). `queued` first Gets the next id: a claim that exists, in any phase, is recorded from the claim (role, start seq, head, tokens) and the task moves to its phase; `startRun` treats `AlreadyExists` the same way. `adopt()` is removed (Task 3.4). Closes ledger M4 (TL) | The name is the idempotency key; a persist-first write would add a status write per run that can itself conflict | A deleted, unrecorded claim is re-created under the same id; its room events are read from the stamped start seq, so nothing earlier is mixed in |
+| R49 | External review R06: late meter updates miss task totals | **`observe` refreshes every record**: one `Runs.List` per step; each record takes max(record, claim) tokens; the sum is the task's. `queued` observes too. **A terminal task settles for `settleWindow = 2 × poll.meter + 30 s`** after its end: Reconcile keeps stepping it (observe only) and records `agent_factory_task_tokens` once, when the window closes (`status.usageSettled`) (Task 3.4) | The meter keeps annotating ended runs; nothing says "final", so a fixed window is the bound | Usage written after `settleWindow` (a VM outage longer than it) is not in the task's total; the run's own annotation still has it, and the daily budget reads that |
+| R50 | External review R07: admission is list-check-create on two replicas; daily spend is summed from live runs | **One ledger object per UTC day, `agent-system` ConfigMap `agent-factory-ledger-<YYYYMMDD>`, written with optimistic concurrency.** Admission (API and reconciler alike): Get the ledger → check `spent[p] + Σ reserved[p] + maxTokens ≤ cap`, no reservation on the room, live runs < cap → Update adding `reserved.<runId> = {principal, room, maxTokens}` (a 409 re-reads and re-checks) → Create the run (id from R48, so a retry is idempotent). The leader-only meter appends each tick's increase to `spent.<principal>` of the day it observed it and drops the reservation when the run is terminal. Deleting a run refunds nothing. Ledgers older than 35 days are deleted (Tasks 5.2, 5.3, 4.2) | No new store: the apiserver's `resourceVersion` is the transaction, and 1 MiB holds a day's counters many times over. The room log's Postgres belongs to SP2 | A rebuild loses the ledger with etcd (R51). The backstop is a provider-side monthly spend limit, set by the owner on the Anthropic workspace (ADR-0054) and recorded in the runbook. Token budgets stay approximate by one meter tick per run (R12); the docs say which caps are exact (runs, rooms) and which approximate (tokens) |
+| R51 | External review R08: a rebuild forgets accepted work and breaker state | **GitHub is the durable store across rebuilds.** An open `agent/<id>` PR of this repository with no Task is labelled `factory/orphaned` and narrated once, never re-adopted (R52) (Task 3.4). From the wave, `paused()` builds the breaker window from GitHub (merged `factory/class:<c>` PRs merged by the merger App, and their `factory/revert` reverts), so a demotion survives a rebuild (narrows R41's residual) (Task 7.3a) | No new database (the review's own constraint); everything else a rebuild loses is in shadow until the wave | A task in flight at teardown is not resumed: a maintainer re-labels it. Spend: R50's residual |
+| R52 | External review R02: the arming trusts the `Agent-Run` trailer, which any run can write, and the verdict is not bound to a SHA. SP2 ledger ruling TB's "push identity" was never folded into this plan | **Supersedes TB's mechanism, not its intent.** All runs push as one App, so GitHub cannot tell runs apart. Arming binds a head to the task by the room log: `pr.HeadSHA` must equal, in full 40 characters, the `commit` of the latest `handoff` (or final) event whose broker-stamped actor is one of the task's implementer runs. When the template has verifiers, every verifier role's latest `approve` must carry `RunRecord.HeadSHA == pr.HeadSHA`. Trailers stay claims: a foreign or absent trailer still refuses, but a matching trailer is never sufficient. The merger merges with `mergePullRequest(expectedHeadOid)`, not auto-merge (Tasks 7.2, 7.3). Confinement is repo-level (`agent/**`); per-run branch isolation is not provided | Room events carry the broker-stamped actor (SP2 C4) and `handoff`/`review_verdict` already carry `commit`. `enablePullRequestAutoMerge`'s `expectedHeadOid` is checked at enable time only, and the disarm-by-polling path fails open while the factory is down; `mergePullRequest`'s is checked at merge time | Solo templates (`docs-links`) need a final room event naming the head: a `done` MCP tool with `commit`, or `handoff.toRole` widened to `factory` (SP2). A run that never reports its head always goes to a human |
+| R53 | External review R15: the tier-fit score is presented as an unbiased classifier comparison | **No accuracy or savings claim rests on `agent_factory_tier_fit_total`.** A value claim needs tiers on distinct models (AGW-8 I.3), model and template versions recorded per run, and comparison on the existing PR-outcome, intervention, revocation, time-to-PR and token metrics, plus the owner's human minutes. Task 8.1 drops `agent_error` from `underReasons` and labels the metric and panel a budget-fit heuristic | While every tier maps to `agent-default` (R11) only the budget varies; a frontier control run is no counterfactual for lower tiers; `agent_error` includes gateway and provider failures | Post-wave; it blocks no SP3 gate. SC-10 ("displayed") stands |
 
 ## Interfaces with other sub-projects
 
@@ -311,7 +317,7 @@ ruling names what it costs if it is wrong. None edits the spec; the ones worth p
 | `tier-light|standard|frontier` on agent-router | Tier → model (R11); optional | 2 |
 | `agent_router:run_tokens:total` | Optional meter source (R12) | 2 |
 | B1/B2 enforced (not shadow) | The gateway kill-switch layer; SC-6's fleet half | 7 |
-| Bedrock behind the `internal` listener | RunLore (`internal`) tasks | 2 |
+| The Anthropic backend behind the `internal` listener (ADR-0054; external review R13) | RunLore (`internal`) tasks | AGW-8, Task I.2 |
 
 **Produced for others:**
 
@@ -350,7 +356,7 @@ the branch cluster), never what must be merged.
 | FA-7 | agent-platform · `feat/factory-safety` | 8 | FA-6 | — | Stuck detection, control issue, interventions, tier fit, `task.final` | via FR-8 |
 | FR-8 | this · `feat/factory-observability` | 8 | FR-7 | FA-7 pre-release | VMRules, dashboard, the App key-compromise runbook (SD14), the injection canaries (G2), pins, verification | SC-5 (every run, human-requested included), SC-7, SC-8, SC-10, the four canaries PASS, `/verify-spec` |
 | FA-8 | agent-platform · `feat/factory-runlore` | 9 | FA-7 | — | RunLore intake, `investigate` = the triager alone, ending on a proposal (R38) | via FR-9 |
-| FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with SP4 PR 2's branch merged in | FA-8 pre-release; Bedrock behind the `internal` listener on the cluster | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
+| FR-9 | this · `feat/factory-runlore` | 9 | FR-8, with AGW-8's branch merged in | FA-8 pre-release; the Anthropic backend behind the `internal` listener on the cluster (AGW-8, Task I.2; external review R13) | RunLore `notify.templated`, intake CNP, token ExternalSecret | SC-9 |
 | FR-10 | this · `docs/agent-factory-journey` | 10 | FR-9 | the walkthrough's transcript | The walkthrough script and journey renderer; the user-facing pages and diagram built from its transcript | The owner's UX verdict |
 | FR-11 | this · `feat/merge-gate-live` | 10, after the wave | `main` | every SP3 PR merged; the three rulesets applied (Task 10.7) | `classes.docs-links` and `classes.revert` go from `shadow` to `live` | SC-2, SC-3, SC-4, SC-14 live; the revert drill; SC-11 starts counting |
 
@@ -421,7 +427,7 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | `scripts/ops/github/factory-canaries.sh`, `scripts/ops/k8s/{factory-canary-check.sh,gate-path-hits.py}`, `scripts/ci/tests/test-factory-canaries.sh` | 8 | The injection-canary regression suite (G2) |
 | `docs/superpowers/specs/2026-09-23-agent-dark-factory-verification.md` | 8, 9, 10 | `/verify-spec` output, re-run after the wave |
 | `scripts/ops/github/factory-walkthrough.sh`, `scripts/docs/factory-journey.py`, `scripts/ci/tests/test-factory-{walkthrough.sh,journey.py}`, `scripts/ops/tasks.yaml` | 10 | The scripted developer journey, its transcript, and the timeline and diagram rendered from it |
-| `website/content/docs/platform/agent-factory/{_index.md,user-guide.md}` (WIP since #2092), `website/content/docs/platform/_index.md` | 10 | The user-facing pages and the diagram, rewritten from the walkthrough's transcript |
+| `website/content/docs/platform/ai-platform/agents/{_index.md,user-guide.md}` (WIP since #2092; moved from `agent-factory/`), `website/content/docs/platform/ai-platform/status.md` | 10 | The user-facing pages and the diagram, rewritten from the walkthrough's transcript |
 
 ## Success criteria → proving task
 
@@ -440,7 +446,7 @@ After the live gate the FR PR stays a **draft** with pre-release pins. Release t
 | SC-11 reverted ≤ 5 % of 50 auto-merges | **10.7** (the count starts after the wave), tracked on the dashboard | `agent_factory_pr_outcomes_total` |
 | SC-12 gate-coverage fails on an uncovered child | **6.3** | fixture test |
 | SC-13 CLI token principal; direct create denied | **5.9** | run spec, admission error |
-| SC-14 foreign `Agent-Run` trailer never armed | 7.2, 7.3 (offline), 7.9 (shadow), **10.7** (live) | task status |
+| SC-14 a head no run of the task reported, or no verifier approved, is never merged (R52) | 7.2, 7.3 (offline), 7.9 (shadow), **10.7** (live) | task status |
 
 ## Owner actions
 
@@ -457,6 +463,7 @@ after it, FR-11.
 | [OWNER] | 6.8 | Approve the publication of the pre-wave policy copy to `Smana/.github` (it decides `main`'s status); the executor runs the command |
 | [OWNER] | 6.9, 10.6 | Only if the session lacks the deploy credentials: apply the `openbao/management` and `eks/configure` stacks from the integration checkout (the merge gate's OpenBao policy and JWT role) |
 | [OWNER] | 7.8 | Create the merger App `ogenki-agent-merger` (Contents write, Checks read, Statuses read, Pull requests write, Metadata read; webhook off), install it on `Smana/cloud-native-ref` only, `bao kv put -mount=agents merger-app`. The factory App is not touched, and no ruleset changes (R16) |
+| [OWNER] | 5.9 | Set a provider-side monthly spend limit on the Anthropic workspace (ADR-0054) and record it in the runbook: R50's backstop when a rebuild loses the ledger (external review R07) |
 | [OWNER] | 8.4 | Suspend, then unsuspend, the agents' App installation for the drill |
 | [OWNER] | 8.5a | Label the four injection canaries `factory/ready` |
 | [OWNER] | 9.3 | Only if the session's OpenBao token cannot write both mounts: Task 9.3 Step 1's two writes of one value, once (R18, R45) |
@@ -3503,7 +3510,7 @@ func New(reg prometheus.Registerer, tasks client.Reader, ns string, leader func(
 		ClassMismatch: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_class_mismatch_total",
 			Help: "Predicted class versus the class policy-bot matched (§2)."}, []string{"predicted", "matched"}),
 		TierFit: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_tier_fit_total",
-			Help: "After-the-fact tier fit per classifier (§7, SC-10)."}, []string{"classifier", "tier", "fit", "control"}),
+			Help: "After-the-fact budget-fit heuristic per classifier (§7, SC-10); not accuracy."}, []string{"classifier", "tier", "fit", "control"}),
 		IntakeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_intake_errors_total",
 			Help: "Failed intake polls or requests."}, []string{"source"}),
 		Revocations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agent_factory_run_revocations_total",
@@ -8574,8 +8581,8 @@ git commit -m "feat(factory): pair template: reviewer runs, verdicts, bounded ro
 - Modify (this repo): `tooling/base/agent-factory/helm-values-configmap.yaml` (image,
   `defaults.template: pair`), `flux/sources/ocirepo-agent-factory.yaml`
 
-- [ ] **Step 1: Push FA-3** as in Task 2.5 Step 1 (branch `feat/factory-pair`, draft PR "feat: pair
-  template (SP3 phase 3)"). Record the pre-releases.
+- [ ] **Step 1: Push FA-3**, Task 3.4's recovery fixes included, as in Task 2.5 Step 1 (branch
+  `feat/factory-pair`, draft PR "feat: pair template (SP3 phase 3)"). Record the pre-releases.
 
 - [ ] **Step 2: Pin FR-3.** Write the pre-releases and `defaults: {template: pair, …}` (until phase
   4's triage picks templates, every task gets a reviewer). Gates:
@@ -8599,6 +8606,55 @@ second reviewer run. Record which happened; to force the `changes` path, label a
 needs a test the implementer is unlikely to write unprompted, and repeat.
 
 - [ ] **Step 4: Tear down** as in Task 2.5 Step 5. FR-3 stays a draft.
+
+### Task 3.4: Recovery fixes before the live reviewer (external reviews R05, R06, R08; rulings R48, R49, R51)
+
+Lands on FA-3 **before Task 3.3 pushes it**; numbered 3.4 so later task numbers stay stable. Gate:
+Task 3.3 [LIVE] and daily use. Step R06 must land before Task 4.2's `budget-task` check, which reads
+the total it fixes. Every step is test-first, and each mutant must fail its test.
+
+**Files:**
+- Modify: `internal/factory/reconciler/{implement.go,reconciler.go,team.go}`, `internal/factory/runs/runs.go`,
+  `internal/app/factory.go`, `internal/factory/config/config.go`, `api/factory/v1alpha1/task_types.go`
+  (regenerate the CRD and the chart copy)
+- Create: `internal/factory/intake/orphans.go`
+- Test: `internal/factory/reconciler/recovery_test.go`, `internal/factory/intake/orphans_test.go`
+
+- [ ] **Step R05: Deterministic run ids (R48).** `RunID = taskid.Name(t.Name + ":run:" + strconv.Itoa(len(t.Status.Runs)))`
+  (`[a-z2-7]{8}`, a valid C2 id). `runs.Build` stamps `AnnStartSeq` and `AnnHead` as CREATE-only
+  annotations, as it does `AnnTraceparent`; `FromUnstructured` reads them back. `queued` starts with
+  one `Get` of the next id instead of `adopt`'s `List`; `startRun` maps `AlreadyExists` to the same
+  `recordExisting`, which records the existing claim's role, start seq, head and tokens in any phase,
+  never the replay's spec. `adopt` is removed; `internal/app/factory.go` drops `NewRunID: taskid.Random`
+  for the reconciler. Check that Task 5.5's patch limit admits the two CREATE-only annotations.
+  Tests: `TestLostWriteTerminalOrphanRecordedOnce` (Create succeeds, the status write fails, the run
+  goes `Failed` with 900 tokens, the reconcile replays: one claim, one `RunRecord` with `Tokens == 900`,
+  the original `StartSeq`); `TestLostWriteThenPRMergedStillRecords` (the replay takes the
+  `lateReviews` path, and the record and its tokens are present). Mutant: restore the random id.
+- [ ] **Step R06: Every record refreshed, then a bounded settle (R49).** `observe` lists runs once per
+  step and gives each record max(record, claim) tokens; `queued` observes too. `Reconcile`'s early
+  return for terminal tasks gains `!r.settling(&t)`; `end` no longer records `TaskTokens`: the settle
+  records it once, at `settleWindow = 2 × poll.meter + 30 s`, and sets `status.usageSettled`.
+  Test `TestLateUsageSettles`: the implementer ends at 1000 tokens and the reviewer starts; the meter
+  annotates the implementer to 1300 and, after the task ends, the reviewer from 200 to 260. Expect
+  `Usage.Tokens == 1560` and `TaskTokens` recorded once, with 1560. Mutants: `observe` current-only;
+  no settle.
+- [ ] **Step P: A Pending run is bounded** *(review, operational check)*. No layer bounds `Pending`:
+  `activeDeadlineSeconds` counts from the pod's start, and Kueue queues unadmitted work forever. In
+  `implementing` and `reviewing`, a run `Pending` for `caps.maxPendingMinutes` (default 30, validated
+  5..RunMinutes) is deleted (it never ran, so no usage is lost), the task records
+  `reason: run_unschedulable` and escalates; `/factory retry` restarts it. Test
+  `TestPendingRunEscalatesAndFreesSlot`: Pending for 31 min, the claim is deleted, the task is
+  `Escalated` with `run_unschedulable`, and the next task gets the slot.
+- [ ] **Step R08a: Orphaned PRs (R51).** On leader start and every issues poll, list open PRs whose
+  head is `agent/[a-z2-7]{8}` in this repository (never a fork), that carry `factory/class:*`, and that
+  have no Task of that name. Label each `factory/orphaned` and narrate once: "this PR's task was lost
+  in a cluster rebuild; it is human-only now; re-label the issue `factory/ready` to restart". Never
+  re-adopt it (R52: the footer and branch are forgeable hints). Test: a fork PR named
+  `agent/abcdefgh` is ignored; an own-repo one with no Task is labelled once (the narration marker
+  dedups).
+- [ ] **Step 5: Run the tests; commit.** `go test -race ./internal/factory/...` → `ok`;
+  `git commit -m "fix(factory): idempotent run ids, settled usage, bounded Pending, orphaned PRs"`.
 
 ---
 
@@ -9028,6 +9084,10 @@ git commit -m "feat(factory): triage: C7 with static fallback, class labels, mat
     sums today's `system:factory` runs; past `budgets.factoryDaily` the task stays `Queued` with
     reason `waiting_daily_budget` when `budgets.enforcePrincipal`, else it is counted as
     `budget-principal-shadow`.
+  - *External reviews R06, R07 (R49, R50):* `t.Status.Usage.Tokens` is the total Task 3.4's
+    `observe` refreshes, so that step lands first. Until Task 5.3 lands, `factorySpentToday` is
+    shadow only: it sums live runs, and a stop's deletions drop out of it. From Task 5.3 it reads
+    `spent["system:factory"]` from the day's ledger, and the factory's admission reserves in it (R50).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -9989,6 +10049,15 @@ The factory derives `branch` (`agent/<roomRef>`, else `agent/<runId>`) and never
 (C3); the only caller-named branch is R35's `resumeBranch`, checked against tasks, rooms and live
 runs.
 
+**Amendment (external review R07, ruling R50).** The list → check → create sequence is not atomic
+across two serving replicas, and the live-run sum forgets deleted runs. Replace `admitBudget`'s
+live-run sum, and the room check, with the day's ledger: Get `agent-factory-ledger-<YYYYMMDD>` →
+check `spent[p] + Σ reserved[p] + maxTokens ≤ cap`, no reservation on the room, live runs < cap →
+Update with `reserved.<runId>` (a 409 re-reads and re-checks) → Create (R48's id). The reconciler
+admits through the same ledger. Tests: `TestTwoAdmissionsOneSlot` (two `Server`s on one fake
+apiserver, each with a stale `resourceVersion`: exactly one 201, the other `over_budget` or
+`room_busy`); `TestDeleteDoesNotRefund`.
+
 - [ ] **Step 1: Write the failing test**
 
 `internal/factory/api/server_test.go`:
@@ -10489,7 +10558,8 @@ func (s *Server) admitRoom(ctx context.Context, p authn.Principal, in RunRequest
 // admitResume is R35's one caller-named branch: a stopped run's agent/<id>. A task's branch
 // resumes with /factory retry, a room's needs the caller's right to start runs there, and a
 // branch a live run holds is busy. The branch widens nothing: the agents' App may push any
-// agent/** branch already; SC-14's trailer check keeps foreign commits away from arming.
+// agent/** branch already; SC-14's run-reported head and SHA-bound verdicts (R52) keep foreign
+// commits away from the merge.
 func (s *Server) admitResume(ctx context.Context, p authn.Principal, branch string, all []runs.Run) (int, string) {
 	id := strings.TrimPrefix(branch, "agent/")
 	var task v1alpha1.Task
@@ -10567,6 +10637,10 @@ git commit -m "feat(factory): POST /v1/runs with room, repository and daily-budg
   - Revocation reasons written: `budget-run` (own cap, or a 429 at or above B1), `budget-fleet`
     (a 429 below B1: the only other agent-router bucket, R13), `budget-principal` (the principal's
     day, when `budgets.enforcePrincipal`).
+  - *External review R07 (R50):* the leader-only meter appends each tick's increase to
+    `spent.<principal>` of the day it observed it, in that day's ledger ConfigMap, drops a run's
+    reservation once it is terminal, and deletes ledgers older than 35 days. `budget-principal`
+    reads the ledger, not the live runs. Test `TestMidnightCrossingSplitsSpend`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -11517,6 +11591,10 @@ branch, run one task, and expect `revoked=budget-fleet`, `BudgetExhausted`, the 
 with "the agent fleet's daily token budget is spent"; restore the cap. Until then record the leg as
 deferred to SP4 PR 7 in FR-5's body.
 
+- [ ] **Step 5b: Atomic admission** *(external review R07, R50)*. Two concurrent `roomctl` requests
+  for one room: exactly one `201`. **Do not set `budgets.enforcePrincipal: true`, or admit a second
+  human principal, before this passes.**
+
 - [ ] **Step 6: Tear down** the test rooms' runs; FR-5 stays a draft.
 
 ---
@@ -11713,6 +11791,19 @@ git commit -m "docs(adr): ADR-0045 merge policy gate"
   - `check-workflow-secrets.sh`: exit 1 when a workflow triggered by `pull_request` or
     `pull_request_target` references a `secrets.*` other than `GITHUB_TOKEN`. `WORKFLOWS_DIR`
     overrides the directory.
+    *External review R01:* it also exits 1 when such a workflow grants any `write` permission at
+    workflow level, or at job level for a job not in the script's own allowlist (`sarif-upload:
+    security-events`, `render-diff-comment: pull-requests`, `build-and-push: packages,
+    security-events`, `notify-main-broken: issues` — a recorded exception: push-gated by its `if:`,
+    deliberately checkout-free, its `run:` steps open the tracking issue only after a broken push
+    to `main`). An allowlisted job must contain no `actions/checkout` of the PR head, and no
+    `run:` step that executes on a `pull_request` event — a job whose `if:` pins
+    `github.event_name == 'push'` satisfies this by construction and is listed as push-gated in
+    the script. Fixtures: a workflow-level write fails; an unlisted job with write fails; a
+    push-gated allowlisted job with a `run:` step passes; the same job without the push gate
+    fails. The allowlist is a gate path (R17). `build-and-push` fails the last clause today:
+    split the push out of the PR path, or record it as an exception. The `ci.yaml` job split is
+    its own `fix(ci)` PR.
   - Tasks `ci:policy-gates`, `ci:workflow-secrets`.
 
 The canonical gate list is `no_changed_files.paths` of the rule `agent change approved by a
@@ -11793,6 +11884,8 @@ echo PASS
 #
 # T8: a pull_request workflow may reference GITHUB_TOKEN and no other secret; agent branches
 # live in this repo, so their PRs run with its secrets.
+# External review R01: such a workflow also grants no write permission, at workflow level
+# or in a job outside the script's allowlist.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/../check-workflow-secrets.sh"
@@ -11809,6 +11902,11 @@ on: {push: {branches: [main]}}
 jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.DEPLOY_KEY }}"}]}}
 EOF
 WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "GITHUB_TOKEN, and secrets on push-only workflows, pass"
+cat >"$d/push-gated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {if: "github.event_name == 'push'", runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "a push-gated allowlisted job with a run: step passes"
 cat >"$d/bad.yml" <<'EOF'
 on:
   pull_request_target:
@@ -11816,6 +11914,26 @@ jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.SLACK_WEBHOOK }}"}]}}
 EOF
 out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request_target workflow with a secret fails"
 grep -q 'bad.yml.*SLACK_WEBHOOK' <<<"$out" || fail "the failure names the file and the secret"
+cat >"$d/wf-write.yml" <<'EOF'
+on: {pull_request: {}}
+permissions: {contents: write}
+jobs: {a: {runs-on: x, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with a workflow-level write permission fails"
+grep -q 'wf-write.yml.*contents' <<<"$out" || fail "the failure names the file and the permission"
+cat >"$d/job-write.yml" <<'EOF'
+on: {pull_request: {}}
+jobs:
+  upload: {runs-on: x, permissions: {security-events: write}, steps: [{run: "echo ok"}]}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with an unlisted job holding write fails"
+grep -q 'job-write.yml.*upload' <<<"$out" || fail "the failure names the file and the job"
+cat >"$d/ungated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "an allowlisted job with a run: step and no push gate fails"
+grep -q 'ungated-run.yml.*notify-main-broken' <<<"$out" || fail "the failure names the file and the job"
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
 ```
@@ -11888,10 +12006,31 @@ PY
 # T8 (SP3 §8): agent branches live in this repository, so their PRs run pull_request workflows
 # with its secrets. Only GITHUB_TOKEN may appear in such a workflow; a new secret-bearing
 # workflow must fence agent heads first.
+# External review R01: such a workflow also grants no write permission — write scopes live
+# only in allowlisted jobs that run no PR code. The allowlist below is a gate path (R17).
 set -euo pipefail
 DIR="${WORKFLOWS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.github/workflows}"
 DIR="$DIR" python3 - <<'PY'
 import glob, os, re, sys, yaml
+
+# job -> the write scopes it may hold. build-and-push's split out of the PR path is its
+# own fix(ci) PR; until it lands the lint flags the job's run steps, and the entry stays
+# so the split cannot quietly widen it again.
+ALLOWLIST = {
+    "sarif-upload": {"security-events"},
+    "render-diff-comment": {"pull-requests"},
+    "build-and-push": {"packages", "security-events"},
+    # notify-main-broken: push-gated if:, no checkout by design, run: only opens the tracking issue
+    "notify-main-broken": {"issues"},
+}
+
+def write_scopes(perms):
+    # `permissions: write` (a bare string) is write on every scope
+    if perms == "write":
+        return None
+    if isinstance(perms, dict):
+        return {k for k, v in perms.items() if v == "write"}
+    return set()
 
 bad = []
 for f in sorted(glob.glob(os.path.join(os.environ["DIR"], "*.y*ml"))):
@@ -11899,10 +12038,44 @@ for f in sorted(glob.glob(os.path.join(os.environ["DIR"], "*.y*ml"))):
     doc = yaml.safe_load(text) or {}
     on = doc.get("on", doc.get(True, {}))  # PyYAML reads the key `on` as True
     events = on if isinstance(on, (dict, list)) else [on]
-    if not any(e in ("pull_request", "pull_request_target") for e in events):
+    triggers = {e for e in events if e in ("pull_request", "pull_request_target")}
+    if not triggers:
         continue
-    for name in sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)) - {"GITHUB_TOKEN"}):
-        bad.append(f"{os.path.basename(f)}: secrets.{name} in a pull_request workflow")
+    name = os.path.basename(f)
+    for secret in sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)) - {"GITHUB_TOKEN"}):
+        bad.append(f"{name}: secrets.{secret} in a pull_request workflow")
+    scopes = write_scopes(doc.get("permissions"))
+    if scopes is None:
+        bad.append(f"{name}: workflow-level permissions: write (every scope)")
+    else:
+        for scope in sorted(scopes):
+            bad.append(f"{name}: workflow-level {scope}: write")
+    for job, spec in (doc.get("jobs") or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        held = write_scopes(spec.get("permissions"))
+        if held is None:
+            bad.append(f"{name}: job '{job}' holds write on every scope")
+            continue
+        for scope in sorted(held - ALLOWLIST.get(job, set())):
+            bad.append(f"{name}: job '{job}' holds {scope}: write and is not in the allowlist")
+        if job in ALLOWLIST:
+            # An allowlisted job runs no PR code. pull_request's default checkout ref is
+            # the PR merge commit; pull_request_target's is the base, so only an explicit
+            # pull_request ref counts there.
+            steps = [s for s in (spec.get("steps") or []) if isinstance(s, dict)]
+            # a push-gated if: means the job's run: steps never execute on a pull_request event
+            job_if = str(spec.get("if") or "")
+            push_gated = "github.event_name == 'push'" in job_if or "!= 'pull_request'" in job_if
+            if any("run" in s for s in steps) and not push_gated:
+                bad.append(f"{name}: allowlisted job '{job}' has a run: step")
+            for s in steps:
+                if str(s.get("uses") or "").split("@")[0] != "actions/checkout":
+                    continue
+                ref = str((s.get("with") or {}).get("ref") or "")
+                if "github.event.pull_request" in ref or "github.head_ref" in ref \
+                        or (not ref and "pull_request" in triggers):
+                    bad.append(f"{name}: allowlisted job '{job}' checks out the PR head")
 for b in bad:
     print("FAIL:", b, file=sys.stderr)
 sys.exit(1 if bad else 0)
@@ -12906,10 +13079,11 @@ Expected: `approved`, `pending`, `error` (SC-3's verdict, before any ruleset). R
 
 ## Phase 7 — Auto-merge and rollback, built and run in shadow (FA-6, FR-7)
 
-The merger App (R16) arms GitHub's native auto-merge on an agent PR only when every §5.1 condition
-holds: 8 CI checks green, `policy-bot: main` = `success` from policy-bot's App with no maintainer
+The merger App (R16) merges an agent PR with `expectedHeadOid` (R52 replaced GitHub's native
+auto-merge) only when every §5.1 condition holds: 8 CI checks green, `policy-bot: main` = `success` from policy-bot's App with no maintainer
 approval (so a live class matched), the reviewer's verdict `approve` where the template has one,
-the head commit's `Agent-Run` trailer naming one of the task's runs (SC-14), the class live and not
+the head being the one the task's own run reported in the room, every verifier approve naming that
+SHA, and no foreign trailer (SC-14, R52), the class live and not
 paused, and the daily cap not reached. GitHub then waits for classic protection and the
 `agent-merge-gate` ruleset. After the merge, the task watches `main`'s CI on the merge commit for 30
 minutes and reverts on red, or on a maintainer's `factory/revert` within 7 days; one revert pauses
@@ -13316,6 +13490,30 @@ verdict implies: the predicted live class on a clean `success`, `review` on `pen
 `error`; a difference from the prediction counts as a `class_mismatch` (§2). A `shadow` class passes
 every condition a live one does and gets the verdict `shadow` ("would auto-merge") instead of `arm`.
 
+**Amendment (external reviews R02, R03; ruling R52).** Write these tests first; they supersede the
+trailer-only rule in the code below.
+
+- `ArmInputs` gains `ReportedHead string` (the `commit` of the latest `handoff` or final room event
+  whose broker-stamped actor is one of the task's implementer runs), `Verifiers []v1alpha1.RunRecord`
+  and `Files struct{ Base, Head map[string]string }` (from a new `forge.Files(base, head)` read, if
+  the forge lacks one).
+- After `no_approving_verdict`: `ReportedHead == ""` or `!= PR.HeadSHA` (full 40 characters) →
+  `human("head_unreported", class)`; a verifier role's latest approve whose `HeadSHA != PR.HeadSHA` →
+  `human("verdict_stale", class)`. The trailer check stays: foreign or absent still refuses.
+- `reconciler.LinksOnly(base, head map[string]string) (bool, string)`. For each changed file:
+  replacing every inline link target `](…)` and reference-definition target with a placeholder
+  leaves base and head byte-identical; the target counts are equal; each changed target is
+  relative → relative, or `https` with the old host unchanged (`web.archive.org` allowed), never
+  another scheme. For classes `docs-links` and `revert`, `!LinksOnly` → `human("class_mismatch", class)`.
+- Tests: run D pushes H with A's trailer → `head_unreported`; approve H1, then H2 is pushed before
+  the decision → `verdict_stale`; the legitimate path → `shadow`. `LinksOnly`, one failing one-line
+  diff each: `<script>`, a changed fenced command, a reworded sentence, a new external host,
+  `javascript:`; one passing diff: a relative link retargeted.
+- Solo templates (`docs-links` is solo) post a final room event that names the head: a `done` MCP
+  tool with `commit` (the `room_handoff` pattern), or `handoff.toRole` widened to `factory` (SP2).
+- Gate: Task 7.9 (shadow) proves both reasons; Task 10.7 flips no class `live` without them, so the
+  shadow forecast (`shadow_would_arm`) is honest.
+
 - [ ] **Step 1: Write the failing test**
 
 `internal/factory/reconciler/arm_test.go`:
@@ -13595,9 +13793,9 @@ git commit -m "feat(factory): the arming decision of section 5.1, table-tested (
     that ran failed, `PENDING` while one that ran is still running, else `SUCCESS`. A watched check
     that never ran is not failing: a path-filtered push workflow never reports on the merge commit.
     `verifying` uses it over `merge.verifyChecks`; the arming keeps `CIState` over `requiredChecks`.
-  - Arming records the decided head in `status.pullRequest.headSHA` and passes it as
-    `expectedHeadOid`; a head that moves while `AutoMerging` is disarmed (`DisableAutoMerge`) and
-    decided again from `AwaitingCI` (reason `head_moved`), so SC-14's trailer check covers it.
+  - Arming records the decided head in `status.pullRequest.headSHA` and merges it with
+    `expectedHeadOid` (R52, amendment below); a moved head fails the merge and is decided again from
+    `AwaitingCI` (reason `head_moved`), run-reported head and SHA-bound verdicts included.
   - A `Reverted` task keeps being reconciled while its revert PR is open: merged or closed ends the
     watch; still open after `merge.verifyFor` disarms it and asks a maintainer (`revert_stalled`).
   - `narrate.Armed`, `narrate.WaitingForHuman(t, reason)`, `narrate.CIExhausted(t, failing)`,
@@ -13605,6 +13803,16 @@ git commit -m "feat(factory): the arming decision of section 5.1, table-tested (
     `main_red`, `revert_requested`, `merged_verified`, `gate_path`, `class_mismatch`, `foreign_trailer`,
     `class_paused`, `head_moved`, `shadow_would_arm`.
   - It changes two earlier tests whose expectations encoded `ready` = `AwaitingHuman` (Step 3).
+
+**Amendment (external review R02, ruling R52).** It supersedes the arming code below.
+`EnableAutoMerge(nodeID, head)` becomes `Merge(nodeID, head)`, which calls
+`mergePullRequest(expectedHeadOid: head, mergeMethod: SQUASH)`: GitHub checks the head at merge
+time, while auto-merge's `expectedHeadOid` is an enable-time check and the disarm-by-polling path
+fails open while the factory is down. A `409` or `405` → `AwaitingCI` (`head_moved`) or
+`human("not_mergeable")`. The `AutoMerging` disarm path is dropped; `Verifying` and the revert watch
+stay. `AutoMerged` now means "merged by the merger"; R16's merger App keeps Pull requests write and
+Contents write. Metrics and narration are renamed only. Test: the forge fake rejects a moved head,
+and nothing merges.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -14291,6 +14499,10 @@ control issue.
   - `reconciler.Demoted(merged []*v1alpha1.Task, b config.Breaker) (bool, int)`; `paused` returns it.
   - A human merge seen by `awaitingCI` records `status.pullRequest.mergedAt`, so it counts.
   - `narrate.ClassDemoted(t *v1alpha1.Task, window, maxReverts int) Event`, keyed per task.
+  - *External review R08 (R51):* `paused` builds the window from GitHub, not only from Tasks:
+    merged PRs labelled `factory/class:<c>` that the merger App merged, and their `factory/revert`
+    reverts. A demotion then survives a rebuild. Test: the Task list is empty and GitHub holds 1
+    revert in the last 10 merges, so `paused` returns true. Gate: Task 10.7 (the wave), not daily use.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -15186,8 +15398,10 @@ kubectl exec -n agents "$POD" -c harness -- sh -c 'cd /workspace/repo && git fet
 
 The pushed head carries `Agent-Run: <D's runId>` (the commit hook). Expect A-bis's task
 `AwaitingHuman` with reason `foreign_trailer`, no "would auto-merge" comment, and
-`autoMergeRequest` `null`, even though its policy status may be `success`. Close A-bis and D
-unmerged; delete their branches.
+`autoMergeRequest` `null`, even though its policy status may be `success`. *(External review R02,
+R52)* Repeat with the probe commit's trailer rewritten to A-bis's run id: expect `head_unreported`.
+On a `pair` task, approve H1 and push H2 before the decision: expect `verdict_stale`. Close A-bis
+and D unmerged; delete their branches.
 
 - [ ] **Step 5: The schedule**
 
@@ -15301,6 +15515,9 @@ func TestFitAndScores(t *testing.T) {
 	under := &v1alpha1.Task{Status: v1alpha1.TaskStatus{Phase: v1alpha1.PhaseEscalated, Reason: "review_rounds_exhausted"}}
 	if Fit(under) != "under" || Fit(&v1alpha1.Task{Status: v1alpha1.TaskStatus{Phase: v1alpha1.PhaseStopped}}) != "" {
 		t.Fatal("under after a full attempt; a stop scores nothing")
+	}
+	if Fit(&v1alpha1.Task{Status: v1alpha1.TaskStatus{Phase: v1alpha1.PhaseEscalated, Reason: "agent_error"}}) != "" {
+		t.Fatal("agent_error may be the gateway's: unscored (R53)")
 	}
 	cl := v1alpha1.Classification{Classifier: "semantic-router", Tier: "standard",
 		Shadow: []v1alpha1.ShadowVerdict{{Classifier: "jev", Tier: "frontier"}, {Classifier: "other", Tier: "light"}}}
@@ -15481,7 +15698,8 @@ func (r *Reconciler) stuck(ctx context.Context, t *v1alpha1.Task, run runs.Run) 
 	return true, r.Runs.Delete(ctx, run.ID)
 }
 
-var underReasons = []string{"stuck", "agent_stuck", "agent_error", "review_rounds_exhausted", "ci_red", "budget-run", "budget-task"}
+// agent_error is not here: it includes gateway and provider failures, which score nothing (R53).
+var underReasons = []string{"stuck", "agent_stuck", "review_rounds_exhausted", "ci_red", "budget-run", "budget-task"}
 
 // Fit is §7's after-the-fact score of the tier that ran: under when the task escalated for
 // capability after a full attempt, over when it succeeded on < 20 % of the tier's task budget.
@@ -15501,8 +15719,8 @@ type TierScore struct{ Classifier, Tier, Fit string }
 
 var tiers = []string{"light", "standard", "frontier"}
 
-// Score rates every classifier, acting and shadow, against the tier that would have fit. The
-// OD-14 control group, at frontier whatever C7 said, is what makes this unbiased (§7).
+// Score rates every classifier, acting and shadow, against the tier that would have fit: a
+// budget-fit heuristic (§7); the control group is not a counterfactual for lower tiers (R53).
 func Score(cl v1alpha1.Classification, acting, fit string) []TierScore {
 	right := slices.Index(tiers, acting)
 	switch fit {
@@ -15856,7 +16074,7 @@ spec:
         {"id": 8, "type": "table", "title": "Class mismatches (triage quality)", "gridPos": {"x": 16, "y": 16, "w": 8, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "targets": [{"refId": "A", "expr": "sum by (predicted, matched) (increase(agent_factory_class_mismatch_total[30d]))", "format": "table", "instant": true}]},
-        {"id": 9, "type": "table", "title": "Tier fit by classifier (SC-10, Jev vs OSS)", "gridPos": {"x": 0, "y": 24, "w": 16, "h": 8},
+        {"id": 9, "type": "table", "title": "Budget fit by classifier (heuristic)", "gridPos": {"x": 0, "y": 24, "w": 16, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
          "targets": [{"refId": "A", "expr": "sum by (classifier, fit, control) (increase(agent_factory_tier_fit_total[30d]))", "format": "table", "instant": true}]},
         {"id": 10, "type": "stat", "title": "Kill switch", "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
@@ -15911,15 +16129,19 @@ full scope: the stop stops every run, human-started ones included (owner, 2026-0
   Expected: the admitted sandbox pods are evicted within seconds
   (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, resume both
   Kustomizations.
-- [ ] **Step 4: The gateway** — needs SP4 PR 7 (B1/B2 enforced). If it is on the cluster, set the
-  agent fleet cap to 0 on the integration branch: the next model call of any run gets a 429, and the
-  meter names it `budget-fleet`. Otherwise record the layer as deferred to SP4 PR 7.
+- [ ] **Step 4: The gateway, independent of the factory and of the ratelimit store** *(external
+  review, stop drills)*. A budget is not a stop: the fleet bucket fails open and is shadow until SP4
+  PR 7. Scale the `agent-router` data plane to 0 (or delete its listener's HTTPRoutes): the next model
+  call of a live run fails while its sandbox still runs. Restore. After SP4 PR 7, the fleet cap at 0
+  (`budget-fleet` 429) is an additional check, not the layer.
 - [ ] **Step 5: [OWNER] GitHub, independent of the cluster** — the owner suspends the **agents'** App
   installation (`https://github.com/settings/installations` → `ogenki-agents` → Suspend). From a
   running implementer sandbox, `kubectl exec … -c harness -- git -C /workspace/repo push origin HEAD`
   fails with `403`. The owner unsuspends it.
-- [ ] **Step 6:** Record the timestamps in FR-8's body; SC-5 is the first two numbers (≤ 30 s,
-  ≤ 2 min, the human run included) and the 403.
+- [ ] **Step 6:** Record, for **every** step, `t(action)` → `t(effect)` and what still works, in FR-8's
+  body *(external review, stop drills)*. Step 5: GitHub writes stop, but model calls and execution
+  continue. Step 3: pods are evicted, and GitHub tokens stay valid until their TTL. SC-5 is Step 1's
+  two numbers (≤ 30 s, ≤ 2 min, the human run included) and Step 5's 403.
 
 ### Task 8.5: [LIVE] SC-1's p50, SC-7, SC-10; SC-11 tracking; `/verify-spec`
 
@@ -16227,8 +16449,9 @@ carries the alert, the resource, the verdict and the room link, never the findin
 2026-09-27; R38): it confirms the finding over read-only MCP and hands off a proposed public issue
 text, and the task ends `Done` (`proposal_ready`). An internal-origin task never feeds a public
 implementer: a maintainer opens a public issue with the text they approve and labels it
-`factory/ready`, an ordinary public task. The triager run is `internal`, so this phase needs SP4 PR
-2's Bedrock backend on the cluster (OD-13; the spec's phase 6).
+`factory/ready`, an ordinary public task. The triager run is `internal`, so this phase needs the
+Anthropic backend behind the `internal` listener on the cluster: AGW-8, Task I.2 (ADR-0054, OD-13;
+external review R13; the spec's phase 6).
 
 Gate: SC-9: replaying one RunLore payload twice yields exactly one issue and one task.
 
@@ -16967,7 +17190,7 @@ git add observability tooling clusters flux .policy.yml
 git commit -m "feat(runlore): findings reach the agent factory's intake, inside the umbrella"
 git push -u origin feat/factory-runlore
 gh pr create --draft --title "feat(agent-factory): RunLore intake and investigate (SP3 phase 9)" \
-  --body "SP3 phase 9, after SP4 PR 2's Bedrock backend. Stacks on feat/factory-observability. Draft until the wave."
+  --body "SP3 phase 9, after AGW-8's Anthropic backend (Task I.2). Stacks on feat/factory-observability. Draft until the wave."
 ```
 
 ### Task 9.4: [LIVE] SC-9, and one real finding end to end
@@ -17320,8 +17543,9 @@ issue's comments read, in order: started (run, branch, budget, room link), PR op
 ### Task 10.3: FR-10 — the docs and the diagram, from that run
 
 **Files:**
-- Modify: `website/content/docs/platform/agent-factory/_index.md` (the callout, the statuses) and
-  `website/content/docs/platform/agent-factory/user-guide.md` (Part 1 rewritten from the
+- Modify: `website/content/docs/platform/ai-platform/agents/_index.md` (the callout),
+  `website/content/docs/platform/ai-platform/status.md` (the statuses, which live only there) and
+  `website/content/docs/platform/ai-platform/agents/user-guide.md` (Part 1 rewritten from the
   walkthrough's transcript, Part 2 retired). Both exist since #2092 merged; the steps below that
   write `what-happens-to-a-task.md` write Part 1 of `user-guide.md` instead.
 - Modify: `website/content/docs/platform/_index.md` (a card)
@@ -17338,7 +17562,7 @@ Expected: a table of six rows and one mermaid block.
    humans watch, steer or approve rather than drive; low-risk docs fixes merge themselves once
    the merge gate is live (FR-11).
 2. A `{{< callout >}}` with the state after the wave: what is live on aws-0, what waits for SP4
-   (tier routing, Bedrock for `internal` work, enforced gateway budgets).
+   (tier routing, the Anthropic backend for `internal` work, enforced gateway budgets).
 3. The architecture diagram: the SP3 spec's flowchart, cut to issue → factory → room → runs → PR →
    policy-bot → merge.
 4. `{{< cards >}}` to `what-happens-to-a-task`, ADR-0045 and ADR-0048.
@@ -17465,6 +17689,11 @@ The default path (owner, 2026-09-27; R32): every SP3 PR is merged, so merges are
 rulesets, the live classes and every proof that needs a real merge run here, in this order.
 Branch `feat/merge-gate-live` from `origin/main` (FR-11).
 
+**Gate (external reviews R02, R03, R08):** no class goes `live` before Task 7.2's `head_unreported`,
+`verdict_stale` and `LinksOnly` checks and Task 7.3's `expectedHeadOid` merge have passed their tests
+and Task 7.9's shadow proof (R52), and Task 7.3a's breaker reads GitHub (R51). Live proof: a push
+after the decision fails the merge call on `expectedHeadOid`.
+
 - [ ] **Step 1: [OWNER] The rulesets, in order** (Task 7.8's and Task 6.7's appliers):
 
 ```bash
@@ -17497,8 +17726,8 @@ required on `main`; the owner bypasses it for pull requests, Renovate always (OD
   - B2: `pending`, `AwaitingHuman` (`policy_pending`); the owner approves, then merges or closes it.
   - C2 (`.policy.yml`): `error`, and it stays `error` after the owner's approval;
     `gh pr merge <C2-pr> --squash` (no `--admin`) fails citing the required status. Close it.
-  - SC-14: Task 7.9 Step 4's probe on A2-bis from D2's sandbox: `foreign_trailer`, `autoMergeRequest`
-    `null`. Close both.
+  - SC-14: Task 7.9 Step 4's probe on A2-bis from D2's sandbox: `foreign_trailer`, then
+    `head_unreported` with the forged trailer (R52); nothing merges. Close both.
 
 - [ ] **Step 4: [OWNER] The revert drill and the circuit breaker**
 
@@ -17538,7 +17767,7 @@ shows one merged after Step 1, by `renovate`; record whether its auto-merge wait
 | The C7 classifier service | SP4 PR 5 | R24: until it exists every task is `standard` with `fallback: static` |
 | `tier-*` routes on agent-router; `agent_router:run_tokens:total` | SP4 PR 2 | R11, R12: tiers size budgets and teams only until then |
 | B1–B2 enforced on agent-router: the gateway kill-switch layer, SC-6's fleet leg | SP4 PR 7 | R13; Task 5.9 Step 3 and Task 8.4 run those legs once it is on the cluster |
-| Bedrock behind the `internal` listener | SP4 PR 2 | Phase 9 needs it (OD-13) |
+| The Anthropic backend behind the `internal` listener | AGW-8, Task I.2 (ADR-0054; external review R13) | Phase 9 needs it (OD-13) |
 | The verdict poster (Δ1), the queue store, `brief.Build`, `runrequest.Factory`, `roomctl` | SP2 | Consumed by name (Interfaces) |
 | Transparent resume of a lost pod | SP1 follow-up | The factory escalates `pod_lost`; a maintainer comments `/factory retry` |
 | A provider 429 that is not a budget 429 (developer M4) | SP1 harness, SP4 | R13 maps only Envoy `RL` 429s; the harness still ends on any 429 |
@@ -17560,7 +17789,7 @@ This plan does not edit the spec; "Built" says whether the plan already works th
 | SD6 | **Kueue: two ClusterQueues** `agents-factory` and `agents-interactive` in cohort `agents`, one per LocalQueue | R10 (LocalQueues carry no quota) | §4 line 178 | Yes |
 | SD7 | **RunLore issues**: `factory/proposed` only, never `factory/ready`; the public issue carries no finding text | R18, R33 | §1 line 124 | Yes |
 | SD8 | **Human "Request changes" loops** are bounded by the task token cap, not `maxReviewRounds` | R27, with Δ5 | §3 | Yes |
-| SD9 | **User-facing pages** `website/content/docs/platform/agent-factory/{_index,user-guide}.md` (WIP since #2092), rewritten from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
+| SD9 | **User-facing pages** `website/content/docs/platform/ai-platform/agents/{_index,user-guide}.md` (WIP since #2092), rewritten from the live walkthrough | Vision D1, developer M9; the owner rule | Implementation outline | Yes (FR-10) |
 | SD10 | **The merge gate runs in shadow until the wave**: before it nothing auto-merges, seeded or not; the factory narrates "would auto-merge". SC-2's and SC-14's live halves, the revert and SC-11's count start after the wave (owner, 2026-09-27) | R32 | §5.1, §9 lines 472, 481; implementation outline | Yes (Task 10.7) |
 | SD11 | **`PolicyBotUnavailable`** keeps its no-ready-pod half; the webhook-5xx half has no metric on the Cilium Gateway route, so webhook failures are read from the App's delivery log | T9 | §7 | No-pod half only |
 | SD12 | **A second approver**: the policy names the owner three times (`users: [Smana]`). A user-owned repo has no teams, so name one YAML anchor `maintainers` listing users, used by the human rule, the approval requirement and the labeller check | Developer M7 | §5 lines 275, 305 | **Declined** (owner, 2026-09-27: a single-owner repository) |
@@ -17644,3 +17873,12 @@ collector and dashboard share is in the observability plan's own "Further review
 | F1 | A trigger-rooted trace per task | R46; Tasks 1.5a, 1.10b, 1.11a, 1.12a, 1.13a | Accepting a `factory/ready` task mints its root span into `status.trace`, and every run gets its `traceparent` as `agents.ogenki.io/traceparent`. When the task ends, the span is exported once to the collector's :4317, carrying ids, tier and end reason |
 | F2 | The step log carries `trace_id` | observability plan O22 | Nothing here: the harness prints it. Correlation only: the factory attributes and meters nothing by trace id |
 | F3 | Routing tier vs spend | R47; Tasks 1.5a, 1.10b, 4.2a | Every factory run is labelled `agents.ogenki.io/tier`, the tier it runs on, fixed for the run. Agents are never re-routed per request within a run |
+
+## GCP parity cross-plan edit (2026-09-29)
+
+- **The merge gate lands on GCP's management stack too, not only AWS's.** The `merge-gate` kv-v2 mount, the
+  `merge-gate-secrets` policy (Task 6.4) and `secrets-admin`'s paths on it go into the shared store-of-record
+  module (`opentofu/shared/modules/openbao-store-of-record`), which `opentofu/gcp/openbao/management` calls, with
+  the JWT role `merge-gate-secrets` in `opentofu/gcp/gke/configure/openbao.tf` beside AWS's
+  `opentofu/aws/eks/configure/openbao.tf`. gcp-0 is the platform (GCP parity plan), and
+  `validate-openbao-policies.sh` fails when the AWS and module copies of a shared policy differ.

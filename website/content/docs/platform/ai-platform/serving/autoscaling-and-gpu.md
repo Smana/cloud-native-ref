@@ -3,6 +3,8 @@ title: Autoscaling & GPUs
 weight: 40
 description: Three KEDA triggers on leading vLLM signals, why minReplicas is never zero, and the GPU and storage foundation underneath.
 lastVerified: 2026-08-27
+aliases:
+  - /docs/platform/ai-platform/autoscaling-and-gpu/
 ---
 
 Scaling a GPU workload is not scaling a web service. A cold start is 30–90
@@ -55,15 +57,10 @@ front of the fleet.
 The cost is explicit rather than hidden: four models at `min=1` hold four
 GPUs continuously, whether or not anyone sends a request.
 
-{{< callout type="warning" >}}
-A fourth, opt-in trigger on the Gateway API Inference Extension's
-InferencePool saturation gauge is specified
-(`docs/specs/done/2026-Q3/011-inferencepool-saturation-keda/spec.md`) but
-**could not be verified**: the pinned KCL module renders only the three
-triggers above, and that spec's own task and review checklists are almost
-entirely unchecked. Treat it as not shipped despite living under the `done`
-archive, and re-verify before citing it as delivered.
-{{< /callout >}}
+A fourth, opt-in trigger on the InferencePool saturation gauge is specified but **not
+shipped**; see the
+[serving roadmap]({{< relref "/docs/platform/ai-platform/status.md#serving-roadmap" >}}) before
+citing it as delivered.
 
 ## The GPU foundation
 
@@ -113,3 +110,11 @@ principle.
 records why this replaced an init-container sync, and
 [ADR-0003]({{< relref "/docs/decisions/0003-vllm-production-stack-over-kserve.md" >}})
 why vLLM Production Stack was chosen over KServe + llm-d.
+
+## Future improvements
+
+[kvcached](https://github.com/ovg-project/kvcached) gives the serving engine virtual memory for its
+KV cache, backed by GPU memory only on demand, so several models can share one GPU elastically; it
+could let the two small always-warm models, the FIM model (`xplane-qwen-coder-fim`) and LlamaGuard
+(`xplane-llamaguard3-1b`), which each hold a whole L4 today, share one. It needs GPU sharing in
+Kubernetes and a change to the `InferenceService` composition.
