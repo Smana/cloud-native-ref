@@ -11,8 +11,9 @@ wrong:
       routes a principal can reach (programme contract C5). At least one such
       policy must exist -- zero is a layout regression, not compliance, and
       used to pass this check vacuously. A BackendTrafficPolicy that resolves
-      to a different Gateway class is out of scope, so a future non-budget
-      global rate limit elsewhere is not forced into this shape.
+      to a different Gateway class, or that targets a route rather than a
+      Gateway at all, is out of scope, so a future non-budget global rate
+      limit elsewhere is not forced into this shape.
   A2  Every such rule charges tokens, not calls: request cost 0, response cost
       from io.envoy.ai_gateway/llm_total_token (SP4 design section 6).
   A3  Every Gateway of class envoy-ai-gateway is covered by a
@@ -21,10 +22,12 @@ wrong:
       that targets it, since Envoy Gateway does not merge CTP levels: a
       listener-scoped policy REPLACES the Gateway-level one for that listener
       rather than adding to it, so relying on the Gateway-level strip alone
-      would let a later, unrelated listener-scoped policy silently drop it.
-      At least one Gateway of this class must exist in the bundle -- zero is a
-      layout regression, not compliance, and used to pass this check
-      vacuously.
+      would let a later, unrelated listener-scoped policy silently drop it. A
+      Gateway is covered by a Gateway-scoped ClientTrafficPolicy, or by
+      listener-scoped ones whose `sectionName`s cover every listener it
+      declares (review M6). At least one Gateway of this class must exist in
+      the bundle -- zero is a layout regression, not compliance, and used to
+      pass this check vacuously.
   A4  A BackendTrafficPolicy that targets an HTTPRoute or AIGatewayRoute sets
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
@@ -109,8 +112,11 @@ def check_rate_limit_rules(objs):
     def targets_ai_gateway(obj):
         ns = (obj.get("metadata") or {}).get("namespace", "")
         gateway_targets = [t for t in spec_of(obj).get("targetRefs") or [] if t.get("kind") == "Gateway"]
+        # No Gateway targetRef at all -- a route-only policy (an ordinary rate
+        # limit on some unrelated HTTPRoute, say) -- is out of scope for A1/A2.
+        # It still owes A4's mergeType, checked unconditionally below.
         if not gateway_targets:
-            return True
+            return False
         return any(gateway_classes.get((ns, t.get("name")), AI_GATEWAY_CLASS) == AI_GATEWAY_CLASS
                    for t in gateway_targets)
 
@@ -162,7 +168,11 @@ def check_identity_strips(objs):
     gateway_keys = {((g.get("metadata") or {}).get("namespace", ""), (g.get("metadata") or {}).get("name"))
                     for g in gateways}
 
-    targeted = set()
+    # Gateway-scoped policies (whole) cover every listener; listener-scoped ones
+    # (sections) cover only the sectionNames they name -- Envoy Gateway does not
+    # merge CTP levels, so a listener left out of every sections[key] entry is
+    # unstripped even though the Gateway itself looks targeted.
+    whole, sections = set(), {}
     for obj in objs:
         if obj.get("kind") != "ClientTrafficPolicy":
             continue
@@ -175,7 +185,10 @@ def check_identity_strips(objs):
             key = (ns, target.get("name"))
             if key not in gateway_keys:
                 continue
-            targeted.add(key)
+            if target.get("sectionName"):
+                sections.setdefault(key, set()).add(target["sectionName"])
+            else:
+                whole.add(key)
             # A sectionName scopes the policy to one listener. Envoy Gateway
             # does not merge CTP levels, so a listener-scoped policy REPLACES
             # the Gateway-level one for that listener and must independently
@@ -189,8 +202,16 @@ def check_identity_strips(objs):
     for obj in gateways:
         meta = obj.get("metadata") or {}
         key = (meta.get("namespace", ""), meta.get("name"))
-        if key not in targeted:
+        if key in whole:
+            continue
+        if key not in sections:
             errors.append(f"{ref(obj)}: no ClientTrafficPolicy removes the identity headers before authentication")
+            continue
+        listeners = {listener.get("name") for listener in spec_of(obj).get("listeners") or []}
+        uncovered = sorted(listeners - sections[key])
+        if not listeners or uncovered:
+            errors.append(f"{ref(obj)}: no Gateway-scoped ClientTrafficPolicy, and no listener-scoped one "
+                          f"covers listener(s) {', '.join(uncovered) or '(none declared)'}")
     return errors
 
 
