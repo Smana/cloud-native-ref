@@ -255,6 +255,23 @@ jobs:
       - name: Test suites
         run: task ci:test
 
+      # Gate paths and pull_request secrets (SP3 SC-12, T8). In an existing required job:
+      # a new required context could not be path-filtered and would need a settings change.
+      # The scripts are called directly, not through the task wrappers: both scripts are gate
+      # paths, the taskfiles are not, so an approved agent PR cannot turn this step into a no-op.
+      - name: Merge-gate invariants
+        if: ${{ !cancelled() }}
+        run: ./scripts/ci/check-policy-gate-coverage.sh && ./scripts/ci/check-workflow-secrets.sh
+
+      # A pre-release crossplane-configuration pin has no release asset; its PR CI publishes the
+      # XRD CRDs as an OCI artifact instead (SP2 ruling P40, review B2). A release pin exports
+      # nothing, and gen-catalog.sh fetches the release asset as before.
+      - name: Fetch the pinned pre-release's XRD CRDs
+        if: ${{ !cancelled() }}
+        run: |
+          f="$(./scripts/ci/fetch-xrd-crds.sh)"
+          [ -z "$f" ] || echo "XRD_CRDS_FILE=$f" >> "$GITHUB_ENV"
+
       # Runs even when a suite failed, so the manifest verdict is never hidden
       # behind it. The job still fails.
       - name: Validate manifests (flux schema + polaris)
