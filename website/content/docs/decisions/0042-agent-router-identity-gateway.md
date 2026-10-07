@@ -17,7 +17,7 @@ lastVerified: 2026-09-26
 
 An agent run must call models and read-only MCP tools under its own identity (programme D3), without
 ever holding a provider key, and `internal` data must never reach a SaaS model (OD-13). Envoy Gateway
-1.9.1 validates JWTs against a remote JWKS and copies claims into headers, but matches claims
+1.9.2 validates JWTs against a remote JWKS and copies claims into headers, but matches claims
 **exactly** and cannot address the nested `kubernetes.io` claim. OpenHands reads its LLM key once per
 conversation, and under gVisor a rotated projected token never reaches a reader inside the pod (SP1
 spike Q2), so each token lives until its run's deadline (R2, C3).
@@ -39,7 +39,7 @@ spike Q2), so each token lives until its run's deadline (R2, C3).
 
 **Pros**:
 - JWT validation, `claimToHeaders`, early header removal, MCPRoute `oauth` and per-tool authorization,
-  and API-key injection are all in the pinned Agent Router 1.1.0 / Envoy Gateway 1.9.1 schemas
+  and API-key injection are all in the pinned Agent Router 1.1.0 / Envoy Gateway 1.9.2 schemas
 - The listener rejects the other class's token before routing; Z.ai routes attach to `public` only
 
 **Cons**:
@@ -75,9 +75,10 @@ spike Q2), so each token lives until its run's deadline (R2, C3).
 **Chosen option**: "Agent Router on a dedicated `agent-router` Gateway, one listener per class", with
 audiences `agent-router.<role>.<dataClass>` and an in-pod Envoy `identity-proxy` (`credential_injector`
 fed by file SDS) as the only token holder. A third listener, `sts` (:8082), fronts octo-sts and accepts
-exactly the four `octo-sts/<owner>/<repo>/<role>` audiences from this cluster's issuer: octo-sts's
-trust policies can only match the EKS issuer by pattern, since it changes on every rebuild, and the
-pattern admits any EKS cluster in the region (owner decision, 2026-09-26).
+exactly the four `octo-sts/<owner>/<repo>/<role>` audiences from this cluster's issuer, on both
+clouds. octo-sts's trust policies can match aws-0's EKS issuer only by pattern, since it changes on
+every rebuild, and that pattern admits any EKS cluster in the region; gcp-0's GKE issuer is matched
+exactly (owner decision, 2026-09-26).
 
 **Rationale**: It is the only shape where the class boundary and the key boundary are both
 structural, using controllers the platform already runs.
@@ -113,6 +114,25 @@ structural, using controllers the platform already runs.
 
 `infrastructure/base/agent-router/`, `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml`,
 Kyverno `agent-audience-reservation`. Secrets through `security/base/agent-secrets/` only.
+
+---
+
+## Re-check trigger (2026-10-01)
+
+Agent Router 1.1.0 speaks MCP **2025-06-18** only. 2025-11-25 support is requested in
+[agent-router#1575](https://github.com/theagentrouter/agent-router/issues/1575), and nothing tracks
+2026-07-28; today only version negotiation keeps clients and servers working. agentgateway already
+supports 2026-07-28. Reopen this decision if **either**:
+
+- an MCP server or harness on the platform drops 2025-06-18, **or**
+- Agent Router has not added 2025-11-25 support by **2026-12-15**.
+
+Option 2's "UNVERIFIED" `sub`-prefix claim is now verified from source (agentgateway v1.5.0 registers
+CEL `startsWith`, and its RBAC tests match on `jwt.sub`). A time-boxed PoC replacing this Gateway
+with agentgateway is running on gcp-0; its result decides whether this ADR is superseded. Envoy
+Gateway citations above are corrected to 1.9.2, the `main` pin since 2026-09-30. Evidence: the
+[ecosystem re-check](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agent-ecosystem-recheck-research.md)
+and the [gap matrix](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agentgateway-gap-matrix-research.md).
 
 ---
 

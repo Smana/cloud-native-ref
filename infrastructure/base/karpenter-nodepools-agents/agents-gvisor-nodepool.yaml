@@ -16,10 +16,13 @@ spec:
         - key: agents.ogenki.io/runtime
           value: gvisor
           effect: NoSchedule
+      # NoSchedule, as on gcp-0 (ADR-0005): Karpenter sets it at creation, so nothing binds
+      # early. NoExecute raced the removal: the eviction controller, still seeing the taint,
+      # evicted a run pod the scheduler had just bound, and a run pod is never recreated (F22).
       startupTaints:
         - key: node.cilium.io/agent-not-ready
           value: "true"
-          effect: NoExecute
+          effect: NoSchedule
       # Daily replacement also rolls out gVisor and AMI bumps.
       expireAfter: 24h
       requirements:

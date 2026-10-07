@@ -57,19 +57,15 @@ spec:
 
   nodePoolConfig:
     # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ WORKLOADS MUST TOLERATE **BOTH** TAINTS BELOW                        │
+    # │ WORKLOADS MUST TOLERATE nvidia.com/gpu, AND NOT THE CILIUM TAINT     │
     # └──────────────────────────────────────────────────────────────────────┘
     #
     #   tolerations:
-    #     - key: node.cilium.io/agent-not-ready
-    #       operator: Exists
-    #       effect: NoSchedule
     #     - key: nvidia.com/gpu
     #       operator: Exists
     #       effect: NoSchedule
     #
-    # The Cilium taint is not optional — without it nothing scales up. See
-    # general-purpose.yaml and ADR-0006.
+    # No Cilium startup taint: see general-purpose.yaml (F6).
     #
     # `nvidia.com/gpu` is the conventional accelerator taint, identical to the
     # AWS pool's, so a GPU workload's tolerations are portable between clouds
@@ -84,9 +80,6 @@ spec:
     # the node's real taints on the first successful GPU scale-up and correct
     # this block.
     taints:
-      - key: node.cilium.io/agent-not-ready
-        value: "true"
-        effect: NoSchedule
       - key: nvidia.com/gpu
         value: "true"
         effect: NoSchedule

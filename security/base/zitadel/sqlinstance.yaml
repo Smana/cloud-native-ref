@@ -11,147 +11,25 @@ spec:
   # Recovery source for the next bootstrap (only consulted during
   # initial provisioning — `bootstrap` is immutable post-create).
   #
-  # Frozen-dated-snapshot pattern (matches the prior zitadel-20241202
-  # / zitadel-20251028 / zitadel-20260201 / zitadel-20260505 /
-  # zitadel-20260719 history): `zitadel-20260829` is a copy of the live
-  # prefix `xplane-zitadel-cnpg-cluster/` taken on 2026-08-29 after a
-  # one-shot Backup (108 objects / 46 MiB, base backup + full WAL chain,
-  # object count and byte size verified equal to the source).
+  # `zitadel-pre-destroy` is an ALIAS owned by the destroy hook
+  # (scripts/ops/k8s/cnpg-pre-destroy-seed.sh, called by both clouds' destroy
+  # lanes; CNPG_SKIP_PRE_DESTROY_SEED gate):
+  # at teardown it promotes this database to a dated seed and refreshes this
+  # prefix from it via scripts/ops/k8s/cnpg-promote-seed.sh --rotate-alias,
+  # which touches the alias only after the fresh dated seed verifies
+  # restorable. Never copy into this prefix by hand; the dated seeds beside
+  # it (zitadel-20260904 and older) are immutable history and the fallback
+  # chain — delete one only once a rebuild has restored from a newer seed.
   #
-  # Promoted because the OIDC clients changed materially that day: the
-  # `platform` project and its five clients (grafana, headlamp, flux-ui,
-  # headlamp-proxy, harbor) were created, and the `admin` role granted.
-  # The previous pin, zitadel-20260719, predates all of it -- restoring
-  # from it would have silently reinstated the pre-refactor clients whose
-  # redirect URIs still name priv.cloud.ogenki.io and mycluster-0, which
-  # is exactly the breakage this rotation exists to prevent.
-  #
-  # The `-2` is a SECOND rotation the same day, and it supersedes plain
-  # zitadel-20260829: the legacy `Ogenki` project was deleted after that
-  # first snapshot was taken, so restoring from it would bring back seven
-  # apps with dead redirect URIs and role grants on a project nothing uses.
-  # Ordering was verified rather than assumed -- `project.removed` is at
-  # 19:54:29Z in the eventstore and this snapshot's newest base backup is
-  # 20260829T195453, 24s later, so the cleanup is inside it.
-  #
-  # zitadel-20260829 is deliberately left in the bucket as a fallback. Delete
-  # it once a rebuild has actually restored from this one.
-  #
-  # ── zitadel-20260901: the -2 seed was born unrestorable ─────────────────────
-  # Found on the 2026-09-01 rebuild, the first to actually restore from -2:
-  # recovery targets the newest base backup (20260829T195453), whose
-  # consistency point sits in WAL segment ...0x42 — archived to the LIVE
-  # prefix seconds AFTER the copy was taken. The seed's WAL chain ends at
-  # ...0x41, the backup's begin_wal, so recovery can never reach consistency
-  # and the full-recovery Job loops forever. "Object count equal to the
-  # source" verified equality with a source that had not yet archived the
-  # final segment; by the time the rebuild ran, the live prefix (and that
-  # segment) had been cleared, unrecoverable (no bucket versioning).
-  #
-  # zitadel-20260901 is zitadel-20260829-2 minus base/20260829T195453/: the
-  # catalog's newest backup becomes 20260829T190000 (WAL window 0x36-0x37,
-  # inside the seed), and replay continues to the archive end (0x41) — past
-  # the 19:54:29Z project cleanup the -2 rotation existed to capture. Net
-  # loss versus -2's intent: only the final ~50 seconds, which contain
-  # nothing but the backup itself.
-  #
-  # LESSON, now encoded in scripts/ops/k8s/cnpg-promote-seed.sh (see the rotation
-  # command at the end of this block): after the one-shot Backup completes,
-  # force the segment out before copying —
-  #   kubectl exec -n security xplane-zitadel-cnpg-cluster-1 -c postgres -- \
-  #     psql -c "SELECT pg_switch_wal();"
-  # then wait for the backup's end_wal to appear under wals/ in the live
-  # prefix, and only then take the copy.
-  #
-  # NOTE: this was a COPY, so the live prefix is NOT empty. A restore
-  # therefore still needs scripts/ops/k8s/cnpg-prepare-restore.sh first (see the
-  # expected-empty-archive note below). Earlier rotations MOVED the
-  # prefix and got that clearing for free.
-  #   [SUPERSEDED by #1963 — kept as a record of what was true on
-  #   2026-09-01, not as an instruction. Each cluster generation now
-  #   archives into its own uid-suffixed prefix, so a new cluster's
-  #   destination is empty whether the seed was copied or moved, and
-  #   nothing needs clearing. See the 2026-09-02 entry below.]
-  #
-  # The live prefix (`xplane-zitadel-cnpg-cluster-<uid>/` since #1963;
-  # `xplane-zitadel-cnpg-cluster/` when this was written) accrues daily
-  # ScheduledBackups but is NOT used for recovery — that decoupling
-  # means a bad day on the live cluster (corruption, accidental DROP)
-  # doesn't cascade into recovery from a poisoned state.
-  #
-  # Follow-up: the original 2026-05-04 manual backup didn't write to
-  # S3 (root cause unknown — suspect cluster destroy raced backup
-  # finalize). Add a Flux pre-flight check that fails closed if the
-  # configured recovery prefix is empty.
-  #
-  # ── zitadel-20260902: rotated because the directory changed materially ──────
-  # Taken 2026-09-02 after a one-shot Backup (20260902T123813, status=DONE).
-  # Promoted because zitadel-20260901 holds AUG 29 data and predates, in this
-  # order: the five gcp-0 OIDC clients (grafana-gcp-0, headlamp-gcp-0,
-  # flux-ui-gcp-0, headlamp-proxy-gcp-0, harbor-gcp-0) registered into this
-  # directory, and the projectRoleAssertion fix without which no token carries
-  # roles at all. Restoring from -0901 would silently reinstate a directory in
-  # which gcp-0 cannot authenticate anyone and every groups claim is empty.
-  #
-  # Verified against the failure that made zitadel-20260829-2 unrestorable,
-  # rather than by comparing object counts (which that seed also passed):
-  # recovery targets the seed's NEWEST base backup, 20260902T123813, whose
-  # begin_wal ...0x7E and end_wal ...0x7F are BOTH present in the seed's wals/,
-  # with ...0x80 and ...0x81 beyond them so replay continues past the
-  # consistency point. Both timeline history files (6, 7) copied. 80 objects
-  # source, 80 in seed.
-  #
-  # The pg_switch_wal() step in the LESSON above was not needed here only
-  # because ...0x7F had already been archived by the time the copy ran (backup
-  # 12:38:13Z, segment archived 12:39:45Z, copy ~12:52Z). That was luck, not
-  # method — keep doing the switch, and keep checking end_wal rather than
-  # object counts.
-  #
-  # zitadel-20260901 is left in the bucket as a fallback. Delete it once a
-  # rebuild has actually restored from this one.
-  #
-  # Restoring no longer requires clearing the live archive. Since #1963 each
-  # cluster generation writes to its own prefix (serverName carries the XR
-  # uid), so a new cluster's destination is empty because it never existed.
-  #
-  # Rotate this seed with:
-  #   scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
-  #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
-  # It discovers the live prefix, forces the final WAL segment out before
-  # copying, and verifies the result is restorable rather than counting objects.
-  # ── zitadel-20260904: the first seed cut by the script, not by hand ─────────
-  # Created 2026-09-04 by scripts/ops/k8s/cnpg-promote-seed.sh --apply against the
-  # rebuilt aws-0, on the live prefix xplane-zitadel-cnpg-cluster-87c1dcbf --
-  # the first per-generation prefix, and the first promotion that discovered its
-  # source rather than assuming it.
-  #
-  # This rotation is NOT justified by a directory change. It is the same
-  # directory: this cluster restored from zitadel-20260902 and the OIDC
-  # registration then reported `created: 0, updated: 0, unchanged: 5`. Nothing
-  # material changed, so by the promotion criterion above (new OAuth apps,
-  # schema migration, significant user growth) -0902 would still do.
-  #
-  # It is promoted for a different reason: -0904 is the first seed whose
-  # restorability was established by the procedure rather than by hand. The
-  # script read the backup's own end_wal (...008B) from Backup.status.endWal,
-  # forced it out with pg_switch_wal, waited for THAT segment specifically, and
-  # only then copied -- the exact discipline whose absence made
-  # zitadel-20260829-2 unrestorable. Verified after the fact by an independent
-  # --verify-seed run: status=DONE, begin_wal ...008A and end_wal ...008B both
-  # present.
-  #
-  # HONEST CAVEAT, because the file's own history exists to prevent this being
-  # forgotten: -0902 carries STRONGER evidence than -0904. It has been proven by
-  # an actual restore -- this very cluster came up from it, with all five OIDC
-  # clients intact. -0904 has only been proven by the checker. If a rebuild ever
-  # fails to restore from -0904, fall back to -0902, which is known to work end
-  # to end and is deliberately retained below.
-  #
-  # zitadel-20260902 is left in the bucket as that fallback. Delete it once a
-  # rebuild has actually restored from this one.
+  # The verify-before-rotate invariant exists because zitadel-20260829-2 was
+  # born unrestorable — its newest base backup's consistency WAL segment was
+  # archived seconds after the copy — and passed an object-count check
+  # anyway; the script's begin_wal/end_wal verification is what keeps that
+  # failure mode out of this alias. Design: the 2026-10-05 database-backup
+  # brief (.superpowers/sdd/2026-10-05-database-backup-plan/task-backup-brief.md).
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260904"
+    path: "zitadel-pre-destroy"
   backup:
     # SIX fields, and the first one is SECONDS. CNPG does not use Kubernetes
     # CronJob syntax here: it uses the robfig/cron format, so a five-field

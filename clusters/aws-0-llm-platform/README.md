@@ -128,7 +128,7 @@ S3 bucket data is what they re-mount.
 > select it. Input jailbreak filtering is done by the router's own in-pod
 > `prompt_guard` BERT classifier, which **blocks** rather than routes. LlamaGuard
 > therefore holds one of the four GPUs in the NodePool cap while serving no
-> automatic traffic. Tracked in [docs/ai.md → Known gaps](https://cnref.ogenki.io/docs/platform/ai-platform/#known-gaps).
+> automatic traffic. Tracked in [AI Platform → Status → Known gaps](https://cnref.ogenki.io/docs/platform/ai-platform/status/#known-gaps).
 
 > **All models default `min=1`.** The legacy KEDA HTTP add-on (proxy in the data
 > path; request-count trigger) was replaced by a KEDA `ScaledObject` driven by

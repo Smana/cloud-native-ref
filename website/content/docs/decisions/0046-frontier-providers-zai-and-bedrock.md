@@ -3,7 +3,7 @@ title: Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on 
 linkTitle: 0046 · Frontier providers
 weight: 460
 description: Frontier models reach the platform through two providers chosen by data class — Z.ai GLM for public data, with its key held by the gateways, and Anthropic's Claude for internal data with no key at all — Amazon Bedrock EU via EKS Pod Identity on aws-0, Vertex AI via Workload Identity on gcp-0. A native Anthropic API key and aggregators such as OpenRouter were rejected.
-lastVerified: 2026-09-25
+lastVerified: 2026-10-07
 ---
 
 **Status**: Accepted
@@ -90,9 +90,11 @@ list input price.
 
 ### Positive
 
-- Separate keys per Gateway (the platform key under `platform/llm/zai`, the agents' key under
-  `platform/agents/zai`) split both spend and blast radius. Until PR 6, the platform key is read
-  from `platform/runlore/credentials`, where it already lives, so no bootstrap has to copy it.
+- Separate keys per Gateway split both spend and blast radius: the platform key under
+  `platform/llm/zai`, and the agents' own key, read only through their `agents-secrets` store, at
+  `zai` on the dedicated `agents` kv-v2 mount. Until SP4 PR 6 moves the platform key to
+  `platform/llm/zai`, it is read from `platform/runlore/credentials`, where it already lives, so no
+  bootstrap has to copy it.
 - Bedrock credentials rotate themselves and cannot be exfiltrated as a string.
 
 ### Negative
@@ -110,8 +112,15 @@ list input price.
 
 ## Implementation Notes
 
-- SP4 PR 1: the platform Z.ai backend and `tier-frontier` on `ai-gateway`.
-- SP4 PR 2: the Bedrock EPIs, `claude-*` on `ai-gateway`, and the agent tiers on `agent-router`.
+| Step | Scope | State |
+|---|---|---|
+| SP4 PR 1 | The platform Z.ai backend and `tier-frontier` on `ai-gateway` | Built |
+| SP4 PR 2 | The Bedrock EPIs, `claude-*` on `ai-gateway`, and the agent tiers on `agent-router` | Not built |
+| Follow-up | Vertex (`GCPAnthropic`) on gcp-0 | Not started |
+
+So the keyless Anthropic path does not exist yet on either cloud. Agents reach one model,
+`agent-default` → Z.ai GLM-5.3, on the `public` listener; the `internal` listener has no model
+backend, so `internal` work has no model to call until PR 2 or the Vertex follow-up lands.
 
 ---
 
