@@ -39,6 +39,7 @@ Then run `sleep 1200` in the terminal and wait for it to end.
 
 ```bash
 TASK=$(kubectl get task -n agent-system --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}'); echo "$TASK"
+until kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK -o name | grep -q .; do sleep 5; done
 RUN=$(kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK -o jsonpath='{.items[0].metadata.name}'); echo "$RUN"
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
@@ -101,14 +102,15 @@ Expected: equal to the final read's `events`.
 
 ```bash
 gh issue view <issue> --repo Smana/cloud-native-ref --comments | grep 'resuming automatically'
+kubectl wait -n agent-system task/$TASK --for=jsonpath='{.status.resumes}'=1 --timeout=5m
+until RUN2=$(kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}') && [ "$RUN2" != "$RUN" ]; do sleep 5; done
 kubectl get task -n agent-system $TASK -o jsonpath='{.status.phase} {.status.resumes} {.status.runs[-1:].trigger}{"\n"}'
-RUN2=$(kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
 kubectl get agentrun -n agents $RUN2 -o jsonpath='{.spec.branch} {.spec.roomRef}{"\n"}'
 ```
 
 Expected: `… the sandbox was lost (spot reclaim or eviction); resuming automatically (1/2).`; `Implementing 1 resume`;
 `agent/<TASK> <TASK>`. On the factory dashboard, *Automatic resumes by reason* shows `Disrupted` = 1; the run page of `$RUN`
-lists `$RUN2` under *Runs of this task*.
+(`/d/agent-run/agent-run?var-run=${RUN#xplane-run-}`: the page takes the run id) lists `${RUN2#xplane-run-}` under *Runs of this task*.
 
 ### Step 6 — a plain delete reads PodLost and resumes; a third loss escalates
 
@@ -117,14 +119,15 @@ kubectl wait -n agents agentrun/$RUN2 --for=jsonpath='{.status.phase}'=Running -
 kubectl delete pod -n agents $RUN2 --wait=false
 kubectl wait -n agents agentrun/$RUN2 --for=jsonpath='{.status.phase}'=Failed --timeout=5m
 kubectl get agentrun -n agents $RUN2 -o jsonpath='{.status.reason}{"\n"}'
-kubectl get task -n agent-system $TASK -o jsonpath='{.status.resumes}{"\n"}'
-RUN3=$(kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+kubectl wait -n agent-system task/$TASK --for=jsonpath='{.status.resumes}'=2 --timeout=5m
+until RUN3=$(kubectl get agentrun -n agents -l agents.ogenki.io/task=$TASK --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}') && [ "$RUN3" != "$RUN2" ]; do sleep 5; done
 kubectl wait -n agents agentrun/$RUN3 --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl delete pod -n agents $RUN3 --wait=false
 kubectl wait -n agent-system task/$TASK --for=jsonpath='{.status.phase}'=Escalated --timeout=5m
+kubectl get task -n agent-system $TASK -o jsonpath='{.status.reason}{"\n"}'
 ```
 
-Expected: `PodLost`; `2`; the task `Escalated` after the third loss, with no fourth run.
+Expected: `PodLost`; the `resumes` wait met; after the third loss `resumes_exhausted`, with no fourth run.
 
 **What this proves:** acceptance criteria 3 (`PodLost`) and 4 (the cap).
 
@@ -176,5 +179,5 @@ Cleanup: `aws fis delete-experiment-template --id $TPL; aws iam delete-role-poli
 | 3 | `Failed Terminated TerminationByKubelet` | | |
 | 4 | `Failed Disrupted`; five lines < 15 s; trailer; `probe`; room tail = `events` | | |
 | 5 | narration (1/2); `Implementing 1 resume`; same branch and room | | |
-| 6 | `PodLost`; `2`; `Escalated` | | |
+| 6 | `PodLost`; `resumes` = 2; `Escalated resumes_exhausted` | | |
 | 7 | the outcome and the §5 decision | | |

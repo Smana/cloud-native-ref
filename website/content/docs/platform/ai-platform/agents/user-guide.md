@@ -91,7 +91,8 @@ detailed:
 *(Built, not yet deployed)* If a run's sandbox is reclaimed (a spot or preemptible node, an
 eviction, an upgrade drain), the factory resumes it on its own, on the same branch and in the same
 room, at most twice per task and only while the task's token budget holds another run. The issue
-says so: *resuming automatically (1/2)*. A lost review run starts again without using a review
+says so: *resuming automatically (1/2)*. The two resumes count per task: a `/factory retry` does
+not give them back. A lost review run starts again without using a review
 round. A run whose harness failed on its own is never resumed: the task escalates, as before.
 
 ### 3. Review the pull request
