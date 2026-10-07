@@ -21,7 +21,7 @@ build the rest.
 | 8 | SP2 remaining: Task 5.4 (CC-S5/S5), 5.5 live, Task 0.5.15, Task 7.0, phase 6 (fork, `roomctl`), phase 7 (UX checkpoint) | `2026-09-27-agent-collaboration-rooms-plan.md` | 7 | — |
 | 9 | The agentgateway migration, phases A–I, and phase J (provider-agnostic prompt caching, reference-token budgets). It replaces the gateway under every run, so it follows the live re-verification. SP4 PR 2's budgets move here | `2026-10-01-agent-router-agentgateway-plan.md` | 7 | Store the Anthropic API key in OpenBao (`bao kv put -mount=agents anthropic api_key=-`) |
 | 10 | SP3 remaining: Task 3.4, 2.5 and 3.3 live, then phases 4–10 (triage, teams, Kueue, the merge gate in shadow, the merge wave) | `2026-09-27-agent-dark-factory-plan.md` | 9 for gateway budgets and tiers | — |
-| 11 | aws-0, when rebuilt: the disruption FIS test, which decides the design's §5 early warning; the F7 PKI change | disruption plan Task 13 | — | Create the FIS IAM role |
+| 11 | aws-0, when rebuilt: the disruption FIS test, which decides the design's §5 early warning; the F7 PKI change | disruption plan Task 13 | — | — (the FIS role and template are managed in `opentofu/aws/eks/init`) |
 | 12 | End-to-end UX walkthrough (label, room, request changes, approve, merge), then the merge wave to `main` | — | 1–10 | UX sign-off (P33) |
 
 Re-check google/ax, Agent Substrate and kagent on **2026-12-15**, or earlier on any trigger listed

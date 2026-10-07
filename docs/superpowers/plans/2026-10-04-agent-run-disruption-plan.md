@@ -52,8 +52,9 @@ Repository rules:
   latch.
 - **Merging `feat/factory-resume` into `integration/agent-factory` may bring factory phases 2–9 to
   gcp-0** at the next rebuild (Tasks 11 and 13).
-- Owner actions the plan depends on: pushing the harness pre-release image by hand (Task 2), and
-  creating the IAM role for the aws-0 FIS test once aws-0 is rebuilt (Task 13).
+- Owner action the plan depends on: pushing the harness pre-release image by hand (Task 2). The
+  aws-0 FIS test's IAM role and experiment template (Task 13) are managed in the
+  `opentofu/aws/eks/init` stack, so the aws-0 rebuild creates them.
 
 ## Branch map
 
@@ -2747,30 +2748,17 @@ Cleanup: label the issue `factory/stop`, close the PR the runs opened, delete th
 
 ### Step 7 — aws-0: does the kubelet's shutdown complete on a Spot interruption?
 
-On aws-0, with a factory implementer `Running` (Step 2's issue, on aws-0):
+On aws-0, with a factory implementer `Running` (Step 2's issue, on aws-0). The FIS role and the
+experiment template come with the cluster, from
+[`opentofu/aws/eks/init/fis.tf`](../../../opentofu/aws/eks/init/fis.tf). The template interrupts
+only a running Spot instance tagged `agents.ogenki.io/fis-target=true`, so tag the run's node
+first:
 
 ```bash
 NODE=$(kubectl get pod -n agents $RUN -o jsonpath='{.spec.nodeName}')
 IID=$(kubectl get node $NODE -o jsonpath='{.spec.providerID}' | awk -F/ '{print $NF}')
-ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-cat > /tmp/fis-trust.json <<'EOF'
-{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "fis.amazonaws.com"}, "Action": "sts:AssumeRole"}]}
-EOF
-cat > /tmp/fis-policy.json <<'EOF'
-{"Version": "2012-10-17", "Statement": [
-  {"Effect": "Allow", "Action": "ec2:SendSpotInstanceInterruptions", "Resource": "arn:aws:ec2:*:*:instance/*"},
-  {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"}]}
-EOF
-aws iam create-role --role-name fis-agent-run-disruption --assume-role-policy-document file:///tmp/fis-trust.json
-aws iam put-role-policy --role-name fis-agent-run-disruption --policy-name spot --policy-document file:///tmp/fis-policy.json
-cat > /tmp/fis.json <<EOF
-{"description": "agent-run disruption: one agents-gvisor Spot interruption",
- "targets": {"node": {"resourceType": "aws:ec2:spot-instance", "resourceArns": ["arn:aws:ec2:eu-west-3:${ACCOUNT}:instance/${IID}"], "selectionMode": "ALL"}},
- "actions": {"interrupt": {"actionId": "aws:ec2:send-spot-instance-interruptions", "parameters": {"durationBeforeInterruption": "PT2M"}, "targets": {"SpotInstances": "node"}}},
- "stopConditions": [{"source": "none"}],
- "roleArn": "arn:aws:iam::${ACCOUNT}:role/fis-agent-run-disruption"}
-EOF
-TPL=$(aws fis create-experiment-template --cli-input-json file:///tmp/fis.json --query experimentTemplate.id --output text)
+TPL=$(aws fis list-experiment-templates --query "experimentTemplates[?tags.Name=='agent-run-disruption'].id | [0]" --output text)
+aws ec2 create-tags --resources $IID --tags Key=agents.ogenki.io/fis-target,Value=true
 aws fis start-experiment --experiment-template-id $TPL
 ```
 
@@ -2781,7 +2769,8 @@ Then Step 4's and Step 5's checks. Record:
 | The kubelet's shutdown completed | the pod `Failed` with `DisruptionTarget=TerminationByKubelet`, five `agent-run shutdown` lines, `Disrupted` | No early warning on aws-0 |
 | It did not | no shutdown lines, the pod stale until PodGC, `PodLost` | Build §5's early warning: a follow-up design chooses the broker watch or a NodePool `terminationGracePeriod` |
 
-Cleanup: `aws fis delete-experiment-template --id $TPL; aws iam delete-role-policy --role-name fis-agent-run-disruption --policy-name spot; aws iam delete-role --role-name fis-agent-run-disruption`.
+Cleanup: `aws ec2 delete-tags --resources $IID --tags Key=agents.ogenki.io/fis-target`, so the next
+experiment cannot pick this instance up if the interruption did not take it.
 
 ## Results
 
