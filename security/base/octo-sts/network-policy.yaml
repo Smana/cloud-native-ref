@@ -1,0 +1,58 @@
+---
+# Ingress from agent-router's data plane only (owner decision 2026-09-26). Its
+# `sts` listener verifies every token against THIS cluster's issuer and JWKS,
+# which is what keeps out a token minted in any other eu-west-3 EKS cluster: the
+# trust policies' issuer pattern alone would accept one (ADR-0043). A sandbox
+# reaching octo-sts directly would skip that check, so `agents` gets no rule
+# here. Both owning-gateway labels are pinned: a same-named Gateway in another
+# namespace must not match. Egress to GitHub's API and the EKS issuer, since
+# octo-sts still verifies the token itself (discovery + JWKS).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: octo-sts
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # kubelet's TCP probes.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: api.github.com
+        # Host only: ${oidc_issuer_host} carries the issuer's /id/<ID> path,
+        # which matchName's hostname pattern rejects. The JWKS is on this host.
+        - matchName: oidc.eks.${region}.amazonaws.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
