@@ -49,9 +49,8 @@ spec:
               - matchPattern: "*"
     - toFQDNs:
         - matchName: api.github.com
-        # Host only: ${oidc_issuer_host} carries the issuer's /id/<ID> path,
-        # which matchName's hostname pattern rejects. The JWKS is on this host.
-        - matchName: oidc.eks.${region}.amazonaws.com
+        # The issuer's JWKS host, per cloud (GCP parity GP-12).
+        - matchName: ${oidc_jwks_host}
       toPorts:
         - ports:
             - port: "443"

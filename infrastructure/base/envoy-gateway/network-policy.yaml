@@ -50,7 +50,7 @@ spec:
             - port: "18000"
               protocol: TCP
     # The rate-limit service pulls its descriptors over xDS on 18001. It only
-    # exists where an overlay enables the global rate limit (aws-0).
+    # exists where an overlay enables the global rate limit (aws-0 and gcp-0).
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-gateway-system

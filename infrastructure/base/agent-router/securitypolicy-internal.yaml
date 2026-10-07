@@ -27,7 +27,7 @@ spec:
           - agent-router.tester.internal
           - agent-router.triager.internal
         remoteJWKS:
-          uri: ${oidc_issuer_url}/keys
+          uri: ${oidc_jwks_uri}
         claimToHeaders:
           - claim: sub
             header: x-ar-agent

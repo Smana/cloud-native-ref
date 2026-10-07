@@ -29,24 +29,12 @@ spec:
   whenUnsatisfiable: DoNotScaleUp
 
   nodePoolConfig:
-    # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ WORKLOADS TARGETING THIS CLASS MUST TOLERATE THIS TAINT              │
-    # └──────────────────────────────────────────────────────────────────────┘
-    #
-    #   tolerations:
-    #     - key: node.cilium.io/agent-not-ready
-    #       operator: Exists
-    #       effect: NoSchedule
-    #
-    # Not optional: WITHOUT it nothing scales up at all — the autoscaler judges
-    # an untolerating pod unplaceable on a node that will carry the taint and
-    # never provisions one. Measured 2026-08-24. Full rationale, the trade it
-    # accepts, and the AWS divergence are in ADR-0006 (Negative consequences);
-    # this file states the requirement, the ADR explains it.
-    taints:
-      - key: node.cilium.io/agent-not-ready
-        value: "true"
-        effect: NoSchedule
+    # No Cilium startup taint here, deliberately. GKE Warden refuses any
+    # ComputeClass taint key containing `kubernetes.io` (custom-compute-class-
+    # limitation), and Cilium clears only its one configured key
+    # (ignore-taint.cluster-autoscaler.kubernetes.io/…, opentofu/gcp/gke/init).
+    # Nodes from this class get the taint from cilium-operator's setNodeTaints
+    # instead, which can lose a race with the first pod (ADR-0006, F6).
 
     # Must match the static pool and the NAP default — see the image_type note in
     # opentofu/gcp/gke/init/main.tf for why COS specifically.

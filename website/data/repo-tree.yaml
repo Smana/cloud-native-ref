@@ -85,6 +85,9 @@ entries:
       - path: clusters/gcp-0-llm-platform/
         kind: dir
         desc: gcp-0's suspended LLM umbrella children, same sibling pattern
+      - path: clusters/gcp-0-ai-gateway/
+        kind: dir
+        desc: gcp-0's suspended-by-default ai-gateway umbrella children, the aws-0 twin
 
   - path: flux/
     kind: dir

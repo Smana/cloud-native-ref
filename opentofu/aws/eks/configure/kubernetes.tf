@@ -40,8 +40,12 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       oidc_provider_arn     = data.aws_iam_openid_connect_provider.this.arn
       oidc_issuer_url       = local.oidc_issuer_url
       oidc_issuer_host      = local.oidc_issuer_host
-      aws_account_id        = data.aws_caller_identity.this.account_id
-      region                = var.region
+      # Per-cloud JWKS (GCP parity GP-12): EKS serves <issuer>/keys on a
+      # region-scoped host; gke-gcp-0-vars carries GKE's /jwks and host.
+      oidc_jwks_uri  = "${local.oidc_issuer_url}/keys"
+      oidc_jwks_host = "oidc.eks.${var.region}.amazonaws.com"
+      aws_account_id = data.aws_caller_identity.this.account_id
+      region         = var.region
       # See local.storage_class for the value. One shared ConfigMap key with a
       # different value per cloud is honest here -- unlike ${region} was --
       # because both values are consumed as an opaque storageClassName and

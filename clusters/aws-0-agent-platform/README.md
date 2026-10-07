@@ -10,7 +10,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `runtimeclass-gvisor` | `infrastructure/base/runtimeclass-gvisor` | RuntimeClass `gvisor` → `runsc` |
 | `agent-runtime` | `infrastructure/base/agent-runtime` | identity-proxy ConfigMap, `agents` default deny |
 | `agent-policies` | `security/base/agent-policies` | Kyverno admission and GC for runs |
-| `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
+| `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → the `agents` mount |
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 | `agent-mcp` | `infrastructure/base/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
@@ -28,7 +28,7 @@ On an **existing** cluster, first apply `opentofu/aws/openbao/management` then
 
 The owner prerequisites come next, in this order (ADR-0043): the branch and tag rulesets
 (`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the App installed and its
-key written to `platform/agents/github-app`. Without the key, `octo-sts` sits in
+key written to `github-app` on the `agents` mount. Without the key, `octo-sts` sits in
 `CreateContainerConfigError` and its child fails the health check.
 
     flux resume kustomization ai-gateway -n flux-system

@@ -77,11 +77,11 @@ entirely.
 
 ### On `gcp-0`
 
-`gcp-0` has **one gate, not three**: the weights bucket is a Crossplane claim
-rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED`, and
-the gateway layer has no umbrella of its own there —
-the only gate is the umbrella Kustomization `clusters/gcp-0/llm-platform.yaml`
-(`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
+`gcp-0` has **no OpenTofu gate**: the weights bucket is a Crossplane claim
+rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED`.
+The two Kubernetes gates match aws-0's: `clusters/gcp-0/ai-gateway.yaml`,
+then `clusters/gcp-0/llm-platform.yaml`, which depends on it (both
+`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
 Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
 [ADR-0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}})
 for why, including what it gives up. Why the umbrella is still suspended, and

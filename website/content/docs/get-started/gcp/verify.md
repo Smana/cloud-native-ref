@@ -80,11 +80,12 @@ flux get helmreleases -A
 flux get sources all -A
 ```
 
-Two Kustomizations report **no status at all**, and that is correct — they are
+These Kustomizations report **no status at all**, and that is correct — they are
 `spec.suspend: true`:
 
 | Suspended | Why |
 |---|---|
+| `ai-gateway` | opt-in; the gateway layer `llm-platform` depends on |
 | `llm-platform` | opt-in; see `clusters/gcp-0-llm-platform/README.md` |
 | `security-openbao-snapshot` | opt-in |
 | `zitadel` | only when this cluster consumes an IdP rather than hosting one ([ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})) |

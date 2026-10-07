@@ -12,7 +12,8 @@ resource "vault_policy" "pki_admin" {
   })
 }
 
-# Full control of both Stage 2 mounts: the break-glass login and openbao-admin.
+# Full control of both Stage 2 mounts and the calling stack's `agents` mount
+# (SP2 P38): the break-glass login and openbao-admin.
 resource "vault_policy" "secrets_admin" {
   name   = "secrets-admin"
   policy = file("${path.module}/policies/secrets-admin.hcl")

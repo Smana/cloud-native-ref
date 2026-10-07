@@ -1,4 +1,4 @@
-# The cert-manager and snapshot policies below are GCP's own. The Stage 2
+# The cert-manager, snapshot and agents-secrets policies below are GCP's own. The Stage 2
 # policies -- admin, pki-admin, secrets-admin, external-secrets and the per-app
 # ones -- come from the shared module in store-of-record.tf, the same set AWS
 # defines inline.
@@ -22,4 +22,11 @@ resource "vault_policy" "cert_manager" {
 resource "vault_policy" "snapshot" {
   name   = "snapshot"
   policy = file("${path.module}/policies/snapshot.hcl")
+}
+
+# agent-system's own store (SP1 S9, SP2 P38): the `agents` mount only. Attached
+# to the `agents-secrets` role on jwt/gcp-0 by NAME, like `external-secrets`.
+resource "vault_policy" "agents_secrets" {
+  name   = "agents-secrets"
+  policy = file("${path.module}/policies/agents-secrets.hcl")
 }

@@ -148,11 +148,12 @@ Then the hard manifest gate — `./scripts/ci/validate-manifests.sh`, as
 `task ci:validate`. It renders the repository the way Flux does (every
 Kustomize overlay with its `postBuild` vars substituted, every `HelmRelease`
 through `helm template` with its own values and `postRenderers`), then applies
-four gates to the *rendered* output:
+five gates to the *rendered* output:
 `flux schema validate` with `skipMissingSchemas: false`, so an unknown Kind
 fails the build rather than being skipped, `polaris audit`,
-`assert-ai-gateway.py` (cross-object AI-gateway invariants), and the
-Alertmanager Slack template render. See
+`assert-ai-gateway.py` (cross-object AI-gateway invariants),
+`assert-cloud-shape.py` (gcp-0's agent and AI-gateway renders carry GKE-shaped
+values, not AWS ones), and the Alertmanager Slack template render. See
 [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}) for why
 the first two properties are load-bearing.
 

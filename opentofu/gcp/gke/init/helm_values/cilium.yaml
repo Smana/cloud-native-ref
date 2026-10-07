@@ -84,11 +84,7 @@
 # Still absent, and each needs its own validation before returning:
 #   bandwidthManager, bpf.preallocateMaps, bpf.masquerade, devices,
 #   egressMasqueradeInterfaces, installNoConntrackIptablesRules,
-#   loadBalancer.mode: hybrid, socketLB.hostNamespaceOnly
-#
-# socketLB.hostNamespaceOnly is the one with a known functional reason (Tailscale
-# operator pods break without it, tailscale#15478). It is not needed until the
-# Tailscale operator runs on GCP, and must be validated when it is.
+#   loadBalancer.mode: hybrid
 
 cni:
   # /opt/cni/bin is read-only on Container-Optimized OS. See the note above.
@@ -99,6 +95,13 @@ cni:
 
 ipam:
   mode: kubernetes
+
+# Must equal local.cilium_agent_not_ready_taint in ../main.tf, which every GKE
+# pool and ComputeClass carries. The default key made GKE's autoscaler refuse to
+# scale a pool from zero unless the pod tolerated it, and a tolerating pod ran
+# unpoliced until the agent was up (F2). aws-0 keeps the default: Karpenter
+# ignores startup taints in its simulation.
+agentNotReadyTaintKey: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
 
 kubeProxyReplacement: true
 
@@ -126,10 +129,15 @@ prometheus:
   serviceMonitor:
     enabled: false
 
+# The agent sits at ~170-240Mi at rest on gcp-0, and a fresh node's startup burst
+# OOM-killed it at 256Mi (twice, F9 2026-10-01), holding Cilium's startup taint ~50 s.
 resources:
-  limits:
-    cpu: 300m
+  requests:
+    cpu: 100m
     memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 routingMode: native
 
@@ -165,3 +173,12 @@ hubble:
 
 gatewayAPI:
   enabled: true
+
+# gVisor's netstack sends packets from the Sentry and never calls connect() in
+# the host kernel, so socket-LB cannot translate a ClusterIP for a GKE Sandbox
+# pod; per-packet LB in the pod namespace does (GCP parity GP-11). The chart has
+# already forced this since 1.20 whenever gatewayAPI.enabled (for TCPRoute
+# weights); it is set here so gVisor does not depend on that coupling. aws-0
+# sets it too, for Tailscale (tailscale#15478).
+socketLB:
+  hostNamespaceOnly: true
