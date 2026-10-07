@@ -1,9 +1,15 @@
-# Client buffer limit — Envoy's default 32KB receive buffer is too
-# tight for chat completion bodies with long system prompts. Upstream
-# recommends 50Mi for AI workloads in general; 8Mi is enough headroom
-# for OpenAI-compat chat completions on this fleet (typical bodies
-# are 4–32 KB; long context maxes out around 200–500 KB). Bump if
-# multimodal/file-attachment requests start landing here.
+# Envoy Gateway accepts one whole-Gateway ClientTrafficPolicy per Gateway, so
+# the buffer limit and the identity-header strip share this object.
+#
+# Buffer: Envoy's default 32KB receive buffer is too tight for chat completion
+# bodies with long system prompts. 8Mi covers long-context OpenAI-compatible
+# bodies (200–500 KB) with headroom; raise it if file attachments start landing.
+#
+# Strip: x-ar-agent, x-ar-human and x-ai-gateway-client-id name the principal
+# that budgets and metrics charge. The gateway sets them from the verified
+# credential, but Envoy's claim_to_headers APPENDS to a client-sent value, so
+# a forged one must be gone before authentication runs (programme C5).
+# agent-session-id is Agent Router's session key; no client chooses it here.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
 metadata:
@@ -16,3 +22,10 @@ spec:
       name: ai-gateway
   connection:
     bufferLimit: 8Mi
+  headers:
+    earlyRequestHeaders:
+      remove:
+        - x-ar-agent
+        - x-ar-human
+        - x-ai-gateway-client-id
+        - agent-session-id

@@ -7,7 +7,7 @@ lastVerified: 2026-09-12
 
 CI never applies changes to a cluster. It validates, scans and publishes;
 [Flux]({{< relref "/docs/platform/gitops/_index.md" >}}) owns delivery from
-`main`. Five workflow files live in `.github/workflows/`, and exactly six jobs
+`main`. Seven workflow files live in `.github/workflows/`, and exactly six jobs
 — all of them in `ci.yaml` — can block a merge.
 
 ![The CI pipeline: a pull request fans into ci.yaml's six jobs and, when their paths change, three path-filtered workflows that are not required checks; the six required checks gate the merge under enforce_admins; after the merge three independent consumers read main — Flux reconciles the cluster, docs.yml publishes the site, and build-container-images pushes to ghcr.io](/images/diagrams/ci-pipeline.svg)
@@ -129,7 +129,8 @@ files to exist, and the real certificates are never in Git.
 
 ### `security-scan` 🔒
 
-Three scanners, all uploading SARIF to the GitHub Security tab:
+Three scanners. Trivy and Checkov write SARIF, which the `sarif-upload` job
+sends to the GitHub Security tab (see [Token scopes](#token-scopes)):
 
 | Scanner | Scope | Failure mode |
 |---|---|---|
@@ -147,11 +148,13 @@ Then the hard manifest gate — `./scripts/ci/validate-manifests.sh`, as
 `task ci:validate`. It renders the repository the way Flux does (every
 Kustomize overlay with its `postBuild` vars substituted, every `HelmRelease`
 through `helm template` with its own values and `postRenderers`), then applies
-two gates to the *rendered* output:
+four gates to the *rendered* output:
 `flux schema validate` with `skipMissingSchemas: false`, so an unknown Kind
-fails the build rather than being skipped, and `polaris audit`. See
+fails the build rather than being skipped, `polaris audit`,
+`assert-ai-gateway.py` (cross-object AI-gateway invariants), and the
+Alertmanager Slack template render. See
 [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}) for why
-both properties are load-bearing.
+the first two properties are load-bearing.
 
 ### `render-diff` 📝
 
@@ -179,6 +182,19 @@ specific claims pinned in `.doc-claims.yaml` against the configuration they
 describe — it lives in this job rather than its own so the required-check
 list on `main` does not have to change.
 
+### Token scopes
+
+Every job that checks out the PR runs PR code, so the workflow token is
+`contents: read`. Write scopes sit only in jobs that never check out or run PR
+code: each one downloads an artifact and hands it to a pinned action. Neither
+is a required check.
+
+| Job | Write scope | Consumes |
+|---|---|---|
+| `sarif-upload` | `security-events` | `security-scan`'s SARIF |
+| `render-diff-comment` | `pull-requests` (same-repo PRs) | `render-diff`'s comment body |
+| `notify-main-broken` | `issues` | nothing; runs on pushes to `main` only |
+
 ## Path-filtered workflows
 
 None of these is a required check. They run only when their paths change.
@@ -188,7 +204,8 @@ None of these is a required check. They run only when their paths change.
 | `docs-check.yml` | PR touching `website/**`, `docs/architecture/**`, `mise.toml`, `scripts/ci/verify-doc-paths.sh`, or itself | `hugo --minify --gc`, then `./scripts/ci/verify-doc-paths.sh` |
 | `docs.yml` | push to `main` touching `website/**`, `docs/architecture/**`, `mise.toml` (a narrower set than `docs-check.yml` — no `scripts/ci/verify-doc-paths.sh`), or manual dispatch | same build, then publishes to GitHub Pages at `cnref.ogenki.io` |
 | `vector-config-validation.yml` | PR or push touching `observability/base/victoria-logs/helmrelease-*.yaml` | validates the Vector VRL log-parsing rules |
-| `build-container-images.yml` | PR or push touching `container-images/**`, or manual dispatch | builds a dynamic matrix over changed image directories |
+| `check-container-images.yml` | PR touching `container-images/**` or itself | builds a dynamic matrix over changed image directories with a read-only token — no registry login, no push |
+| `build-container-images.yml` | push to `main` touching `container-images/**` or itself, or manual dispatch | builds the same matrix, logs in to GHCR, pushes, Trivy → SARIF |
 
 ### The documentation site
 
@@ -211,12 +228,25 @@ site is worse than a slightly stale one.
 
 ### Container images
 
-On a pull request `build-container-images.yml` builds each changed image
-(no push) but does **not** run Trivy — the scan step is gated
-`if: github.event_name != 'pull_request'`, so it runs only on push to `main`
-or manual dispatch. On push to `main` and on manual dispatch it also pushes
-to `ghcr.io/smana/<image>`, tagged `<branch>-<short-sha>` plus `latest` on the
-default branch. Deployments pin the immutable `<branch>-<sha>` tag; nothing in
+Two workflows, split by trigger so that no write scope ever reaches a pull
+request. `check-container-images.yml` runs on pull requests only:
+workflow-wide `contents: read`, no registry login, each changed image built
+with `push: false`. It still executes the PR's Dockerfiles — with a
+read-only token, the same trust class `ci.yaml` grants its pre-commit hooks
+over PR code. `build-container-images.yml` runs on push to `main` and manual
+dispatch — never on a pull request — and holds `packages: write` and
+`security-events: write` on the `build-and-push` job that logs in to GHCR,
+pushes each changed image, Trivy-scans it and uploads SARIF.
+
+Two files rather than one with event-gated steps, because `permissions:`
+cannot be conditional: a workflow triggered by `pull_request` injects every
+declared scope into the PR run's token, whatever the steps gate.
+
+Images published from `main` are tagged `main-<sha>`, `latest`, and the
+image's own version read from its Dockerfile `ARG` (the `v*` tags). The four
+in-repo consumers — the `openbao-snapshot` CronJob, `headlamp-plugin-app`,
+`token-exchange-proxy` and `pev2` — pin that `v*` tag, which is mutable
+unless GHCR version immutability is enabled for the package; nothing in
 this repository deploys `latest`.
 
 ## Disabled workflows

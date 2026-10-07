@@ -39,10 +39,11 @@ thing that actually reaches the cluster:
    through `kustomize build` with Flux's `postBuild` substitutions applied,
    every `HelmRelease` through `helm template` with its own `spec.values`
    and `postRenderers`, standalone manifests copied verbatim.
-4. **Two gates on `.bundle/`**: `flux schema validate` (structure and
-   `x-kubernetes-validations` CEL rules), then `polaris audit` (workload
+4. **Four gates on `.bundle/`**: `flux schema validate` (structure and
+   `x-kubernetes-validations` CEL rules), `polaris audit` (workload
    best practices — privilege escalation, capabilities, resource limits,
-   image tags).
+   image tags), `assert-ai-gateway.py` (cross-object AI-gateway invariants),
+   then the Alertmanager Slack template render.
 
 ## The two properties that make this gate real
 
@@ -74,6 +75,6 @@ rendered bundle, it checks what's actually scheduled.
 ## Requirements
 
 `flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`)
-and Polaris 8.5.0 — `preflight.sh` hard-fails on a too-old client or a
+and Polaris 10.2.5 — `preflight.sh` hard-fails on a too-old client or a
 missing plugin rather than silently falling back to whatever binary happens
 to be first on `PATH`.

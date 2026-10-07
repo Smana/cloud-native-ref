@@ -175,8 +175,24 @@ EOF
 cat > "$STUB/gcloud" <<'EOF'
 #!/usr/bin/env bash
 FIXDIR="$STUB_FIXTURES"
+# gcp --apply fixtures: only an rsync of the server prefix (contents copied, no
+# nesting) makes gcp-apply-seed appear; `storage cp -r` would nest it one level deep.
+if [ "$1" = "storage" ] && [ "$2" = "rsync" ]; then
+    echo "$*" >> "$FIXDIR/gcloud-copy-calls"
+    [ "$4" = "gs://test-bucket/gcp-apply-server" ] && [ "$5" = "gs://test-bucket/gcp-apply-seed" ] && touch "$FIXDIR/gcp-apply-copied"
+    exit 0
+fi
+if [ "$1" = "storage" ] && [ "$2" = "cp" ]; then
+    echo "$*" >> "$FIXDIR/gcloud-copy-calls"
+    exit 0
+fi
+gcp_apply_ready() { [ -f "$FIXDIR/gcp-apply-copied" ]; }
 if [ "$1" = "storage" ] && [ "$2" = "ls" ]; then
     case "$3" in
+        gs://test-bucket/gcp-apply-server/wals/0000000700000002/) cat "$FIXDIR/gcp-good-wals-listing.txt" ;;
+        gs://test-bucket/gcp-apply-seed/base/)  gcp_apply_ready && cat "$FIXDIR/gcp-good-base-listing.txt" ;;
+        gs://test-bucket/gcp-apply-seed/wals/0000000700000002/) gcp_apply_ready && cat "$FIXDIR/gcp-good-wals-listing.txt" ;;
+        gs://test-bucket/gcp-apply-seed/)       echo "ERROR: (gcloud.storage.ls) One or more URLs matched no objects." >&2; exit 1 ;;
         gs://test-bucket/gcp-good-seed/base/)                 cat "$FIXDIR/gcp-good-base-listing.txt" ;;
         gs://test-bucket/gcp-good-seed/wals/0000000700000002/) cat "$FIXDIR/gcp-good-wals-listing.txt" ;;
         # round-2 fixtures, wording verified live against a real bucket
@@ -192,6 +208,7 @@ fi
 if [ "$1" = "storage" ] && [ "$2" = "cat" ]; then
     case "$3" in
         gs://test-bucket/gcp-good-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
+        gs://test-bucket/gcp-apply-seed/base/20260902T123813/backup.info) gcp_apply_ready && cat "$FIXDIR/good-backup.info" || exit 1 ;;
         *) exit 1 ;;
     esac
     exit 0
@@ -474,5 +491,17 @@ rc=$?
 check "xplane- seed name refused: exit code" "2" "$rc"
 check_contains "xplane- seed name refused: explains the lifecycle rule" \
     "expires every \`xplane-\`-prefixed object after 30 days" "$out"
+
+# ---- 19. gcp --apply copies the CONTENTS of the server prefix (rsync), not a
+#          nested SEED/<server>/ tree: the verify only passes on a flat layout --
+export STUB_SERVER_NAME="gcp-apply-server"
+export STUB_PRIMARY_POD="gcp-apply-server-1"
+export STUB_END_WAL="00000007000000020000007F"
+out="$(bash "$SCRIPT" --cluster xplane-gcp-apply --namespace ns --cloud gcp --bucket test-bucket \
+    --seed gcp-apply-seed --apply 2>&1)"
+rc=$?
+check "gcp apply: exit code" "0" "$rc"
+check_contains "gcp apply: copied with rsync" "storage rsync --recursive gs://test-bucket/gcp-apply-server gs://test-bucket/gcp-apply-seed" "$(cat "$FIX/gcloud-copy-calls" 2>/dev/null)"
+check_contains "gcp apply: verifies the flat seed" "Set spec.objectStoreRecovery.path to: gcp-apply-seed" "$out"
 
 exit $fail
