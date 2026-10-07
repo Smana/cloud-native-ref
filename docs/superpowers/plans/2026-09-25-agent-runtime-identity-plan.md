@@ -8018,6 +8018,9 @@ Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke, wh
 `api.github.com` because the run's `Usage` holds its CNP until the pod is gone); copied gateway token
 rejected ≤ 600 s after issue: a 10-minute run's tokens live 600 s, because R2 sets the TTL to the
 deadline (a default 120-minute run's copied token would verify for 7200 s).
+Known since the [disruption design](../specs/2026-10-04-agent-run-disruption-design.md) §2: the
+revoke has moved from `preStop` into `agent-run`'s exit, after the checkpoint, so an implementer
+deleted or revoked with uncommitted changes pushes a checkpoint commit before its token is revoked.
 
 - [ ] **Step 2: SC-13 — revocation by annotation, and projection**
 

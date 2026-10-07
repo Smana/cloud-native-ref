@@ -261,6 +261,185 @@ class StepLogTest(unittest.TestCase):
         self.assertEqual(printed.count(agent_run.REDACTED), 5, printed)
 
 
+class TimedTest(unittest.TestCase):
+    """Disruption design §2: every shutdown step is boxed, and an overrun never holds up the next."""
+
+    def step(self, box, fn):
+        started = time.monotonic()
+        with mock.patch("sys.stderr", new=io.StringIO()) as err:
+            agent_run.timed("x", box, fn)
+        return err.getvalue(), time.monotonic() - started
+
+    def test_a_step_that_overruns_is_abandoned(self):
+        line, took = self.step(0.2, lambda: time.sleep(5))
+        self.assertLess(took, 1)
+        self.assertRegex(line, r"^agent-run shutdown x overrun in 0\.2\ds \(box 0\.2s\)\n$")
+
+    def test_a_failed_step_is_logged_redacted(self):
+        def boom():
+            raise RuntimeError("push refused: ghs_" + "A" * 36)
+
+        line, _ = self.step(1, boom)
+        self.assertRegex(line, r"^agent-run shutdown x failed: push refused: \[REDACTED:github-token\] in \d\.\d\ds \(box 1s\)\n$")
+
+    def test_a_step_logs_its_result(self):
+        line, _ = self.step(1, lambda: "pushed")
+        self.assertRegex(line, r"^agent-run shutdown x done: pushed in 0\.\d\ds \(box 1s\)\n$")
+
+
+class BudgetTest(unittest.TestCase):
+    def test_the_revoke_lands_a_second_before_a_15s_window_ends(self):
+        boxes = agent_run.PAUSE_S + agent_run.CHECKPOINT_S + agent_run.FINAL_READ_S + agent_run.STOP_S + agent_run.REVOKE_S
+        self.assertLessEqual(boxes, 14, "a preemptible VM's SIGKILL lands at 15 s")
+        self.assertLessEqual(boxes + agent_run.EXPORT_S, 15, "the root span's export takes what is left")
+
+
+class StopTest(unittest.TestCase):
+    def test_a_kill_that_is_not_reaped_in_time_never_holds_up_the_revoke(self):
+        waits = []
+
+        def wait(timeout=None):
+            waits.append(timeout)
+            raise subprocess.TimeoutExpired("agent-server", timeout)
+
+        server = mock.Mock(wait=wait)
+        self.assertEqual(agent_run.stop(server, agent_run.STOP_S), "killed, not yet reaped")
+        server.kill.assert_called_once_with()
+        self.assertEqual(waits, [agent_run.STOP_S - 1, 1], "terminated, then killed for the box's last second")
+
+
+# The commit hook as the image installs it, found as test_pr_footer finds it.
+HOOK = next(p for p in (os.path.join(HERE, "commit-msg"), "/etc/agent/git-hooks/commit-msg") if os.path.exists(p))
+
+
+class CheckpointTest(unittest.TestCase):
+    """The checkpoint against a bare repository standing in for GitHub, through the real commit hook."""
+
+    BRANCH = "agent/7f3cq2xz"
+
+    def setUp(self):
+        tmp = tempfile.mkdtemp()
+        hooks = os.path.join(tmp, "hooks")
+        os.mkdir(hooks)
+        with open(os.path.join(hooks, "commit-msg"), "w") as f:
+            f.write('#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, HOOK))
+        os.chmod(os.path.join(hooks, "commit-msg"), 0o700)
+        gitconfig = os.path.join(tmp, "gitconfig")
+        with open(gitconfig, "w") as f:
+            f.write("[user]\n\tname = t\n\temail = t@t\n[core]\n\thooksPath = %s\n[init]\n\tdefaultBranch = main\n" % hooks)
+        env = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": gitconfig, "HOME": tmp,
+                                           "PYTHONPATH": HERE, "RUN_ID": "7f3cq2xz"})
+        env.start()
+        self.addCleanup(env.stop)
+        self.remote, self.repo, seed = (os.path.join(tmp, n) for n in ("remote.git", "repo", "seed"))
+
+        def git(*args, cwd=tmp):
+            subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+        git("init", "-q", "--bare", self.remote)
+        git("clone", "-q", self.remote, seed)
+        with open(os.path.join(seed, "README.md"), "w") as f:
+            f.write("seed\n")
+        git("add", "README.md", cwd=seed)
+        git("commit", "-q", "-m", "seed", cwd=seed)
+        git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        git("clone", "-q", self.remote, self.repo)
+        git("checkout", "-q", "-B", self.BRANCH, "origin/main", cwd=self.repo)
+        repo = mock.patch.object(agent_run, "REPO_DIR", self.repo)
+        repo.start()
+        self.addCleanup(repo.stop)
+        self.env = {"BRANCH": self.BRANCH}
+
+    def remote_head(self, fmt):
+        out = subprocess.run(["git", "--git-dir", self.remote, "log", "-1", "--format=" + fmt, self.BRANCH],
+                             capture_output=True, text=True)
+        return out.returncode, out.stdout
+
+    def write(self, name, text):
+        with open(os.path.join(self.repo, name), "w") as f:
+            f.write(text)
+
+    def test_uncommitted_work_is_committed_with_the_trailer_and_pushed(self):
+        self.write("wip.md", "half done\n")
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8), "pushed a checkpoint commit")
+        code, body = self.remote_head("%B")
+        self.assertEqual(code, 0, "the branch reached origin")
+        self.assertEqual(body.rstrip().rsplit("\n\n", 1)[-1].split("\n"), ["Agent-Run: 7f3cq2xz", "Agent-Checkpoint: disruption"],
+                         "the checkpoint trailer beside the usual provenance trailer")
+
+    def test_ignored_files_stay_out(self):
+        self.write(".gitignore", "*.log\n")
+        self.write("debug.log", "noise\n")
+        self.write("notes.md", "kept\n")
+        agent_run.checkpoint(self.env, time.monotonic() + 8)
+        files = subprocess.run(["git", "--git-dir", self.remote, "show", "--name-only", "--format=", self.BRANCH],
+                               capture_output=True, text=True).stdout.split()
+        self.assertEqual(sorted(files), [".gitignore", "notes.md"])
+
+    def test_a_clean_tree_with_nothing_unpushed_pushes_nothing(self):
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8), "nothing to push")
+        self.assertNotEqual(self.remote_head("%H")[0], 0, "no branch was created at origin")
+
+    def test_an_unpushed_agent_commit_is_pushed_without_a_checkpoint(self):
+        self.write("done.md", "done\n")
+        subprocess.run(["git", "-C", self.repo, "add", "done.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", self.repo, "commit", "-q", "-m", "docs: done"], check=True, capture_output=True)
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8), "pushed")
+        _, body = self.remote_head("%B")
+        self.assertTrue(body.startswith("docs: done"))
+        self.assertNotIn("Agent-Checkpoint", body)
+
+    def test_a_staged_github_token_is_never_committed(self):
+        self.write("leak.md", "token: ghs_" + "A" * 36 + "\n")
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                         "checkpoint refused (a GitHub token is staged), nothing to push")
+        self.assertNotEqual(self.remote_head("%H")[0], 0, "nothing reached origin")
+
+    def test_the_cached_token_is_never_committed_whatever_its_shape(self):
+        cache = os.path.join(os.path.dirname(self.repo), "token.json")
+        with open(cache, "w") as f:
+            json.dump({"token": "v1.0123456789abcdef0123"}, f)
+        self.write("leak.md", "v1.0123456789abcdef0123\n")
+        with mock.patch.object(agent_run, "TOKEN_CACHE", cache):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (a GitHub token is staged), nothing to push")
+
+    def test_too_many_files_are_never_committed(self):
+        for name in ("a.md", "b.md", "c.md"):
+            self.write(name, "x\n")
+        with mock.patch.object(agent_run, "CHECKPOINT_MAX_FILES", 2):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (3 files staged), nothing to push")
+
+    def test_too_many_bytes_are_never_committed(self):
+        self.write("big.bin", "x" * 11)
+        with mock.patch.object(agent_run, "CHECKPOINT_MAX_BYTES", 10):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (11 bytes staged), nothing to push")
+
+    def test_a_refused_checkpoint_still_pushes_the_agents_own_commits(self):
+        self.write("done.md", "done\n")
+        subprocess.run(["git", "-C", self.repo, "add", "done.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", self.repo, "commit", "-q", "-m", "docs: done"], check=True, capture_output=True)
+        self.write("leak.md", "ghp_" + "B" * 36 + "\n")
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                         "checkpoint refused (a GitHub token is staged), pushed")
+        _, body = self.remote_head("%B")
+        self.assertTrue(body.startswith("docs: done"))
+
+    def test_a_failing_git_diff_refuses_the_checkpoint(self):
+        for failing in ("--name-only", "--text"):
+            with self.subTest(failing=failing):
+                def git(*args, env=None):
+                    return subprocess.CompletedProcess(args, 128 if failing in args else 0, "", "fatal: broken")
+
+                self.assertEqual(agent_run._unfit(git), "git diff failed")
+
+    def test_no_time_left_is_an_error(self):
+        with self.assertRaises(TimeoutError):
+            agent_run.checkpoint(self.env, time.monotonic() - 1)
+
+
 class GitHub(http.server.BaseHTTPRequestHandler):
     revoked = []
 
@@ -434,6 +613,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.reply({"execution_status": status})
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.path.endswith("/interrupt"):
+            note("interrupted", repr(time.time()))
+            return self.reply({"success": True})
         self.reply({"id": "cid"})
     def do_DELETE(self):
         note("closed", repr(time.time()))
@@ -458,6 +640,42 @@ DRIVER = (
     "agent_run.FLUSH_WAIT_S = 0\n"
     "sys.exit(agent_run.main())\n"
 )
+# DRIVER with a checkpoint that records when it ran, then sleeps argv[5] seconds, in a box of
+# argv[6] seconds: the order and the overrun are observable, and no git remote is needed.
+DISRUPTION_DRIVER = (
+    "import os, sys, time, agent_run\n"
+    "agent_run.AGENT_SERVER = 'http://127.0.0.1:' + sys.argv[1]\n"
+    "agent_run.SERVER_CMD = [sys.executable, '-c', sys.argv[2], sys.argv[1], sys.argv[3], sys.argv[4]]\n"
+    "agent_run.clone = lambda env: None\n"
+    "agent_run.build_request = lambda env, task, rules: {}\n"
+    "agent_run.POLL_INTERVAL_S = 0.2\n"
+    "agent_run.CHECKPOINT_S = float(sys.argv[6])\n"
+    "def checkpoint(env, deadline):\n"
+    "    with open(os.path.join(sys.argv[4], 'checkpointed'), 'w') as f:\n"
+    "        f.write(repr(time.time()))\n"
+    "    time.sleep(float(sys.argv[5]))\n"
+    "    return 'pushed a checkpoint commit'\n"
+    "agent_run.checkpoint = checkpoint\n"
+    "sys.exit(agent_run.main())\n"
+)
+
+
+class FakeBridge(http.server.BaseHTTPRequestHandler):
+    """room-bridge's final read: records when it was asked, answers after `delay`."""
+    reads = []
+    delay = 0
+
+    def do_POST(self):
+        FakeBridge.reads.append((self.path, time.time()))
+        time.sleep(FakeBridge.delay)
+        body = b'{"events": 1, "unmirrored": 0, "sealed": false}'
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
 
 
 class Collector(http.server.BaseHTTPRequestHandler):
@@ -485,7 +703,7 @@ class TracedRunTest(unittest.TestCase):
         self.addCleanup(server.shutdown)
         return server.server_port
 
-    def start(self, status, endpoint, extra_env=None):
+    def start(self, status, endpoint, extra_env=None, script=DRIVER, args=()):
         GitHub.revoked.clear()
         self.addCleanup(GitHub.revoked.clear)
         github = self.serve(GitHub)
@@ -501,14 +719,15 @@ class TracedRunTest(unittest.TestCase):
         port = str(probe.getsockname()[1])
         probe.close()
         self.out = os.path.join(self.tmp, "stdout")
+        err = os.path.join(self.tmp, "stderr")
         env = {**os.environ, "GIT_TOKEN_CACHE": self.cache, "GITHUB_API": "http://127.0.0.1:%d" % github,
                "TASK_FILE": os.path.join(self.tmp, "task"), "RULES_FILE": os.path.join(self.tmp, "rules"),
                "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint, **(extra_env or {})}
-        with open(self.out, "w") as out:
+        with open(self.out, "w") as out, open(err, "w") as errf:
             # Its own process group, so cleanup also reaches the stand-in agent-server, which a
             # driver killed mid-run never gets to stop.
-            driver = subprocess.Popen([sys.executable, "-c", DRIVER, port, STAND_IN, status, self.tmp],
-                                      cwd=HERE, env=env, stdout=out, start_new_session=True)
+            driver = subprocess.Popen([sys.executable, "-c", script, port, STAND_IN, status, self.tmp, *args],
+                                      cwd=HERE, env=env, stdout=out, stderr=errf, start_new_session=True)
         self.addCleanup(self.kill_group, driver)
         return driver
 
@@ -580,6 +799,95 @@ class TracedRunTest(unittest.TestCase):
         self.assertEqual(span.trace_id.hex(), trace_id)
         self.assertEqual(span.parent_span_id.hex(), parent_id)
         self.assertEqual(list(span.attributes), [])
+
+    def serve_bridge(self, delay=0):
+        FakeBridge.reads, FakeBridge.delay = [], delay
+        self.addCleanup(setattr, FakeBridge, "reads", [])
+        return "http://127.0.0.1:%d" % self.serve(FakeBridge)
+
+    def shutdown_steps(self):
+        return [line.split()[2] for line in self.read("stderr").splitlines() if line.startswith("agent-run shutdown ")]
+
+    def disrupt(self, extra_env, args):
+        driver = self.start("running", "http://127.0.0.1:1", extra_env, script=DISRUPTION_DRIVER, args=args)
+        self.wait_for_a_step()
+        signalled = time.time()
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+        self.assertEqual(driver.returncode, 143, "SIGTERM is 128 + 15")
+        return signalled
+
+    def test_sigterm_pauses_checkpoints_reads_stops_then_revokes_inside_15s(self):
+        bridge = self.serve_bridge()
+        signalled = self.disrupt({"ROLE": "implementer", "BRANCH": "agent/7f3cq2xz", "BRIDGE_URL": bridge}, ("0", str(agent_run.CHECKPOINT_S)))
+        revoked = self.assert_stopped_then_revoked()
+        order = [float(self.read("interrupted")), float(self.read("checkpointed")), FakeBridge.reads[0][1],
+                 float(self.read("stopped")), revoked]
+        self.assertEqual(order, sorted(order), "pause, checkpoint, final read, stop, revoke")
+        self.assertEqual(FakeBridge.reads[0][0], "/final-read")
+        self.assertEqual(self.shutdown_steps(), ["pause", "checkpoint", "final-read", "stop", "revoke"])
+        self.assertLess(revoked - signalled, 15, "the whole sequence fits the 15 s budget")
+
+    def test_a_step_that_overruns_does_not_hold_up_the_next(self):
+        bridge = self.serve_bridge(delay=5)  # longer than the final read's 3 s box
+        signalled = self.disrupt({"ROLE": "implementer", "BRANCH": "agent/7f3cq2xz", "BRIDGE_URL": bridge}, ("30", "1"))
+        revoked = self.assert_stopped_then_revoked()
+        log = self.read("stderr")
+        self.assertRegex(log, r"agent-run shutdown checkpoint overrun in 1\.\d\ds \(box 1\.0s\)")
+        self.assertRegex(log, r"agent-run shutdown final-read (overrun|failed: [^\n]*) in 3\.\d\ds \(box 3s\)")
+        self.assertEqual(self.shutdown_steps(), ["pause", "checkpoint", "final-read", "stop", "revoke"])
+        self.assertLess(revoked - signalled, 10)
+
+    def test_a_sigterm_after_the_run_finished_keeps_its_exit_code(self):
+        # C1: the composition reads this code; 143 on a finished run would have it resumed.
+        for status, code in (("finished", 0), ("error", 1)):
+            with self.subTest(status=status):
+                bridge = self.serve_bridge(delay=2)
+                driver = self.start(status, "http://127.0.0.1:1", {"ROLE": "implementer", "BRIDGE_URL": bridge})
+                deadline = time.monotonic() + 30
+                while not FakeBridge.reads and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertTrue(FakeBridge.reads, "the run never reached its final read")
+                driver.send_signal(signal.SIGTERM)
+                driver.wait(timeout=30)
+                self.assertEqual(driver.returncode, code)
+                # The bridge's own flush is refused once the run latches: this read is the room's last.
+                self.assertEqual(self.shutdown_steps(), ["final-read", "stop", "revoke"], "nothing to pause or checkpoint")
+                self.assertEqual(len(FakeBridge.reads), 2, "the interrupted final read is asked for again")
+                self.assert_stopped_then_revoked()
+
+    def test_a_sigterm_after_the_final_read_returned_reads_no_more(self):
+        bridge = self.serve_bridge()
+        script = DRIVER.replace("agent_run.FLUSH_WAIT_S = 0", "agent_run.FLUSH_WAIT_S = 30")
+        driver = self.start("finished", "http://127.0.0.1:1", {"BRIDGE_URL": bridge}, script=script)
+        deadline = time.monotonic() + 30
+        while not os.path.exists(os.path.join(self.tmp, "closed")) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, "closed")), "the run never closed its conversation")
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+        self.assertEqual(driver.returncode, 0)
+        self.assertEqual(len(FakeBridge.reads), 1)
+        self.assertEqual(self.shutdown_steps(), ["final-read", "stop", "revoke"], "the run's own final read, then the signal path")
+
+    def test_a_silent_collector_never_holds_the_pod_past_the_revoke(self):
+        # M2: listening, never answering, the collector makes each export wait out its timeout.
+        silent = socket.socket()
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(8)
+        self.addCleanup(silent.close)
+        driver = self.start("running", "http://127.0.0.1:%d" % silent.getsockname()[1])
+        self.wait_for_a_step()
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+        exited = time.time()
+        self.assertEqual(driver.returncode, 143)
+        self.assertLess(exited - self.assert_stopped_then_revoked(), 2, "the root span's export is boxed")
+
+    def test_a_reviewer_never_checkpoints(self):
+        self.disrupt({"ROLE": "reviewer", "BRANCH": "agent/7f3cq2xz"}, ("0", str(agent_run.CHECKPOINT_S)))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "checkpointed")))
+        self.assertEqual(self.shutdown_steps(), ["pause", "final-read", "stop", "revoke"])
 
 
 if __name__ == "__main__":

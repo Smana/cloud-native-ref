@@ -48,6 +48,15 @@ resource "google_container_node_pool" "agents_gvisor" {
       mode = "GKE_METADATA"
     }
 
+    # Disruption design §1: a Spot node's graceful shutdown is 30 s by default, 15 s of it for
+    # regular pods, all an agent run gets to checkpoint and let its room read the log. 120 s is GKE's
+    # maximum; the 15 s critical share keeps Cilium up while the runs stop. Needs a control plane
+    # >= 1.35.0-gke.1171000 and google-beta >= 7.39; changing it re-creates the pool's nodes.
+    kubelet_config {
+      shutdown_grace_period_seconds               = 120
+      shutdown_grace_period_critical_pods_seconds = 15
+    }
+
     shielded_instance_config {
       enable_secure_boot          = true
       enable_integrity_monitoring = true
