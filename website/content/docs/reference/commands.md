@@ -271,7 +271,7 @@ each gate actually checks.
 | `validate-manifests.sh` | Renders the repo (Kustomize + `helm template`) and gates it with `flux schema validate`, Polaris, the AI-gateway and gcp-0 cloud-shape invariants, and the Alertmanager template render |
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
 | `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
-| `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
+| `verify-doc-paths.sh` | Asserts that every backticked repository path named in the docs still exists |
 | `scripts/provision/openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
 | `scripts/provision/openbao-snapshot.sh` | OpenBao Raft snapshot automation (`task provision:openbao-snapshot`) |
 | `scripts/provision/openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |

@@ -119,6 +119,9 @@ data:
         enforcePrincipal: false
         factoryDaily: 25000000
         humanDaily: 5000000
+      # Disruption design §4: a run lost to a reclaim or an eviction resumes on its own, twice per task
+      # at most, and only with a RunTokens left under the task's TaskTokens (enforced on that path).
+      resume: {maxPerTask: 2}
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
