@@ -11,8 +11,8 @@ spec:
   # Flux pulls the digest (it wins over the tag): any same-repo agent-platform PR's CI can
   # re-push a tag with a valid signature. The tag stays for Renovate and for readers.
   ref:
-    tag: "0.0.1-pr22.gfe9655d9"  # agent-platform#22 at fe9655d (integration build)
-    digest: sha256:5deb715df48fc0f9f34c1a36ad15e188945c74c25d86d9feb9ade442da6c3bc0
+    tag: "0.0.1-pr22.g745292b3"  # agent-platform#22 at 745292b (integration build)
+    digest: sha256:6facc8b4a6784a4ca597ad7bd2f0c77460d0338a4db3092be2c4f637807b53c7
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy

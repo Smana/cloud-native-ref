@@ -13,7 +13,7 @@ spec:
     # agent-platform#22, the never-merged integration build of both stacks (factory + approvals):
     # until the wave no stack branch has both the queue and the approvals routes. Live finding A2.
     # Move it with the retention CronJob's, crd-rooms.yaml and atlasSchema.ref together (P33).
-    tag: "v0.0.1-pr22.fe9655d9@sha256:bc139b09820b363b31af9b82cac106be16ffd42257ab7cb02da6059e091f9e64"
+    tag: "v0.0.1-pr22.745292b3@sha256:82de46937f1b74026ef10f841a2216280243863be8745fea7cb13a1a9873c8a8"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2
