@@ -2,3 +2,23 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: observability
+---
+# Admits the system-* priority classes in this namespace, which Vector's DaemonSet uses
+# (observability/base/victoria-logs). GKE limits them to kube-system unless a ResourceQuota scoped
+# to the class exists in the namespace; EKS admits them either way. The same quota flux-operator
+# installs as flux-system's critical-pods. The pod count is a ceiling, never a budget.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: critical-pods
+  namespace: observability
+spec:
+  hard:
+    pods: "1000"
+  scopeSelector:
+    matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values:
+          - system-node-critical
+          - system-cluster-critical

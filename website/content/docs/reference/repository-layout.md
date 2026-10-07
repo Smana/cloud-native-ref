@@ -75,6 +75,9 @@ independently of the base/overlay mechanism above:
   (`clusters/aws-0/llm-platform.yaml`) with `spec.suspend: true`, kept a
   sibling of `clusters/aws-0/` specifically so `flux-system`'s recursive
   sync does not pick up its children and bypass the suspend.
+- **`clusters/aws-0-ai-gateway/`** — the gateway layer `llm-platform` depends
+  on: Envoy Gateway, the Envoy AI Gateway, the Semantic Router and the
+  `ai-gateway` Gateway, gated the same way by `clusters/aws-0/ai-gateway.yaml`.
 - **`clusters/gcp-0-llm-platform/`** — the same suspended-umbrella pattern
   for `gcp-0`, gated by `clusters/gcp-0/llm-platform.yaml`.
 - **`opentofu/<lane>/**`** — the directory *is* the cloud selector. Stacks
@@ -83,6 +86,6 @@ independently of the base/overlay mechanism above:
   So an AWS deploy from `opentofu/` never builds GCP as a side effect, and a GCP
   one never rebuilds `aws-0`.
 
-On `aws-0` both LLM gates have to be released for an end-to-end deploy; on
-`gcp-0` the umbrella is the only LLM gate — see the
+On `aws-0` all three LLM gates have to be released for an end-to-end deploy, the AI gateway one
+first; on `gcp-0` the umbrella is the only LLM gate — see the
 [`clusters/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/clusters/AGENTS.md).

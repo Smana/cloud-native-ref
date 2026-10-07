@@ -15,7 +15,7 @@ this page is how the platform implements them.
 ## Admission: Kyverno
 
 Two `HelmRelease`s in `security/base/kyverno/`: the `kyverno` controller
-(chart 3.9.0) and `kyverno-policies` (chart 3.9.0) — the
+(chart 3.9.1) and `kyverno-policies` (chart 3.9.1) — the
 upstream policy pack that implements the Kubernetes Pod Security Standards
 as `ClusterPolicy` resources. `kyverno-policies` installs with `values: {}` —
 no policy overrides at all — so the enforced set and its failure action (audit

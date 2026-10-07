@@ -6,11 +6,6 @@ on:
     paths:
       - 'container-images/**'
       - '.github/workflows/build-container-images.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'container-images/**'
-      - '.github/workflows/build-container-images.yml'
   workflow_dispatch:
     inputs:
       image:
@@ -23,16 +18,23 @@ on:
 # what gets read, forked and copied. `build-and-push` keeps its own job-level
 # block, which is where `packages: write` belongs: the narrowest scope that needs
 # it, not the whole workflow.
+#
+# This workflow has no pull_request trigger on purpose. A workflow that runs on
+# PRs injects its declared scopes into every PR run — whatever the steps gate —
+# so the PR build lives in check-container-images.yml, which is read-only end
+# to end. permissions: cannot be made conditional; the split is the only way to
+# keep packages: write away from PR code.
 permissions:
   contents: read
 
-# Superseded pushes stop building. NOT applied to `push` on main, where every
-# commit's images must be built and published — hence the ref in the key, which
-# is the PR ref on a pull request and `refs/heads/main` on a merge, so main's
-# runs queue behind each other rather than cancelling.
+# Runs queue rather than cancel: every push to `main` is a different merge
+# result whose images must all be built and published, so a newer commit must
+# not kill the run publishing the previous one. PR runs — which do cancel
+# their predecessors — live in check-container-images.yml, a separate workflow
+# and group.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -100,14 +102,29 @@ jobs:
             exit 0
           fi
 
-          # Extract unique image names from changed paths
-          IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | grep "container-images/" | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
-
-          # We got here because changed dirs WERE detected, so an empty image list can only
-          # mean the extraction broke. Fail instead of skipping the build behind a green tick.
-          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
-            echo "::error::detected changed dirs ${CHANGED_DIRS} but extracted no image names - image detection is broken"
+          # Every entry is one of two shapes: a depth-2 image dir (container-images/<name>)
+          # or the depth-1 root (container-images) that dir_names reports when a file
+          # directly in the image root — the README — changes. The root names no image
+          # and is handled by the no-images exit below; an entry matching neither shape
+          # means the extraction is broken, so fail loud rather than skip the build
+          # behind a green tick.
+          if echo "$CHANGED_DIRS" | jq -r '.[]' | grep -vE '^(container-images|container-images/[^/]+)$' > /dev/null; then
+            echo "::error::detected changed dirs ${CHANGED_DIRS} but some entries are neither container-images/<name> nor the container-images root - image detection is broken"
             exit 1
+          fi
+
+          # Extract unique image names from the depth-2 entries. The `|| true` swallows
+          # grep's no-match exit — a root-only change names no image, and under bash -e
+          # an unguarded no-match would abort the step — while pipefail still catches a
+          # jq parse failure.
+          IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | { grep -E '^container-images/[^/]+$' || true; } | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+
+          # No depth-2 entries: only root-level files changed, which names no image —
+          # the same outcome as the no-changes exit above.
+          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
+            echo "Only root-level container-images files changed - no images to build"
+            echo "images=[]" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
           echo "Changed images: ${IMAGES}"
@@ -201,16 +218,14 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            # {{branch}} is empty on pull_request events, so this template renders the
-            # invalid tag "-<sha>" (leading dash) and buildx fails before it even decides
-            # not to push. The <branch>-<sha> tag is what deployments pin to, and it only
-            # comes from push / workflow_dispatch — where {{branch}} is set — so restrict
-            # it to those. PR builds still get a valid tag from type=ref,event=pr (pr-<n>)
-            # and don't push anyway.
-            type=sha,prefix={{branch}}-,enable=${{ github.event_name != 'pull_request' }}
+            # <branch>-<sha> exists only in this workflow: on pull_request events
+            # {{branch}} is empty and the template renders the invalid tag
+            # "-<sha>" (leading dash), which is why check-container-images.yml
+            # carries no type=sha at all — its builds are tagged pr-<n> and never
+            # pushed.
+            type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ steps.app-version.outputs.version }},enable=${{ steps.app-version.outputs.version != '' }}
@@ -222,7 +237,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -231,7 +246,6 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        if: github.event_name != 'pull_request'
         with:
           image-ref: '${{ fromJSON(steps.meta.outputs.json).tags[0] }}'
           format: 'sarif'
@@ -241,14 +255,13 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        if: github.event_name != 'pull_request'
         with:
           sarif_file: 'trivy-results-${{ matrix.name }}.sarif'
           category: 'trivy-${{ matrix.name }}'
 
       - name: Upload security scan results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always() && github.event_name != 'pull_request'
+        if: always()
         with:
           name: security-scan-${{ matrix.name }}
           path: trivy-results-${{ matrix.name }}.sarif
@@ -276,8 +289,5 @@ jobs:
             echo "**Build Status**: ${{ needs.build-and-push.result }}" >> $GITHUB_STEP_SUMMARY
             echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
             echo "**Registry**: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-
-            if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-              echo "**Security Scan**: ✅ Trivy (HIGH, CRITICAL)" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "**Security Scan**: ✅ Trivy (HIGH, CRITICAL)" >> $GITHUB_STEP_SUMMARY
           fi
