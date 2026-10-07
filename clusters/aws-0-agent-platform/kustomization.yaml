@@ -13,3 +13,4 @@ resources:
   - infrastructure-agent-router.yaml
   - security-octo-sts.yaml
   - infrastructure-agent-mcp.yaml
+  - observability-agent-platform.yaml

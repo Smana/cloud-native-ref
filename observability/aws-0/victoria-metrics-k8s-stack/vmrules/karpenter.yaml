@@ -22,7 +22,7 @@ spec:
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
         - alert: KarpenterNodepoolAlmostFull
-          expr: sum by (nodepool,resource_type) (karpenter_nodepool_usage) / sum by (nodepool,resource_type) (karpenter_nodepool_limit) * 100 > 80
+          expr: sum by (nodepool,resource_type) (karpenter_nodepools_usage) / sum by (nodepool,resource_type) (karpenter_nodepools_limit) * 100 > 80
           for: 15m
           labels:
             severity: warning
