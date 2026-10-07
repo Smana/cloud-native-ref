@@ -1,8 +1,8 @@
 ---
-title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches
+title: Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags
 linkTitle: 0043 · GitHub credentials for agents
 weight: 430
-description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. A branch ruleset lets that App write only refs/heads/agent/**, so it cannot merge. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
+description: A run exchanges its projected ServiceAccount token at an in-cluster octo-sts, reached only through agent-router's JWT check pinned to this cluster's issuer, for an installation token of the agents' GitHub App, valid at most one hour, for one repository, with permissions set by the run's role in a trust policy stored in that repository. Two rulesets let that App write only refs/heads/agent/** and no tags, so it cannot merge or tag. PATs, the ESO GitHub generator, the OpenBao GitHub plugin and a git proxy were rejected.
 lastVerified: 2026-09-26
 ---
 
@@ -50,8 +50,9 @@ and returns an installation token with that policy's permissions.
   PR and comment is attributed to the App's bot, never to a human
 
 **Cons**:
-- The EKS issuer changes on every rebuild, so policies match it by pattern (OD-5). The pattern alone
-  accepts a token minted in any eu-west-3 EKS cluster, an attacker's included, with a ServiceAccount
+- The trust policies' issuer has two alternatives. gcp-0's GKE issuer is fixed by project, location
+  and cluster name, so it is matched exactly. aws-0's EKS issuer changes on every rebuild, so it is
+  matched by pattern (OD-5). That pattern alone accepts a token minted in any eu-west-3 EKS cluster, an attacker's included, with a ServiceAccount
   named like a run's. A prompt-injected sandbox that could reach octo-sts could present one. So
   octo-sts admits ingress only from agent-router's data plane, whose `sts` listener pins this cluster's
   issuer (Flux-substituted) and JWKS. The pattern is safe only behind that check (owner decision,
@@ -78,9 +79,9 @@ and returns an installation token with that policy's permissions.
 
 ## Decision Outcome
 
-**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus a branch ruleset
-`agent-branches` that confines every non-bypass actor to `refs/heads/agent/**`. The bypass list is
-every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
+**Chosen option**: "Self-hosted octo-sts with the agents' GitHub App", plus two rulesets
+with one bypass list: `agent-branches` confines every non-bypass actor to `refs/heads/agent/**`, and
+`agent-tags` refuses every tag write. The bypass list is every human role that can push (admin, maintain, write), Renovate and the factory's App (OD-7). A
 GitHub App is bypassed only when named, never through a role, so the agents' App is the one confined
 actor, and collaborators and App Wizard pushes made with a user's token are not.
 
@@ -109,16 +110,17 @@ repository it grants.
   and neither is set. A push is traced to its run by time against the `sts` access log and by the
   commit's `Agent-Run` trailer
 - `contents: write` also lets the implementer create tags and releases and send `repository_dispatch`,
-  which a branch ruleset does not cover. No workflow triggers on any of them today; one that does
-  needs a tag ruleset first
+  which a branch ruleset does not cover. The `agent-tags` ruleset, with the same bypass list,
+  refuses every tag write, so a release that needs a new tag fails too. A release on an existing tag
+  and `repository_dispatch` remain open; no workflow triggers on either today
 - The App's private key is the strongest credential here: it mints implementer-level tokens for every
   installed repository without octo-sts's per-role scoping, and only the ruleset still bounds its
-  pushes to `agent/**`. `openbao-platform` lets any namespace with ExternalSecret rights read it
-  (design T14, fix deferred as O1)
+  pushes to `agent/**`. It sits on the `agents` mount, which `openbao-platform` cannot read (see
+  the 2026-09-29 amendment below)
 - Dependabot is off on this repository (no `dependabot.yml`, security updates disabled, checked
   2026-09-26). Enabling it means adding its App to the bypass list, or its branches are refused
-- The trust policies' issuer is a pattern (any EKS cluster in eu-west-3, because aws-0's issuer ID
-  changes on every rebuild). That is safe only behind this self-hosted octo-sts, whose only caller,
+- The trust policies' EKS alternative is a pattern (any EKS cluster in eu-west-3, because aws-0's
+  issuer ID changes on every rebuild); the GKE alternative is gcp-0's exact issuer. That is safe only behind this self-hosted octo-sts, whose only caller,
   agent-router's `sts` listener, has already verified the token against this cluster's issuer.
   Chainguard's hosted octo-sts App (`octo-sts`, app id 801323) reads the same
   `.github/chainguard/*.sts.yaml` files with no such check: installed on a repository that
@@ -141,9 +143,14 @@ repository it grants.
 ## Implementation Notes
 
 `security/base/octo-sts/` (its only route in is `httproute.yaml`, on agent-router's `sts` listener),
-`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` applied by
-`task ops:github:agent-branch-ruleset`. The App key is at `platform/agents/github-app`. octo-sts reads
+`.github/chainguard/agent-*.sts.yaml`, `.github/rulesets/agent-branches.json` and `.github/rulesets/agent-tags.json`, both applied by
+`task ops:github:agent-branch-ruleset`. The App key is `github-app` on the `agents` kv-v2 mount. octo-sts reads
 it once at startup, so a rotated key needs `kubectl rollout restart deploy/octo-sts -n agent-system`.
+
+*Amended 2026-09-29.* The App key moved from `platform/agents/github-app` to `github-app` on the `agents` kv-v2
+mount, which only `agents-secrets` and `secrets-admin` name. A mount of its own was chosen over a
+`namespaceSelector` on `openbao-platform`: `external-secrets` reads all of `platform/`, and a
+selector would still let every namespace it admits read the key.
 
 ---
 

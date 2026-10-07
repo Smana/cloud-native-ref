@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Flat list of gcp-0's agent-platform children: aws-0's minus its node-pool
+# child and its gVisor RuntimeClass child (GKE Sandbox provides both, GCP
+# parity GP-9). A child that substitutes gke-gcp-0-vars points at a
+# */gcp-0/* overlay (assert-cloud-shape.py).
+resources:
+  - infrastructure-agent-sandbox.yaml
+  - infrastructure-agent-runtime.yaml
+  - security-agent-policies.yaml
+  - security-agent-secrets.yaml
+  - infrastructure-agent-router.yaml
+  - security-octo-sts.yaml
+  - infrastructure-agent-mcp.yaml
+  - observability-agent-platform.yaml

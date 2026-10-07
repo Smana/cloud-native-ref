@@ -5,6 +5,7 @@
 # inherits the other's allows (R5), and neither does a same-named Gateway
 # elsewhere (CC-1). SP4 PR 2 adds the Bedrock egress here, and envoy-ratelimit
 # :8081 with its budgets: a dropped rate-limit check fails OPEN (envoy-data-plane).
+# The agent trace collector's :4317 is here too (observability plan).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -73,9 +74,10 @@ spec:
               protocol: TCP
     # The agents' provider and the JWKS the listeners validate against. Not
     # ${oidc_issuer_host}: it carries the /id/<ID> path, which matchName rejects.
+    # The JWKS host is per cloud (GCP parity GP-12).
     - toFQDNs:
         - matchName: api.z.ai
-        - matchName: oidc.eks.${region}.amazonaws.com
+        - matchName: ${oidc_jwks_host}
       toPorts:
         - ports:
             - port: "443"
@@ -116,4 +118,13 @@ spec:
       toPorts:
         - ports:
             - port: "8090"
+              protocol: TCP
+    # Spans to the agent trace collector (EnvoyProxy telemetry.tracing).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports:
+            - port: "4317"
               protocol: TCP

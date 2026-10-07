@@ -1,4 +1,8 @@
-# External Secrets reads both mounts. It writes NOTHING, anywhere.
+# External Secrets reads platform/ and apps/. It writes NOTHING, anywhere.
+#
+# Never the `agents` mount (SP2 ruling P38, external review M1): this identity
+# backs `openbao-platform`, a ClusterSecretStore any namespace can use (T14).
+# scripts/ci/tests/test-openbao-agent-mounts.sh fails if a path here names it.
 #
 # This is the property that makes per-app ownership mean something. The
 # controller reads with its OWN identity, not the requester's, so if it could

@@ -1,0 +1,8 @@
+# gcp-0's private CA sits in Secret Manager as openbao-priv-gcp-ca-chain, a raw
+# PEM (no `property`), where base reads AWS's JSON certificates/<domain>/ca-chain.
+# The same entry security/gcp-0/openbao/openbao-ca-externalsecret.yaml reads.
+- op: replace
+  path: /spec/data/0/remoteRef/key
+  value: openbao-priv-gcp-ca-chain
+- op: remove
+  path: /spec/data/0/remoteRef/property

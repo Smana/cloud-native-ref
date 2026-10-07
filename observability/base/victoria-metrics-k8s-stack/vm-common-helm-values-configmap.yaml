@@ -645,6 +645,98 @@ data:
     kubeProxy:
       enabled: false
 
+    kube-state-metrics:
+      # AgentRun state for the "Agent run" and "Agent fleet" dashboards (agent observability
+      # plan, O11). The CRD ships in the always-on Crossplane package and KSM discovers it; with
+      # no runs there are no series. status.usage and status.pullRequest stay empty until a
+      # meter and the factory write their annotations (O7).
+      rbac:
+        extraRules:
+          - apiGroups: ["cloud.ogenki.io"]
+            resources: ["agentruns"]
+            verbs: ["list", "watch"]
+      customResourceState:
+        enabled: true
+        config:
+          kind: CustomResourceStateMetrics
+          spec:
+            resources:
+              - groupVersionKind:
+                  group: cloud.ogenki.io
+                  version: v1alpha1
+                  kind: AgentRun
+                metricNamePrefix: agentrun
+                labelsFromPath:
+                  namespace: [metadata, namespace]
+                  name: [metadata, name]
+                  run_id: [status, runId]
+                metrics:
+                  - name: info
+                    help: "An AgentRun's fixed fields"
+                    each:
+                      type: Info
+                      info:
+                        labelsFromPath:
+                          role: [spec, role]
+                          data_class: [spec, dataClass]
+                          principal: [spec, principal]
+                          repository: [spec, repository]
+                          model: [spec, model]
+                          branch: [status, branch]
+                          # SP3's triage tier (R47): fixed per run, empty for task agent:run.
+                          tier: [metadata, labels, agents.ogenki.io/tier]
+                  - name: status_phase
+                    help: "The AgentRun's phase, one series per phase"
+                    each:
+                      type: StateSet
+                      stateSet:
+                        labelName: phase
+                        path: [status, phase]
+                        list: [Pending, Running, Succeeded, Failed, BudgetExhausted, Revoked]
+                  # Two series, not one: KSM drops an Info whose labelsFromPath has any missing
+                  # path, and a successful run has a pullRequest but no reason.
+                  - name: outcome_info
+                    help: "Why the run ended, set on failure only"
+                    each:
+                      type: Info
+                      info:
+                        labelsFromPath:
+                          reason: [status, reason]
+                  - name: pull_request_info
+                    help: "The run's pull request, once the factory writes it"
+                    each:
+                      type: Info
+                      info:
+                        labelsFromPath:
+                          pull_request: [status, pullRequest]
+                  - name: usage_tokens
+                    help: "status.usage.tokens as the meter reported it"
+                    each:
+                      type: Gauge
+                      gauge:
+                        path: [status, usage, tokens]
+                        nilIsZero: true
+                  - name: budget_max_tokens
+                    help: "spec.budget.maxTokens"
+                    each:
+                      type: Gauge
+                      gauge:
+                        path: [spec, budget, maxTokens]
+                  - name: started_timestamp_seconds
+                    help: "status.startedAt"
+                    each:
+                      type: Gauge
+                      gauge:
+                        path: [status, startedAt]
+                        nilIsZero: true
+                  - name: finished_timestamp_seconds
+                    help: "status.finishedAt"
+                    each:
+                      type: Gauge
+                      gauge:
+                        path: [status, finishedAt]
+                        nilIsZero: true
+
     # Deployed with all the other CRDs, flux kustomization
     crds:
       enabled: false

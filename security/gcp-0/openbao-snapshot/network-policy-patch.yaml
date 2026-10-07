@@ -1,0 +1,17 @@
+# GKE's metadata server by CIDR, replacing base's `host` rule for the EKS Pod
+# Identity agent: on GKE 169.254.169.254 is never node-local (iptables DNATs it
+# to gke-metadata-server after Cilium classified it as `world`), so `host` never
+# matches and `gcloud` gets no Workload Identity token. The `test` op fails the
+# build if base moves or reshapes the rule this replaces.
+- op: test
+  path: /spec/egress/1/toEntities
+  value: [host]
+- op: replace
+  path: /spec/egress/1
+  value:
+    toCIDR:
+      - 169.254.169.254/32
+    toPorts:
+      - ports:
+          - port: "80"
+            protocol: TCP

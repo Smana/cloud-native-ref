@@ -1,0 +1,21 @@
+---
+# Alerts and the dashboard for the agent platform, gated with it (SP1 §8).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-observability
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 2m0s
+  path: ./observability/gcp-0/agent-platform
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: observability

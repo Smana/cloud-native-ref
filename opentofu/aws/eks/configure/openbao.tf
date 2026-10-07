@@ -62,7 +62,7 @@ locals {
     agents-secrets = {
       service_account = "agents-secrets"
       namespace       = "agent-system"
-      # SP1 S9: the agent-system SecretStore, platform/agents/* and nothing else.
+      # SP1 S9, SP2 P38: the agent-system SecretStore, the `agents` mount only.
       policies = ["default", "agents-secrets"]
     }
   }

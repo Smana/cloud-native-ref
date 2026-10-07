@@ -269,6 +269,9 @@ spec:
       url: "https://github.com/Smana/image-gallery.git"
       ref: "v2.0.0" # migration 004: processing status + demo_controls
       path: "internal/platform/database/migrations"
+    # objectStoreRecovery (path: image-gallery-pre-destroy) lands once the
+    # destroy hook has created that alias — an empty recovery prefix fails the
+    # bootstrap instead of starting fresh. 2026-10-05 database-backup brief, Step 4.
     backup:
       # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
       # CronJob syntax. Full explanation: security/base/zitadel/sqlinstance.yaml

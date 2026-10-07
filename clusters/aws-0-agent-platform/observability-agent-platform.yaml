@@ -9,7 +9,7 @@ spec:
   prune: true
   interval: 5m0s
   timeout: 2m0s
-  path: ./observability/base/agent-platform
+  path: ./observability/aws-0/agent-platform
   sourceRef:
     kind: ExternalArtifact
     name: observability-artifact

@@ -12,7 +12,7 @@ spec:
   # than holding dependents back a whole interval (mirrors agent-secrets).
   retryInterval: 30s
   timeout: 3m0s
-  path: ./security/base/octo-sts
+  path: ./security/aws-0/octo-sts
   sourceRef:
     kind: ExternalArtifact
     name: security-artifact

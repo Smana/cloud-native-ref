@@ -1,6 +1,6 @@
 # LLM Platform — opt-in Flux umbrella (GCP)
 
-The 6 child Flux Kustomizations in this directory are aggregated by the umbrella at
+The 3 child Flux Kustomizations in this directory are aggregated by the umbrella at
 `../gcp-0/llm-platform.yaml`. This directory is a **sibling** of `clusters/gcp-0/` — not a
 sub-path — so that `flux-system` (which recursively syncs `clusters/gcp-0/`) does not
 auto-discover the children and bypass the umbrella's `spec.suspend: true` gate. The umbrella
@@ -10,11 +10,14 @@ LLM-platform resources — are created on a fresh cluster.
 GCP analogue of `clusters/aws-0-llm-platform/`. See [ADR-0021](../../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
 for why the weights path differs from `aws-0`.
 
+The gateway layer — `envoy-gateway`, `envoy-ai-gateway`, `vllm-semantic-router` and
+`llm-gateway` — is the separate `ai-gateway` umbrella (`../gcp-0/ai-gateway.yaml` →
+`../gcp-0-ai-gateway/`), also suspended by default. `llm-platform` depends on it, so resume
+`ai-gateway` first. Those children kept their names when they moved out of this directory, so the
+`dependsOn` edges this directory's children have on them still resolve.
+
 | Child Kustomization | Path | Resources |
 |---|---|---|
-| `envoy-gateway` | `infrastructure/base/envoy-gateway` | Envoy Gateway controller (provides the GatewayClass `envoy-ai-gateway` consumes) |
-| `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Envoy AI Gateway: AIGatewayRoute → AIServiceBackend → per-model `Backend`, direct — no proxy hop. Also carries the `EnvoyPatchPolicy` that inserts the Semantic Router ext_proc filter |
-| `vllm-semantic-router` | `infrastructure/base/vllm-semantic-router` | Iris router HelmRelease (`MoM` virtual model + cascade decisions[]) |
 | `llm-platform-apps` | `apps/gcp-0/llm` | 4 InferenceService claims + the GCS bucket + static PV/PVC (ADR-0021) |
 | `llm-platform-security-wi` | `security/gcp-0/llm-models-preload` | `xplane-llm-models-preload` `GCPWorkloadIdentity` — write access to the bucket for the preload Job only |
 | `llm-platform-promptfoo` | `tooling/base/promptfoo` | Nightly Promptfoo eval CronJob — gated under the LLM umbrella so it doesn't fire when SR is suspended |
@@ -123,6 +126,7 @@ until the GPU quota is raised.
 ## Enable
 
 ```bash
+flux resume kustomization ai-gateway -n flux-system
 flux resume kustomization llm-platform -n flux-system
 ```
 
@@ -135,9 +139,9 @@ flux get kustomizations -n flux-system | grep llm-platform
 Unlike `aws-0`, there is no separate OpenTofu opt-in stack to release first — the weights bucket
 and its preload identity are Crossplane claims applied by this same umbrella
 (`llm-platform-apps`, `llm-platform-security-wi`), not a Terraform-managed filesystem. This
-umbrella is the whole opt-in surface. Enabling it provisions real GPU spot capacity
-(`g2` + `nvidia-l4`, see `infrastructure/gcp-0/computeclass/gpu-l4.yaml`) the moment an
-InferenceService claim schedules a pod — this is not free.
+umbrella, with `ai-gateway` before it, is the whole opt-in surface. Enabling it provisions real
+GPU spot capacity (`g2` + `nvidia-l4`, see `infrastructure/gcp-0/computeclass/gpu-l4.yaml`) the
+moment an InferenceService claim schedules a pod — this is not free.
 
 ## Disable (preserve cluster state)
 
@@ -153,10 +157,11 @@ GPU nodes, etc. all stay until explicitly removed.
 ```bash
 flux suspend kustomization llm-platform -n flux-system
 flux delete kustomization \
-  llm-platform-apps llm-platform-security-wi envoy-ai-gateway envoy-gateway \
-  vllm-semantic-router llm-platform-promptfoo \
+  llm-platform-apps llm-platform-security-wi llm-platform-promptfoo \
   -n flux-system --silent
 ```
+
+This leaves the gateway layer running: the `ai-gateway` umbrella and its children are separate.
 
 **Data preserved** (orphan policy on the Crossplane `Bucket` MR — see `apps/gcp-0/llm/gcs-bucket.yaml`,
 same reasoning as `security/gcp-0/openbao-snapshot/gcs-bucket.yaml`): the

@@ -31,7 +31,7 @@ spec:
           - octo-sts/Smana/cloud-native-ref/tester
           - octo-sts/Smana/cloud-native-ref/triager
         remoteJWKS:
-          uri: ${oidc_issuer_url}/keys
+          uri: ${oidc_jwks_uri}
         claimToHeaders:
           - claim: sub
             header: x-ar-agent

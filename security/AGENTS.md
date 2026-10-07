@@ -16,11 +16,16 @@ Hubble afterwards.
    maintenance chase. Check what Cilium thinks a dropped IP resolved to:
    `kubectl exec -n kube-system <cilium-agent-on-that-node> -- cilium fqdn cache list -o json`.
 
-3. **`toEntities: world` excludes link-local, and `toCIDR` alone does not match host-network
-   endpoints.** The EKS Pod Identity Agent at `169.254.170.23:80` runs on the node's host network,
-   so Cilium classifies the destination as the `host` entity and `toCIDR: 169.254.170.23/32`
-   silently fails. Use `toEntities: ["host"]` scoped to TCP 80. Symptom: `Connect timeout on
-   endpoint URL: 'http://169.254.170.23/v1/credentials'` from the AWS SDK.
+3. **The credential endpoint's rule differs per cloud, and the wrong one fails silently.**
+   - **EKS:** the Pod Identity Agent at `169.254.170.23:80` runs on the node's host network, so
+     Cilium classifies it as the `host` entity and `toCIDR: 169.254.170.23/32` never matches. Use
+     `toEntities: ["host"]` on TCP 80. Symptom: `Connect timeout on endpoint URL:
+     'http://169.254.170.23/v1/credentials'` from the AWS SDK.
+   - **GKE:** `169.254.169.254` is never node-local. iptables DNATs it to gke-metadata-server
+     *after* Cilium has classified it as `world`, so `host` never matches. Use
+     `toCIDR: 169.254.169.254/32` on TCP 80 (runlore, image-gallery).
+     `scripts/ci/tests/test-gcp-metadata-server-cidr.py` fails on a gcp-0 `host`:80 rule in source;
+     `scripts/ci/flux-schema/assert-cloud-shape.py` fails on one a gcp-0 chart renders.
 
 4. **Escaping to `toEntities: world` on TCP 443** is acceptable only for a bounded one-shot job
    (preload/build/init with a TTL) under restricted PSS with scoped IAM and HTTPS-only egress.
