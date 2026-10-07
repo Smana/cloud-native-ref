@@ -8,7 +8,7 @@ lastVerified: 2026-08-30
 ## VictoriaMetrics k8s stack
 
 `observability/base/victoria-metrics-k8s-stack/` deploys the
-`victoria-metrics-k8s-stack` chart (0.91.2) — the kube-prometheus-stack
+`victoria-metrics-k8s-stack` chart (0.95.0) — the kube-prometheus-stack
 equivalent: VictoriaMetrics itself, vmagent, Alertmanager, a bundled Grafana
 subchart, and the default recording/alerting rule set. Only `vmsingle` is
 active; `vmcluster` sits in the same directory, fully valued, commented out
