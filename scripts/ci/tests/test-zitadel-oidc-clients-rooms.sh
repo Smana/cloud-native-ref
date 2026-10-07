@@ -25,7 +25,7 @@ load_function() {
     eval "$body"
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
-         mirror_to_openbao force_sync_mirrored stored_client_id cmd_sync; do
+         mirror_to_openbao force_sync_mirrored stored_client_id previous_client_id cmd_sync; do
     load_function "$f" "$SRC"
 done
 # shellcheck source=scripts/lib/bao-map.sh
@@ -181,6 +181,7 @@ publish_project_id() { :; }
 reconcile_openbao_oidc() { :; }
 force_sync_mirrored() { :; }
 restart_rotated_consumers() { :; } # its own suite: test-zitadel-oidc-clients-restart.sh
+mirror_read() { :; }               # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
 store_probe() { return 0; }
 store_read() { printf '%s' "$p"; }
 store_write_and_mirror() { cat > "$T/written-$1"; }
