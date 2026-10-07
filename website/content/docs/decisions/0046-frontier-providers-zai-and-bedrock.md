@@ -118,7 +118,9 @@ list input price.
 | SP4 PR 2 | The Bedrock EPIs, `claude-*` on `ai-gateway`, and the agent tiers on `agent-router` | Not built |
 | Follow-up | Vertex (`GCPAnthropic`) on gcp-0 | Not started |
 
-So the keyless Anthropic path does not exist yet on either cloud.
+So the keyless Anthropic path does not exist yet on either cloud. Agents reach one model,
+`agent-default` → Z.ai GLM-5.3, on the `public` listener; the `internal` listener has no model
+backend, so `internal` work has no model to call until PR 2 or the Vertex follow-up lands.
 
 ---
 

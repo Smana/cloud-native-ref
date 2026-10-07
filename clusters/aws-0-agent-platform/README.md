@@ -10,11 +10,18 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `runtimeclass-gvisor` | `infrastructure/base/runtimeclass-gvisor` | RuntimeClass `gvisor` → `runsc` |
 | `agent-runtime` | `infrastructure/base/agent-runtime` | identity-proxy ConfigMap, `agents` default deny |
 | `agent-policies` | `security/base/agent-policies` | Kyverno admission and GC for runs |
+| `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → `platform/agents/*` |
+| `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 
 ## Resume
 
 Only once the crossplane-configuration pin serves `AgentRun`. Before it, `agent-policies` installs
 Kyverno policies against an API that does not exist, and Flux still reports it Ready.
+
+On an **existing** cluster, first apply `opentofu/aws/openbao/management` then
+`opentofu/aws/eks/configure` — they create the `agents-secrets` policy and JWT role, without which
+`SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `eks/configure` needs
+`TF_VAR_flux_git_ref=refs/heads/<branch>`.
 
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system

@@ -3,7 +3,7 @@
 Aggregated by `../aws-0/ai-gateway.yaml`, which is **suspended by default** (programme OD-3, amended
 2026-09-26). CPU only. It is what lets agents run on frontier models with no GPU node.
 
-Resume it before `llm-platform` (and SP1's `agent-platform`, once it lands), which depend on it:
+Resume it before `llm-platform` and `agent-platform`, which depend on it:
 
 ```bash
 flux resume kustomization ai-gateway -n flux-system

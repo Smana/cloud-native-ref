@@ -32,6 +32,26 @@ wrong:
       `mergeType`. Unset, it replaces rather than merges into the
       Gateway-level rules for that one route, silently exempting it from
       A1/A2.
+  A5  On agent-system/agent-router, whose one-listener-per-data-class split
+      is what keeps an `internal` token away from Z.ai (ADR-0042): every route
+      (any kind) naming it sets `sectionName`, since without one it attaches
+      to all three listeners; and every SecurityPolicy targeting such a route
+      sets `mergeType`, since without one it replaces the listener's JWT check
+      for that route. A target this bundle cannot resolve (an MCPRoute's
+      generated HTTPRoute) or a label selector is assumed in scope. At least
+      one route must attach -- zero is a layout regression. Other Gateways'
+      routes may omit sectionName.
+  A7  Every agent-router listener that an AIGatewayRoute attaches to has an
+      HTTPRoute on that same Gateway and sectionName which directly responds
+      to an Exact `/v1/models` match via an HTTPRouteFilter's directResponse.
+      Envoy AI Gateway enables its ext_proc per route, only on the
+      AIGatewayRoute-generated routes -- and on agent-router's listeners
+      ext_proc precedes jwt_authn in the filter chain, so without this guard
+      ext_proc answers GET /v1/models itself before authentication ever runs
+      (verified live: no token, a wrong audience and a forged token all
+      returned 200). At least one AIGatewayRoute must attach to agent-router --
+      zero is a layout regression, not compliance, and used to pass this check
+      vacuously.
 
 Usage: assert-ai-gateway.py [BUNDLE_DIR]    (default .bundle)
 Exit:  0 clean, 1 violations (each printed), 2 bundle missing.
@@ -186,7 +206,107 @@ def check_identity_strips(objs):
     return errors
 
 
-CHECKS = [check_rate_limit_rules, check_identity_strips]
+AGENT_ROUTER = ("agent-system", "agent-router")
+
+
+def check_agent_router_routes(objs):
+    errors = []
+    attached, elsewhere = set(), set()
+    for obj in objs:
+        kind = obj.get("kind", "")
+        if not kind.endswith("Route"):
+            continue
+        meta = obj.get("metadata") or {}
+        ns, name = meta.get("namespace", ""), meta.get("name")
+        parents = [p for p in spec_of(obj).get("parentRefs") or []
+                   if (p.get("kind") or "Gateway") == "Gateway"
+                   and ((p.get("namespace") or ns), p.get("name")) == AGENT_ROUTER]
+        # An AIGatewayRoute generates the HTTPRoute a SecurityPolicy targets, under the same name.
+        keys = {(ns, kind, name)} | ({(ns, "HTTPRoute", name)} if kind == "AIGatewayRoute" else set())
+        (attached if parents else elsewhere).update(keys)
+        if any(not p.get("sectionName") for p in parents):
+            errors.append(f"{ref(obj)}: parentRef agent-router has no sectionName, so it attaches to every "
+                          "listener (public, internal and sts)")
+    if not attached:
+        errors.append(f"no route attaches to Gateway {'/'.join(AGENT_ROUTER)} "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+
+    # targetRefs are namespace-local, so only agent-system's policies can reach its routes.
+    for obj in objs:
+        spec = spec_of(obj)
+        ns = (obj.get("metadata") or {}).get("namespace", "")
+        if obj.get("kind") != "SecurityPolicy" or spec.get("mergeType") or ns != AGENT_ROUTER[0]:
+            continue
+        refs = (spec.get("targetRefs") or []) + ([spec["targetRef"]] if spec.get("targetRef") else [])
+        keys = [(ns, t.get("kind"), t.get("name")) for t in refs if (t.get("kind") or "").endswith("Route")]
+        by_ref = any(key in attached or key not in elsewhere for key in keys)
+        by_selector = any((s.get("kind") or "").endswith("Route") for s in spec.get("targetSelectors") or [])
+        if by_ref or by_selector:
+            errors.append(f"{ref(obj)}: targets an agent-router route without mergeType, so it replaces "
+                          "the listener's JWT check for that route")
+    return errors
+
+
+def _agent_router_sections(obj):
+    """sectionNames obj's parentRefs pin it to on Gateway agent-router (namespace-local)."""
+    ns = (obj.get("metadata") or {}).get("namespace", "")
+    sections = set()
+    for p in spec_of(obj).get("parentRefs") or []:
+        if (p.get("kind") or "Gateway") != "Gateway":
+            continue
+        if ((p.get("namespace") or ns), p.get("name")) != AGENT_ROUTER:
+            continue
+        if p.get("sectionName"):
+            sections.add(p["sectionName"])
+    return sections
+
+
+def check_v1_models_guard(objs):
+    # HTTPRouteFilters that actually direct-respond -- an ExtensionRef to one
+    # missing directResponse (a rewrite filter, say) does not guard anything.
+    direct_response_filters = {
+        ((f.get("metadata") or {}).get("namespace", ""), (f.get("metadata") or {}).get("name"))
+        for f in objs if f.get("kind") == "HTTPRouteFilter" and spec_of(f).get("directResponse") is not None
+    }
+
+    listeners = set()
+    for obj in objs:
+        if obj.get("kind") == "AIGatewayRoute":
+            listeners |= _agent_router_sections(obj)
+
+    guarded = set()
+    for obj in objs:
+        if obj.get("kind") != "HTTPRoute":
+            continue
+        ns = (obj.get("metadata") or {}).get("namespace", "")
+        sections = _agent_router_sections(obj)
+        if not sections:
+            continue
+        for rule in spec_of(obj).get("rules") or []:
+            exact_models = any((m.get("path") or {}).get("type") == "Exact"
+                               and (m.get("path") or {}).get("value") == "/v1/models"
+                               for m in rule.get("matches") or [])
+            if not exact_models:
+                continue
+            for filt in rule.get("filters") or []:
+                if filt.get("type") != "ExtensionRef":
+                    continue
+                ext = filt.get("extensionRef") or {}
+                if ext.get("kind") == "HTTPRouteFilter" and (ns, ext.get("name")) in direct_response_filters:
+                    guarded |= sections
+
+    errors = []
+    if not listeners:
+        errors.append(f"no AIGatewayRoute attaches to Gateway {'/'.join(AGENT_ROUTER)} "
+                      "(a bundle-layout change may have dropped it; this check cannot pass vacuously)")
+    for section in sorted(listeners - guarded):
+        errors.append(f"Gateway {'/'.join(AGENT_ROUTER)} listener {section}: an AIGatewayRoute attaches here "
+                      "but no HTTPRoute directly responds to an Exact /v1/models match, so its ext_proc "
+                      "answers GET /v1/models itself before jwt_authn runs")
+    return errors
+
+
+CHECKS = [check_rate_limit_rules, check_identity_strips, check_agent_router_routes, check_v1_models_guard]
 
 
 def main(argv):

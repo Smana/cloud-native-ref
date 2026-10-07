@@ -6,8 +6,7 @@
 # no agent-router, no octo-sts. The AgentRun XRD ships in the always-on
 # Crossplane package; without this umbrella a claim has no RuntimeClass to run on.
 #
-# Enable:   flux resume kustomization ai-gateway -n flux-system   (operating
-#           order only — the Flux dependsOn edge lands in phase 3)
+# Enable:   flux resume kustomization ai-gateway -n flux-system   (first: this depends on it)
 #           flux resume kustomization agent-platform -n flux-system
 # Teardown: see clusters/aws-0-agent-platform/README.md
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -26,3 +25,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  # Agents run on frontier models through the ai-gateway controllers, with zero
+  # GPUs: never llm-platform (C1).
+  dependsOn:
+    - name: ai-gateway
