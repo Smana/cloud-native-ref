@@ -13,8 +13,7 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-gcp
 spec:
-  # The disruption pre-release (crossplane-configuration#36, on CC-S4 #35): the run's pod read for
-  # Disrupted/PodLost/PodFailed, no preStop, the agent-harness v0.3.0 and room-bridge final-read builds,
-  # the same tag as the AWS pin, the AgentRun XRD on gcp-0 and SQLInstance generated credentials. Phase 7 swaps
-  # in the release.
-  package: ghcr.io/smana/crossplane-configuration-gcp:v0.7.2-pr36.4f0ff30
+  # crossplane-configuration#35 at 43e6e38, the same tag as the AWS pin: #36's disruption read with the
+  # room-bridge v0.0.1-pr22.4a4abafc and agent-harness 3aea4800 builds, the AgentRun XRD on gcp-0 and SQLInstance
+  # generated credentials. It depends on -core at this exact tag. Phase 7 swaps in the release.
+  package: ghcr.io/smana/crossplane-configuration-gcp:v0.7.2-pr35.0069ea6
