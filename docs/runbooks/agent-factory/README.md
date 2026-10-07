@@ -19,7 +19,7 @@ gcp-0 is the live target since 2026-09-29. Rounds 1–6 ran on aws-0, which was 
 | [06](06-mcp.md) | 7 / 0 / 0 | — | The `room_*` tools (since c6a56f78) are not yet observed live in Steps 3–4 |
 | [07](07-end-to-end.md) | 1 / 0 / 0 | — | Only SC-04 is recorded on gcp-0 (issue #2140 → PR #2141) |
 | [08](08-observability.md) | 5 / 0 / 1 | 9 / 1 / 2 | Step 10's FAIL (F18) is fixed in 60e02d9a; re-run pending. F16 |
-| [10](10-disruption.md) | — | — | Not run yet: needs `feat/rooms-disruption` and `feat/factory-resume` on `integration/agent-factory` |
+| [10](10-disruption.md) | — | — | Ran on aws-0 on 2026-10-07 (v3 @ `1d288ea6`): Steps 1–7 PASS, acceptance 1–6 met, §5 decided (no early warning on aws-0). gcp-0 not run yet |
 | **Total** | **56 / 1 / 4** | **10 / 2 / 2** | |
 
 Round 7 ran on `integration/agent-factory` @ `a2c645ba`, round 9 on `147819ff`. Round 9 re-ran only 01

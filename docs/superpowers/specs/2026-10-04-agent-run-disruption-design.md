@@ -210,4 +210,4 @@ warning everywhere, periodic checkpoints, conversation continuity), recorded abo
 | How long does each shutdown step take under gVisor? | The measurement in §7 |
 | How does Crossplane read the pod: required resources, and with which RBAC? | A render test, then a live check |
 | How often do agents push mid-run? It sets how much a checkpoint saves | Count pushes per run in VictoriaLogs after the next rebuild |
-| What do our reclaim rates look like? | `karpenter_nodeclaims_disrupted_total{reason="spot_interruption"}` and the GCE preemption history, over a month |
+| What do our reclaim rates look like? | `karpenter_nodeclaims_disrupted_total{reason="spot_interrupted"}` and the GCE preemption history, over a month |
