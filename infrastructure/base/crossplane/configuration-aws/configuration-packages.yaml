@@ -12,5 +12,4 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-aws
 spec:
-  # CC-O1's pre-release (crossplane-configuration#31): carries the XRD CRDs the evidence gate (B2) uses. Phase 7 re-pins to a release tag.
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.7.2-pr31.988146f
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.8.1
