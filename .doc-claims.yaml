@@ -560,6 +560,21 @@ claims:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'datasourceUid: {value}'
 
+  - id: ai-gateway-umbrella-suspended
+    why: >-
+      The ai-gateway umbrella ships `spec.suspend: true` (OD-3 amended) -- a
+      default deploy is LLM-free. A page calling it "always-on" sends a reader
+      straight past the resume step it has to run before the gateway answers
+      anything, and a rewording of the source away from `true` should force a
+      look at every page that describes it as off by default.
+    source:
+      file: clusters/aws-0/ai-gateway.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: website/data/repo-tree.yaml
+        must_not_contain:
+          - 'always-on'
+
   - id: internal-data-class-provider
     why: >-
       ADR-0054 (accepted on the programme branches, not yet on main) moved internal data to the

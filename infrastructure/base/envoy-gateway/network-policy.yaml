@@ -49,6 +49,16 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
+    # The rate-limit service pulls its descriptors over xDS on 18001. It only
+    # exists where an overlay enables the global rate limit (aws-0).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            app.kubernetes.io/name: envoy-ratelimit
+      toPorts:
+        - ports:
+            - port: "18001"
+              protocol: TCP
   egress:
     # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
     - toEndpoints:
@@ -96,10 +106,17 @@ metadata:
   name: envoy-data-plane
   namespace: envoy-gateway-system
 spec:
+  # ai-gateway's proxies only. Every Envoy Gateway proxy lands in this
+  # namespace, and agent-router's (SP1) carries its own policy: without this
+  # label, this policy's Z.ai egress and in-cluster ingress would leak onto it.
+  # owning-gateway-namespace is required alongside owning-gateway-name: a
+  # same-named Gateway in another namespace must not inherit this policy.
   endpointSelector:
     matchLabels:
       app.kubernetes.io/managed-by: envoy-gateway
       app.kubernetes.io/component: proxy
+      gateway.envoyproxy.io/owning-gateway-name: ai-gateway
+      gateway.envoyproxy.io/owning-gateway-namespace: envoy-ai-gateway-system
   ingress:
     # AI Gateway data-plane is now ClusterIP; the only entry point is
     # the Tailscale Cilium Gateway. Traffic enters from Cilium's
@@ -228,4 +245,23 @@ spec:
       toPorts:
         - ports:
             - port: "9002"
+              protocol: TCP
+    # Z.ai, the platform's frontier provider (llm-gateway/zai). Provider FQDNs
+    # are allowed on data-plane pods only: a key-less pod elsewhere has no
+    # reason to reach a provider (design threat model).
+    - toFQDNs:
+        - matchName: api.z.ai
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Global rate limit (token budgets). A dropped check fails OPEN, so
+    # without this rule every budget silently counts nothing.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            app.kubernetes.io/name: envoy-ratelimit
+      toPorts:
+        - ports:
+            - port: "8081"
               protocol: TCP

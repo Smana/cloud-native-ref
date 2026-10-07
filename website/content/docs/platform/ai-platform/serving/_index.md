@@ -1,7 +1,7 @@
 ---
 title: Serving
 weight: 10
-description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until two independent gates are both released.
+description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until three independent gates are all released.
 lastVerified: 2026-08-30
 ---
 
@@ -12,7 +12,7 @@ as a single Crossplane
 per model.
 
 {{< callout type="warning" >}}
-**This platform is off by default.** Two independent gates must both be
+**This platform is off by default.** Three independent gates must all be
 released before anything LLM-related exists on the cluster — see
 [Turning it on](#turning-it-on). A plain `terramate script run deploy` and a
 plain Flux reconciliation both leave the cluster LLM-free.
@@ -33,8 +33,9 @@ plain Flux reconciliation both leave the cluster LLM-free.
 
 ## Turning it on
 
-The two gates are deliberately independent, so neither one accidentally
-brings the other along:
+The AWS gate and the two Kubernetes gates are independent of each other, so releasing one does not
+bring the others along — but `llm-platform` itself `dependsOn` `ai-gateway`, so the second
+Kubernetes command must run before the third:
 
 ```bash
 # Gate 1 — AWS side (S3 Files filesystem + IAM). Terramate stack tagged
@@ -43,24 +44,31 @@ brings the other along:
 # and exits 0).
 TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
-# Gate 2 — Kubernetes side. The umbrella Flux Kustomization ships suspended
-# (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
+# Gate 2 — Kubernetes side, gateway layer. llm-platform depends on this
+# umbrella, so it must resume first or llm-platform stalls on
+# "dependency 'flux-system/ai-gateway' is not ready".
+flux resume kustomization ai-gateway -n flux-system
+
+# Gate 3 — Kubernetes side, GPU models. The umbrella Flux Kustomization ships
+# suspended (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
 flux resume kustomization llm-platform -n flux-system
 ```
 
-The umbrella aggregates **8** child Flux Kustomizations under
+The umbrella aggregates **5** child Flux Kustomizations under
 `clusters/aws-0-llm-platform/`:
 
 | Child | Renders | Path |
 |---|---|---|
-| `vllm-semantic-router` | Prompt-classification router (`MoM` virtual model) | `infrastructure/base/vllm-semantic-router` |
 | `runtimeclass-nvidia` | `RuntimeClass nvidia` | `infrastructure/base/runtimeclass-nvidia` |
 | `llm-platform-gpu-nodepools` | Karpenter `gpu-l4` NodePool + EC2NodeClass | `infrastructure/base/karpenter-nodepools-gpu` |
-| `envoy-gateway` | Envoy Gateway controller | `infrastructure/base/envoy-gateway` |
-| `envoy-ai-gateway` | Envoy AI Gateway + the Semantic Router `EnvoyPatchPolicy` | `infrastructure/base/envoy-ai-gateway` |
 | `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/llm` |
 | `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
+
+The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
+Router and the `ai-gateway` Gateway) is a separate umbrella, `ai-gateway`, under
+`clusters/aws-0-ai-gateway/`. It is CPU only and suspended by default: resume it before
+`llm-platform`, which depends on it.
 
 That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested
@@ -69,8 +77,9 @@ entirely.
 
 ### On `gcp-0`
 
-`gcp-0` has **one gate, not two**: the weights bucket is a Crossplane claim
-rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED` —
+`gcp-0` has **one gate, not three**: the weights bucket is a Crossplane claim
+rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED`, and
+the gateway layer has no umbrella of its own there —
 the only gate is the umbrella Kustomization `clusters/gcp-0/llm-platform.yaml`
 (`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
 Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
