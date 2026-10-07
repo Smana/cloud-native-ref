@@ -221,4 +221,83 @@ rm -rf "$FAILTMP2"
 
 rm -rf "$FAILSTUB" "$FAILTMP"
 
+# --- store_write: a failed payload write never reaches the cloud ------------
+#
+# Called under `||`, as every mirror and PAT caller does, store_write runs with
+# errexit off. A `cat > "$payload"` cut short (a full disk) then fell through to
+# `versions add` / `put-secret-value`, which stored the truncated secret and
+# returned 0. The failing `cat` is a function so it can land half the payload
+# first, the way a full disk does.
+short_write() { # cloud label -> "<rc> <cloud calls>"
+    : > "$STUB_LOG"
+    local rc=0
+    PATH="$STUB:$PATH" bash -c '
+        set -o errexit -o nounset -o pipefail
+        # shellcheck source=scripts/lib/cloud-secret-store.sh
+        . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+        cat() { command cat >/dev/null; printf "%s" "{\"pat\":\"trunc"; return 1; }
+        CLOUD="$1" REGION=eu-west-3 GCP_PROJECT=proj
+        store_write existing-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+    ' _ "$1" || rc=$?
+    echo "$rc $(grep -cE 'versions add|put-secret-value|create-secret' "$STUB_LOG")"
+}
+check "aws short payload write: non-zero, no put-secret-value" "1 0" "$(short_write aws)"
+check "gcp short payload write: non-zero, no versions add"     "1 0" "$(short_write gcp)"
+
+# mktemp failing (TMPDIR gone) is the same fall-through with an empty path.
+no_tmp() {
+    : > "$STUB_LOG"
+    local rc=0
+    PATH="$STUB:$PATH" TMPDIR=/nonexistent/cloud-secret-store-test bash -c '
+        . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+        CLOUD="$1" REGION=eu-west-3 GCP_PROJECT=proj
+        store_write existing-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+    ' _ "$1" 2>/dev/null || rc=$?
+    echo "$rc $(grep -cE 'versions add|put-secret-value|create-secret' "$STUB_LOG")"
+}
+check "aws mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp aws)"
+check "gcp mktemp failure: non-zero, no cloud write" "1 0" "$(no_tmp gcp)"
+
+# A failed `secrets create` stops before `versions add`, which would only fail
+# again on a secret that does not exist.
+CREATEFAIL="$(mktemp -d)"
+cat > "$CREATEFAIL/gcloud" <<'EOF'
+#!/usr/bin/env bash
+printf 'CALL:' >> "$STUB_LOG"; printf ' %q' "$@" >> "$STUB_LOG"; printf '\n' >> "$STUB_LOG"
+for a in "$@"; do case "$a" in describe|create) exit 1 ;; esac; done
+exit 0
+EOF
+chmod +x "$CREATEFAIL/gcloud"
+: > "$STUB_LOG"
+rc=0
+PATH="$CREATEFAIL:$PATH" bash -c '
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+    CLOUD=gcp REGION="" GCP_PROJECT=proj
+    store_write notfound-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+' || rc=$?
+check "gcp create failure: non-zero" "1" "$rc"
+check_log_absent "gcp create failure: no versions add" 'versions add' "$STUB_LOG"
+
+# A describe that failed transiently sends an existing secret down the create
+# path; ALREADY_EXISTS then proves it exists, so the version is still added.
+cat > "$CREATEFAIL/gcloud" <<'EOF'
+#!/usr/bin/env bash
+printf 'CALL:' >> "$STUB_LOG"; printf ' %q' "$@" >> "$STUB_LOG"; printf '\n' >> "$STUB_LOG"
+for a in "$@"; do case "$a" in
+    describe) exit 1 ;;
+    create) echo "ERROR: (gcloud.secrets.create) ALREADY_EXISTS: Secret [projects/proj/secrets/raced-secret] already exists." >&2; exit 1 ;;
+esac; done
+exit 0
+EOF
+: > "$STUB_LOG"
+rc=0
+PATH="$CREATEFAIL:$PATH" bash -c '
+    . "'"$HERE"'/../../lib/cloud-secret-store.sh"
+    CLOUD=gcp REGION="" GCP_PROJECT=proj
+    store_write raced-secret <<< "{\"pat\":\"fake-full-token\"}" || exit $?
+' 2>/dev/null || rc=$?
+check "gcp create ALREADY_EXISTS: succeeds" "0" "$rc"
+check_log "gcp create ALREADY_EXISTS: versions add still runs" 'versions add' "$STUB_LOG"
+rm -rf "$CREATEFAIL"
+
 exit $fail

@@ -94,3 +94,8 @@ output "private_domain_name" {
   description = "Cloud DNS private zone domain, substituted into manifests as $${private_domain_name}"
   value       = local.net.private_domain_name
 }
+
+output "dns_editor_role" {
+  description = "Full name of the custom DNS role, suffix included, for GCPWorkloadIdentity claims"
+  value       = google_project_iam_custom_role.crossplane_dns.name
+}

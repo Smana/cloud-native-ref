@@ -26,7 +26,7 @@ Everything below is the same on both clouds except these:
 | `IDP_URL` | `https://auth.cloud.ogenki.io` | `https://auth.gcp.cloud.ogenki.io` |
 | `PRIVATE_DOMAIN` | `priv.aws.ogenki.io` | `priv.gcp.ogenki.io` |
 | step 2 | **not needed** — External Secrets uses EKS Pod Identity, granted by OpenTofu | **required** |
-| `OPENBAO` | the `--openbao-*` flags: step 1 re-points OpenBao's OIDC client too ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)) | empty — OpenBao OIDC exists only on `aws-0` |
+| `OPENBAO` | the `--openbao-*` flags: step 1 re-points OpenBao's OIDC client too ([#2045](https://github.com/Smana/cloud-native-ref/issues/2045)) | hosting its own directory: the `--openbao-*` flags plus `--mirror-openbao`. Consuming `aws-0`'s: empty |
 
 Set them once and the rest of the page copies straight into a shell:
 
@@ -39,12 +39,24 @@ export IDP_URL=https://auth.cloud.ogenki.io
 export PRIVATE_DOMAIN=priv.aws.ogenki.io
 ```
 
-On `gcp-0`:
+On `gcp-0`, when it hosts its own directory:
 
 ```bash
 CL="--cluster gcp-0 --cloud gcp --project ogenki-435905"
-OPENBAO=""
+# gcp-0's ExternalSecrets read OpenBao, so step 1 also mirrors each client there.
+OPENBAO="--openbao-url https://bao.priv.gcp.ogenki.io:8200 --openbao-root-token-secret openbao-priv-gcp-root-token --openbao-ca-file opentofu/gcp/gke/configure/.tls/ca.pem --mirror-openbao"
 export IDP_URL=https://auth.gcp.cloud.ogenki.io
+export PRIVATE_DOMAIN=priv.gcp.ogenki.io
+```
+
+On `gcp-0`, when it consumes `aws-0`'s directory, `aws-0`'s own run rotates
+OpenBao OIDC. Step 1 only registers `gcp-0`'s clients there, and step 3 is not
+run:
+
+```bash
+CL="--cluster gcp-0 --cloud gcp --project ogenki-435905 --idp-cloud aws --region eu-west-3"
+OPENBAO=""
+export IDP_URL=https://auth.cloud.ogenki.io
 export PRIVATE_DOMAIN=priv.gcp.ogenki.io
 ```
 
@@ -60,8 +72,11 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    projectRoleAssertion. That last one is not optional: with it off ZITADEL
 #    puts NO roles in any token AND leaves ctx.v1.user.grants empty inside the
 #    groups action, so every consumer authenticates and then has no groups.
-#    On aws-0, $OPENBAO points OpenBao at whatever client ZITADEL now holds;
-#    after a restore, leaving it out strands OpenBao on a client ZITADEL forgot.
+#    On a hosting cluster, $OPENBAO points OpenBao at whatever client ZITADEL
+#    now holds; leaving it out strands OpenBao on a client ZITADEL forgot.
+#    A client id that REPLACES one the cluster held also restarts the
+#    Deployments reading it from env (oauth2-proxy, Headlamp, Grafana), once
+#    their Secret carries it. Only with kubectl on --cluster; otherwise it warns.
 ./scripts/provision/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
 ```
 
@@ -132,10 +147,14 @@ converges from whatever step 1 last wrote to the `harbor-oidc` store entry. See
 {{< callout type="info" >}}
 **The admin PAT every script above needs is automatic, not a prerequisite.** The
 chart writes it once, into the `iam-admin-pat` Secret in the `security`
-namespace, at `FirstInstance`. The first script run above reads that Secret and
-captures the token into the cloud secret store; every later run — on any
-cluster, restored or not — reads it back from there. Nothing here needs a token
-minted by hand.
+namespace, at `FirstInstance`. On the cloud that hosts the directory, every run
+reads that Secret first, and it wins: it overwrites the cloud store's copy when
+they differ, because a fresh `FirstInstance` minted a new token. The store is
+read only when the Secret is gone, after a restore. A cluster consuming another
+cloud's directory reads that cloud's store and never writes it. Run hosting
+syncs with `kubectl` pointed at the hosting cluster, since a leftover Secret
+elsewhere would overwrite the stored token. Nothing here needs a token minted
+by hand.
 {{< /callout >}}
 
 {{< callout type="warning" >}}

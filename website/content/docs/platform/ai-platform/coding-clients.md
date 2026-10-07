@@ -10,7 +10,7 @@ The cluster exposes an OpenAI-compatible endpoint at
 [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}})).
 Any client that speaks the OpenAI chat-completions API, or the OpenAI
 completions API for FIM, can talk to it — once all three
-[opt-in gates]({{< relref "/docs/platform/ai-platform/_index.md#turning-it-on" >}})
+[opt-in gates]({{< relref "/docs/platform/ai-platform/serving/_index.md#turning-it-on" >}})
 are released.
 
 ## Authentication
@@ -121,7 +121,7 @@ extension sends CodeLlama-format prompts and the model can't parse them.
 Claude Code speaks the Anthropic API, not the OpenAI API. Pointing it at this
 gateway needs a translator sidecar exposing Anthropic-style endpoints and
 proxying to the OpenAI gateway — filed as an open item on the
-[roadmap]({{< relref "/docs/platform/ai-platform/roadmap.md" >}}), not
+[roadmap]({{< relref "/docs/platform/ai-platform/status.md#serving-roadmap" >}}), not
 implemented today. OpenCode covers the same agentic-CLI workflow and works
 out of the box.
 
@@ -136,7 +136,7 @@ reflects what actually served the request.
 
 All four models default to `minReplicas: 1` (always warm); KEDA scales
 `1→max` on the three leading saturation signals described in
-[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}}).
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/serving/autoscaling-and-gpu.md" >}}).
 On `MoM`, first-request latency is dominated by the ~250–300 ms classifier
 round-trip rather than cold start; on a directly-named model there is no
 classifier cost at all.
@@ -145,7 +145,8 @@ classifier cost at all.
 
 ```bash
 # Smoke test — list models (works on any client)
-curl -sS https://llm.priv.aws.ogenki.io/v1/models | jq '.data[].id'
+curl -sS https://llm.priv.aws.ogenki.io/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.data[].id'
 
 # Direct chat completion against the coder model (no Semantic Router hop)
 curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/chat/completions \

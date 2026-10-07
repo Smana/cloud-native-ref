@@ -38,6 +38,11 @@ A **room** is one append-only log whose `seq` the broker assigns. Its participan
 | S11 | Deployment | `App` claim for the broker, with its own route off; HTTPRoute and oauth2-proxy beside it | Raw manifests | Dogfoods the golden path. The App XRD takes custom CNP rules and extra ports |
 | S12 | Code | Go broker, bridge and `roomctl`, plus a small TypeScript UI, in `Smana/agent-platform` (OD-4) | — | Precedent `container-images/token-exchange-proxy/`; client-go for the `AgentRun` and `Room` watches |
 
+> **2026-10-01 note on S7.** agentgateway is no longer the only A2A path: Agent Router ships an A2A
+> capability in Preview on Envoy's native A2A filter, and an `A2ARoute` CRD is proposed upstream
+> ([agent-router#2070](https://github.com/theagentrouter/agent-router/issues/2070)). If an outside
+> agent must join a room, try that first ([ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md)).
+
 ## Target architecture
 
 ```mermaid
@@ -106,7 +111,9 @@ stateDiagram-v2
   Closed --> [*]: retention elapsed, log purged
 ```
 
-**One Running run per room** (SP3's sequential roles, D7). Deleting a Room runs a finalizer that deletes its runs
+**One Running run per room** (SP3's sequential roles, D7). A run starts only once its bridge holds the room's lease,
+and the lease passes to another run only when the holder's run is no longer live (plan rulings P17, SBB). A run the
+room refuses never starts, and ends `room_busy`. Deleting a Room runs a finalizer that deletes its runs
 and seals the log. The log keeps its own retention clock.
 
 **Roles.** Room roles are cumulative (watcher < collaborator < owner). **Approver** is an independent flag.
@@ -179,11 +186,20 @@ Router 1.1.0 authorizes only `tools/call` and `tools/list` (SP1 §6): the room M
 | `room_read(sinceSeq, limit)` | all | nothing; returns the room's `message` and `handoff` events, redacted |
 | `room_post(text)` | all | `message{kind: chat}`, delivered to nobody |
 | `room_handoff(toRole, summary, commit)` | implementer, tester, triager | `handoff` |
-| `room_verdict(verdict, summary, commit)` | reviewer, tester | `message{kind: review_verdict, verdict: approve/changes}` (SP3's values) |
+| `room_verdict(verdict, summary, commit)` | reviewer, tester | `message{kind: review_verdict, verdict: approve/changes, pullRequest}` (SP3's values; `pullRequest` is the run's `task.url` when it is a pull request) |
 
 Agents cannot prompt each other: the only agent→agent path is a brief the orchestrator builds. Loops are bounded by
 the orchestrator, through SP3's `maxReviewRounds` or a human clicking each hop. A human may fill a role; whether SP3
 accepts a human `review_verdict` is SP3's policy.
+
+**A verdict reaches its pull request** (Δ1, accepted 2026-09-27). When an agent's `room_verdict` names a pull request,
+the broker's leader posts it there as one comment from SP3's factory App, `ogenki-agent-factory`, which SP2 creates
+early (Issues and Pull requests write, Contents and Metadata read, key at `agents/factory-app`). The comment
+quotes the summary only for a `public` room, links the room, and ends with the marker
+`<!-- agent-room:<roomId>:<seq> -->`. A comment by the App that already carries the marker is never posted again. The
+outcome is appended as `state_changed{verdict_posted, url}` or `state_changed{verdict_not_posted, reason}`. The verdict
+is advice: it neither approves nor blocks the pull request. SP3's factory reads the verdict from the log, never the posting
+outcome, and does not post the verdict itself.
 
 ```mermaid
 sequenceDiagram
@@ -192,6 +208,7 @@ sequenceDiagram
   participant BR as room broker + log
   participant I as implementer run
   participant R as reviewer run
+  participant GH as GitHub
   O->>BR: create Room, then AgentRun implementer (factory, or POST /v1/runs in human rooms)
   I->>BR: bridge events (turn, tool_call, tool_result…)
   I->>BR: room_handoff(reviewer, summary, commit 4be1c9d)
@@ -199,6 +216,7 @@ sequenceDiagram
   O->>BR: GET events afterSeq (reads handoff)
   O->>R: AgentRun reviewer, baseRef 4be1c9d, task = fenced brief
   R->>BR: room_verdict(changes, findings)
+  BR->>GH: the verdict as one PR comment (factory App)
   O->>BR: GET events (reads verdict)
   O->>I: new AgentRun implementer, baseRef = branch head, brief = findings
   Note over O,R: until verdict approve or maxReviewRounds, then SP3's merge gate
@@ -266,7 +284,26 @@ sequenceDiagram
 | Claim (`agent-system`) | Settings | Why standalone |
 |---|---|---|
 | `SQLInstance xplane-rooms` | 1 instance, 20 Gi, daily backup to `${region}-ogenki-cnpg-backups`, `objectStoreRecovery`, `atlasSchema` | Only the standalone XRD has `objectStoreRecovery`, which lets the log survive routine rebuilds |
-| `KVStore xplane-rooms` | nano, `auth.existingSecret` from the `agents-secrets` store (`platform/agents/*`, C1) | The App sub-block has no `auth`, and the KVStore CNP admits the whole namespace |
+
+No `KVStore`: fan-out is Postgres `LISTEN/NOTIFY` as built (ledger ruling AT). Where this section says
+Valkey, read the notify channel *(external review, component check, 2026-10-02)*.
+
+`atlasSchema.ref` names a frozen branch `pin/room-broker-<sha8>`, cut at the commit of the pinned
+broker image and protected by an agent-platform ruleset (no update, no deletion on `pin/**`), so a
+push elsewhere cannot migrate the deployment. It is applied at the next integration re-pin; a
+re-pin cuts a new pin branch and moves image, CRD and ref together. Never a SHA; the wave pins the
+release tag *(external review R16; SP2 plan P41)*.
+
+**Recovery objectives (single instance, deliberate)** *(external review R08 and component check)*.
+
+| Failure | RPO | RTO |
+| --- | --- | --- |
+| Pod or node loss | 0. The PVC survives | Minutes: CNPG restarts the instance on the volume. Rooms are read-only meanwhile and agents' posts retry |
+| Volume or zone loss | WAL archive lag: CNPG `archive_timeout` (default 5 min, not yet checked live) | Restore from the bucket |
+| Cluster rebuild | The last promoted seed (plan P8). Not WAL | The rebuild, plus the restore |
+
+HA is not planned; the log is an audit trail, not the run's control state. That rests on F12 and
+F15 (the room lease) being proven.
 
 **Append.** One transaction: `UPDATE rooms SET last_seq = last_seq + 1 RETURNING`, `INSERT`, `COMMIT`. The row lock
 serialises writers per room, and a rollback also undoes the counter, so `seq` stays gapless. The broker's database
@@ -306,9 +343,12 @@ tokens) and `private-key`. Matches become `[REDACTED:<rule>]`. Broker logs carry
    egress (S9). Before SP3 ships, the broker shows the `AgentRun` for the owner to create. R and its PR are untouched.
    Harness memory is not transplanted (an OpenHands fork stays within one server).
 
-**The PR stays the unit of review.** PRs open only through `forge.pr` (§6); SP3's gate merges (C6). The PR body
-links `Agent-Room: https://rooms.${private_domain_name}/r/<id>`, a private tailnet URL, so a public PR exposes a room
-ID and **no transcript**. A fork's PR carries `Forked-from: <branch>@<sha>`.
+**The PR stays the unit of review.** PRs open only through `forge.pr` (§6); SP3's gate merges (C6). The harness's
+`gh pr create` appends a provenance footer to the PR body, one line per field (Δ4, accepted 2026-09-27):
+`Agent-Room: <roomId>`, `Agent-Run: <runId>`, `Agent-Role`, `Agent-Task: <task URL>` and `Agent-Model`. A public PR so
+exposes a room ID and **no transcript**. The room's private tailnet URL, `https://rooms.${private_domain_name}/r/<id>`,
+is linked from the verdict comment (§3). The footer is guidance, like the `Agent-Run` commit trailer: the controls stay
+the rulesets and SP3's gate. A fork's PR carries `Forked-from: <branch>@<sha>`.
 
 ```mermaid
 sequenceDiagram
@@ -392,7 +432,7 @@ compared [in the research](2026-09-23-agent-collaboration-rooms-research.md#prot
 
 | Endpoint | Ingress | Egress |
 |---|---|---|
-| room-broker | oauth2-proxy → 8080; sandbox pods and the factory → 8443; `agent-router` proxies → 8090; `observability` → 9090 | kube-dns 53 with `rules.dns matchPattern "*"`; `kube-apiserver`; CNPG 5432; Valkey 6379; factory run-request API; toFQDNs identity provider 443 |
+| room-broker | oauth2-proxy → 8080; sandbox pods and the factory → 8443; `agent-router` proxies → 8090; `observability` → 9090 | kube-dns 53 with `rules.dns matchPattern "*"`; `kube-apiserver`; CNPG 5432; Valkey 6379; factory run-request API; toFQDNs identity provider 443; `toFQDNs api.github.com:443` (the verdict comment) |
 | oauth2-proxy | `ingress` entity → 4180 | kube-dns; identity provider 443; broker 8080 |
 | CNPG `xplane-rooms` | broker 5432; CNPG operator 8000; `observability` 9187 | kube-dns; kube-apiserver; object storage (backups); peers |
 | Valkey | same namespace 6379 (composition); `observability` 9121 | none |
@@ -402,7 +442,7 @@ No manifest in the repo selects `cnpg.io/cluster` pods, so SP2 writes the CNPG p
 **Workload.** 2 replicas, PDB `minAvailable: 1`; 100m/128Mi requests, 500m/256Mi limits; PSS restricted; `/healthz`,
 `/readyz` (Postgres), `/startupz` (schema). RBAC: read and delete on `agentruns` (never create,
 C3), CRUD on `rooms`; no cluster-admin. Secrets come only from the namespaced `agents-secrets` store
-(`platform/agents/*`, C1), never `openbao-platform`; the `rooms-proxy` client is written under that path.
+(the dedicated `agents` mount (`agents/*`, SP2 plan P38), C1), never `openbao-platform`; the `rooms-proxy` client is written under that path.
 
 **Metrics:** `rooms{phase}`, `rooms_participants`, `rooms_connections`, `rooms_events_appended_total{type,origin}`,
 `rooms_append_seconds`, `rooms_fanout_lag_seconds`, `rooms_approvals_pending`, `rooms_approval_decision_seconds`,
@@ -433,6 +473,8 @@ the validation catalog (`skipMissingSchemas: false`).
 | SC-11 | Network | No `DROPPED` on the §9 flows; a pod in `agents` without the sandbox label cannot reach :8443 |
 | SC-12 | Latency | p95 `rooms_fanout_lag_seconds` < 0.5 s over a one-hour demo |
 | SC-13 | Gates | `validate-manifests.sh` exits 0 with `Invalid: 0`; `validate-vmrules.sh` and `validate-links.sh` exit 0 |
+| SC-14 | Verdict on the PR | An agent's `review_verdict` on a pull request yields exactly one comment by `ogenki-agent-factory[bot]` carrying its marker, still one after a leader change |
+| SC-15 | PR provenance | An agent's pull request body ends with `Agent-Room` (when the run has a room), `Agent-Run`, `Agent-Role`, `Agent-Task` (when the task is a URL) and `Agent-Model` |
 
 **Non-goals:** AHP wire compatibility now; agents from outside the cluster (A2A); rooms spanning clusters; concurrent
 runs in one room; widening a live run; harness memory on fork; CRDT co-editing, a shared PTY or voice; a human's
@@ -467,6 +509,10 @@ Each phase is one PR here plus a release of `Smana/agent-platform` (OD-4). aws-0
 | **0049** · Room client and human auth | Web UI served by the broker behind oauth2-proxy (OD-15) | Headlamp plugin, CLI only, AHP facade, browser PKCE app |
 
 Owner decisions are consolidated in the programme: client OD-15, four-eyes OD-16, retention OD-17, code location OD-4.
+Open before the first `internal` run is admitted *(external review R12)*: re-confirm that
+`agents-member` watches everywhere (§1, D1) for `internal` rooms, whose transcripts carry cluster
+logs and pod specs. Yes → record "re-confirmed for internal, <date>" beside §1's group rule. No → a
+follow-up task gates `Read`/`Fork` on `dataClass` plus membership, with a policy-matrix test.
 
 ## Appendix
 

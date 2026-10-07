@@ -62,6 +62,10 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       storage_class = local.storage_class
 
       # GCP-specific.
+      # Custom role names carry a generation suffix (gke/init var.custom_role_suffix),
+      # so claims read the name rather than spelling it.
+      gcp_dns_editor_role = local.init.dns_editor_role
+
       project_id     = var.project_id
       project_number = local.init.project_number
       zone           = local.init.cluster_location
@@ -131,7 +135,8 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # scope has to name it. Substituting it means a rename is caught by
       # check-substitution.py instead of surfacing as a bare `invalid_grant`
       # with oauth2-proxy, the exchange proxy and Headlamp all reporting healthy.
-      zitadel_project_id = var.zitadel_project_id
+      # Live-reconciled when this cluster hosts ZITADEL: see local.zitadel_project_id.
+      zitadel_project_id = local.zitadel_project_id
     }
   })
   server_side_apply = true

@@ -144,6 +144,12 @@ gcloud compute disks list --project <project>
 gcloud compute addresses list --project <project>
 ```
 
+`scripts/ops/teardown/teardown.sh` does both, sweeps GKE's LoadBalancer
+leftovers, and retries once while the VPC stands. A non-zero terramate exit
+beside `cloud: clean` comes from that retry failing on already-destroyed stacks
+(typically `opentofu/gcp/openbao/cluster`'s snapshot of a gone node): re-run
+with `TM_OPENBAO_SKIP_SNAPSHOT=true` only if the first pass's snapshot succeeded.
+
 ## Opt-in stacks
 
 `opentofu/aws/llm-platform/` is tagged `opt-in` (see `opentofu/aws/llm-platform/workflows.tm.hcl`):
@@ -234,7 +240,7 @@ each gate actually checks.
 | `validate-manifests.sh` | Renders the repo (Kustomize + `helm template`) and gates it with `flux schema validate` + Polaris |
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
 | `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
-| `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
+| `verify-doc-paths.sh` | Asserts that every backticked repository path named in the docs still exists |
 | `scripts/provision/openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
 | `scripts/provision/openbao-snapshot.sh` | OpenBao Raft snapshot automation (`task provision:openbao-snapshot`) |
 | `scripts/provision/openbao-oidc-check.sh` | Checks OpenBao's OIDC client against the secret store and ZITADEL; run as the deploy's `stage5-verify-openbao-oidc` job (#2045) |
