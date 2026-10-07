@@ -109,10 +109,12 @@ the pod's reason (agent-sandbox v1.0.3 to `main`). Precedence:
 
 | Reason | When |
 |---|---|
-| `Succeeded` | Unchanged |
+| `Succeeded` | The harness container exited 0 (review C1), whatever the pod went through afterwards. It latches at the first reconcile that sees the exit, while the sidecars still drain: from then on the run is not live, so the broker refuses the bridge's own flush, and the harness's final read before it exits is the room's last |
 | `Disrupted` | The pod is `Failed` with a `DisruptionTarget` condition: node shutdown, eviction, preemption |
 | `PodLost` | The pod vanished: it was deleted, or its node disappeared, before the composition saw a final state. The gated replacement (F12) is the mark |
-| `PodFailed` | The pod failed on its own: the harness exited non-zero, a crash, an out-of-memory kill |
+| `PodFailed` | The pod failed on its own: the harness exited non-zero, a crash, an out-of-memory kill. A harness exit code other than 0, 137 or 143 reads `PodFailed` ahead of `Disrupted`; it sets the reason only, so the bridge's flush of a crashed run still lands |
+
+Only a pod the run's Sandbox controls (`ownerReferences`) is read.
 
 Where a plain `DELETE` or PodGC leaves no `DisruptionTarget`, or an evicted pod is deleted before the
 composition reads it, the run reads `PodLost`. That is still treated as infrastructure loss (§4).

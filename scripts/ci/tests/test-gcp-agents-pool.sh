@@ -19,6 +19,10 @@ if [ -f "$F" ]; then
   grep -Eq 'min_node_count[[:space:]]*=[[:space:]]*0' "$F" || fail "the pool does not scale to zero"
   grep -Eq 'key[[:space:]]*=[[:space:]]*local\.cilium_agent_not_ready_taint' "$F" || fail "no Cilium startup taint"
   grep -Eq 'disk_type[[:space:]]*=[[:space:]]*"pd-standard"' "$F" || fail "the pool's disk is not pd-standard, the cheapest"
+  # Disruption design §1: 120 s of graceful node shutdown, 15 of it for critical pods (Cilium stays up
+  # while the runs checkpoint). GKE's default is 30, 15 for regular pods.
+  grep -Eq 'shutdown_grace_period_seconds[[:space:]]*=[[:space:]]*120' "$F" || fail "the pool's graceful node shutdown is not 120 s"
+  grep -Eq 'shutdown_grace_period_critical_pods_seconds[[:space:]]*=[[:space:]]*15' "$F" || fail "the pool's critical-pod share is not 15 s"
 else
   fail "no $F"
 fi

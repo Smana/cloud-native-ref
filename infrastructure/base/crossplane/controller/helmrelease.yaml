@@ -27,6 +27,7 @@ spec:
     resourcesCrossplane:
       limits:
         cpu: 500m
+        # Holds a cluster-wide pod informer (AgentRun's runPod): the disruption plan's Task 13 measures it.
         memory: 512Mi
 
     metrics:
