@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform#17 at d7747b2, the chart's appVersion.
+      # agent-platform#25 at ef31783e, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.0.1-pr17.d7747b25@sha256:b1d7f9bbd1bafba406d26f48206ef40a0414f79ffb0fdffd963741de2d4015b7"
+      tag: "v0.0.1-pr25.ef31783e@sha256:ed8e616cd5275b094d69e9e8d9ba415ed06b4b3212f8493dd24bea0db021c010"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -113,11 +113,15 @@ data:
         investigate: {roles: [triager]}  # R38: proposes a public issue text, never writes
       caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336, awaitingHumanWIP: 5}
       budgets:
-        # OD-10: a shadow week first (R3). The run cap is always enforced by the meter.
-        enforceTask: false
+        # OD-10: only the principal cap keeps its shadow week (R3); the task cap is enforced
+        # since a shadow one let a task reach 3.35 M of its 3 M. The meter always enforces the run cap.
+        enforceTask: true
         enforcePrincipal: false
         factoryDaily: 25000000
         humanDaily: 5000000
+      # Disruption design §4: a run lost to a reclaim or an eviction resumes on its own, twice per task
+      # at most, and only with a RunTokens left under the task's TaskTokens (enforced on that path).
+      resume: {maxPerTask: 2}
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428

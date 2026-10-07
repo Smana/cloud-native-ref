@@ -49,6 +49,9 @@ spec:
          "targets": [{"refId": "A", "expr": "sum by (classifier, fit, control) (increase(agent_factory_tier_fit_total[30d]))", "format": "table", "instant": true}]},
         {"id": 10, "type": "stat", "title": "Kill switch", "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
-         "targets": [{"refId": "A", "expr": "max(agent_factory_kill_switch_engaged)"}]}
+         "targets": [{"refId": "A", "expr": "max(agent_factory_kill_switch_engaged)"}]},
+        {"id": 11, "type": "timeseries", "title": "Automatic resumes by reason", "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (reason) (increase(agent_factory_resumes_total[1d]))", "legendFormat": "{{reason}}"}]}
       ]
     }

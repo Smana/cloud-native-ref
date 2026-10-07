@@ -1054,6 +1054,37 @@ stored_client_id() {
                  .client_id, ."client-id" | strings) // empty' 2>/dev/null || true
 }
 
+# The payload OpenBao holds at $1's mapped path, on stdout; nothing when unmapped,
+# absent or unreadable. A subshell, like mirror_to_openbao, so its temp files and
+# trap stay local; the payload holds the secret, so it only ever feeds a pipe.
+mirror_read() (
+    set +x
+    key="$1"
+    target="$(bao_target_for "$key")" || exit 0
+    tmp="$(umask 077 && mktemp -d -t openbao-read.XXXXXX)" || exit 0
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    OPENBAO_TOKEN_CONFIG="$tmp/token"
+    openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}" 2>/dev/null || exit 0
+    openbao_req GET "${target%%/*}/data/${target#*/}" -o "$tmp/read" 2>/dev/null || exit 0
+    jq -c '.data.data // empty' "$tmp/read" 2>/dev/null || true
+)
+
+# The client id $1's consumers run with today: the managed store's, else -- on a
+# mirrored key -- OpenBao's, which is what their ExternalSecret reads. A lineage
+# whose OpenBao was restored while the store was not holds the old client only
+# there (aws-0, 2026-10-06: rooms-proxy). Empty means a first bootstrap.
+previous_client_id() {
+    local key="$1" id=""
+    if store_exists "$key"; then
+        id="$(store_read "$key" | stored_client_id)" || id=""
+    fi
+    if [ -z "$id" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ]; then
+        id="$(mirror_read "$key" | stored_client_id)" || id=""
+    fi
+    printf '%s' "$id"
+}
+
 # Restart the Deployments that read a ROTATED client from env. They resolve it
 # once, at start, so a refreshed Secret is not enough: after an OpenBao rebuild
 # headlamp-oauth2-proxy kept the dead directory's client id and answered "App
@@ -1581,11 +1612,9 @@ cmd_sync() {
         # A key that held a client before is a rotation (a fresh directory, or a
         # restore older than the app); one that held none is a first bootstrap,
         # whose consumers are still waiting for the Secret and start on their own.
-        # Never fatal: ZITADEL has issued the secret, and only the write below keeps it.
-        prev_id=""
-        if store_exists "$key"; then
-            prev_id="$(store_read "$key" | stored_client_id)" || prev_id=""
-        fi
+        # Read before the write below replaces it. Never fatal: ZITADEL has issued
+        # the secret, and only that write keeps it.
+        prev_id="$(previous_client_id "$key")"
         wrc=0
         printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
         case "$wrc" in
