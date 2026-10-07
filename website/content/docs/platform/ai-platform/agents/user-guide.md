@@ -1,18 +1,18 @@
 ---
 title: User guide
 weight: 10
-description: "Work in progress. How a developer gives work to agents, follows it, steers it and stops it, today and in the target design."
-lastVerified: 2026-10-01
+description: "How a maintainer hands an issue to the agent factory, follows it, steers it and stops it, shown on one real task."
+lastVerified: 2026-10-07
 aliases:
   - /docs/platform/agent-factory/user-guide/
 ---
 
-{{< callout type="warning" >}}
-**Work in progress.** Part 1 describes the **target experience**, and marks what is already
-deployed on `gcp-0`, which runs the programme from the `integration/agent-factory` branch, and
-whether its live gate has run. It exists so the
-experience can be agreed *before* the rest is built, and it will change. Part 2 is the run you start
-by hand, which also works today. Nothing here is on `main` yet.
+{{< callout type="info" >}}
+**Live on `aws-0`, not yet on `main`.** The task on this page ran on `aws-0` on 2026-10-07, from the
+`integration/agent-factory` branch, and the owner signed off the experience after that run. The
+programme's pull requests now merge in order. Until the merge gate goes live after them, it runs in
+shadow: it says what it would merge, and merges nothing. What runs where is on the
+[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}).
 {{< /callout >}}
 
 New to the vocabulary (run, role, sandbox, room)? Read
@@ -22,203 +22,159 @@ New to the vocabulary (run, role, sandbox, room)? Read
 
 | You need | Why |
 |---|---|
-| Access to the tailnet | The room UI, Grafana and the cluster API are private |
-| SSO membership in `agents-member` | To watch rooms and runs. Requesting `internal` work or a `triager` run needs `agents-admin` |
-| Maintainer rights on the repository | Labels, reviews and merges are how you steer. The agents never merge on their own, except for the low-risk classes below |
-| Rights to create `AgentRun`s in `agents` (Part 2 only) | For runs started by hand, besides the factory's; today the platform owner |
+| Access to the tailnet | The room UI, Grafana and the factory's API are private |
+| SSO membership in `agents-member` | To watch rooms and runs, and to start a run by hand. Requesting `internal` work or a `triager` run needs `agents-admin` |
+| Maintainer rights on the repository | Labels and reviews are how you steer. The agents never merge on their own, except for the low-risk classes below |
+| `roomctl login`, once | Only to start a run by hand: `task agent:run` sends the factory the token it prints, and the run is yours |
 
----
+## What happens to a task
 
-## Part 1: the target experience
+1. **You label the issue `factory/ready`.** The factory takes a snapshot of the issue, so a later
+   edit does not change the task, and picks its class, its team and its budget. It comments that it
+   started: the run, the branch `agent/<task>`, the budget and a *watch* link to the task's room.
+2. **An implementer run works it** in its own sandbox, on that branch, and opens a pull request.
+   The factory comments with the link.
+3. **A reviewer run reviews it** and records a verdict in the room, which posts it on the pull
+   request as one comment. The verdict is advice: it neither approves nor blocks.
+4. **CI runs.** When it fails, an implementer run fixes it on the same branch.
+5. **The factory waits for you**, and comments that the task needs a maintainer's review.
+6. **You review on GitHub.** "Request changes" starts a revision: a new implementer run on the same
+   branch, with your review in its brief. The factory comments that it is revising.
+7. **A lost sandbox is resumed.** When a run's node is reclaimed or its pod evicted, the factory
+   starts the run again on the same branch and in the same room, at most twice per task, and says
+   so on the issue. A run that failed on its own is not resumed: the task waits for you.
+8. **You approve, then merge or close.** Your approval is what the merge gate counts; outside the
+   low-risk classes you merge yourself. The factory comments how the task ended and the tokens it
+   used.
 
-| State on `gcp-0` | Steps |
-|---|---|
-| Deployed, live gate partly passed | The room's *watch* link, posting or queuing a message |
-| Deployed, live gate pending | The `factory/ready` label, the snapshot (a fixed template; triage arrives in phase 4), the started / PR / end comments, `factory/stop` on one task, the stop ConfigMap, the run meter and the daily cap (factory gate 1.13); steering the running agent (gate 4.8: owner steps pending); a hand-started reviewer's verdict on the PR (gate 3.11) |
-| Built, not yet deployed | The reviewer run after the implementer, "Request changes" turned into a new run, `/factory retry`, the PR provenance footer |
-| Planned | Approvals in the room, the merge gate, the pinned control issue |
+## One real task, end to end
 
-### The whole journey at a glance
+Issue [#2238](https://github.com/Smana/cloud-native-ref/issues/2238), on `aws-0` on 2026-10-07: a
+docs page listed the `victoria-logs-single` chart at 0.13.9 while the repository pins 0.13.10. The
+maintainer's review, "Request changes", asked for a second fix on the same page. The pull request,
+[#2239](https://github.com/Smana/cloud-native-ref/pull/2239), was approved, then closed unmerged:
+nothing merges before the programme does.
+
+<!-- Rendered by scripts/docs/factory-journey.py from the walkthrough's transcript. The script stamped
+     the human steps when Enter was pressed, and buffered keystrokes moved them, so four times come
+     from GitHub instead: the label 18:40:15 (the issue's labeled event), "Request changes" 19:11:30
+     and the approval 19:24:42 (the PR's reviews), the close 19:26:00 (the PR's closedAt). -->
+
+| Step | UTC | Minutes after the label |
+|---|---|---|
+| A maintainer labels the issue | 18:40 | 0 |
+| The factory says it started | 18:40 | 0 |
+| PR opened | 18:45 | 4 |
+| A maintainer requests changes | 19:11 | 31 |
+| The revision is pushed | 19:22 | 42 |
+| A maintainer approves | 19:24 | 44 |
+| Closed unmerged (before the wave) | 19:26 | 45 |
+
+Runs: implementer (initial) → reviewer (review) → implementer (ci) → implementer (human) → implementer (resume). Template `pair`, tier `standard`, 1078k tokens in total.
 
 ```mermaid
 sequenceDiagram
-  autonumber
   actor M as Maintainer
-  participant GH as GitHub issue / PR
-  participant F as Factory
-  participant I as Implementer run
-  participant R as Reviewer run
-  participant RM as Room
-  M->>GH: label the issue factory/ready
-  F->>GH: comment "started": run id, branch, budget, watch link
-  F->>I: run on branch agent/taskId
-  I->>GH: open a PR (provenance footer)
-  F->>R: review the PR
-  R->>RM: verdict
-  RM->>GH: the verdict as one PR comment
-  M->>GH: review: "Request changes"
-  F->>I: new run on the same branch, with your review as input
-  I->>GH: push fixes
-  M->>GH: approve and merge (or the gate merges a low-risk class)
-  F->>GH: comment the end reason
+  participant GH as GitHub
+  participant F as agent-factory
+  participant R as room
+  participant A as agent runs
+  M->>GH: label #2238 factory/ready
+  F->>GH: comment: started, watch https://rooms.priv.aws.ogenki.io/r/26zfnuxm
+  F->>A: implementer run cs2jyovc (initial)
+  A->>R: events, handoff or verdict
+  A->>GH: PR #2239
+  F->>A: reviewer run qk3vlmkw (review)
+  A->>R: events, handoff or verdict
+  F->>A: implementer run tvcpihkr (ci)
+  A->>R: events, handoff or verdict
+  M->>GH: Request changes
+  F->>R: the review, queued for the next run
+  F->>A: implementer run cf4ato2x (human)
+  A->>R: events, handoff or verdict
+  F->>GH: run cf4ato2x: the sandbox was lost (spot reclaim or eviction), resuming automatically (1/2)
+  F->>A: implementer run huwttc64 (resume)
+  A->>R: events, handoff or verdict
+  M->>GH: approve, then close (nothing merges before the wave)
 ```
 
-### 1. Hand over an issue
+### The reclaim
 
-Write the issue the way you would for a colleague: what is wrong, where, and what "done" looks like.
-Then add the label **`factory/ready`** and walk away.
+At 19:16 UTC an AWS Spot interruption reclaimed the node under the revision run `cf4ato2x`, after
+it had pushed its fix. The run ended `Disrupted`, and the factory resumed it on its own. The issue
+read:
 
-The factory takes a **snapshot** of the issue at that moment. The agents work from that snapshot,
-so an edit made later does not change a task already under way. *(Phase 4, not started; today a
-fixed template)* It then triages the task once:
-- which class the task is, for example `docs-links`;
-- which team of roles works it;
-- how big a budget it gets.
+> Agent factory task `26zfnuxm`: run `cf4ato2x` stopped because the sandbox was lost (spot reclaim or eviction); resuming automatically (1/2).
 
-If it refuses the task, it says why in a comment. A task already running refuses a second label.
+The resumed run, `huwttc64`, continued on the same branch and in the same room, and the task ended
+normally.
 
-### 2. Follow it
+### What the factory wrote on the issue
 
-You never have to open a terminal. Three places show progress, from the most summarised to the most
-detailed:
-
-| Where | What you see |
-|---|---|
-| **The issue** | One comment when the task starts (run id, branch, budget, a *watch* link), one when a PR opens, one with the end reason |
-| **The room** (the *watch* link) | Live: every step each agent takes, their messages, the handoffs between roles; *(planned)* approvals asked and given |
-| **The run's dashboard** in Grafana | The run's status, its step log, its model calls with tokens and latency, and a trace of where the time went. See [Observability](#observability-what-you-can-inspect) |
-
-*(Built, not yet deployed)* If a run's sandbox is reclaimed (a spot or preemptible node, an
-eviction, an upgrade drain), the factory resumes it on its own, on the same branch and in the same
-room, at most twice per task and only while the task's token budget holds another run. The issue
-says so: *resuming automatically (1/2)*. The two resumes count per task: a `/factory retry` does
-not give them back. A lost review run starts again without using a review
-round. A run whose harness failed on its own is never resumed: the task escalates, as before.
-
-### 3. Review the pull request
-
-The PR is opened by the agents' bot on a branch `agent/<task>`. *(Built, not yet deployed)* its body
-ends with a **provenance footer**:
+The first comment, as posted:
 
 ```text
----
-Agent-Room: 7hq2mc4d
-Agent-Run: zma62cms
-Agent-Role: implementer
-Agent-Task: <task id>
-Agent-Model: agent-default
+Agent factory task `26zfnuxm` started run `cs2jyovc` (implementer) on branch `agent/26zfnuxm`.
+
+- Budget: 1.5 M tokens, 45 minutes (tier standard)
+- Watch: https://rooms.priv.aws.ogenki.io/r/26zfnuxm (tailnet only)
+- Stop: apply the label `factory/stop`
 ```
 
-`Agent-Model` is the alias the run asked for. `Agent-Task` is the factory's task id, on a factory
-run; a run started from an issue or PR URL also carries `Agent-Task-URL: <url>`.
+Then, one line each; every "started" comment carries the same budget, watch and stop lines as the first:
 
-A reviewer run records its **verdict** in the room, which posts it on the PR as one comment. That
-is deployed for a reviewer you start by hand, with its live gate (3.11) pending; the factory starts
-one itself once the reviewer pair is deployed. The comment is advice only: it neither approves nor blocks. The decision stays yours.
+| UTC | Comment |
+|---|---|
+| 18:40 | Agent factory task `26zfnuxm` started run `cs2jyovc` (implementer) on branch `agent/26zfnuxm`. |
+| 18:44 | Run `cs2jyovc` of task `26zfnuxm` opened #2239: https://github.com/Smana/cloud-native-ref/pull/2239 |
+| 18:45 | Agent factory task `26zfnuxm` started run `qk3vlmkw` (reviewer) on branch `agent/26zfnuxm`. |
+| 19:00 | Agent factory task `26zfnuxm` started run `tvcpihkr` (implementer) on branch `agent/26zfnuxm`. |
+| 19:10 | Agent factory task `26zfnuxm` waits for a maintainer's review: the policy needs a maintainer's approval. |
+| 19:11 | Agent factory task `26zfnuxm` is revising after @Smana's review: the next run starts on the same branch, with the review in its brief. |
+| 19:11 | Agent factory task `26zfnuxm` started run `cf4ato2x` (implementer) on branch `agent/26zfnuxm`. |
+| 19:18 | Agent factory task `26zfnuxm`: run `cf4ato2x` stopped because the sandbox was lost (spot reclaim or eviction); resuming automatically (1/2). |
+| 19:18 | Agent factory task `26zfnuxm` started run `huwttc64` (implementer) on branch `agent/26zfnuxm`. |
+| 19:26 | Agent factory task `26zfnuxm` was closed: the pull request was closed. Tokens used: 923 k. |
 
-### 4. Steer it
+The closing comment's 923 k is what the factory had metered when the task closed; the task's final
+tally is 1,078 k.
+
+## What you can do
 
 | You want to… | Do this |
 |---|---|
-| Ask for changes | *(Built, not yet deployed)* A normal GitHub review with **"Request changes"**. Your review becomes the input of a new run on the same branch |
-| Accept the work | Approve and merge as usual |
-| Try again after a failure | *(Built, not yet deployed)* Comment **`/factory retry`** |
-| Add context while it runs | If you are a collaborator in the room, post a message there. Messages default to the room (no agent prompted, though a running agent may read them); choose *queue* for the next run's brief, or *steer* while you hold the driver token |
+| Hand over an issue | Label it **`factory/ready`** |
+| Watch it work | Open the *watch* link in the "started" comment: every step of every run, their messages and the handoffs between roles |
+| Ask for changes | A GitHub review with **"Request changes"**: the next run starts on the same branch with your review in its brief |
+| Accept the work | **Approve** it: the merge gate counts a maintainer's approval. Outside the low-risk classes, merge it yourself |
+| Try again after a failure | Comment **`/factory retry`** on the issue (a maintainer only) |
+| Stop one task | Label its issue or pull request **`factory/stop`**: its runs are revoked, its branch stays |
+| Stop every task | `kubectl -n agent-system create configmap agent-factory-stop`, or the label `factory/stop` on the pinned control issue. Intake pauses, every run is revoked and new runs are refused, runs started by hand included |
+| Undo a merged low-risk change | *(Once the merge gate is live)* Label it **`factory/revert`** within 7 days: the factory opens the revert, which merges as the `revert` class |
+| Start a run by hand | `task agent:run -- --role implementer --class public --task-url <issue>`. The factory creates it under your SSO identity |
+| Resume a run a stop ended | The same command with **`--branch agent/<run id>`**: it continues from what the run pushed |
 
-*(Planned)* The **merge gate** merges nothing but two low-risk classes, and only once CI and the
-policy agree: `docs-links` (fixing broken links) and `revert` (the factory's revert of an
-auto-merged `docs-links` change, same paths and size limits). Until everything is built and merged,
-it runs in **shadow mode**: it says in the issue what it *would* merge, and merges nothing.
+## What the factory never does
 
-### 5. Stop it
-
-| Scope | How |
+| Never | What enforces it |
 |---|---|
-| **One task** | Add the label **`factory/stop`** to its issue or PR. Its runs are revoked; its branch stays |
-| **Every task, now** | `kubectl -n agent-system create configmap agent-factory-stop` (needs cluster access). Intake pauses and every task's runs are revoked; runs started by hand are not. Delete the ConfigMap to resume. *(Planned)* the same with the label **`factory/stop`** on a pinned *control issue*, which also refuses new runs and revokes runs started by hand |
-| One run you started by hand | See [Part 2](#stop-or-resume) |
+| Merge anything but a `docs-links` change or its revert | policy-bot evaluates `.policy.yml` from `main`; the `agent-merge` ruleset lets only the merger App merge, and only once that check passes ([ADR-0045]({{< relref "/docs/decisions/0045-merge-policy-gate.md" >}})) |
+| Touch a gate path: CI, the rulesets, the merge policy, the agent platform's own manifests | `.policy.yml` lists every gate path in every agent rule: a pull request that touches one matches no rule, policy-bot reports an error, and it cannot merge |
+| Take a principal from a request body | The run-request API takes the principal from your SSO token, never from the body, and the Kyverno policy `agentrun-one-creator` admits no `AgentRun` creator but the factory |
+| Start public work from an internal finding on its own | An `investigate` task is the triager alone. It ends on a proposed public issue, which starts nothing until a maintainer labels it ([ADR-0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}})) |
 
-An interrupted run keeps its branch. Its work resumes from there.
+## Budgets and costs
 
-### Budgets and costs
-
-Three limits keep a task from running away, all deployed on `gcp-0` (the run meter and the daily
-cap with their live gate pending):
-- **Each run has a deadline.** The sandbox is stopped when it expires.
-- **Each run has a token budget.** The factory's run meter revokes the run when it is spent, runs
-  started by hand included.
-- **The factory takes at most 20 tasks a day.** Past that, a labelled issue is refused, with a
-  comment saying why.
+A task runs within limits it cannot raise:
+- **Each run has a deadline and a token budget**, set by the task's tier: `light` 20 minutes and
+  300 k tokens, `standard` 45 minutes and 1.5 M, `frontier` 90 minutes and 4 M. The run meter
+  revokes a run at its cap, runs started by hand included.
+- **Each task has a token cap**, twice its tier's run budget, and a resume needs room for a whole
+  run under it.
+- **The factory takes at most 20 tasks a day, and works at most 3 at once.** Past the daily cap, a
+  labelled issue is refused, with a comment saying why.
 
 Every model call is metered per run at the gateway, so the dashboard shows what a task cost.
-
----
-
-## Part 2: start a run by hand (`gcp-0`)
-
-You can also start a run from a terminal with cluster access, outside the factory. This is how issue
-#2140 became PR #2141 on `gcp-0`, and #2112 became #2114 on `aws-0` before it.
-
-### Start a run
-
-```bash
-task agent:run -- --role implementer --class public \
-  --task-url https://github.com/Smana/cloud-native-ref/issues/2140
-# prints the run's name on its last line, e.g. xplane-run-zma62cms,
-# and the link to its Grafana dashboard on stderr
-```
-
-| Flag | Meaning |
-|---|---|
-| `--role` | `implementer` (pushes to `agent/<id>`, opens a PR), `reviewer`, `tester`, `triager` |
-| `--class` | `public` for this public repository. `internal` has no model route yet |
-| `--repo` | The repository to work on, `owner/name` (default: this repository, today the only one the agents' App is installed on) |
-| `--task-url` or `--task` | The issue or PR to work on, or the task as text |
-| `--minutes` | Deadline, 1–480 (default 120) |
-| `--size` | `small`, `medium` or `large`: CPU, memory and scratch space |
-| `--branch` | Continue an earlier run's branch `agent/<id>` |
-| `--room` | Join the run to a room: its 8-character id, `[a-z2-7]`. Defaults `--branch` to `agent/<roomId>` |
-| `--profiles` | Extra package-registry egress: `pypi`, `npm`, `golang`, `crates` |
-| `--dry-run` | Validate the claim server-side without creating it |
-
-### Follow it
-
-```bash
-kubectl get agentrun -n agents -w                 # phase: Pending → Running → Succeeded
-kubectl logs -n agents <run> -c harness | grep "agent-run"
-```
-
-The step log reads like this:
-
-```text
-agent-run step 3: terminal | List observability docs | ls observability/
-agent-run step 7: file_editor | Fix the broken link | observability/AGENTS.md
-agent-run summary: 10 steps
-```
-
-| Phase | Meaning |
-|---|---|
-| `Pending` | Waiting for a node or pulling the image |
-| `Running` | The agent is working |
-| `Succeeded` | Finished. Its branch is in the `BRANCH` column. A run started by hand: find the PR with `gh pr list --head <branch>`. A factory run fills `status.pullRequest` (the `PR` column) |
-| `Failed` | The harness failed, the deadline passed, or the pod was lost (see the known issue below). `status.reason` is always `PodFailed`: read the step log |
-| `Revoked` | Stopped by hand (`agents.ogenki.io/revoked=manual`) or by the factory's stop |
-| `BudgetExhausted` | The run meter revoked it at its token cap |
-
-### Stop or resume
-
-```bash
-kubectl delete agentrun -n agents <run>          # stops it; its GitHub token is revoked on the way out
-task agent:run -- --role implementer --class public --branch agent/<id> --task-url <same issue>
-```
-
-A run that loses its pod (a node going away, for example) **fails** rather than silently
-restarting. Resuming with `--branch` continues from what it already pushed.
-
-Known issue ([F12]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
-the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
-fix is under review. Until it is deployed, revoke such a run (`kubectl annotate agentrun -n agents <run> agents.ogenki.io/revoked=manual`)
-and resume it with `--branch`.
 
 ---
 
@@ -231,15 +187,15 @@ and resume it with `--branch`.
 | What did it cost, how fast was it? | The dashboard: tokens in and out, cost, model latency, error rate. `agent-fleet` shows every run |
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
-`task agent:run` prints the dashboard link (`/d/agent-run/agent-run?var-run=<id>`). Two known
+A run's page is `/d/agent-run/agent-run?var-run=<id>`. Two known
 issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}); fixed
 on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls are not yet joined to the run's trace
 ([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
-that room. Known issue ([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
-transcript, because the harness exits before the room-bridge's next poll. The fix is built, not yet
-deployed.
+that room. It holds a run to its end: before the harness stops, even when its node is reclaimed, it
+asks the room-bridge to read its log to the last event
+([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}), fixed and verified on `aws-0` on 2026-10-07).
 
 ## Frequently asked questions
 
