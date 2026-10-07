@@ -1,7 +1,8 @@
 # Throwaway identity probe for SP1 verification. A Sandbox in `agents` whose
-# curl container holds three tokens a real run never shows its harness: the
-# gateway audience of each class, and the octo-sts one. Apply, test, delete in
-# the same session:
+# curl container holds four tokens a real run never shows its harness: the
+# implementer gateway audience of each class, one reviewer audience (to
+# exercise the log-tool Allow rules implementer lacks), and the octo-sts one.
+# Apply, test, delete in the same session:
 #   kubectl apply -f scripts/ops/k8s/agent-probe.yaml
 #   kubectl -n agents patch sandbox agent-probe --type=merge \
 #     -p "{\"spec\":{\"shutdownTime\":\"$(date -u -d '+1 hour' +%FT%TZ)\"}}"
@@ -107,6 +108,7 @@ spec:
           volumeMounts:
             - {name: public, mountPath: /var/run/secrets/probe/public, readOnly: true}
             - {name: internal, mountPath: /var/run/secrets/probe/internal, readOnly: true}
+            - {name: internal-reviewer, mountPath: /var/run/secrets/probe/internal-reviewer, readOnly: true}
             - {name: sts, mountPath: /var/run/secrets/probe/sts, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
@@ -122,6 +124,14 @@ spec:
           projected:
             sources:
               - serviceAccountToken: {audience: agent-router.implementer.internal, expirationSeconds: 600, path: token}
+        # Exercises the Allow rules that only reviewer/tester/triager get
+        # (log tools), never proven live before (review M9). If this
+        # ServiceAccount isn't entitled to the audience, the TokenRequest
+        # itself fails closed -- also a useful, distinct signal.
+        - name: internal-reviewer
+          projected:
+            sources:
+              - serviceAccountToken: {audience: agent-router.reviewer.internal, expirationSeconds: 600, path: token}
         - name: sts
           projected:
             sources:

@@ -1,0 +1,7 @@
+openhands-sdk==1.49.6
+openhands-tools==1.49.6
+openhands-agent-server==1.49.6
+# From 1.95.1 litellm deletes an unset `cache_creation_tokens`, and the SDK's usage accounting then
+# raises AttributeError on the first response from a provider without prompt caching (GLM here).
+# OpenHands/software-agent-sdk#5213, open; lift this cap once a release fixes it.
+litellm<1.95.1

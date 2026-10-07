@@ -1,0 +1,4 @@
+#!/bin/sh
+# Adds the Agent-Run trailer SP3 re-verifies server-side (design §4). Guidance,
+# not a control: an agent with a shell can skip a hook.
+exec git interpret-trailers --in-place --if-exists doNothing --trailer "Agent-Run: ${RUN_ID:?RUN_ID is unset}" "$1"
