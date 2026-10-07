@@ -287,6 +287,27 @@ class TimedTest(unittest.TestCase):
         self.assertRegex(line, r"^agent-run shutdown x done: pushed in 0\.\d\ds \(box 1s\)\n$")
 
 
+class BudgetTest(unittest.TestCase):
+    def test_the_revoke_lands_a_second_before_a_15s_window_ends(self):
+        boxes = agent_run.PAUSE_S + agent_run.CHECKPOINT_S + agent_run.FINAL_READ_S + agent_run.STOP_S + agent_run.REVOKE_S
+        self.assertLessEqual(boxes, 14, "a preemptible VM's SIGKILL lands at 15 s")
+        self.assertLessEqual(boxes + agent_run.EXPORT_S, 15, "the root span's export takes what is left")
+
+
+class StopTest(unittest.TestCase):
+    def test_a_kill_that_is_not_reaped_in_time_never_holds_up_the_revoke(self):
+        waits = []
+
+        def wait(timeout=None):
+            waits.append(timeout)
+            raise subprocess.TimeoutExpired("agent-server", timeout)
+
+        server = mock.Mock(wait=wait)
+        self.assertEqual(agent_run.stop(server, agent_run.STOP_S), "killed, not yet reaped")
+        server.kill.assert_called_once_with()
+        self.assertEqual(waits, [agent_run.STOP_S - 1, 1], "terminated, then killed for the box's last second")
+
+
 # The commit hook as the image installs it, found as test_pr_footer finds it.
 HOOK = next(p for p in (os.path.join(HERE, "commit-msg"), "/etc/agent/git-hooks/commit-msg") if os.path.exists(p))
 
@@ -367,6 +388,44 @@ class CheckpointTest(unittest.TestCase):
         _, body = self.remote_head("%B")
         self.assertTrue(body.startswith("docs: done"))
         self.assertNotIn("Agent-Checkpoint", body)
+
+    def test_a_staged_github_token_is_never_committed(self):
+        self.write("leak.md", "token: ghs_" + "A" * 36 + "\n")
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                         "checkpoint refused (a GitHub token is staged), nothing to push")
+        self.assertNotEqual(self.remote_head("%H")[0], 0, "nothing reached origin")
+
+    def test_the_cached_token_is_never_committed_whatever_its_shape(self):
+        cache = os.path.join(os.path.dirname(self.repo), "token.json")
+        with open(cache, "w") as f:
+            json.dump({"token": "v1.0123456789abcdef0123"}, f)
+        self.write("leak.md", "v1.0123456789abcdef0123\n")
+        with mock.patch.object(agent_run, "TOKEN_CACHE", cache):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (a GitHub token is staged), nothing to push")
+
+    def test_too_many_files_are_never_committed(self):
+        for name in ("a.md", "b.md", "c.md"):
+            self.write(name, "x\n")
+        with mock.patch.object(agent_run, "CHECKPOINT_MAX_FILES", 2):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (3 files staged), nothing to push")
+
+    def test_too_many_bytes_are_never_committed(self):
+        self.write("big.bin", "x" * 11)
+        with mock.patch.object(agent_run, "CHECKPOINT_MAX_BYTES", 10):
+            self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                             "checkpoint refused (11 bytes staged), nothing to push")
+
+    def test_a_refused_checkpoint_still_pushes_the_agents_own_commits(self):
+        self.write("done.md", "done\n")
+        subprocess.run(["git", "-C", self.repo, "add", "done.md"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", self.repo, "commit", "-q", "-m", "docs: done"], check=True, capture_output=True)
+        self.write("leak.md", "ghp_" + "B" * 36 + "\n")
+        self.assertEqual(agent_run.checkpoint(self.env, time.monotonic() + 8),
+                         "checkpoint refused (a GitHub token is staged), pushed")
+        _, body = self.remote_head("%B")
+        self.assertTrue(body.startswith("docs: done"))
 
     def test_no_time_left_is_an_error(self):
         with self.assertRaises(TimeoutError):
@@ -752,7 +811,7 @@ class TracedRunTest(unittest.TestCase):
 
     def test_sigterm_pauses_checkpoints_reads_stops_then_revokes_inside_15s(self):
         bridge = self.serve_bridge()
-        signalled = self.disrupt({"ROLE": "implementer", "BRANCH": "agent/7f3cq2xz", "BRIDGE_URL": bridge}, ("0", "8"))
+        signalled = self.disrupt({"ROLE": "implementer", "BRANCH": "agent/7f3cq2xz", "BRIDGE_URL": bridge}, ("0", str(agent_run.CHECKPOINT_S)))
         revoked = self.assert_stopped_then_revoked()
         order = [float(self.read("interrupted")), float(self.read("checkpointed")), FakeBridge.reads[0][1],
                  float(self.read("stopped")), revoked]
@@ -771,8 +830,38 @@ class TracedRunTest(unittest.TestCase):
         self.assertEqual(self.shutdown_steps(), ["pause", "checkpoint", "final-read", "stop", "revoke"])
         self.assertLess(revoked - signalled, 10)
 
+    def test_a_sigterm_after_the_run_finished_keeps_its_exit_code(self):
+        # C1: the composition reads this code; 143 on a finished run would have it resumed.
+        for status, code in (("finished", 0), ("error", 1)):
+            with self.subTest(status=status):
+                bridge = self.serve_bridge(delay=2)
+                driver = self.start(status, "http://127.0.0.1:1", {"ROLE": "implementer", "BRIDGE_URL": bridge})
+                deadline = time.monotonic() + 30
+                while not FakeBridge.reads and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertTrue(FakeBridge.reads, "the run never reached its final read")
+                driver.send_signal(signal.SIGTERM)
+                driver.wait(timeout=30)
+                self.assertEqual(driver.returncode, code)
+                self.assertEqual(self.shutdown_steps(), ["stop", "revoke"], "nothing to pause or checkpoint")
+                self.assert_stopped_then_revoked()
+
+    def test_a_silent_collector_never_holds_the_pod_past_the_revoke(self):
+        # M2: listening, never answering, the collector makes each export wait out its timeout.
+        silent = socket.socket()
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(8)
+        self.addCleanup(silent.close)
+        driver = self.start("running", "http://127.0.0.1:%d" % silent.getsockname()[1])
+        self.wait_for_a_step()
+        driver.send_signal(signal.SIGTERM)
+        driver.wait(timeout=30)
+        exited = time.time()
+        self.assertEqual(driver.returncode, 143)
+        self.assertLess(exited - self.assert_stopped_then_revoked(), 2, "the root span's export is boxed")
+
     def test_a_reviewer_never_checkpoints(self):
-        self.disrupt({"ROLE": "reviewer", "BRANCH": "agent/7f3cq2xz"}, ("0", "8"))
+        self.disrupt({"ROLE": "reviewer", "BRANCH": "agent/7f3cq2xz"}, ("0", str(agent_run.CHECKPOINT_S)))
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "checkpointed")))
         self.assertEqual(self.shutdown_steps(), ["pause", "final-read", "stop", "revoke"])
 
