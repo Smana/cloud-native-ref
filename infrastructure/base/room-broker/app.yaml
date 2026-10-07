@@ -10,10 +10,11 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # agent-platform#22, the never-merged integration build of both stacks (factory + approvals):
+    # agent-platform#22 at 32412b9, the never-merged integration build of both stacks (factory +
+    # approvals, fork + roomctl):
     # until the wave no stack branch has both the queue and the approvals routes. Live finding A2.
     # Move it with the retention CronJob's, crd-rooms.yaml and atlasSchema.ref together (P33).
-    tag: "v0.0.1-pr22.745292b3@sha256:82de46937f1b74026ef10f841a2216280243863be8745fea7cb13a1a9873c8a8"
+    tag: "v0.0.1-pr22.32412b9e@sha256:98a35956ab738c2d12e780f87ebe81b9f8aa103affd360579c8509efdff090d0"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2

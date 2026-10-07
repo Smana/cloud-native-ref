@@ -1,5 +1,5 @@
 # Vendored from Smana/agent-platform config/crd (ruling P16): the stack-tip branch until the merge wave, then the release asset.
-# Source: integration/agent-factory at 745292b3 (2026-10-07, agent-platform#22), the room-broker pin; the CRD is unchanged since feat/room-tools.
+# Source: integration/agent-factory at 32412b9e (2026-10-07, agent-platform#22), the room-broker pin; the CRD is unchanged since feat/room-tools.
 # Refresh with every AP pin: gh api repos/Smana/agent-platform/contents/config/crd/agents.ogenki.io_rooms.yaml?ref=<branch or tag> --jq .content | base64 -d
 ---
 apiVersion: apiextensions.k8s.io/v1
