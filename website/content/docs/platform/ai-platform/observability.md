@@ -7,7 +7,7 @@ lastVerified: 2026-10-01
 
 Both halves land in the platform's Victoria stack and Grafana; nothing here runs a second
 telemetry pipeline. Serving is watched per model, agents per run. Open findings on this page's
-signals are on the [status page]({{< relref "/docs/platform/ai-platform/status.md#observability" >}}).
+signals are on the [status page]({{< relref "/docs/platform/ai-platform/status.md#live-findings" >}}).
 
 ```mermaid
 flowchart LR

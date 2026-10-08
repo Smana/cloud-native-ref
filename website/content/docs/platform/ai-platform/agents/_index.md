@@ -8,14 +8,13 @@ aliases:
 ---
 
 {{< callout type="info" >}}
-**The first version runs on `aws-0`.** A labelled issue becomes a reviewed pull request; a GitHub
-review turns into a revision; runs are metered and capped, resumed after a reclaim and stopped by
-the kill switch; humans follow and approve in rooms. The owner signed off the experience on
-2026-10-07, after [one real task end to end]({{< relref "/docs/platform/ai-platform/agents/user-guide.md#one-real-task-end-to-end" >}}).
-Still to come: the merge gate going live, after which low-risk docs fixes merge themselves; then,
-with the model-routing work, routing by tier, the Anthropic backend for `internal` work and budgets
-enforced at the gateway. What is proven live is on the
-[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}).
+**v1 shipped on 2026-10-08, pilot scope.** On `main` and running on `aws-0`: a labelled issue becomes
+a reviewed pull request, and a human merges it. Runs are metered, capped, resumed after a reclaim and
+stopped by the kill switch; people follow and approve in rooms, from the browser, a terminal or their
+coding agent. Three factory pull requests have merged end to end. v1 covers one public repository,
+one active cloud and `public` work, with the merge gate in shadow. It is not production-ready: the
+hardening list, then each v2 expansion and the gate it must pass, are on the
+[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-factory" >}}).
 {{< /callout >}}
 
 ## What it is
@@ -108,4 +107,4 @@ Runs are per repository: a task never spans two.
 - [Programme design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-factory-design.md): the contracts between the sub-projects, and the owner decisions.
 - [Runtime and identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md) · [Rooms](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md) · [Factory](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md) · [Model routing and budgets](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md) · [Observability](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-27-agent-observability-design.md)
 - [User guide]({{< relref "/docs/platform/ai-platform/agents/user-guide.md" >}}): what a developer does with it.
-- [Status]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}): what is built, reviewed and proven live, and what waits on the owner.
+- [Status]({{< relref "/docs/platform/ai-platform/status.md#agent-factory" >}}): what v1 proves live, the hardening before it is dependable, and the v2 roadmap.
