@@ -195,6 +195,17 @@ api() {
         "$@"
 }
 
+# Every IdP step is /admin/v1 (instance scope). A PAT held at org level, without
+# IAM_OWNER, fails there; several of those calls swallow the error and read it as
+# "nothing exists yet". One probe up front turns that into a single clear stop.
+if ! probe="$(api GET /admin/v1/policies/login 2>&1)"; then
+    echo "[FAILED ] GET /admin/v1/policies/login: ${probe}" >&2
+    echo "           The admin PAT lacks the INSTANCE role IAM_OWNER (or IDP_URL / the PAT is stale)." >&2
+    echo "           Every IdP step needs /admin/v1; an org-level ORG_OWNER is not enough." >&2
+    exit 1
+fi
+unset probe
+
 # ── the identity provider ─────────────────────────────────────────────────────
 #
 # INSTANCE-level (/admin/v1), not org-level (/management/v1). Both answer on
@@ -537,6 +548,9 @@ ensure_broker_reader() {
         if [ "$APPLY" != "true" ]; then
             echo "[dry-run] would mirror ${READER_STORE_KEY} to OpenBao"
         else
+            # The blob holds the PAT, and xtrace would print it.
+            local -
+            set +x
             stored="$(store_read "$READER_STORE_KEY")" \
                 || { echo "[FAILED ] ${READER_STORE_KEY} is unreadable; not mirrored" >&2; return 1; }
             printf '%s' "$stored" | mirror_to_openbao "$READER_STORE_KEY" || return 1

@@ -142,8 +142,11 @@ own_sync="$(grep -F -- '--cluster "${global.eks_cluster_name}"' <<< "$aws_syncs"
 consumer_sync="$(grep -F -- '--idp-cloud aws' <<< "$aws_syncs" || true)"
 check "aws/eks/init runs two syncs: its own and gcp-0's" "2" "$(grep -c . <<< "$aws_syncs")"
 contains "$own_sync" '"$${OPENBAO_ARGS[@]}"' "aws-0's own sync expands OPENBAO_ARGS"
-check "exactly one command expands OPENBAO_ARGS" "1" \
-    "$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -cF 'OPENBAO_ARGS[@]')"
+check "exactly one oidc-clients sync expands OPENBAO_ARGS" "1" \
+    "$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -cF 'OPENBAO_ARGS[@]')"
+idp_sync="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-idp.sh" sync' || true)"
+contains "$idp_sync" '"$${OPENBAO_ARGS[@]}"' "aws-0's IdP sync expands OPENBAO_ARGS (the reader mirror)"
+contains "$idp_sync" 'IDP_MIRROR' "aws-0's IdP sync adds --mirror-openbao only when the CA was fetched"
 contains "$consumer_sync" '--cloud gcp' "the gcp-0 consumer sync is found"
 absent "$consumer_sync" 'OPENBAO_ARGS' "the gcp-0 consumer sync does not expand OPENBAO_ARGS"
 absent "$consumer_sync" '--openbao-' "the gcp-0 consumer sync passes no --openbao-* flag"

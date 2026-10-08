@@ -393,4 +393,12 @@ out="$(sync --apply "${MIRROR[@]}")"
 check "no GitHub key: mirror skipped, run still ok" "rc=0" "$(tail -1 <<< "$out")"
 check "no GitHub key: OpenBao never called" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
 
+# 12. A PAT without the instance role stops the run with one clear message, before
+#     any step can read the 403 as "nothing exists".
+reset_state; with_github_key
+out="$(FAIL_ON='GET /admin/v1/policies/login' sync --apply)"
+check "no instance role: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "no instance role: names IAM_OWNER" "1" "$(count 'lacks the INSTANCE role IAM_OWNER' "$out")"
+check "no instance role: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
 exit "$fail"
