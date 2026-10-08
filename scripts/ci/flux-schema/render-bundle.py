@@ -125,8 +125,13 @@ FIXTURE_VARS = {
     # above, whose value reaches a container as an env var.
     "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
-    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
-    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",
+    # Both live values carry the /id/<ID> path (IAM trust conditions and JWT
+    # issuers need it); a bare-host fixture let a CNP toFQDNs.matchName on it
+    # validate while invalid.
+    "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
+    "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF",
+    "oidc_jwks_uri": "https://oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLE0123456789ABCDEF/keys",
+    "oidc_jwks_host": "oidc.eks.eu-west-3.amazonaws.com",
     "cluster_endpoint_full": "https://example.eks.amazonaws.com",
     "karpenter_queue_name": "karpenter-foobar",
     # GCP. Without these, VAR_RE.sub passes the name through verbatim and CI
@@ -264,6 +269,12 @@ CLUSTER_FIXTURE_VARS = {
         # is the AWS region hint the Route53 solver needs, and gcp-0 really does
         # substitute an AWS region there. See opentofu/gcp/gke/configure's
         # var.route53_region, and the comment on route53_region above.
+        #
+        # GKE's issuer and JWKS (GCP parity GP-12): a gcp-0 overlay that still
+        # rendered EKS values would look right here and fail on the cluster.
+        "oidc_issuer_url": "https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0",
+        "oidc_jwks_uri": "https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0/jwks",
+        "oidc_jwks_host": "container.googleapis.com",
     },
 }
 
@@ -665,6 +676,12 @@ def render_overlay(overlay, outdir):
     return None, rendered
 
 
+def chartref_path(source):
+    """The helm chart reference for a chartRef source: `<url>@<digest>` when it is digest-pinned."""
+    digest = (source.get("ref") or {}).get("digest")
+    return f"{source['url']}@{digest}" if digest else source["url"]
+
+
 def _resolve_chart(spec, sources, namespace):
     """Resolve a HelmRelease's chart source, whether inline or by reference.
 
@@ -677,6 +694,9 @@ def _resolve_chart(spec, sources, namespace):
     if chart_ref:
         source = resolve_source(sources, chart_ref, namespace)
         pin = (source.get("ref") or {}) if source else {}
+        # Flux resolves digest before semver and tag; chartref_path pulls that digest.
+        if pin.get("digest"):
+            return source, None, None
         return source, None, pin.get("tag") or pin.get("semver")
     chart_spec = spec.get("chart", {}).get("spec", {})
     source = resolve_source(sources, chart_spec.get("sourceRef", {}), namespace)
@@ -890,7 +910,7 @@ def render_helmrelease(doc, sources, outdir, namespace, stem, value_objects):
         elif via_ref:
             # chartRef -> OCIRepository: the source URL already points at the
             # chart itself, so there is no chart name to append.
-            chart_path = url
+            chart_path = chartref_path(source)
         else:
             chart_path = f"{url.rstrip('/')}/{chart}" if is_oci else chart
 

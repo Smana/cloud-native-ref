@@ -1,0 +1,13 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: kueue
+  namespace: agent-system
+spec:
+  interval: 12h
+  url: oci://registry.k8s.io/kueue/charts/kueue
+  ref:
+    tag: "0.19.6"
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

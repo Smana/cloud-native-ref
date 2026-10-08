@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kueue-helm-values
+  namespace: agent-system
+data:
+  values.yaml: |
+    controllerManager:
+      manager:
+        resources:
+          requests: {cpu: 100m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+        podSecurityContext:
+          runAsNonRoot: true
+          seccompProfile: {type: RuntimeDefault}
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+    enablePrometheus: false  # scraped by our own VMServiceScrape
+    managerConfig:
+      controllerManagerConfigYaml: |-
+        apiVersion: config.kueue.x-k8s.io/v1beta2
+        kind: Configuration
+        health:
+          healthProbeBindAddress: :8081
+        metrics:
+          bindAddress: :8443
+        webhook:
+          port: 9443
+        leaderElection:
+          leaderElect: true
+          resourceName: c1f6bfd2.kueue.x-k8s.io
+        manageJobsWithoutQueueName: false
+        # Only sandbox pods are Kueue's business (§6.5): nothing outside agents is gated.
+        managedJobsNamespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: agents
+        integrations:
+          frameworks: ["pod"]
+        # The harness asks for scratch storage; quotas cover cpu, memory and pods only.
+        resources:
+          excludeResourcePrefixes: ["ephemeral-storage"]

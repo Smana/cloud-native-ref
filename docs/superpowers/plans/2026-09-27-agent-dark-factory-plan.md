@@ -16123,12 +16123,18 @@ full scope: the stop stops every run, human-started ones included (owner, 2026-0
 - [ ] **Step 2: The control issue** — [OWNER] applies `factory/stop` to the pinned issue: the same
   result in ≤ 60 s; removing the label resumes intake.
 - [ ] **Step 3: Kueue, independent of the factory** — scale the factory to 0 first
-  (`flux suspend kustomization agent-factory -n flux-system && kubectl scale deploy -n agent-system agent-factory --replicas 0`),
+  (`flux suspend helmrelease agent-factory -n agent-system && kubectl scale deploy -n agent-system agent-factory --replicas 0`;
+  the HelmRelease, not its Kustomization: its drift detection would restore 2 replicas mid-drill),
   then `flux suspend kustomization kueue-queues -n flux-system` and
   `kubectl patch clusterqueue agents-factory agents-interactive --type merge -p '{"spec":{"stopPolicy":"HoldAndDrain"}}'`.
   Expected: the admitted sandbox pods are evicted within seconds
-  (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, resume both
-  Kustomizations.
+  (`kubectl get pods -n agents -w`). Restore: remove `stopPolicy` as in Task 4.6, then
+  `flux resume kustomization kueue-queues -n flux-system && flux resume helmrelease agent-factory -n agent-system`,
+  and check the factory is back at 2/2:
+  `kubectl rollout status deploy -n agent-system agent-factory --timeout=180s && kubectl get deploy -n agent-system agent-factory -o jsonpath='{.spec.replicas} {.status.readyReplicas}{"\n"}'`
+  → `2 2`. `rollout status` alone passes at 0 of 0: a drill once restored a factory still scaled to
+  0, which stayed there 8.5 h, because Helm corrects a `kubectl scale` only with drift detection on
+  (`tooling/base/agent-factory/helmrelease.yaml`).
 - [ ] **Step 4: The gateway, independent of the factory and of the ratelimit store** *(external
   review, stop drills)*. A budget is not a stop: the fleet bucket fails open and is shadow until SP4
   PR 7. Scale the `agent-router` data plane to 0 (or delete its listener's HTTPRoutes): the next model
@@ -17873,3 +17879,12 @@ collector and dashboard share is in the observability plan's own "Further review
 | F1 | A trigger-rooted trace per task | R46; Tasks 1.5a, 1.10b, 1.11a, 1.12a, 1.13a | Accepting a `factory/ready` task mints its root span into `status.trace`, and every run gets its `traceparent` as `agents.ogenki.io/traceparent`. When the task ends, the span is exported once to the collector's :4317, carrying ids, tier and end reason |
 | F2 | The step log carries `trace_id` | observability plan O22 | Nothing here: the harness prints it. Correlation only: the factory attributes and meters nothing by trace id |
 | F3 | Routing tier vs spend | R47; Tasks 1.5a, 1.10b, 4.2a | Every factory run is labelled `agents.ogenki.io/tier`, the tier it runs on, fixed for the run. Agents are never re-routed per request within a run |
+
+## GCP parity cross-plan edit (2026-09-29)
+
+- **The merge gate lands on GCP's management stack too, not only AWS's.** The `merge-gate` kv-v2 mount, the
+  `merge-gate-secrets` policy (Task 6.4) and `secrets-admin`'s paths on it go into the shared store-of-record
+  module (`opentofu/shared/modules/openbao-store-of-record`), which `opentofu/gcp/openbao/management` calls, with
+  the JWT role `merge-gate-secrets` in `opentofu/gcp/gke/configure/openbao.tf` beside AWS's
+  `opentofu/aws/eks/configure/openbao.tf`. gcp-0 is the platform (GCP parity plan), and
+  `validate-openbao-policies.sh` fails when the AWS and module copies of a shared policy differ.

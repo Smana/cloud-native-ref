@@ -1,0 +1,25 @@
+---
+# octo-sts's only way in (owner decision 2026-09-26): agent-router's `sts`
+# listener (ADR-0042) verifies each token against THIS cluster's issuer and JWKS
+# before routing it here, and Envoy Gateway forwards the Authorization header
+# once verified. The path is octo-sts's Exchange binding, the same prefix the
+# identity proxy's :4001 routes.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: octo-sts
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /sts/exchange
+      backendRefs:
+        - name: octo-sts
+          port: 8080

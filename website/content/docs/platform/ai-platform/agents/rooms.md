@@ -2,7 +2,7 @@
 title: Rooms
 weight: 20
 description: "Work in progress. The shared, append-only log of a task: the broker, the bridge, the web view, steering, room tools, approvals, and roomctl."
-lastVerified: 2026-10-01
+lastVerified: 2026-10-08
 ---
 
 A room is the shared, append-only log of a task: what each agent did, what humans said, the
@@ -37,8 +37,11 @@ From the [rooms design](https://github.com/Smana/cloud-native-ref/blob/main/docs
 | **Fork** | A new room from a prefix of the log, owned and driven by the person who forked it, on their budget. Widening a run's egress means forking; the fork's PR carries `Forked-from: <branch>@<sha>` |
 | **Verdict** | A reviewer run records it with the room tools; the broker posts it on the PR as one comment. Advice only: it neither approves nor blocks |
 
-Watching a room needs SSO membership in `agents-member`. The full transcript (prompts and outputs)
-stays in the room; traces carry metadata only.
+Watching a room needs SSO membership in `agents-member`, and a room is only as visible as its
+repository: you read it only if GitHub lets you read the repository, through the GitHub account
+linked to your ZITADEL user; `agents-admin` reads every room
+([ADR-0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}})). The full transcript
+(prompts and outputs) stays in the room; traces carry metadata only.
 
 How a developer uses a room day to day is in the
 [user guide]({{< relref "/docs/platform/ai-platform/agents/user-guide.md" >}}).

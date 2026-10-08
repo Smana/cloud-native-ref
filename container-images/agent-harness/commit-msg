@@ -1,0 +1,43 @@
+#!/agent-server/.venv/bin/python
+"""Adds the Agent-Run trailer, Agent-Task when the run has a task (SP3 ruling
+SW), and Agent-Checkpoint when agent-run commits a checkpoint on SIGTERM
+(disruption design §2). A provenance hint, never authorisation (SP3 ruling
+TB): an agent with a shell can skip or rewrite it, so the merge gate binds
+commits to a run by push identity.
+
+Every other `Agent-*` line, in any case, is marked as the model's first, as
+in the PR body, so a reader of the last paragraph finds only the harness's.
+`--if-exists add` then adds the real ones: `replace` would match keys by
+prefix and could silently delete a model line such as `Agent:`.
+`--no-divider`: a `---` line in the message is not the start of a patch, so
+the trailer still lands in the last paragraph.
+"""
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, "/opt/agent")
+import pr_footer  # noqa: E402
+
+TRAILERS = (("Agent-Run", "RUN_ID"), ("Agent-Task", "TASK_ID"), ("Agent-Checkpoint", "AGENT_CHECKPOINT"))
+
+
+def main(path: str, env: dict) -> int:
+    if not pr_footer.value(env, "RUN_ID"):
+        print("commit-msg: RUN_ID is unset", file=sys.stderr)
+        return 1
+    real = ["%s: %s" % (key, pr_footer.value(env, var)) for key, var in TRAILERS if pr_footer.value(env, var)]
+    with open(path, encoding="utf-8") as f:
+        message = pr_footer.lines(f.read())
+    # This run's own trailers from an earlier pass (an amend) are re-added, not marked.
+    message = "\n".join(line for line in message.split("\n") if line not in real)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(pr_footer.neutralise(message) + "\n")
+    args = ["git", "interpret-trailers", "--in-place", "--no-divider", "--if-exists", "add"]
+    for trailer in real:
+        args += ["--trailer", trailer]
+    return subprocess.run(args + [path]).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1], dict(os.environ)))

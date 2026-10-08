@@ -1,0 +1,63 @@
+---
+# One flavor: the agents-gvisor pool is the only place sandboxes run.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: agents-default
+---
+# Factory runs (§6.2: 4 concurrent AgentRuns). Two ClusterQueues, not one: LocalQueues carry no
+# quota (R10). No borrowing, so neither queue starves the other.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: agents-factory
+spec:
+  cohortName: agents
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: agents
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory, pods]
+      flavors:
+        - name: agents-default
+          resources:
+            - {name: cpu, nominalQuota: "16", borrowingLimit: "0"}
+            - {name: memory, nominalQuota: 64Gi, borrowingLimit: "0"}
+            - {name: pods, nominalQuota: "4", borrowingLimit: "0"}
+---
+# Runs humans request through POST /v1/runs (phase 5).
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: agents-interactive
+spec:
+  cohortName: agents
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: agents
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory, pods]
+      flavors:
+        - name: agents-default
+          resources:
+            - {name: cpu, nominalQuota: "8", borrowingLimit: "0"}
+            - {name: memory, nominalQuota: 32Gi, borrowingLimit: "0"}
+            - {name: pods, nominalQuota: "4", borrowingLimit: "0"}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: factory
+  namespace: agents
+spec:
+  clusterQueue: agents-factory
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: interactive
+  namespace: agents
+spec:
+  clusterQueue: agents-interactive

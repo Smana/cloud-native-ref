@@ -1,0 +1,37 @@
+---
+# One listener per data class (S6): "internal never reaches Z.ai" is structural.
+# Each listener accepts only its class's audiences, and Z.ai routes attach to
+# `public` only. `sts` fronts octo-sts (its HTTPRoute ships with octo-sts), so
+# an exchange needs a token from THIS cluster's issuer, which octo-sts's own
+# trust policies cannot pin across rebuilds. Only routes from agent-system attach.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agent-router
+  namespace: agent-system
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: public
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: internal
+      protocol: HTTP
+      port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: sts
+      protocol: HTTP
+      port: 8082
+      allowedRoutes:
+        namespaces:
+          from: Same
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: agent-router-proxy

@@ -1,0 +1,18 @@
+#!/bin/sh
+# gh with the run's installation token, minted through identity-proxy :4001 by
+# git-credential-agent and held only in its in-memory cache (design §5).
+GH_TOKEN="$(/usr/local/bin/git-credential-agent token)" || exit 1
+export GH_TOKEN
+# `gh pr create` (alias `new`, also after `-R`/`--repo`) gets the run's
+# provenance footer (SP2 design §5).
+if [ "$1" = pr ]; then
+  case "$2" in
+    -R | --repo) sub="$4" ;;
+    -R?* | --repo=*) sub="$3" ;;
+    *) sub="$2" ;;
+  esac
+  case "$sub" in
+    create | new) exec /opt/agent/pr_footer.py "$@" ;;
+  esac
+fi
+exec /usr/local/lib/gh-real "$@"

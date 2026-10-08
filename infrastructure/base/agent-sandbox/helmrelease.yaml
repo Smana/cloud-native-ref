@@ -1,0 +1,89 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agent-sandbox
+  namespace: agent-system
+spec:
+  releaseName: agent-sandbox
+  interval: 30m
+  chart:
+    spec:
+      chart: helm
+      sourceRef:
+        kind: GitRepository
+        name: agent-sandbox
+        namespace: agent-system
+      interval: 12h
+      # The chart version never moves (0.1.0); only the git tag does. Revision
+      # repackages on every new tag.
+      reconcileStrategy: Revision
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  driftDetection:
+    mode: enabled
+  # reconcileStrategy: Revision versions the chart `0.1.0+<git sha>`, and the
+  # chart copies that verbatim into every object's `helm.sh/chart` label. `+`
+  # is not legal in a label value, so the API server rejects the release.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              labelSelector: helm.sh/chart
+            patch: |
+              - op: replace
+                path: /metadata/labels/helm.sh~1chart
+                value: agent-sandbox
+  values:
+    namespace:
+      create: false
+      name: agent-system
+    image:
+      # Lockstep with flux/sources/gitrepo-agent-sandbox.yaml `ref.tag`: one
+      # upstream release cuts both. `repository` restates the chart default so
+      # Renovate's helm-values manager sees the image; the `agent-sandbox`
+      # packageRule in .github/renovate.json moves both in one unmerged PR.
+      # Tag only: the chart copies image.tag verbatim into the
+      # app.kubernetes.io/version label, which a sha256 digest overflows (63
+      # bytes). A digest would need a postRenderers kustomize images override,
+      # a third value to keep in step.
+      repository: registry.k8s.io/agent-sandbox/agent-sandbox-controller
+      tag: v1.0.3
+    controller:
+      # Bare Sandboxes only (S1): the controller runs no SandboxTemplate,
+      # SandboxClaim or warm-pool reconciler. The chart still installs their
+      # three CRDs (helm/crds/) and an unbound extensions ClusterRole.
+      extensions: false
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    podSecurityContext:
+      runAsNonRoot: true
+      # R-P2-1: fixed non-root UID/GID, proven under PSS restricted in the spike.
+      runAsUser: 65532
+      runAsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      runAsNonRoot: true
+      # R-P2-1: fixed non-root UID/GID, proven under PSS restricted in the spike.
+      runAsUser: 65532
+      runAsGroup: 65532
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    metrics:
+      serviceMonitor:
+        enabled: true

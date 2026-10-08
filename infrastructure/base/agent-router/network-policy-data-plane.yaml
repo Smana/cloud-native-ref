@@ -1,0 +1,130 @@
+---
+# Data plane of the agents' Gateway. Envoy Gateway runs it in its own namespace
+# whatever the Gateway's, so this CNP lives there. Scoped by gateway name AND
+# namespace, as is envoy-data-plane (narrowed by SP4 PR 1), so neither Gateway
+# inherits the other's allows (R5), and neither does a same-named Gateway
+# elsewhere (CC-1). SP4 PR 2 adds the Bedrock egress here, and envoy-ratelimit
+# :8081 with its budgets: a dropped rate-limit check fails OPEN (envoy-data-plane).
+# The agent trace collector's :4317 is here too (observability plan).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-router-data-plane
+  namespace: envoy-gateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: envoy-gateway
+      app.kubernetes.io/component: proxy
+      gateway.envoyproxy.io/owning-gateway-name: agent-router
+      gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+  ingress:
+    # Sandbox pods only. EG cannot prefix-match `sub`; this and the Kyverno
+    # audience reservation are what keep other namespaces' tokens out.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agents
+          matchExpressions:
+            - key: agents.ogenki.io/run-id
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "19001"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "1064"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            control-plane: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "18000"
+              protocol: TCP
+    # The agents' provider and the JWKS the listeners validate against. Not
+    # ${oidc_issuer_host}: it carries the /id/<ID> path, which matchName rejects.
+    # The JWKS host is per cloud (GCP parity GP-12).
+    - toFQDNs:
+        - matchName: api.z.ai
+        - matchName: ${oidc_jwks_host}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # octo-sts behind the `sts` listener.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: octo-sts
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Read-only MCP servers (phase 5) and SP2's room broker MCP port.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: flux-operator-mcp
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victoriametrics
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victorialogs
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker
+      toPorts:
+        - ports:
+            - port: "8090"
+              protocol: TCP
+    # Spans to the agent trace collector (EnvoyProxy telemetry.tracing).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP

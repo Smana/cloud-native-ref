@@ -1,0 +1,42 @@
+# Kueue admits every factory sandbox pod (SP3 S5, ADR-0048). Pod integration, namespace agents
+# only; its stopPolicy is the kill-switch layer that does not depend on the factory (§6.1).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kueue
+  namespace: agent-system
+spec:
+  interval: 30m
+  releaseName: kueue
+  chartRef:
+    kind: OCIRepository
+    name: kueue
+    namespace: agent-system
+  install:
+    crds: CreateReplace
+    remediation: {retries: 3}
+  upgrade:
+    crds: CreateReplace
+    remediation: {retries: 3, remediateLastFailure: true}
+  valuesFrom:
+    - kind: ConfigMap
+      name: kueue-helm-values
+  # Nothing reads Kueue's on-demand visibility API, and the API server cannot reach it: the
+  # manager serves it on 8082, which neither the EKS node security group nor this namespace's
+  # CiliumNetworkPolicy opens. An APIService that never answers fails discovery for every client
+  # (and blocks namespace deletion), and chart 0.19.6 renders both with no values switch.
+  postRenderers:
+    - kustomize:
+        patches:
+          - patch: |
+              $patch: delete
+              apiVersion: apiregistration.k8s.io/v1
+              kind: APIService
+              metadata:
+                name: v1beta1.visibility.kueue.x-k8s.io
+          - patch: |
+              $patch: delete
+              apiVersion: apiregistration.k8s.io/v1
+              kind: APIService
+              metadata:
+                name: v1beta2.visibility.kueue.x-k8s.io

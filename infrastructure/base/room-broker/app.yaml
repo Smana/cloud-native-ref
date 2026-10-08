@@ -1,0 +1,133 @@
+# The room broker, through the golden path (S11). Named room-broker, not
+# xplane-room-broker: SP1's run CNPs and data-plane CNP select
+# app.kubernetes.io/name=room-broker (ruling P10). The App's own CNP is off
+# because its egress schema has no rules.dns; network-policy.yaml is the policy.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: room-broker
+  namespace: agent-system
+spec:
+  image:
+    repository: ghcr.io/smana/room-broker
+    # agent-platform v0.8.0, by digest. Move it with the retention CronJob's,
+    # crd-rooms.yaml and atlasSchema.ref together.
+    tag: "v0.8.0@sha256:d39e0850b21e202a08412c8f36a7bc1c2444437609d083edabdd90b0cf990636"
+  # Two from phase 2 (§9): the leader lease picks the controller, and every
+  # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
+  replicas: 2
+  pdb:
+    enabled: true
+    minAvailable: 1
+  service:
+    port: 8443
+    extraPorts:
+      - name: metrics
+        port: 9090
+      - name: human
+        port: 8080
+      # Agents' room_* tools, reached only through agent-router's MCPRoutes (§3).
+      - name: mcp
+        port: 8090
+  automountServiceAccountToken: true # the Room and AgentRun watches, the leader lease
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # Explicit, not the default: the broker's shutdown drains fit 23 s of it.
+  terminationGracePeriodSeconds: 30
+  healthProbes:
+    liveness:
+      type: http
+      path: /healthz
+      port: 9090
+    readiness:
+      type: http
+      path: /readyz
+      port: 9090
+    startup:
+      type: http
+      path: /startupz
+      port: 9090
+      periodSeconds: 5
+      failureThreshold: 120 # first deploy waits for CNPG and the Atlas migration
+  # POD_NAMESPACE, which the broker also requires, is set by the App composition.
+  env:
+    - name: ROOMS_CONFIG
+      value: /etc/room-broker/config/config.yaml
+    - name: ROOMS_DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: xplane-rooms-cnpg-role-rooms-broker
+          key: uri
+    # The key agent-router injects on :8090 (ruling P13). Unset, :8090 refuses every call.
+    - name: ROOMS_MCP_KEY
+      valueFrom:
+        secretKeyRef:
+          name: room-broker-mcp-key
+          key: apiKey
+    # The factory App's key (verdict comments, §3). Empty until the owner writes it:
+    # verdicts wait in the room, up to 24 h.
+    - name: ROOMS_GITHUB_APP_DIR
+      value: /var/run/secrets/factory-app
+  # The config sits beside the TLS pair, not above it: a mount nested in a
+  # read-only ConfigMap mount cannot create its mount point.
+  extraVolumes:
+    - name: config
+      configMap:
+        name: room-broker-config
+    - name: tls
+      secret:
+        secretName: room-broker-tls  # pragma: allowlist secret
+    # rooms-proxy's client id and the ZITADEL project id, re-read at use (ruling
+    # AS-a): a whole-Secret mount, so a refresh reaches the files without a restart.
+    - name: oidc
+      secret:
+        secretName: room-broker-oidc  # pragma: allowlist secret
+    # optional: the broker runs before the owner creates the App, and kubelet fills
+    # the volume once the key lands. A secretKeyRef env would need a restart (P31).
+    # 0440, not the default 0644: readable only through the pod's fsGroup (1001, set
+    # by the App composition), so the key depends on that fsGroup staying set.
+    - name: factory-app
+      secret:
+        secretName: room-broker-factory-app  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
+    # roomctl's client id (phase 6), re-read at use. optional: until the sync
+    # creates the client, roomctl's tokens are refused and nothing else changes.
+    - name: roomctl
+      secret:
+        secretName: room-broker-roomctl  # pragma: allowlist secret
+        optional: true
+    # The ZITADEL link reader's PAT. Whole-Secret mount (no subPath) so a rotation
+    # reaches the file. optional: until it syncs, non-admins see no rooms (fail closed).
+    # 0440 like the App key: readable through the pod's fsGroup only.
+    - name: zitadel-reader
+      secret:
+        secretName: room-broker-zitadel-reader  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
+  extraVolumeMounts:
+    - name: config
+      mountPath: /etc/room-broker/config
+      readOnly: true
+    - name: tls
+      mountPath: /etc/room-broker/tls
+      readOnly: true
+    - name: oidc
+      mountPath: /etc/room-broker/oidc
+      readOnly: true
+    - name: factory-app
+      mountPath: /var/run/secrets/factory-app
+      readOnly: true
+    - name: roomctl
+      mountPath: /etc/room-broker/roomctl
+      readOnly: true
+    - name: zitadel-reader
+      mountPath: /etc/room-broker/zitadel-reader
+      readOnly: true
+  networkPolicies:
+    enabled: false

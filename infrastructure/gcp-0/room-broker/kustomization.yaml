@@ -1,0 +1,92 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The room broker on gcp-0, and a render root of its own so CI renders it with
+# gcp-0's fixture values, not AWS's. Cloud-shaped: the claim's composition and backup
+# bucket (as security/gcp-0/zitadel), and the CNP's credential endpoint (GKE's, not
+# EKS Pod Identity: security/AGENTS.md trap 3) and object-store hosts, and the CA the
+# run bridges trust (Secret Manager's entry, as security/gcp-0/agent-secrets).
+resources:
+  - ../../base/room-broker
+
+patches:
+  - target:
+      group: cloud.ogenki.io
+      kind: SQLInstance
+      name: xplane-rooms
+    patch: |-
+      - op: replace
+        path: /spec/crossplane/compositionRef/name
+        value: xsqlinstances-gcp.cloud.ogenki.io
+      - op: replace
+        path: /spec/backup/bucketName
+        value: ${project_id}-ogenki-cnpg-backups
+  # `test` pins the indices: a reordered base fails the build instead of patching the
+  # wrong rule.
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: xplane-rooms-cnpg
+    patch: |-
+      - op: test
+        path: /spec/egress/4/toEntities/0
+        value: host
+      - op: replace
+        path: /spec/egress/4
+        value:
+          toCIDR:
+            - 169.254.169.254/32
+          toPorts:
+            - ports:
+                - port: "80"
+                  protocol: TCP
+      - op: test
+        path: /spec/egress/5/toFQDNs/0/matchName
+        value: s3.${region}.amazonaws.com
+      - op: replace
+        path: /spec/egress/5/toFQDNs
+        value:
+          - matchName: storage.googleapis.com
+          - matchPattern: "*.storage.googleapis.com"
+  - target:
+      group: external-secrets.io
+      kind: ExternalSecret
+      name: room-broker-ca
+    patch: |-
+      - op: test
+        path: /spec/data/0/remoteRef/key
+        value: certificates/${private_domain_name}/ca-chain
+      - op: replace
+        path: /spec/data/0/remoteRef/key
+        value: openbao-priv-gcp-ca-chain
+      - op: remove
+        path: /spec/data/0/remoteRef/property
+  # ZITADEL on gcp-0 is this cluster's own Gateway VIP: Envoy enforces policy on
+  # its runtime listener port, so any toPorts fails (ruling AU; measured in
+  # tooling/gcp-0/headlamp/network-policy.yaml).
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: rooms-oauth2-proxy
+    patch: |-
+      - op: test
+        path: /spec/egress/1/toFQDNs/0/matchName
+        value: auth.${public_domain_name}
+      - op: replace
+        path: /spec/egress/1
+        value:
+          toEntities:
+            - all
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: room-broker
+    patch: |-
+      - op: test
+        path: /spec/egress/5/toFQDNs/0/matchName
+        value: auth.${public_domain_name}
+      - op: replace
+        path: /spec/egress/5
+        value:
+          toEntities:
+            - all

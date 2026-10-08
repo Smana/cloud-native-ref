@@ -41,6 +41,7 @@
 #   # a cluster that HOSTS its own identity provider
 #   zitadel-oidc-clients.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F [--mirror-openbao]]
+#     [--grant-admin EMAIL] [--grant ROLE=EMAIL ...]
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #
 #   # a SECONDARY cluster consuming the primary cloud's identity provider:
@@ -73,6 +74,8 @@ set -o pipefail
 . "$(dirname "$0")/../lib/openbao-api.sh"
 # shellcheck source=scripts/lib/bao-map.sh
 . "$(dirname "$0")/../lib/bao-map.sh"
+# shellcheck source=scripts/lib/openbao-mirror.sh
+. "$(dirname "$0")/../lib/openbao-mirror.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -100,11 +103,14 @@ ZITADEL_PROJECT_NAME="platform"
 #              Grafana role_attribute_path      'data'         -> Editor
 #   frontend   Grafana role_attribute_path      'frontend'     -> Editor
 #
+# `agents-admin` is owner and approver in every room; `agents-member` watches
+# every room (SP2 §1 Groups).
+#
 # Without them the whole chain is inert: ZITADEL has no role to grant, so the
 # Action emits no claim, so every binding above matches nobody and Grafana falls
 # through to Viewer. gcp-0 came up on 2026-08-28 with zero roles on the project
 # and nothing anywhere said so -- login worked, authorisation silently did not.
-ZITADEL_PROJECT_ROLES=(admin backend frontend data)
+ZITADEL_PROJECT_ROLES=(admin backend frontend data agents-admin agents-member)
 
 # --grant-admin <email>: give an EXISTING user the `admin` project role.
 #
@@ -116,6 +122,9 @@ ZITADEL_PROJECT_ROLES=(admin backend frontend data)
 # It is here rather than in a console because a role granted by hand is a role
 # nobody can reproduce, which is how gcp-0 ended up with no groups claim at all.
 GRANT_ADMIN=""
+# --grant <role>=<email>, repeatable: any project role, same constraint. gcp-0
+# mints a fresh ZITADEL every build, so its grants are re-run after each one.
+GRANTS=()
 
 # Empty means reconcile_openbao_oidc is a no-op: the consumer call on a
 # secondary cluster. A cluster hosting its own directory (aws-0's stage 4,
@@ -137,6 +146,7 @@ while [ $# -gt 0 ]; do
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
+        --grant) GRANTS+=("$2"); shift 2 ;;
         --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
         --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
         --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
@@ -161,6 +171,15 @@ fi
 if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
     echo "--mirror-openbao requires --openbao-url" >&2; exit 2
 fi
+# Refused here, before the PAT resolve can write: a typo'd role would otherwise
+# surface only as a ZITADEL 400 after the project was touched.
+for g in "${GRANTS[@]+"${GRANTS[@]}"}"; do
+    case "$g" in
+        ?*=?*) printf '%s\n' "${ZITADEL_PROJECT_ROLES[@]}" | grep -qxF -- "${g%%=*}" \
+                   || { echo "--grant takes <role>=<email> with one of: ${ZITADEL_PROJECT_ROLES[*]}; got '${g}'" >&2; exit 2; } ;;
+        *) echo "--grant takes <role>=<email>; got '${g}'" >&2; exit 2 ;;
+    esac
+done
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
 # one receives the client secrets this script writes. They are the same cloud
@@ -327,7 +346,9 @@ api_or_fail() {
 
 # ── the consumers ─────────────────────────────────────────────────────────────
 #
-# name | redirect URI | secret key it lands in
+# name | redirect URI | secret key it lands in | [type: jwt, native, else bearer]
+#
+# native: a public client (no secret) on the device flow, with JWT access tokens.
 #
 # Redirect paths are each framework's own callback and are not interchangeable:
 #   Grafana   /login/generic_oauth   (grafana.ini auth.generic_oauth)
@@ -365,6 +386,16 @@ CONSUMERS=(
   # `bao.` rather than `openbao.`: operators reach it over the tailnet at the
   # NLB's DNS name, which is what the server certificate carries.
   "openbao|https://bao.${PRIVATE_DOMAIN}:8200/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback|openbao-oidc"
+  # SP2: the room broker's oauth2-proxy. JWT access tokens, so the broker and
+  # SP3's factory validate them offline (C4). agent-system reads only OpenBao's
+  # agents mount (C1, P38): --mirror-openbao copies the key there through
+  # bao-map.sh (ruling AU). No ExternalSecret reads the store's copy.
+  "rooms-proxy|https://rooms.${PRIVATE_DOMAIN}/oauth2/callback|agents-rooms-proxy|jwt"
+  # SP2 phase 6: roomctl, a developer's CLI. Device flow, so no secret exists to
+  # leak and no redirect reaches the laptop (the loopback URI is ZITADEL's
+  # required one, never used). Its id is not a credential, but the broker,
+  # oauth2-proxy and SP3's factory all need it (ruling P12).
+  "roomctl|http://localhost:8765/callback|agents-roomctl|native"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
@@ -431,6 +462,61 @@ ensure_project() {
     echo "$id"
 }
 
+# Every page of a v1 _search, as one {result: [...]}. ZITADEL returns at most
+# `limit` per call: a user or grant past the first page would be unseen, and a
+# second POST for an existing grant is refused. Bounded, so a server that ignores
+# the offset fails loudly instead of paging forever.
+search_all() {
+    local path="$1" offset=0 pages=0 page n all='[]'
+    while :; do
+        page="$(api_or_fail POST "$path" -d "{\"query\":{\"offset\":\"${offset}\",\"limit\":200,\"asc\":true}}")" || return 1
+        n="$(jq '.result // [] | length' <<< "$page")" || return 1
+        all="$(printf '%s\n%s\n' "$all" "$page" | jq -cs '.[0] + (.[1].result // [])')" || return 1
+        [ "$n" -lt 200 ] && break
+        offset=$((offset + n)); pages=$((pages + 1))
+        if [ "$pages" -ge 50 ]; then
+            echo "[FAILED ] ZITADEL listing ${path} did not end after ${pages} pages" >&2; return 1
+        fi
+    done
+    jq -c '{result: .}' <<< "$all"
+}
+
+# Give an EXISTING user a project role. A user already holding a grant on this
+# project gets the role ADDED to it: ZITADEL refuses a second grant for the same
+# user and project, so POSTing again would fail for anyone who already has one.
+# cmd_sync calls this under `||`, which turns errexit off in here: every call
+# whose failure matters is checked explicitly.
+grant_role() {
+    local role="$1" email="$2" project_id="$3" user_id resp grant
+    [ -n "$email" ] && [ -n "$project_id" ] || return 0
+    if [ "$project_id" = "DRYRUN-PROJECT" ]; then
+        echo "[dry-run] would grant '${role}' to ${email}"; return 0
+    fi
+    resp="$(search_all /management/v1/users/_search)" || return 1
+    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)" || return 1
+    if [ -z "$user_id" ]; then
+        echo "[FAILED ] no ZITADEL user for ${email}: they must log in once first" >&2; return 1
+    fi
+    resp="$(search_all /management/v1/users/grants/_search)" || return 1
+    grant="$(jq -c --arg u "$user_id" --arg p "$project_id" '[.result[]? | select(.userId == $u and .projectId == $p)][0] // empty' <<< "$resp")" || return 1
+    if [ -n "$grant" ] && jq -e --arg r "$role" '.roleKeys | index($r)' <<< "$grant" >/dev/null; then
+        echo "[skip   ] ${email} already holds '${role}'"; return 0
+    fi
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would grant '${role}' to ${email}"; return 0
+    fi
+    if [ -n "$grant" ]; then
+        jq -c --arg r "$role" '{roleKeys: ((.roleKeys // []) + [$r] | unique)}' <<< "$grant" \
+            | api PUT "/management/v1/users/${user_id}/grants/$(jq -r .id <<< "$grant")" -d @- >/dev/null \
+            || { echo "[FAILED ] could not add '${role}' to ${email}'s grant" >&2; return 1; }
+    else
+        jq -n --arg p "$project_id" --arg r "$role" '{projectId: $p, roleKeys: [$r]}' \
+            | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null \
+            || { echo "[FAILED ] could not grant '${role}' to ${email}" >&2; return 1; }
+    fi
+    echo "[granted] '${role}' to ${email}"
+}
+
 # "Assert Roles on Authentication", and it is the flag every SSO consumer on this
 # platform silently depends on.
 #
@@ -456,41 +542,6 @@ ensure_project() {
 # Set on an EXISTING project too, not only at creation -- gcp-0's was created
 # before this was understood, and a project that predates this function must be
 # repaired rather than left to a manual console click nobody remembers.
-grant_admin_role() {
-    local email="$1" project_id="$2" user_id existing resp
-    [ -n "$email" ] || return 0
-    [ -n "$project_id" ] || return 0
-    if [ "$project_id" = "DRYRUN-PROJECT" ]; then
-        echo "[dry-run] would grant 'admin' to ${email}"
-        return 0
-    fi
-
-    resp="$(api_or_fail POST /management/v1/users/_search -d '{"query":{"limit":200}}')" || return 1
-    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)"
-    if [ -z "$user_id" ]; then
-        echo "[FAILED ] no ZITADEL user for ${email}." >&2
-        echo "           A human user exists only AFTER their first login through the" >&2
-        echo "           Google IdP (isAutoCreation). Log in once, then re-run this." >&2
-        return 1
-    fi
-
-    resp="$(api_or_fail POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}')" || return 1
-    existing="$(jq -r --arg u "$user_id" --arg p "$project_id" \
-                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' <<< "$resp")"
-    if grep -qx "admin" <<< "$existing"; then
-        echo "[skip   ] ${email} already holds 'admin'"
-        return 0
-    fi
-    if [ "$APPLY" != "true" ]; then
-        echo "[dry-run] would grant 'admin' to ${email} (${user_id})"
-        return 0
-    fi
-
-    jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["admin"]}' \
-        | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
-    echo "[granted] 'admin' to ${email} (${user_id})"
-}
-
 ensure_project_role_assertion() {
     local project_id="$1" current resp
     [ -n "$project_id" ] || return 0
@@ -552,16 +603,19 @@ app_get() {
 # array indexed by consumer name.
 #
 # $2 is the app NAME, and only the create call passes it -- the oidc_config
-# endpoint the update uses has no such field.
+# endpoint the update uses has no such field. $3 is the type: `jwt`, `native`
+# (a public device-flow client, also JWT) or empty (bearer); both calls pass it,
+# since the update replaces it too.
 oidc_config_payload() {
-    jq -n --arg r "$1" --arg n "${2:-}" '
+    jq -n --arg r "$1" --arg n "${2:-}" --arg t "${3:-}" '
         (if $n == "" then {} else {name: $n} end) + {
           redirectUris: ($r | split(",")),
           responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-          grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-          appType: "OIDC_APP_TYPE_WEB",
-          authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-          accessTokenType: "OIDC_TOKEN_TYPE_BEARER",
+          grantTypes: (if $t == "native" then ["OIDC_GRANT_TYPE_DEVICE_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"]
+                       else ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"] end),
+          appType: (if $t == "native" then "OIDC_APP_TYPE_NATIVE" else "OIDC_APP_TYPE_WEB" end),
+          authMethodType: (if $t == "native" then "OIDC_AUTH_METHOD_TYPE_NONE" else "OIDC_AUTH_METHOD_TYPE_BASIC" end),
+          accessTokenType: (if $t == "jwt" or $t == "native" then "OIDC_TOKEN_TYPE_JWT" else "OIDC_TOKEN_TYPE_BEARER" end),
           accessTokenRoleAssertion: true,
           idTokenRoleAssertion: true,
           idTokenUserinfoAssertion: true,
@@ -575,9 +629,9 @@ oidc_config_payload() {
 # through the separate `_secret` endpoint, so the running consumer keeps working
 # and nothing has to be rewritten into the secret store.
 app_set_redirect() {
-    local project_id="$1" app_id="$2" redirect="$3"
+    local project_id="$1" app_id="$2" redirect="$3" token="${4:-}"
     api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
-        -d "$(oidc_config_payload "$redirect")" >/dev/null
+        -d "$(oidc_config_payload "$redirect" "" "$token")" >/dev/null
 }
 
 # Merge OIDC fields into a secret without dropping what else is in it.
@@ -593,12 +647,12 @@ app_set_redirect() {
 # order with `input` -- the same trick jq's own manual gives for slurping more
 # than one value without `--slurp` swallowing the whole stream into an array.
 merge_secret() {
-    local key="$1" name="$2" client_id="$3" client_secret="$4"
+    local key="$1" name="$2" client_id="$3" client_secret="$4" project_id="${5:-}"
     local existing='{}' cookie_secret=''
     store_exists "$key" && existing="$(store_read "$key")"
     [ -z "$existing" ] && existing='{}'
 
-    if [ "$name" = headlamp-proxy ]; then
+    if [ "$name" = headlamp-proxy ] || [ "$name" = rooms-proxy ]; then
         # Hyphenated keys, deliberately: the oauth2-proxy chart's
         # `config.existingSecret` reads exactly client-id / client-secret /
         # cookie-secret, so the blob is shaped to be consumed by a whole-blob
@@ -624,7 +678,7 @@ merge_secret() {
         printf '%s\n' "$existing"
         printf '%s' "$client_secret" | jq -Rs .
         printf '%s' "$cookie_secret" | jq -Rs .
-    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" --arg proj "$project_id" '
         input as $base | input as $sec | input as $ck |
         if $name == "grafana" then
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
@@ -640,6 +694,10 @@ merge_secret() {
             $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
         elif $name == "headlamp-proxy" then
             $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
+        elif $name == "rooms-proxy" then
+            $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck, "project-id": $proj}
+        elif $name == "roomctl" then
+            $base + {"client-id": $id}
         else
             empty
         end
@@ -671,9 +729,13 @@ merge_secret() {
 # merge_secret keeps it off jq's argv: it can carry fields this script does
 # not own (grafana's admin credentials), and putting the whole blob on argv
 # would expose those too, not just the OIDC fields being converged here.
+#
+# rooms-proxy also carries the project id (S2): oauth2-proxy's audience scope and
+# the broker's aud check need it on both clouds, aws-0's vars have no such key,
+# and a fresh directory (gcp-0, every build) mints a new one with the client.
 converge_secret() {
-    local name="$1" client_id="$2" existing="$3"
-    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+    local name="$1" client_id="$2" existing="$3" project_id="${4:-}"
+    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" --arg proj "$project_id" '
         input as $base |
         if $name == "grafana" then
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id}
@@ -687,6 +749,10 @@ converge_secret() {
         elif $name == "openbao" then
             $base + {client_id: $id, endpoint: $iss}
         elif $name == "headlamp-proxy" then
+            $base + {"client-id": $id}
+        elif $name == "rooms-proxy" then
+            $base + {"client-id": $id, "project-id": $proj}
+        elif $name == "roomctl" then
             $base + {"client-id": $id}
         else
             empty
@@ -865,89 +931,6 @@ openbao_oidc_config_payload() {
         end' || return 1
 }
 
-# The fields this script owns in a consumer secret: every key merge_secret and
-# converge_secret write. Onto an EXISTING OpenBao value the mirror copies only
-# these. The rest of a blob belongs to another writer -- seed's
-# GF_SECURITY_ADMIN_PASSWORD in grafana-envvars -- and OpenBao's copy of it may
-# be newer than the store's (a rotation made in OpenBao), so the mirror never
-# overwrites it. An ABSENT path gets the whole payload: `migrate` skips a path
-# that exists, so nothing else would ever fill in the rest.
-# test-zitadel-oidc-clients-mirror.sh fails when merge_secret writes a key
-# missing here.
-MIRRORED_FIELDS=(
-    GF_AUTH_GENERIC_OAUTH_CLIENT_ID GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
-    OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_ISSUER_URL OIDC_SCOPES
-    OIDC_VALIDATOR_CLIENT_ID OIDC_VALIDATOR_ISSUER_URL
-    clientID clientSecret
-    client_id client_secret endpoint
-    client-id client-secret cookie-secret
-)
-
-# Mirror one consumer secret into the OpenBao path its ExternalSecret reads
-# (--mirror-openbao): MIRRORED_FIELDS from the store's blob, onto what OpenBao
-# holds, or the whole blob when OpenBao holds nothing. Writes only when that
-# changes OpenBao's value, so a re-run adds no KV version. Unmapped keys
-# (openbao-oidc, headlamp-oauth2-proxy) are read from the managed store; they
-# are skipped, and said so. A subshell, like
-# reconcile_openbao_oidc, so its temp files and trap stay local. Secrets move
-# through stdin and 0700-directory files, never argv.
-mirror_to_openbao() (
-    # xtrace would print the payload, and the client secret with it.
-    set +x
-    key="$1"
-    [ "${MIRROR_OPENBAO:-false}" = "true" ] || exit 0
-    if ! target="$(bao_target_for "$key")"; then
-        echo "[skip   ] ${key}: no OpenBao path in scripts/lib/bao-map.sh" >&2
-        exit 0
-    fi
-    mount="${target%%/*}"
-    path="${target#*/}"
-    # One directory, trapped the moment it exists, so no second mktemp can
-    # fail and strand the first. The path is baked in at trap-set time.
-    tmp="$(umask 077 && mktemp -d -t openbao-mirror.XXXXXX)" || exit 1
-    # shellcheck disable=SC2064
-    trap "rm -rf '$tmp'" EXIT
-    cat > "$tmp/payload" || exit 1
-    OPENBAO_TOKEN_CONFIG="$tmp/token"
-    if ! openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}"; then
-        echo "[FAILED ] ${key} -- no OpenBao root token readable from ${OPENBAO_ROOT_TOKEN_SECRET:-<unset>}" >&2
-        exit 1
-    fi
-    # Only a 404 means "nothing there yet". Any other answer (403, a TLS or CA
-    # error, a timeout) must not become an empty merge base. curl's stderr is
-    # shown for those: it holds curl's own error line only -- the token is in a
-    # -K file and a body goes to -o -- and a 404's "(22)" line is expected.
-    absent=false
-    code="$(openbao_req GET "${mount}/data/${path}" -o "$tmp/read" -w '%{http_code}' 2>"$tmp/err")" || true
-    case "$code" in
-        200) jq -ce '.data.data // {} | objects' "$tmp/read" > "$tmp/current" \
-                 || { echo "[FAILED ] ${key} -- ${target} is not readable JSON; not overwriting it" >&2; exit 1; } ;;
-        404) printf '{}' > "$tmp/current"; absent=true ;;
-        *)   echo "[FAILED ] ${key} -- reading ${target} returned HTTP ${code:-none}; not overwriting it" >&2
-             cat "$tmp/err" >&2
-             exit 1 ;;
-    esac
-    # Field NAMES go in as --args (none is secret); both values on stdin.
-    if ! cat "$tmp/current" "$tmp/payload" | jq -cn --argjson absent "$absent" '
-            input as $cur | input as $p |
-            (if $absent then $p
-             else $cur + ($p | with_entries(select(.key | IN($ARGS.positional[])))) end) as $new |
-            if $new == $cur then empty else {data: $new} end' \
-            --args "${MIRRORED_FIELDS[@]}" > "$tmp/write"; then
-        echo "[FAILED ] ${key} -- could not merge into ${target}; not overwriting it" >&2
-        exit 1
-    fi
-    if [ ! -s "$tmp/write" ]; then
-        echo "[ok     ] ${key} -- ${target} already holds these fields"
-        exit 0
-    fi
-    if ! openbao_req POST "${mount}/data/${path}" --data-binary @- < "$tmp/write" >/dev/null; then
-        echo "[FAILED ] ${key} -- not mirrored to ${target}" >&2
-        exit 1
-    fi
-    echo "[mirrored] ${key} -> ${target}"
-)
-
 # The managed store first, then the mirror, with one payload. Returns 1 when
 # the store write fails and 2 when only the mirror does: cmd_sync stops on the
 # first and carries on past the second (failed_mirrors there).
@@ -961,44 +944,42 @@ store_write_and_mirror() {
     printf '%s' "$payload" | mirror_to_openbao "$key" || return 2
 }
 
-# Force-sync every ExternalSecret that reads a mirrored path. Left alone, each
-# waits out its refreshInterval (up to 1h) serving the dead directory's client.
-# Matched on store (openbao-<mount>) and key. Warn-only: the mirror already
-# converged OpenBao, and the next refresh picks it up regardless.
-force_sync_mirrored() {
-    [ "$APPLY" = "true" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ] || return 0
-    local key target es_json ns name now targets=()
-    for key in "$@"; do
-        target="$(bao_target_for "$key")" && targets+=("$target")
-    done
-    [ "${#targets[@]}" -gt 0 ] || return 0
-    if ! es_json="$(kubectl get externalsecrets -A -o json 2>/dev/null)"; then
-        echo "WARN: could not list ExternalSecrets; mirrored ones refresh on their own interval" >&2
-        return 0
-    fi
-    now="$(date +%s)"
-    jq -r '.items[]
-        | (.spec.secretStoreRef.name // "") as $store
-        | select($store | startswith("openbao-"))
-        | ($store | ltrimstr("openbao-")) as $mount
-        | select([(.spec.data // [])[].remoteRef.key?, (.spec.dataFrom // [])[].extract.key?]
-                 | map(select(. != null) | $mount + "/" + .)
-                 | any(IN($ARGS.positional[])))
-        | "\(.metadata.namespace) \(.metadata.name)"' --args "${targets[@]}" <<< "$es_json" \
-    | while read -r ns name; do
-        if kubectl annotate externalsecret "$name" -n "$ns" force-sync="$now" --overwrite >/dev/null; then
-            echo "[synced ] externalsecret ${ns}/${name}"
-        else
-            echo "WARN: could not force-sync externalsecret ${ns}/${name}" >&2
-        fi
-    done || echo "WARN: could not match ExternalSecrets to the mirrored paths" >&2
-}
-
 # The client id a stored consumer payload carries, whichever field its consumer
 # names it by (merge_secret). The payload arrives on stdin: it holds the secret.
 stored_client_id() {
     jq -r 'first(.GF_AUTH_GENERIC_OAUTH_CLIENT_ID, .OIDC_CLIENT_ID, .clientID,
                  .client_id, ."client-id" | strings) // empty' 2>/dev/null || true
+}
+
+# The payload OpenBao holds at $1's mapped path, on stdout; nothing when unmapped,
+# absent or unreadable. A subshell, like mirror_to_openbao, so its temp files and
+# trap stay local; the payload holds the secret, so it only ever feeds a pipe.
+mirror_read() (
+    set +x
+    key="$1"
+    target="$(bao_target_for "$key")" || exit 0
+    tmp="$(umask 077 && mktemp -d -t openbao-read.XXXXXX)" || exit 0
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    OPENBAO_TOKEN_CONFIG="$tmp/token"
+    openbao_token_config_write "$OPENBAO_TOKEN_CONFIG" "${OPENBAO_ROOT_TOKEN_SECRET:-}" 2>/dev/null || exit 0
+    openbao_req GET "${target%%/*}/data/${target#*/}" -o "$tmp/read" 2>/dev/null || exit 0
+    jq -c '.data.data // empty' "$tmp/read" 2>/dev/null || true
+)
+
+# The client id $1's consumers run with today: the managed store's, else -- on a
+# mirrored key -- OpenBao's, which is what their ExternalSecret reads. A lineage
+# whose OpenBao was restored while the store was not holds the old client only
+# there (aws-0, 2026-10-06: rooms-proxy). Empty means a first bootstrap.
+previous_client_id() {
+    local key="$1" id=""
+    if store_exists "$key"; then
+        id="$(store_read "$key" | stored_client_id)" || id=""
+    fi
+    if [ -z "$id" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ]; then
+        id="$(mirror_read "$key" | stored_client_id)" || id=""
+    fi
+    printf '%s' "$id"
 }
 
 # Restart the Deployments that read a ROTATED client from env. They resolve it
@@ -1296,7 +1277,10 @@ cmd_sync() {
     # the headlamp-proxy app's client id, which does not exist on a first sync
     # until that loop creates it.
     ensure_project_roles "$project_id"
-    grant_admin_role "$GRANT_ADMIN" "$project_id"
+    [ -n "$GRANT_ADMIN" ] && GRANTS+=("admin=${GRANT_ADMIN}")
+    for g in "${GRANTS[@]+"${GRANTS[@]}"}"; do
+        grant_role "${g%%=*}" "${g#*=}" "$project_id" || exit 1
+    done
 
     local created=0 skipped=0 updated=0 converged=0
     # A failed mirror does not stop the loop, like openbao_failed below: the
@@ -1328,7 +1312,7 @@ cmd_sync() {
         #   Secret Payload cannot be empty.
         # -- after the app had already been created in ZITADEL, stranding a
         # client secret that ZITADEL only ever returns once.
-        IFS='|' read -r consumer redirect key <<< "$entry"
+        IFS='|' read -r consumer redirect key token <<< "$entry"
         # :- so a harness that lifts this function out of the script (the
         # test-zitadel-* suites do) does not trip over nounset on a global it
         # did not know to declare.
@@ -1405,7 +1389,14 @@ cmd_sync() {
                 grep -Fxq "$have" <<< "${redirect//,/$'\n'}" || extra="${extra}${extra:+ }${have}"
             done <<< "$current"
 
-            if [ -z "$missing" ] && [ -z "$extra" ]; then
+            # The token type drifts independently (an app created as bearer before
+            # rooms-proxy moved to JWT): the same PUT repairs it. ZITADEL omits
+            # the enum's zero value, bearer.
+            local want_type have_type
+            want_type=OIDC_TOKEN_TYPE_BEARER
+            case "$token" in jwt | native) want_type=OIDC_TOKEN_TYPE_JWT ;; esac
+            have_type="$(jq -r '.app.oidcConfig.accessTokenType // "OIDC_TOKEN_TYPE_BEARER"' <<< "$app_json")"
+            if [ -z "$missing" ] && [ -z "$extra" ] && [ "$have_type" = "$want_type" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
             else
@@ -1418,10 +1409,11 @@ cmd_sync() {
                 # the two they are looking at before the repair removes it.
                 [ -n "$missing" ] && echo "           missing: ${missing}"
                 [ -n "$extra" ]   && echo "           undeclared (will be removed): ${extra}"
+                [ "$have_type" = "$want_type" ] || echo "           token type: ${have_type} -> ${want_type}"
                 if [ "$APPLY" != "true" ]; then
                     echo "           would update the redirect URI (client secret untouched)"
                 else
-                    app_set_redirect "$project_id" "$existing_id" "$redirect"
+                    app_set_redirect "$project_id" "$existing_id" "$redirect" "$token"
                     echo "[updated] ${name} -> ${redirect} (client secret untouched)"
                 fi
                 updated=$((updated + 1))
@@ -1442,7 +1434,8 @@ cmd_sync() {
                 echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
                 exit 1
             fi
-            if [ "$probe" -eq 1 ]; then
+            # A native app has no secret to lose: its id alone is the payload.
+            if [ "$probe" -eq 1 ] && [ "$token" != native ]; then
                 echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
                 echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
                 echo "           creation -- it cannot be recovered from here, so writing the" >&2
@@ -1453,9 +1446,9 @@ cmd_sync() {
                 exit 1
             fi
 
-            local existing_secret desired
-            existing_secret="$(store_read "$key")"
-            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
+            local existing_secret='{}' desired
+            [ "$probe" -eq 1 ] || existing_secret="$(store_read "$key")"
+            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret" "$project_id")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
                 # A mirror that failed after its store write leaves the store
@@ -1496,11 +1489,12 @@ cmd_sync() {
 
         local resp client_id client_secret
         resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" \
-            -d "$(oidc_config_payload "$redirect" "$name")")" || exit 1
+            -d "$(oidc_config_payload "$redirect" "$name" "$token")")" || exit 1
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")
-        if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+        # A native app is public: ZITADEL returns no secret, and none is needed.
+        if [ -z "$client_id" ] || { [ -z "$client_secret" ] && [ "$token" != native ]; }; then
             echo "[FAILED ] ${name}: ZITADEL returned no clientId/clientSecret" >&2
             echo "$resp" | jq -r '.message // .' | head -3 >&2
             exit 1
@@ -1513,15 +1507,13 @@ cmd_sync() {
         # Built first, so a failed merge stops here instead of feeding the
         # store an empty payload.
         local merged
-        merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret")" || exit 1
+        merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret" "$project_id")" || exit 1
         # A key that held a client before is a rotation (a fresh directory, or a
         # restore older than the app); one that held none is a first bootstrap,
         # whose consumers are still waiting for the Secret and start on their own.
-        # Never fatal: ZITADEL has issued the secret, and only the write below keeps it.
-        prev_id=""
-        if store_exists "$key"; then
-            prev_id="$(store_read "$key" | stored_client_id)" || prev_id=""
-        fi
+        # Read before the write below replaces it. Never fatal: ZITADEL has issued
+        # the secret, and only that write keeps it.
+        prev_id="$(previous_client_id "$key")"
         wrc=0
         printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
         case "$wrc" in
@@ -1575,7 +1567,7 @@ cmd_sync() {
 case "$COMMAND" in
     sync) cmd_sync ;;
     *)
-        sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac

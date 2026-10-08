@@ -142,8 +142,11 @@ own_sync="$(grep -F -- '--cluster "${global.eks_cluster_name}"' <<< "$aws_syncs"
 consumer_sync="$(grep -F -- '--idp-cloud aws' <<< "$aws_syncs" || true)"
 check "aws/eks/init runs two syncs: its own and gcp-0's" "2" "$(grep -c . <<< "$aws_syncs")"
 contains "$own_sync" '"$${OPENBAO_ARGS[@]}"' "aws-0's own sync expands OPENBAO_ARGS"
-check "exactly one command expands OPENBAO_ARGS" "1" \
-    "$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -cF 'OPENBAO_ARGS[@]')"
+check "exactly one oidc-clients sync expands OPENBAO_ARGS" "1" \
+    "$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-oidc-clients.sh" sync' | grep -cF 'OPENBAO_ARGS[@]')"
+idp_sync="$(logical_lines "$AWS_WORKFLOWS_SRC" | grep -F 'zitadel-idp.sh" sync' || true)"
+contains "$idp_sync" '"$${OPENBAO_ARGS[@]}"' "aws-0's IdP sync expands OPENBAO_ARGS (the reader mirror)"
+contains "$idp_sync" 'IDP_MIRROR' "aws-0's IdP sync adds --mirror-openbao only when the CA was fetched"
 contains "$consumer_sync" '--cloud gcp' "the gcp-0 consumer sync is found"
 absent "$consumer_sync" 'OPENBAO_ARGS' "the gcp-0 consumer sync does not expand OPENBAO_ARGS"
 absent "$consumer_sync" '--openbao-' "the gcp-0 consumer sync passes no --openbao-* flag"
@@ -1049,7 +1052,7 @@ contains "$out" "[FAILED ]"             "writes that do not stick: says [FAILED 
 echo
 echo "== cmd_sync wiring: the reconcile runs once, after the loop (Task 3) =="
 
-for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id stored_client_id; do
+for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id stored_client_id previous_client_id; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     [ -n "$body" ] || { echo "  FAIL could not extract ${f}() from $CONSUMERS_SRC" >&2; fail=1; }
     eval "$body"
@@ -1063,7 +1066,7 @@ restart_rotated_consumers() { :; }   # test-zitadel-oidc-clients-restart.sh
 ensure_project() { echo "proj-1"; }
 ensure_project_role_assertion() { :; }
 ensure_project_roles() { :; }
-grant_admin_role() { :; }
+grant_role() { :; }
 reconcile_workforce_audience() { :; }
 app_set_redirect() { :; }
 merge_secret() { echo '{}'; }
@@ -1082,6 +1085,7 @@ mirror_to_openbao() {
     printf 'MIRROR %s\n' "$1" >> "$MIRROR_LOG"
     return "$MIRROR_RC"
 }
+mirror_read() { :; }   # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0

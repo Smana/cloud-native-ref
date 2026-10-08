@@ -1,0 +1,23 @@
+---
+# Backstop GC behind SP3 deleting runs after harvest (S12). Terminal phases only,
+# and only a day after the run ended, so the harvest and the owner still find a
+# finished or revoked run. A run that ends with no finishedAt (a revocation can)
+# ages from its creation. time.now() is in Kyverno 1.19.1's DeletingPolicy CEL
+# environment (kyverno/sdk extensions/cel/libs/time).
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
+metadata:
+  name: agentrun-gc
+spec:
+  schedule: "17 3 * * *"
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cloud.ogenki.io]
+        apiVersions: [v1alpha1]
+        operations: ["*"]
+        resources: [agentruns]
+  conditions:
+    - name: terminal-phase
+      expression: "has(object.status) && has(object.status.phase) && object.status.phase in ['Succeeded', 'Failed', 'BudgetExhausted', 'Revoked']"
+    - name: ended-over-a-day-ago
+      expression: "time.now() - timestamp(has(object.status.finishedAt) ? object.status.finishedAt : object.metadata.creationTimestamp) > duration('24h')"

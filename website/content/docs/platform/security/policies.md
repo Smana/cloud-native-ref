@@ -15,7 +15,7 @@ this page is how the platform implements them.
 ## Admission: Kyverno
 
 Two `HelmRelease`s in `security/base/kyverno/`: the `kyverno` controller
-(chart 3.9.0) and `kyverno-policies` (chart 3.9.0) — the
+(chart 3.9.1) and `kyverno-policies` (chart 3.9.1) — the
 upstream policy pack that implements the Kubernetes Pod Security Standards
 as `ClusterPolicy` resources. `kyverno-policies` installs with `values: {}` —
 no policy overrides at all — so the enforced set and its failure action (audit
@@ -48,11 +48,13 @@ of the traps that show up once you write these for real:
 - **DNS egress** needs an explicit rule to `kube-dns` on port 53 before
   anything else can resolve — including the AWS SDK resolving STS and S3
   endpoints.
-- **EKS Pod Identity's agent runs on the node's host network — as does
-  GKE's metadata server at `169.254.169.254`.** Cilium classifies both
-  destinations as the `host` entity, not a routable CIDR — a `toCIDR` rule
-  for the link-local address silently fails. Use `toEntities: [host]` scoped
-  to the port instead.
+- **The credential endpoint needs a different rule on each cloud.** EKS Pod
+  Identity's agent (`169.254.170.23`) runs on the node's host network, so
+  Cilium classifies it as the `host` entity and a `toCIDR` rule silently
+  fails: use `toEntities: [host]` on port 80. GKE's metadata server
+  (`169.254.169.254`) is the opposite: iptables redirects it only after
+  Cilium has classified it as `world`, so `host` never matches. Use
+  `toCIDR: 169.254.169.254/32` on port 80; gcp-0 patches this policy to do so.
 - **`toEntities: world` on 443 is a deliberate, bounded exception**, not a
   general escape hatch. It's acceptable here only because the workload is a
   one-shot CronJob with a TTL, S3's endpoint topology fans out past what a

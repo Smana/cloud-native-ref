@@ -1,0 +1,227 @@
+# Vendored from Smana/agent-platform (ruling P16): the release asset since the merge wave.
+# Source: the crd-rooms.yaml asset of agent-platform v0.8.0, the room-broker pin.
+# Refresh with every AP pin: gh release download <tag> --repo Smana/agent-platform --pattern crd-rooms.yaml
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: rooms.agents.ogenki.io
+spec:
+  group: agents.ogenki.io
+  names:
+    kind: Room
+    listKind: RoomList
+    plural: rooms
+    singular: room
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.driver
+      name: Driver
+      type: string
+    - jsonPath: .status.lastSeq
+      name: Seq
+      type: integer
+    - jsonPath: .status.pendingApprovals
+      name: Pending
+      type: integer
+    - jsonPath: .spec.dataClass
+      name: Class
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Room is one append-only session log (SP2 §1). Rooms are runtime objects, created
+          by SP3's factory or the broker, never committed to Git.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RoomSpec is who owns and drives the room, who may join, and
+              its policies.
+            properties:
+              approvals:
+                default: {}
+                description: '{} so that the profile and ttl defaults apply even when
+                  approvals is omitted (review M2).'
+                properties:
+                  fourEyes:
+                    description: 'OD-16: approver must differ from the humans who
+                      prompted the turn.'
+                    type: boolean
+                  overrides:
+                    additionalProperties:
+                      type: string
+                    description: Per-class override of the profile table (§6).
+                    type: object
+                    x-kubernetes-validations:
+                    - message: unknown approval class
+                      rule: self.all(k, k in ['forge.push','forge.pr','forge.other','mcp.write','shell.high'])
+                    - message: an override is allow, deny or human
+                      rule: self.all(k, self[k] in ['allow','deny','human'])
+                  profile:
+                    default: attended
+                    enum:
+                    - attended
+                    - unattended
+                    type: string
+                  ttl:
+                    default: 4h
+                    description: At most 9999h, bounded like retention so it always
+                      fits a time.Duration.
+                    pattern: ^[1-9][0-9]{0,3}(m|h)$
+                    type: string
+                type: object
+              dataClass:
+                description: |-
+                  Runs requested for this room inherit it (C3). Fixed at creation (ruling
+                  TD): a room turned public would publish the summaries of verdicts queued
+                  under its internal class.
+                enum:
+                - public
+                - internal
+                type: string
+                x-kubernetes-validations:
+                - message: dataClass is immutable
+                  rule: self == oldSelf
+              driver:
+                description: The initial driver-token holder; afterwards the log decides.
+                maxLength: 261
+                pattern: ^(human:[A-Za-z0-9@._-]+|system:[a-z0-9-]+)$
+                type: string
+              members:
+                description: Runs join through their own spec.roomRef, never through
+                  this list.
+                items:
+                  description: Member is a human admitted to the room, with a role
+                    and the approver flag.
+                  properties:
+                    approver:
+                      type: boolean
+                    principal:
+                      maxLength: 261
+                      pattern: ^human:[A-Za-z0-9@._-]+$
+                      type: string
+                    role:
+                      description: 'Cumulative: watcher < collaborator < owner (§1).'
+                      enum:
+                      - watcher
+                      - collaborator
+                      - owner
+                      type: string
+                  required:
+                  - principal
+                  - role
+                  type: object
+                maxItems: 20
+                type: array
+                x-kubernetes-list-map-keys:
+                - principal
+                x-kubernetes-list-type: map
+              owner:
+                description: |-
+                  A principal, "human:<sub>" or "system:<name>". OIDC Core §2 caps a sub at 255
+                  characters, hence 261 with the "human:" prefix, here and for every principal.
+                maxLength: 261
+                pattern: ^(human:[A-Za-z0-9@._-]+|system:[a-z0-9-]+)$
+                type: string
+              repository:
+                default: Smana/cloud-native-ref
+                pattern: ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$
+                type: string
+              retention:
+                default: 90d
+                description: 'Fixed at creation: the log''s row keeps the retention
+                  it was created with.'
+                pattern: ^[1-9][0-9]{0,3}d$
+                type: string
+                x-kubernetes-validations:
+                - message: retention is immutable
+                  rule: self == oldSelf
+            required:
+            - dataClass
+            - driver
+            - owner
+            type: object
+          status:
+            description: 'RoomStatus mirrors the log: phase, last seq, driver and
+              pending approvals.'
+            properties:
+              driver:
+                type: string
+              driverEpoch:
+                format: int64
+                type: integer
+              lastSeq:
+                format: int64
+                type: integer
+              observedGeneration:
+                format: int64
+                type: integer
+              pendingApprovals:
+                format: int32
+                type: integer
+              phase:
+                enum:
+                - Open
+                - Active
+                - Idle
+                - AwaitingHuman
+                - Closed
+                type: string
+              task:
+                description: |-
+                  TaskStatus is the last task facts the factory wrote into the room, projected so the room list
+                  can filter on them without reading every room's log.
+                properties:
+                  issueAuthor:
+                    maxLength: 64
+                    type: string
+                  labelledBy:
+                    maxLength: 64
+                    type: string
+                  phase:
+                    maxLength: 32
+                    type: string
+                  prAuthor:
+                    maxLength: 64
+                    type: string
+                  prReviewers:
+                    items:
+                      maxLength: 64
+                      type: string
+                    maxItems: 16
+                    type: array
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: 'a Room is named with a C2 id: 8 characters of [a-z2-7]'
+          rule: self.metadata.name.matches('^[a-z2-7]{8}$')
+    served: true
+    storage: true
+    subresources:
+      status: {}

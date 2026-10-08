@@ -1,0 +1,52 @@
+# Daily purge of rooms closed longer ago than their retention (SP2 §4, OD-17).
+# DELETE-only: it connects as rooms_retention, whose row-level security exposes
+# nothing else.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: room-broker-retention
+  namespace: agent-system
+spec:
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: room-broker-retention
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: retention
+              # The same pin as app.yaml's.
+              image: ghcr.io/smana/room-broker:v0.8.0@sha256:d39e0850b21e202a08412c8f36a7bc1c2444437609d083edabdd90b0cf990636
+              args: ["retention"]
+              env:
+                - name: ROOMS_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: xplane-rooms-cnpg-role-rooms-retention
+                      key: uri
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 200m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

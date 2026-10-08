@@ -9,7 +9,7 @@ The cluster exposes an OpenAI-compatible endpoint at
 `https://llm.priv.aws.ogenki.io/v1` (Tailscale-fronted, `tag:k8s` ACL — see
 [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}})).
 Any client that speaks the OpenAI chat-completions API, or the OpenAI
-completions API for FIM, can talk to it — once both
+completions API for FIM, can talk to it — once all three
 [opt-in gates]({{< relref "/docs/platform/ai-platform/serving/_index.md#turning-it-on" >}})
 are released.
 
@@ -145,7 +145,8 @@ classifier cost at all.
 
 ```bash
 # Smoke test — list models (works on any client)
-curl -sS https://llm.priv.aws.ogenki.io/v1/models | jq '.data[].id'
+curl -sS https://llm.priv.aws.ogenki.io/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.data[].id'
 
 # Direct chat completion against the coder model (no Semantic Router hop)
 curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/chat/completions \

@@ -560,6 +560,64 @@ claims:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'datasourceUid: {value}'
 
+  - id: ai-gateway-umbrella-suspended
+    why: >-
+      The ai-gateway umbrella ships `spec.suspend: true` (OD-3 amended) -- a
+      default deploy is LLM-free. A page calling it "always-on" sends a reader
+      straight past the resume step it has to run before the gateway answers
+      anything, and a rewording of the source away from `true` should force a
+      look at every page that describes it as off by default.
+    source:
+      file: clusters/aws-0/ai-gateway.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: website/data/repo-tree.yaml
+        must_not_contain:
+          - 'always-on'
+
+  - id: agent-platform-umbrella-suspended
+    why: >-
+      The agent-platform umbrella ships `spec.suspend: true` (programme C1): a
+      default deploy runs no sandbox controller, gVisor pool, agent-router or
+      octo-sts. integration/agent-factory flips it in a test-only commit, and a
+      branch cut from there would deploy the agent platform with no opt-in
+      (review B1). Pinning the source makes that flip fail a gate.
+    source:
+      file: clusters/aws-0/agent-platform.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: clusters/aws-0-agent-platform/README.md
+        must_contain: 'suspended by default'
+
+  - id: gcp-0-ai-gateway-umbrella-suspended
+    why: >-
+      gcp-0's ai-gateway umbrella ships `spec.suspend: true`, the aws-0 twin
+      (GCP parity). A page calling it "always-on" sends a reader straight past
+      the resume step it has to run before the gateway answers anything, and a
+      rewording of the source away from `true` should force a look at every
+      page that describes it as off by default.
+    source:
+      file: clusters/gcp-0/ai-gateway.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: website/data/repo-tree.yaml
+        must_not_contain:
+          - 'always-on'
+
+  - id: gcp-0-agent-platform-umbrella-suspended
+    why: >-
+      gcp-0's agent-platform umbrella ships `spec.suspend: true`, the aws-0
+      twin (GCP parity, programme C1): a default deploy runs no sandbox
+      controller, agent-router or octo-sts. Only the integration branch's
+      test-only commit unsuspends it. Pinning the source makes that flip fail
+      a gate.
+    source:
+      file: clusters/gcp-0/agent-platform.yaml
+      pattern: 'suspend:\s*(true)'
+    pages:
+      - path: clusters/gcp-0-agent-platform/README.md
+        must_contain: 'suspended by default'
+
   - id: internal-data-class-provider
     why: >-
       ADR-0054 (accepted on the programme branches, not yet on main) moved internal data to the

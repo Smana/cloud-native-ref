@@ -40,10 +40,12 @@ spec:
                 # refused, so it reads as a broken app rather than a gateway ACL.
                 # Keep in lockstep with the stacks in apps/stacks.yaml.
                 values:
+                  - agent-system # the rooms UI (SP2)
                   - apps
                   - demo
                   - envoy-ai-gateway-system
                   - envoy-gateway-system
+                  - merge-gate # policy-bot's UI (SP3)
                   - observability
                   - tooling
       tls:
