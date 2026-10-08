@@ -44,12 +44,13 @@ label. Add the label yourself: `gh issue edit <issue> --repo Smana/cloud-native-
 
 ```bash
 TASK=$(kubectl get task -n agent-system --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}'); echo "$TASK"
-roomctl status "$TASK" --json | jq .
-roomctl status "$TASK" --json --after seq:<cursor from the output above> | jq .
+roomctl status "$TASK" --json > status.json
+jq -e '.apiVersion=="summary/v1" and has("status") and has("needsYou") and has("actions") and .notes.untrusted==true and (.cursor|startswith("seq:"))' status.json
+roomctl status "$TASK" --json --after "$(jq -r .cursor status.json)" | jq .notes
 ```
 
-Expected: `apiVersion: summary/v1`; the phase, the current run, the budget, the PR once opened, `needsYou`, the notes and a cursor are
-all present. With `--after seq:<cursor>` only notes newer than the cursor come back (none when nothing was posted since).
+Expected: `jq -e` prints `true` (exit 0); the phase, run, budget, PR once opened, `needsYou`, the notes and the cursor are present.
+The `--after` call returns only notes newer than the cursor (none when nothing was posted since).
 
 **What this proves:** the summary contract the skill and the page both read.
 
@@ -94,13 +95,18 @@ roomctl status "<private-room>"               # same identity
 | 5f | R14 premise: as `dev2`, `POST /v2/users/{id}/links` for its own id (token from `roomctl token`, read into a variable, never echoed) | `PermissionDenied`: without `user.write` a user cannot add an IdP link to their own account, so the GitHub login the broker reads is the one the admin-provisioned link names |
 
 ```bash
+ZITADEL=https://auth.cloud.ogenki.io
+# dev2's own token (CLI-logged-in as dev2). Never a PAT with user.write.
 TOKEN=$(roomctl token)
-curl -sS -o /dev/null -w '%{http_code}\n' --cacert ca.pem -X POST "https://<zitadel-host>/v2/users/<dev2-id>/links" \
+# Look the GitHub IdP id up with an admin token; do not hardcode it (394198010113835600 on aws-0 today).
+curl -sS -X POST "$ZITADEL/admin/v1/idps/templates/_search" -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"queries":[{"providerTypeQuery":{"providerType":"PROVIDER_TYPE_GITHUB"}}]}' | jq -r '.result[].id'
+curl -sS -w '\nHTTP %{http_code}\n' -X POST "$ZITADEL/v2/users/<dev2-user-id>/links" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"idpLink":{"idpId":"<github-idp-id>","userId":"1","userName":"x"}}'
+  -d '{"idpLink":{"idpId":"<GitHub IdP id>","userId":"1","userName":"<github login>"}}'
 ```
 
-Expected for 5f: `403` and a `PermissionDenied` body.
+Expected for 5f: `HTTP 403` and a `PermissionDenied` body.
 
 **What this proves:** a room is as visible as its repo on GitHub, fails closed, follows revocation, and the
 accepted risk of GitHub sign-in is understood (R14, R26).
@@ -177,7 +183,10 @@ curl -sS --cacert ca.pem https://vm.priv.aws.ogenki.io/api/v1/query --data-urlen
 ```
 
 Expected: `Pending ErrImagePull` or `ImagePullBackOff`; the `ALERTS` series for `AgentSandboxPodPending` after 15 minutes.
-Cleanup: `kubectl delete -f /tmp/podpending-probe.yaml`.
+Kyverno may refuse the manifest. If it does, record the refusal reason as this step's evidence and fall back to the AgentRun path
+the factory uses.
+
+Cleanup: `kubectl delete sandbox podpending-probe -n agents && rm /tmp/podpending-probe.yaml`.
 
 **What this proves:** a run is visible in logs, metrics, traces and both dashboards, and a stuck pod pages.
 
@@ -195,9 +204,9 @@ kubectl wait -n agent-system task/$TASK --for=jsonpath='{.status.phase}'=Done --
 gh pr list --repo Smana/cloud-native-ref --head agent/$TASK --json number,state,author
 ```
 
-Expected: release pins only (no `-pr<N>` suffix); the task reaches a terminal phase with a PR opened by `app/ogenki-agents`,
-a reviewer verdict on it, and the room page and `roomctl status` agreeing. Set the `Done` wait to the phase name the
-factory actually reports if it differs.
+Expected: release pins only (no `-pr<N>` suffix); the happy path runs `… AwaitingHuman → Merged → Verifying → Done`, with a PR
+opened by `app/ogenki-agents`, a reviewer verdict on it, and the room page and `roomctl status` agreeing. The other terminal
+phases (`Rejected`, `NoOp`, `Reverted`, `Escalated`, `Closed`, `Stopped`) are a fail for this step.
 
 **What this proves:** the whole path works on released artifacts, and unblocks FR-10's merge.
 
