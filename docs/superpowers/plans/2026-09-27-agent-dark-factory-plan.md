@@ -11794,10 +11794,16 @@ git commit -m "docs(adr): ADR-0045 merge policy gate"
     *External review R01:* it also exits 1 when such a workflow grants any `write` permission at
     workflow level, or at job level for a job not in the script's own allowlist (`sarif-upload:
     security-events`, `render-diff-comment: pull-requests`, `build-and-push: packages,
-    security-events`). An allowlisted job must contain no `actions/checkout` of the PR head and no
-    `run:` step. Fixtures: a workflow-level write fails; an unlisted job with write fails. The
-    allowlist is a gate path (R17). `build-and-push` fails the last clause today: split the push out
-    of the PR path, or record it as an exception. The `ci.yaml` job split is its own `fix(ci)` PR.
+    security-events`, `notify-main-broken: issues` — a recorded exception: push-gated by its `if:`,
+    deliberately checkout-free, its `run:` steps open the tracking issue only after a broken push
+    to `main`). An allowlisted job must contain no `actions/checkout` of the PR head, and no
+    `run:` step that executes on a `pull_request` event — a job whose `if:` pins
+    `github.event_name == 'push'` satisfies this by construction and is listed as push-gated in
+    the script. Fixtures: a workflow-level write fails; an unlisted job with write fails; a
+    push-gated allowlisted job with a `run:` step passes; the same job without the push gate
+    fails. The allowlist is a gate path (R17). `build-and-push` fails the last clause today:
+    split the push out of the PR path, or record it as an exception. The `ci.yaml` job split is
+    its own `fix(ci)` PR.
   - Tasks `ci:policy-gates`, `ci:workflow-secrets`.
 
 The canonical gate list is `no_changed_files.paths` of the rule `agent change approved by a
@@ -11878,6 +11884,8 @@ echo PASS
 #
 # T8: a pull_request workflow may reference GITHUB_TOKEN and no other secret; agent branches
 # live in this repo, so their PRs run with its secrets.
+# External review R01: such a workflow also grants no write permission, at workflow level
+# or in a job outside the script's allowlist.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/../check-workflow-secrets.sh"
@@ -11894,6 +11902,11 @@ on: {push: {branches: [main]}}
 jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.DEPLOY_KEY }}"}]}}
 EOF
 WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "GITHUB_TOKEN, and secrets on push-only workflows, pass"
+cat >"$d/push-gated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {if: "github.event_name == 'push'", runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+WORKFLOWS_DIR="$d" bash "$SUBJECT" >/dev/null 2>&1 || fail "a push-gated allowlisted job with a run: step passes"
 cat >"$d/bad.yml" <<'EOF'
 on:
   pull_request_target:
@@ -11901,6 +11914,26 @@ jobs: {a: {runs-on: x, steps: [{run: "echo ${{ secrets.SLACK_WEBHOOK }}"}]}}
 EOF
 out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request_target workflow with a secret fails"
 grep -q 'bad.yml.*SLACK_WEBHOOK' <<<"$out" || fail "the failure names the file and the secret"
+cat >"$d/wf-write.yml" <<'EOF'
+on: {pull_request: {}}
+permissions: {contents: write}
+jobs: {a: {runs-on: x, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with a workflow-level write permission fails"
+grep -q 'wf-write.yml.*contents' <<<"$out" || fail "the failure names the file and the permission"
+cat >"$d/job-write.yml" <<'EOF'
+on: {pull_request: {}}
+jobs:
+  upload: {runs-on: x, permissions: {security-events: write}, steps: [{run: "echo ok"}]}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "a pull_request workflow with an unlisted job holding write fails"
+grep -q 'job-write.yml.*upload' <<<"$out" || fail "the failure names the file and the job"
+cat >"$d/ungated-run.yml" <<'EOF'
+on: {pull_request: {}}
+jobs: {notify-main-broken: {runs-on: x, permissions: {issues: write}, steps: [{run: "echo ok"}]}}
+EOF
+out="$(WORKFLOWS_DIR="$d" bash "$SUBJECT" 2>&1)" && fail "an allowlisted job with a run: step and no push gate fails"
+grep -q 'ungated-run.yml.*notify-main-broken' <<<"$out" || fail "the failure names the file and the job"
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
 ```
@@ -11973,10 +12006,31 @@ PY
 # T8 (SP3 §8): agent branches live in this repository, so their PRs run pull_request workflows
 # with its secrets. Only GITHUB_TOKEN may appear in such a workflow; a new secret-bearing
 # workflow must fence agent heads first.
+# External review R01: such a workflow also grants no write permission — write scopes live
+# only in allowlisted jobs that run no PR code. The allowlist below is a gate path (R17).
 set -euo pipefail
 DIR="${WORKFLOWS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.github/workflows}"
 DIR="$DIR" python3 - <<'PY'
 import glob, os, re, sys, yaml
+
+# job -> the write scopes it may hold. build-and-push's split out of the PR path is its
+# own fix(ci) PR; until it lands the lint flags the job's run steps, and the entry stays
+# so the split cannot quietly widen it again.
+ALLOWLIST = {
+    "sarif-upload": {"security-events"},
+    "render-diff-comment": {"pull-requests"},
+    "build-and-push": {"packages", "security-events"},
+    # notify-main-broken: push-gated if:, no checkout by design, run: only opens the tracking issue
+    "notify-main-broken": {"issues"},
+}
+
+def write_scopes(perms):
+    # `permissions: write` (a bare string) is write on every scope
+    if perms == "write":
+        return None
+    if isinstance(perms, dict):
+        return {k for k, v in perms.items() if v == "write"}
+    return set()
 
 bad = []
 for f in sorted(glob.glob(os.path.join(os.environ["DIR"], "*.y*ml"))):
@@ -11984,10 +12038,44 @@ for f in sorted(glob.glob(os.path.join(os.environ["DIR"], "*.y*ml"))):
     doc = yaml.safe_load(text) or {}
     on = doc.get("on", doc.get(True, {}))  # PyYAML reads the key `on` as True
     events = on if isinstance(on, (dict, list)) else [on]
-    if not any(e in ("pull_request", "pull_request_target") for e in events):
+    triggers = {e for e in events if e in ("pull_request", "pull_request_target")}
+    if not triggers:
         continue
-    for name in sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)) - {"GITHUB_TOKEN"}):
-        bad.append(f"{os.path.basename(f)}: secrets.{name} in a pull_request workflow")
+    name = os.path.basename(f)
+    for secret in sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)) - {"GITHUB_TOKEN"}):
+        bad.append(f"{name}: secrets.{secret} in a pull_request workflow")
+    scopes = write_scopes(doc.get("permissions"))
+    if scopes is None:
+        bad.append(f"{name}: workflow-level permissions: write (every scope)")
+    else:
+        for scope in sorted(scopes):
+            bad.append(f"{name}: workflow-level {scope}: write")
+    for job, spec in (doc.get("jobs") or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        held = write_scopes(spec.get("permissions"))
+        if held is None:
+            bad.append(f"{name}: job '{job}' holds write on every scope")
+            continue
+        for scope in sorted(held - ALLOWLIST.get(job, set())):
+            bad.append(f"{name}: job '{job}' holds {scope}: write and is not in the allowlist")
+        if job in ALLOWLIST:
+            # An allowlisted job runs no PR code. pull_request's default checkout ref is
+            # the PR merge commit; pull_request_target's is the base, so only an explicit
+            # pull_request ref counts there.
+            steps = [s for s in (spec.get("steps") or []) if isinstance(s, dict)]
+            # a push-gated if: means the job's run: steps never execute on a pull_request event
+            job_if = str(spec.get("if") or "")
+            push_gated = "github.event_name == 'push'" in job_if or "!= 'pull_request'" in job_if
+            if any("run" in s for s in steps) and not push_gated:
+                bad.append(f"{name}: allowlisted job '{job}' has a run: step")
+            for s in steps:
+                if str(s.get("uses") or "").split("@")[0] != "actions/checkout":
+                    continue
+                ref = str((s.get("with") or {}).get("ref") or "")
+                if "github.event.pull_request" in ref or "github.head_ref" in ref \
+                        or (not ref and "pull_request" in triggers):
+                    bad.append(f"{name}: allowlisted job '{job}' checks out the PR head")
 for b in bad:
     print("FAIL:", b, file=sys.stderr)
 sys.exit(1 if bad else 0)
@@ -17785,3 +17873,12 @@ collector and dashboard share is in the observability plan's own "Further review
 | F1 | A trigger-rooted trace per task | R46; Tasks 1.5a, 1.10b, 1.11a, 1.12a, 1.13a | Accepting a `factory/ready` task mints its root span into `status.trace`, and every run gets its `traceparent` as `agents.ogenki.io/traceparent`. When the task ends, the span is exported once to the collector's :4317, carrying ids, tier and end reason |
 | F2 | The step log carries `trace_id` | observability plan O22 | Nothing here: the harness prints it. Correlation only: the factory attributes and meters nothing by trace id |
 | F3 | Routing tier vs spend | R47; Tasks 1.5a, 1.10b, 4.2a | Every factory run is labelled `agents.ogenki.io/tier`, the tier it runs on, fixed for the run. Agents are never re-routed per request within a run |
+
+## GCP parity cross-plan edit (2026-09-29)
+
+- **The merge gate lands on GCP's management stack too, not only AWS's.** The `merge-gate` kv-v2 mount, the
+  `merge-gate-secrets` policy (Task 6.4) and `secrets-admin`'s paths on it go into the shared store-of-record
+  module (`opentofu/shared/modules/openbao-store-of-record`), which `opentofu/gcp/openbao/management` calls, with
+  the JWT role `merge-gate-secrets` in `opentofu/gcp/gke/configure/openbao.tf` beside AWS's
+  `opentofu/aws/eks/configure/openbao.tf`. gcp-0 is the platform (GCP parity plan), and
+  `validate-openbao-policies.sh` fails when the AWS and module copies of a shared policy differ.

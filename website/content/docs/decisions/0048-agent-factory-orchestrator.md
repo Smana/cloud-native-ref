@@ -3,7 +3,7 @@ title: A custom Task controller with Kueue admission orchestrates the agent fact
 linkTitle: 0048 · Factory orchestrator
 weight: 480
 description: The dark factory's orchestrator is a small Go controller reconciling a runtime-only Task CRD, with Kueue admitting sandboxes, chosen over Argo Workflows, Tekton, Temporal, a Crossplane XR and gh-aw.
-lastVerified: 2026-09-30
+lastVerified: 2026-10-01
 ---
 
 **Status**: Accepted
@@ -79,12 +79,14 @@ thing that fits.
 ### Positive
 
 - One Deployment with leader election; Tasks are inspectable with `kubectl`
-- The factory is the single creator of runs, so the budgets it checks before creating one hold, beneath the gateway's per-run token ceiling
+- The factory is the single creator of runs, so the caps it checks before creating one hold. Its
+  run meter revokes a run over its tier's `runTokens`; a gateway-side per-run ceiling arrives with
+  SP4 PR 2 (ADR-0050), not yet built
 
 ### Negative
 
 - Our code is on the critical path. Mitigated by envtest suites and by kill-switch layers that do
-  not depend on the factory (Kueue, the GitHub App)
+  not depend on the factory: the GitHub App today, Kueue from SP3 phase 4
 
 ### Neutral
 
@@ -97,7 +99,15 @@ thing that fits.
 Code in [Smana/agent-platform](https://github.com/Smana/agent-platform) (the factory packages, the
 `agent-factory` binary and chart); manifests in `tooling/base/agent-factory/`, an
 `agent-platform` umbrella child on both clusters. Helm never upgrades a chart's `crds/`, so the
-HelmRelease replaces the Task CRD on upgrade. Kueue arrives with the triage phase.
+HelmRelease replaces the Task CRD on upgrade.
+
+What phase 1 builds, against the decision above:
+
+| Decided | Built today |
+|---|---|
+| Kueue admits and drains sandbox pods | Not deployed; it arrives with SP3 phase 4 (triage and teams). Until then the factory's own caps bound concurrency: 3 active tasks, 4 concurrent runs, 20 tasks a day |
+| Three levels of token budget | The run budget only: the run meter revokes a run at its cap (`budget-run`). Task tokens are recorded, not enforced; the principal and fleet budgets follow |
+| A kill switch | The `agent-factory-stop` ConfigMap stops everything; `factory/stop` stops one task |
 
 ---
 

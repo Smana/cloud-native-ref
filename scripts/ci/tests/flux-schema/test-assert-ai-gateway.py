@@ -78,13 +78,15 @@ def ctp(remove, gw="ai-gateway", ns="envoy-ai-gateway-system", section=None):
 
 
 def mcproute(forward=None, gw="ai-gateway", ns="envoy-ai-gateway-system", parent_ns=None,
-             claim_headers=None, client_id_header=None):
+             claim_headers=None, client_id_header=None, api_key=None):
     parent = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": gw}
     if parent_ns:
         parent["namespace"] = parent_ns
     backend = {"name": "flux-operator-mcp", "port": 9090}
     if forward is not None:
         backend["forwardHeaders"] = [{"name": h} for h in forward]
+    if api_key is not None:
+        backend["securityPolicy"] = {"apiKey": {"secretRef": {"name": "key"}, **api_key}}
     route = {"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "MCPRoute",
              "metadata": {"name": "mcp", "namespace": ns},
              "spec": {"parentRefs": [parent], "backendRefs": [backend]}}
@@ -145,6 +147,17 @@ other_btp = btp([rule(shared=False)], name="other-gw-policy",
                  target={"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": "other-gw"})
 check("that out-of-scope policy stays out of scope alongside a compliant ai-gateway one",
       gate.check_rate_limit_rules([gateway(), btp([rule()]), other_gw, other_btp]) == [])
+route_only_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "harbor"}
+# mergeType is set on both so A4 stays silent and isolates the A1/A2 scope question.
+route_only = btp([rule(shared=False)], name="route-only-rl", target=route_only_target)
+route_only["spec"]["mergeType"] = "Merge"
+check("a BackendTrafficPolicy with no Gateway targetRef at all is out of scope for A1/A2",
+      gate.check_rate_limit_rules([gateway(), btp([rule()]), route_only]) == [])
+route_only_covers = btp([rule()], name="route-only-compliant", target=route_only_target)
+route_only_covers["spec"]["mergeType"] = "Merge"
+errs = gate.check_rate_limit_rules([gateway(), route_only_covers])
+check("a route-only BackendTrafficPolicy does not satisfy the vacuous-pass guard either",
+      len(errs) == 1 and "no BackendTrafficPolicy" in errs[0], str(errs))
 
 print("A4 — a route-level BackendTrafficPolicy must declare mergeType")
 route_target = {"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "llm-gateway"}
@@ -271,6 +284,15 @@ check("apiKeyAuth.forwardClientIDHeader naming Authorization fails, naming the r
       len(errs) == 1 and "MCPRoute" in errs[0], str(errs))
 check("forwardClientIDHeader naming authorization is case-insensitive",
       len(gate.check_mcp_token_passthrough([gateway(), mcproute(client_id_header="authorization")])) == 1)
+check("a backend apiKey injected in another header passes",
+      gate.check_mcp_token_passthrough([gateway(), mcproute(api_key={"header": "x-room-mcp-key"})]) == [])
+check("a backend apiKey injected as a queryParam passes",
+      gate.check_mcp_token_passthrough([gateway(), mcproute(api_key={"queryParam": "key"})]) == [])
+errs = gate.check_mcp_token_passthrough([gateway(), mcproute(api_key={})])
+check("a backend apiKey with no header (defaults to Authorization: Bearer) fails, naming the backend",
+      len(errs) == 1 and "flux-operator-mcp" in errs[0] and "apiKey" in errs[0], str(errs))
+check("a backend apiKey header naming Authorization fails, case-insensitively",
+      len(gate.check_mcp_token_passthrough([gateway(), mcproute(api_key={"header": "AUTHORIZATION"})])) == 1)
 check("an explicit parentRef namespace resolves the same Gateway",
       len(gate.check_mcp_token_passthrough(
           [gateway(), mcproute(["Authorization"], ns="other", parent_ns="envoy-ai-gateway-system")])) == 1)

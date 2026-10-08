@@ -14,6 +14,9 @@ resources:
   - retention-cronjob.yaml
   - vmservicescrape.yaml
   - externalsecret-rooms-proxy.yaml
+  - externalsecret-roomctl.yaml
   - oauth2-proxy.yaml
   - network-policy-oauth2-proxy.yaml
   - httproute.yaml
+  - externalsecret-mcp-key.yaml
+  - externalsecret-factory-app.yaml

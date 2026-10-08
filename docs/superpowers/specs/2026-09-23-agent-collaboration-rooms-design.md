@@ -307,7 +307,10 @@ F15 (the room lease) being proven.
 
 **Append.** One transaction: `UPDATE rooms SET last_seq = last_seq + 1 RETURNING`, `INSERT`, `COMMIT`. The row lock
 serialises writers per room, and a rollback also undoes the counter, so `seq` stays gapless. The broker's database
-role has **INSERT and SELECT on `events`, nothing else** ([Appendix C](#c-log-schema)).
+role has **INSERT and SELECT on `events`, nothing else** ([Appendix C](#c-log-schema)). The database itself holds the
+invariants, so neither a bug nor a stolen broker credential can rewrite history: triggers refuse any rewrite of
+`events`, any seq that is not the room's next, any event into a sealed room, and any backward move of a room's row.
+A bridge's appends are fenced by its room's lease: a displaced bridge gets `409`, and keeps its batch.
 
 **Replay** follows OpenHands #4681: subscribe to Valkey in buffering mode, read the high-water mark, page from
 Postgres up to it, then flush the buffer, dropping any `seq ≤ mark`.
@@ -547,6 +550,20 @@ Actions: `message`, `remove_queued`, `promote_queued`, `decide`, `driver_request
 | Table | Holds | Broker role |
 |---|---|---|
 | `events` (PK `room_id, seq`; unique `room_id, origin_client, origin_seq`) | The log | INSERT, SELECT |
-| `rooms` | Sequencer, driver, phase, retention | SELECT, UPDATE |
+| `rooms` | Sequencer, driver, phase, retention, bridge lease | SELECT; INSERT on `room_id, driver, fallback_driver, retention`; UPDATE on `last_seq, bytes, last_event_at, sealed, closed_at, bridge_run, bridge_seen_at` only (the driver columns join in phase 4's migration) |
 | `approvals`, `queue` | Projections for first-wins and FIFO | SELECT, INSERT, UPDATE |
-| — | Retention CronJob | DELETE on closed rooms' events (a separate role) |
+| — | Retention CronJob | DELETE on **sealed** rooms past their retention, and their events (a separate role) |
+
+**What the database refuses, whoever asks** (SP2 plan, execution Ruling Y). Trigger functions are owned by the
+migration owner, name their tables by schema and pin `search_path`, so a temporary table cannot shadow them.
+
+| Check | Refuses |
+|---|---|
+| `rooms_move_forward` (BEFORE UPDATE on `rooms`) | a change of `room_id`, `retention` or `created_at`; unsealing; an event into a sealed room; `last_seq` moving by anything but +1; `bytes` shrinking; `closed_at` set twice, set to anything but `now()`, or set without sealing |
+| `rooms_seq_has_event` (deferred, on `last_seq`) | a seq taken with no event by commit (a gap) |
+| `events_take_next_seq` (BEFORE INSERT on `events`) | an event whose seq is not its room's `last_seq`, or into a sealed room |
+| `events_are_immutable` | any UPDATE or TRUNCATE of `events` |
+| Row-level security | the broker creating a pre-sealed or pre-advanced room; retention seeing an open room |
+| The bridge lease | an append by a run that no longer holds its room's lease (`409 lease_lost`) |
+
+Lease freshness and `closed_at` use the database's `now()`: one clock for every broker replica.

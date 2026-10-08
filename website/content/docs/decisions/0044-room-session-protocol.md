@@ -62,6 +62,12 @@ infrastructure beyond the platform's own claims.
 
 **Cons**: ACP is 1:1 editor-to-agent. Nothing here speaks A2A, and A2A has no humans.
 
+**Note (2026-10-01)**: agentgateway is no longer the only A2A path. Agent Router ships an A2A
+capability in **Preview**, on Envoy's native A2A filter, and an `A2ARoute` CRD is proposed upstream
+([agent-router#2070](https://github.com/theagentrouter/agent-router/issues/2070)). If an agent
+outside the cluster must join a room, try it on the gateway the platform already runs first
+([ecosystem re-check](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agent-ecosystem-recheck-research.md)).
+
 ### Option 5: Valkey Streams, NATS JetStream, or one in-memory broker as the log
 
 **Cons**: KVStore is cache semantics by its XRD; JetStream is new infrastructure; one replica makes a
@@ -100,7 +106,7 @@ uses the database that already holds the log rather than adding Valkey: one depe
 
 ### Positive
 
-- The transcript and the end reason of every run survive the pod (UX finding H3).
+- The transcript and the end reason of every run survive the pod.
 - Reviewers, testers and triagers have a destination for their output.
 - `UPDATE events` as the broker's role fails: history is append-only by grant and trigger (the
   schema also refuses `UPDATE` and `TRUNCATE` from its owner), not by convention.
@@ -114,8 +120,9 @@ uses the database that already holds the log rather than adding Valkey: one depe
 
 ### Neutral
 
-- Next re-check of ax and Substrate: 2026-12-15, or when EKS ships 1.37 and Substrate closes #1898,
-  lifts its no-spot rule (#1528) and fixes #1657.
+- Next re-check of ax and Substrate: 2026-12-15, or sooner when the cluster the platform runs on
+  serves v1 `ClusterTrustBundle` and `PodCertificateRequest` (gcp-0's GKE version first; EKS 1.37
+  if aws-0 hosts again) and Substrate closes #1898, lifts its no-spot rule (#1528) and fixes #1657.
 
 ---
 
