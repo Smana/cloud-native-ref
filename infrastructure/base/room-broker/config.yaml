@@ -39,3 +39,9 @@ data:
       groups:
         admin: agents-admin
         member: agents-member
+      # A non-admin sees a room only if GitHub lets them read its repository. Their
+      # GitHub login is read from their ZITADEL IdP link (issuer above) with a
+      # read-only machine-user PAT. 5m is the broker's ceiling for a cached verdict.
+      access:
+        readerFile: /etc/room-broker/zitadel-reader/reader.json
+        ttl: 5m
