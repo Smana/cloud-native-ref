@@ -48,3 +48,11 @@ resource "vault_mount" "agents" {
   type        = "kv-v2"
   description = "Agent platform secrets, read only by agent-system's SecretStore (SP2 P38)"
 }
+
+# policy-bot's App secret (SP3 R44): read only by merge-gate's SecretStore, through the
+# merge-gate-secrets policy and JWT role. A mount of its own for the same reason as agents/.
+resource "vault_mount" "merge_gate" {
+  path        = "merge-gate"
+  type        = "kv-v2"
+  description = "policy-bot's GitHub App secret, read only by merge-gate's SecretStore (SP3 R44)"
+}
