@@ -2,7 +2,7 @@
 title: Status and roadmap
 weight: 60
 description: "The one place the AI platform's state lives: what serves, what is built, deployed and proven live for the agents, the open findings, and the serving roadmap."
-lastVerified: 2026-10-01
+lastVerified: 2026-10-07
 aliases:
   - /docs/platform/agent-factory/status/
   - /docs/platform/ai-platform/roadmap/
@@ -14,11 +14,11 @@ role page links to its row here instead of repeating it.
 | Area | State | Detail |
 |---|---|---|
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
-| Agent runtime and identity | Built, reviewed, **proven live** on `aws-0` and `gcp-0` | [Runtime](#runtime) |
-| Agent gateway | Agent Router 1.1.0 running on `gcp-0`; agentgateway selected, migration planned | [Agent gateway](#agent-gateway) |
-| Rooms | Running on `gcp-0`, live gates partly passed; approvals in progress | [Rooms](#rooms) |
-| Factory | Phase 1 running on `gcp-0`, live gate pending; phases 2–3 built | [Factory](#factory) |
-| Agent observability | Running on `gcp-0`, live gates partly passed | [Observability](#observability) |
+| Agent runtime and identity | Built, reviewed, **proven live** on `aws-0` and `gcp-0`; runs survive a Spot reclaim (proven on `aws-0`) | [Runtime](#runtime) |
+| Agent gateway | Agent Router 1.1.0 running on `aws-0`; agentgateway selected, migration planned | [Agent gateway](#agent-gateway) |
+| Rooms | Running on `aws-0`, approvals included; fork and `roomctl` deployed | [Rooms](#rooms) |
+| Factory | Phases 1–9 running on `aws-0`, proven end to end on 2026-10-07 and **signed off by the owner**; the merge gate in shadow | [Factory](#factory) |
+| Agent observability | Running on `aws-0`, live gates partly passed | [Observability](#observability) |
 
 ## Serving
 
@@ -172,32 +172,34 @@ multiple addressable consumers, including using LoRA adapter names as proxy
 
 ## Agent programme
 
-Running on `gcp-0` from the `integration/agent-factory` branch: the runtime and identity layer, the
-agent router's per-run identity and model route, rooms (log, live view, room tools, steering), the
-factory's first phase (intake from a fixed template, one implementer per task, the run meter, the
-stop) and the per-run observability. Running is not proven: live gates have proven the runtime and
-identity layer, are partly passed for rooms and observability, and have not run for the factory,
-the room tools or steering. `aws-0` proved the runtime first; it is destroyed but still supported.
-Not live yet: the reviewer pair and revise flow (built, not deployed), then approvals, `roomctl`,
-Kueue, the merge gate, gateway budgets, the keyless Anthropic models and the move to agentgateway
-(planned). Only the docs pages, the design documents and the repository's trust policies are on
+Running on `aws-0` from the `integration/agent-factory` branch (`gcp-0` hosted it until 2026-10-04 and
+is still supported): the runtime and identity layer, the agent router's per-run identity and model
+route, rooms (log, live view, room tools, steering, approvals, fork and `roomctl`), the factory's
+nine phases and the per-run observability. On 2026-10-07 a real issue went there from its label to a
+reviewed, revised and approved pull request, through a Spot reclaim, and the owner signed off the
+experience ([the run]({{< relref "/docs/platform/ai-platform/agents/user-guide.md#one-real-task-end-to-end" >}})).
+Not live yet: the merge gate (in shadow until the programme has merged), routing by tier, the
+Anthropic backend for `internal` runs, budgets enforced at the gateway, and the move to
+agentgateway. Only the docs pages, the design documents and the repository's trust policies are on
 `main`.
 
-{{< callout type="warning" >}}
-**Held until the owner's UX sign-off (ruling P33).** No programme PR merges, and no release is
-tagged, until the whole programme is built and the owner agrees on the experience after a live
-end-to-end walkthrough: label, room, request changes, approve, merge. Until then everything is
-validated on `integration/agent-factory`, a never-merged branch that gcp-0 tracks, using
-pre-release images and packages. Only designs, plans, docs and platform fixes found on the way
-reach `main`.
+{{< callout type="info" >}}
+**Signed off on 2026-10-07 (ruling P33).** The owner agreed on the experience after the live
+end-to-end walkthrough on `aws-0`: label, room, request changes, approve. The programme's PRs now
+merge in stack order, the releases are tagged after them, and the merge gate's low-risk classes go
+from shadow to live last. Until a PR has merged, it is validated on `integration/agent-factory`, a
+never-merged branch that `aws-0` tracks, using pre-release images and packages.
 {{< /callout >}}
 
 ### Runtime
 
 **Built, proven live.** One `AgentRun` object becomes a fully isolated, fully attributed run, end
 to end on both clouds: an agent took issue #2112 to PR #2114 on `aws-0`, which was merged, and
-issue #2140 to PR #2141 on `gcp-0`. The gVisor pool is deployed on `gcp-0` (GKE Sandbox) and built
-for `aws-0` (Karpenter). The `agent-branches` and `agent-tags` rulesets are active.
+issue #2140 to PR #2141 on `gcp-0`. The gVisor pool is deployed on `gcp-0` (GKE Sandbox) and on
+`aws-0` (Karpenter). The `agent-branches` and `agent-tags` rulesets are active. A run survives a
+reclaim: within 15 s of SIGTERM an implementer checkpoints its work to its branch and every run
+lets the room read its log to the end, then the factory resumes it. That was proven on `aws-0` on 2026-10-07, by a FIS
+Spot interruption and by a real one.
 
 ### Agent gateway
 
@@ -213,21 +215,21 @@ for `aws-0` (Karpenter). The `agent-branches` and `agent-tags` rulesets are acti
 
 ### Rooms
 
-**Built (log, live view, room tools, steering); approvals and `roomctl` planned.** The room broker,
-its CNPG log, the bridge and the web view are deployed on `gcp-0`; the steering, room tools and
-verdicts still await their live gate. Approvals (approval cards in the room) are in progress; fork
-and `roomctl` are not started.
+**Built (log, live view, room tools, steering, approvals, fork and `roomctl`).** The room broker, its
+CNPG log, the bridge and the web view run on `aws-0`. The approvals' live gate (SC-5) passed on
+2026-10-07; fork and `roomctl` are deployed.
 
 ### Factory
 
-**Intake, run meter and stop built; triage, teams and the merge gate to come.** Phase 1 is deployed
-on `gcp-0` with its live gate pending: intake and narration from a fixed template, one implementer
-per task, the run meter and the stop ConfigMap.
+**Phases 1–9 built and running on `aws-0`; the merge gate in shadow.** The 2026-10-07 walkthrough
+took a real issue from its label to an approved pull request, and the first factory pull request
+merged to `main` was [#2224](https://github.com/Smana/cloud-native-ref/pull/2224).
 
 | State | Pieces |
 |---|---|
-| Built, not deployed | The reviewer after the implementer, "Request changes" turned into a new run, `/factory retry`, the PR provenance footer |
-| Planned | Triage (phase 4), teams with a tester, Kueue admission (until it lands, the factory's own caps bound concurrency), the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow), the Kyverno admission policy, the stop label on a pinned control issue, RunLore findings as a trigger |
+| Proven live on `aws-0` | Intake and narration, triage (a static classifier) and the `pair` team, the reviewer after the implementer, "Request changes" turned into a revision, `/factory retry`, the PR provenance footer, the run meter and task caps, Kueue holding a task, the kill switch with the pinned control issue, resume after a reclaim (a FIS test and a real Spot interruption) |
+| Running, in shadow until the programme has merged | The merge gate: policy-bot and the merger App, auto-merge and rollback of `docs-links` changes |
+| Built, not proven live | RunLore findings as a trigger (`investigate`) |
 | Planned extension | A second repository; the steps it needs are on the [agents overview]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}}) |
 
 ### Observability
@@ -237,9 +239,9 @@ user reads: MCP tool calls are not yet joined to the run's trace
 ([F16](#live-findings-on-gcp-0)), and a successful run's `agent-run` page showed no outcome or PR
 ([F18](#live-findings-on-gcp-0); fixed on `integration`, deployed on gcp-0, live re-check pending).
 
-**As of 2026-10-01**: SP1, O-1 and the first four SP2 phases are built, reviewed and running on
-gcp-0. SP3 has three of its ten phases built. GCP parity is complete enough to host the
-programme. Live gates are partly passed, with findings still open.
+**As of 2026-10-07**: SP1, O-1, SP2 and SP3 are built, reviewed and running on `aws-0`; the owner
+signed off the experience, and the merge wave has started. The rows below keep the evidence of each
+phase as it was recorded.
 
 ### Where each piece stands
 
@@ -247,10 +249,11 @@ programme. Live gates are partly passed, with findings still open.
 |---|---|---|---|---|
 | **SP1** runtime and identity | 0–6 + hardening | Built, reviewed, **live-verified** | [#2107](https://github.com/Smana/cloud-native-ref/pull/2107) → [#2108](https://github.com/Smana/cloud-native-ref/pull/2108) → [#2109](https://github.com/Smana/cloud-native-ref/pull/2109) → [#2110](https://github.com/Smana/cloud-native-ref/pull/2110) → [#2111](https://github.com/Smana/cloud-native-ref/pull/2111) → [#2121](https://github.com/Smana/cloud-native-ref/pull/2121) (hardening), [#2142](https://github.com/Smana/cloud-native-ref/pull/2142) (PR provenance footer), [#2151](https://github.com/Smana/cloud-native-ref/pull/2151) (tag ruleset) | aws-0, 2026-09-27: an agent took issue #2112 to PR [#2114](https://github.com/Smana/cloud-native-ref/pull/2114), merged. gcp-0, 2026-10-01: the same check passed again ([#2141](https://github.com/Smana/cloud-native-ref/pull/2141)); the `agent-branches` and `agent-tags` rulesets are active |
 | **SP2** rooms | 0.5 hardening, 1 log, 2 viewers, 3 tools, 4 driver | Built, reviewed, **live gates partly passed** | [#2137](https://github.com/Smana/cloud-native-ref/pull/2137) → [#2139](https://github.com/Smana/cloud-native-ref/pull/2139) → [#2146](https://github.com/Smana/cloud-native-ref/pull/2146) → [#2150](https://github.com/Smana/cloud-native-ref/pull/2150) | gcp-0, 2026-10-01: log 12 pass / 2 fail ([F12, F15](#live-findings-on-gcp-0)) / 1 owner step; viewers 3 pass / 1 fail ([F14](#live-findings-on-gcp-0)) and 6 pass / 2 blocked / 5 owner steps; phase 3: live gate 3.11 not run; driver (steering, gate 4.8): 1 pass, 5 owner steps pending |
-| **SP2** rooms | 5 approvals | **In progress**: two of its tasks built and reviewed, the third under way | agent-platform [#11](https://github.com/Smana/agent-platform/pull/11); no cloud-native-ref PR yet | — |
-| **SP2** rooms | 6 fork and `roomctl`, 7 UX checkpoint | Not started | — | — |
-| **SP3** factory | 1 issue to narrated run, 2 revise from the PR, 3 pair template | Built and reviewed; phase 1 is deployed on gcp-0, live gate pending | [#2143](https://github.com/Smana/cloud-native-ref/pull/2143) → [#2152](https://github.com/Smana/cloud-native-ref/pull/2152) → [#2153](https://github.com/Smana/cloud-native-ref/pull/2153) | Not yet: phase 1's live gate (Task 1.13) follows SP2's |
-| **SP3** factory | 4 triage and teams to 10 merge wave | Not started (Kueue arrives with phase 4) | — | — |
+| **SP2** rooms | 5 approvals | Built, reviewed, running on `aws-0`, **live gate passed** | [#2205](https://github.com/Smana/cloud-native-ref/pull/2205); agent-platform [#11](https://github.com/Smana/agent-platform/pull/11) | aws-0, 2026-10-07: SC-5 passed |
+| **SP2** rooms | 6 fork and `roomctl`, 7 UX checkpoint | 6 built, reviewed and deployed on `aws-0`; 7 signed off with SP3's walkthrough | [#2226](https://github.com/Smana/cloud-native-ref/pull/2226); agent-platform [#28](https://github.com/Smana/agent-platform/pull/28) | aws-0, 2026-10-07: the owner's sign-off |
+| **SP3** factory | 1 issue to narrated run, 2 revise from the PR, 3 pair template | Built, reviewed, running on `aws-0`; proven end to end by the 2026-10-07 walkthrough | [#2143](https://github.com/Smana/cloud-native-ref/pull/2143) → [#2152](https://github.com/Smana/cloud-native-ref/pull/2152) → [#2153](https://github.com/Smana/cloud-native-ref/pull/2153) | aws-0, 2026-10-07: issue #2238 → PR #2239, reviewed, revised after "Request changes", approved |
+| **SP3** factory | 4 triage and teams to 9 RunLore intake, and resume after a reclaim | Built, reviewed, running on `aws-0` | [#2184](https://github.com/Smana/cloud-native-ref/pull/2184) → [#2185](https://github.com/Smana/cloud-native-ref/pull/2185) → [#2187](https://github.com/Smana/cloud-native-ref/pull/2187) → [#2189](https://github.com/Smana/cloud-native-ref/pull/2189) → [#2191](https://github.com/Smana/cloud-native-ref/pull/2191); resume [#2222](https://github.com/Smana/cloud-native-ref/pull/2222) | aws-0, 2026-10-07: Kueue's hold (4.6), the kill-switch drill (8.4), resume after a FIS test and a real Spot interruption |
+| **SP3** factory | 10 the walkthrough and the merge wave | The walkthrough ran and the owner signed off; the merge wave has started | [#2192](https://github.com/Smana/cloud-native-ref/pull/2192) | aws-0, 2026-10-07: issue #2238 to PR #2239 |
 | **SP4** model routing and budgets | PR 1 frontier tier and shadow budgets | Built, reviewed, **deployed on aws-0** from `integration`, whose SP4 gateway files are byte-identical | [#2105](https://github.com/Smana/cloud-native-ref/pull/2105) | aws-0, 2026-10-07: `llm-gateway` reconciles Ready; the `tier-frontier` route (GLM-5.3) and the B3–B5 shadow budgets are Accepted. The end-to-end gates (SC-1 to SC-3) are not recorded |
 | **SP4** model routing and budgets | PR 2 Bedrock and per-run budgets on the agent router | Not built | — | — |
 | **O-1** per-run observability | 1 composition, 2 platform, 3 live | Built, reviewed, **live gates partly passed** | [#2136](https://github.com/Smana/cloud-native-ref/pull/2136) | gcp-0: 9 pass / 1 fail ([F18](#live-findings-on-gcp-0)) / 2 owner steps |
@@ -372,7 +375,7 @@ branches, not yet on main) for the agent router follows
 
 | Decision | Why it matters |
 |---|---|
-| UX sign-off (P33) after the end-to-end walkthrough | Unblocks the merge wave for every programme PR |
+| The merge wave: merge each programme PR in stack order, tag the releases, apply the rulesets | Signed off on 2026-10-07; the merge gate goes live after it |
 | CI on stacked PRs | Workflows run only for PRs based on `main`, so the stacked PRs get no GitHub CI; local `validate-manifests.sh` stands in |
 | Rooms UX: invite and close in the UI; re-fetching a recorded run's claim | Raised for SP2's UX checkpoint |
 | Factory UX: a time limit for escalated tasks | Escalated tasks poll GitHub every 5 minutes until closed |

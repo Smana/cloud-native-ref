@@ -611,3 +611,13 @@ img[src*="images/diagrams/"] {
 .dark .hextra-search-wrapper + kbd {
   color: var(--cnref-stamp);
 }
+
+/* Zoomable mermaid diagrams (layouts/_partials/custom/head-end.html). The cloned SVG keeps the
+ * colours mermaid picked for the theme it rendered in, so the panel follows the page theme
+ * rather than being a fixed white: light text on white would vanish in dark mode. */
+:root { --diagram-bg: #fff; }
+.dark { --diagram-bg: #111; }
+pre.mermaid { cursor: zoom-in; }
+.diagram-zoom { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+  background: rgb(0 0 0 / 0.85); cursor: grab; overflow: hidden; touch-action: none; }
+.diagram-zoom svg { width: 90vw; height: 90vh; background: var(--diagram-bg); border-radius: 8px; transform-origin: center; }

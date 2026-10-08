@@ -1,15 +1,20 @@
 ---
 title: Agents
 weight: 20
-description: "Work in progress. The agent factory: autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes end to end."
-lastVerified: 2026-10-01
+description: "The agent factory: autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes end to end."
+lastVerified: 2026-10-07
 aliases:
   - /docs/platform/agent-factory/
 ---
 
-{{< callout type="warning" >}}
-**Work in progress.** These pages describe the target design. What runs on `gcp-0` today, what is
-proven live and what is planned is on the
+{{< callout type="info" >}}
+**The first version runs on `aws-0`.** A labelled issue becomes a reviewed pull request; a GitHub
+review turns into a revision; runs are metered and capped, resumed after a reclaim and stopped by
+the kill switch; humans follow and approve in rooms. The owner signed off the experience on
+2026-10-07, after [one real task end to end]({{< relref "/docs/platform/ai-platform/agents/user-guide.md#one-real-task-end-to-end" >}}).
+Still to come: the merge gate going live, after which low-risk docs fixes merge themselves; then,
+with the model-routing work, routing by tier, the Anthropic backend for `internal` work and budgets
+enforced at the gateway. What is proven live is on the
 [status page]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}).
 {{< /callout >}}
 

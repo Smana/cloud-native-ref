@@ -110,7 +110,9 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # ZITADEL's JWKS, for the ID and access tokens humans present. gcp-0's overlay
+    # ZITADEL: JWKS for the ID and access tokens humans present, and (D7) the
+    # ListIDPLinks API for the room-access check. Keep it open to the whole host if
+    # this is ever tightened to L7. gcp-0's overlay
     # replaces this rule: its own Gateway VIP refuses any toPorts (ruling AU).
     - toFQDNs:
         - matchName: "auth.${public_domain_name}"
@@ -119,6 +121,7 @@ spec:
             - port: "443"
               protocol: TCP
     # api.github.com: agents' review verdicts as the factory App's PR comments (SP2 design §3).
+    # Also (D7): GET /user/{id} and the collaborator-permission API for room access.
     - toFQDNs:
         - matchName: api.github.com
       toPorts:

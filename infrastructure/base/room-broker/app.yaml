@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # agent-platform v0.7.0, by digest. Move it with the retention CronJob's,
+    # agent-platform v0.8.0, by digest. Move it with the retention CronJob's,
     # crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.7.0@sha256:c7a33043a7045a67e8c3234dbb251da498af4038e422dc90e9bb3c5bb708f728"
+    tag: "v0.8.0@sha256:d39e0850b21e202a08412c8f36a7bc1c2444437609d083edabdd90b0cf990636"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2
@@ -102,6 +102,14 @@ spec:
       secret:
         secretName: room-broker-roomctl  # pragma: allowlist secret
         optional: true
+    # The ZITADEL link reader's PAT. Whole-Secret mount (no subPath) so a rotation
+    # reaches the file. optional: until it syncs, non-admins see no rooms (fail closed).
+    # 0440 like the App key: readable through the pod's fsGroup only.
+    - name: zitadel-reader
+      secret:
+        secretName: room-broker-zitadel-reader  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -117,6 +125,9 @@ spec:
       readOnly: true
     - name: roomctl
       mountPath: /etc/room-broker/roomctl
+      readOnly: true
+    - name: zitadel-reader
+      mountPath: /etc/room-broker/zitadel-reader
       readOnly: true
   networkPolicies:
     enabled: false
