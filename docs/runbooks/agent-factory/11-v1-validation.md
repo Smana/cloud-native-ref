@@ -83,7 +83,12 @@ Each check names its identity. The cache is 5 minutes (`human.access.ttl`).
 roomctl rooms                                  # dev2, before linking GitHub
 roomctl rooms | grep -c "$TASK"               # after linking, no read on the repo
 roomctl status "<private-room>"               # same identity
+DEV2_TOKEN=$(roomctl token)                   # dev2's config; never echoed
+curl -sSI -H "Authorization: Bearer $DEV2_TOKEN" https://rooms.priv.aws.ogenki.io/api/rooms | grep -i x-rooms-access
 ```
+
+The `X-Rooms-Access` header (R21) reads `unlinked` before `dev2` links GitHub (5a) and `ok` after (5b onward). `unverified`
+(GitHub or ZITADEL unreachable) is covered by the broker's unit tests: an outage cannot be induced safely on the live cluster.
 
 | # | Check | Expected |
 |---|---|---|
@@ -152,8 +157,27 @@ curl -sS --cacert ca.pem "https://vt.priv.aws.ogenki.io/select/jaeger/api/traces
   | jq '[.data[] | {traceID, runs: ([.spans[].tags[] | select(.key=="agent.run_id") | .value] | unique)}]'
 ```
 
-Expected: one trace per task, whose spans carry `agent.run_id` for every run of the task. The factory's root span (service
-`agent-factory`) is exported when the task ends, so look for it after the task finishes.
+Expected: one trace per task, whose spans carry `agent.run_id` for every run of the task.
+
+The factory's root span (service `agent-factory`) is exported only once the task ends, so run this check **after Step 7**.
+Fetch the trace by its id and assert the root is the ancestor of every run's spans:
+
+```bash
+TRACE=$(curl -sS --cacert ca.pem "https://vt.priv.aws.ogenki.io/select/jaeger/api/traces?service=agent-factory&lookback=2h" \
+  | jq -r '.data[0].traceID')
+curl -sS --cacert ca.pem "https://vt.priv.aws.ogenki.io/select/jaeger/api/traces/$TRACE" | jq -e '
+  .data[0] as $t
+  | ($t.processes | map_values(.serviceName)) as $svc
+  | ($t.spans | map({key: .spanID, value: (.references[0].spanID // null)}) | from_entries) as $parent
+  | ($t.spans | map(select($svc[.processID] == "agent-factory" and .references == []))) as $roots
+  | ($t.spans | map(select(any(.tags[]; .key == "agent.run_id")))) as $runs
+  | def top: if $parent[.] == null then . else ($parent[.] | top) end;
+    ($roots | length) == 1 and ($runs | length) > 0
+    and all($runs[]; .spanID | top == $roots[0].spanID)'
+```
+
+Expected: `true` (exit 0): one parentless `agent-factory` span, and the parent chain (`references`) of every span carrying
+`agent.run_id` ends at it. Check that the distinct `agent.run_id` values equal the task's runs; a chain that ends elsewhere is a fail.
 
 **Dashboards:** in Grafana (`https://grafana.priv.aws.ogenki.io`), `agent-run` (`/d/agent-run/agent-run?var-run=$RUNID`) and
 `agent-fleet` show this task's run, tokens and phase.
@@ -206,7 +230,11 @@ kubectl get configuration.pkg -o custom-columns=NAME:.metadata.name,PKG:.spec.pa
 gh issue edit <issue> --repo Smana/cloud-native-ref --add-label factory/ready
 until kubectl get task -n agent-system -o name | grep -q .; do sleep 5; done
 TASK=$(kubectl get task -n agent-system --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
-kubectl wait -n agent-system task/$TASK --for=jsonpath='{.status.phase}'=Done --timeout=40m
+for i in $(seq 240); do
+  PHASE=$(kubectl get task -n agent-system $TASK -o jsonpath='{.status.phase}')
+  case "$PHASE" in Done|Rejected|NoOp|Reverted|Escalated|Closed|Stopped) break ;; esac
+  sleep 10
+done; echo "terminal phase: $PHASE"
 gh pr list --repo Smana/cloud-native-ref --head agent/$TASK --json number,state,author
 ```
 
@@ -224,6 +252,11 @@ phases (`Rejected`, `NoOp`, `Reverted`, `Escalated`, `Closed`, `Stopped`) are a 
 | 2 | `summary/v1` fields; `--after` returns only newer notes | | |
 | 3 | five blocks, raw log folded, watcher sees no actions, `#<approvalId>` lands | | |
 | 4 | diagram full screen, zoom and pan, both themes | | |
-| 5a–5f | hint; 404; ≤ 5 min; cut ≤ 5 min 30 s; GitHub sign-in cut on deactivation; `PermissionDenied` | | |
+| 5a | unlinked hint, no room, `X-Rooms-Access: unlinked` | | |
+| 5b | private room unlisted, 404 on `status` and the page, `X-Rooms-Access: ok` | | |
+| 5c | room appears within 5 min of the grant | | |
+| 5d | open WebSocket cut within 5 min 30 s of the revoke | | |
+| 5e | GitHub sign-in works; deactivating the ZITADEL user cuts access | | |
+| 5f | `POST /v2/users/{id}/links` as `dev2`: 403 `PermissionDenied` | | |
 | 6 | logs, metrics, traces, dashboards, `AgentSandboxPodPending` | | |
 | 7 | one task end to end on release pins | | |
