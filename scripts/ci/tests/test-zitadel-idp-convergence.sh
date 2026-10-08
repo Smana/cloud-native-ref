@@ -151,16 +151,33 @@ SHIM
 cat > "$S/bin/curl" <<'SHIM'
 #!/usr/bin/env bash
 S="$FAKE_STATE"
-method=GET; url=""; data=""
+method=GET; url=""; data=""; out=/dev/null; wcode=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -X) method="$2"; shift 2 ;;
+        -o) out="$2"; shift 2 ;;
+        -w) wcode=1; shift 2 ;;
+        --data-binary) data="$(cat)"; shift 2 ;;
         -d) if [ "$2" = "@-" ]; then data="$(cat)"; else data="$2"; fi; shift 2 ;;
         -K|-H|--resolve) shift 2 ;;
         http*) url="$1"; shift ;;
         *) shift ;;
     esac
 done
+# A fake OpenBao KV v2 (the mirror's GET and POST), kept out of calls.log so
+# "no ZITADEL mutation" stays checkable.
+if [[ "$url" == https://bao.test/v1/* ]]; then
+    echo "$method ${url#https://bao.test/v1/}" >> "$S/bao.log"
+    if [ -n "${FAIL_BAO:-}" ] && [ "$method" = POST ]; then
+        echo "curl: (22) The requested URL returned error: 403" >&2; exit 22
+    fi
+    case "$method" in
+        GET) if [ -f "$S/bao.json" ]; then cat "$S/bao.json" > "$out"; [ -z "$wcode" ] || printf 200
+             else [ -z "$wcode" ] || printf 404; exit 22; fi ;;
+        POST) jq -c '{data: {data: .data}}' <<< "$data" > "$S/bao.json" ;;
+    esac
+    exit 0
+fi
 path="${url#"$IDP_URL"}"
 echo "$method $path" >> "$S/calls.log"
 # FAIL_ON is a glob over "METHOD /path": that request answers a curl-style 500.
@@ -222,7 +239,8 @@ SHIM
 chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
 
 reset_state() {
-    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/*
+    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json"
+    echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
     echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
@@ -248,7 +266,7 @@ check "dry run: plans the reader machine user once" "1" "$(count "would create m
 check "dry run: plans ORG_OWNER_VIEWER once" "1" "$(count "would grant ORG_OWNER_VIEWER" "$out")"
 check "dry run: plans one PAT" "1" "$(count "would mint a PAT" "$out")"
 check "dry run: writes nothing to ZITADEL" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
-check "dry run: writes nothing to the store" "" "$(find "$S/store" -type f ! -name 'zitadel-*-idp' -printf '%f')"
+check "dry run: writes nothing to the store" "" "$(find "$S/store" -type f ! -name 'zitadel-*-idp' ! -name bao-root-token -printf '%f')"
 
 # 2. No GitHub key: skipped with a log line; Google exactly as before.
 reset_state
@@ -344,5 +362,35 @@ check "rotation apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
 check "rotation apply: stored PAT changed" "true" "$([ "$(jq -r .pat "$STORE")" != "$old_pat" ] && echo true || echo false)"
 check "rotation apply: stored tokenId changed" "true" "$([ "$(jq -r .tokenId "$STORE")" != "$old_id" ] && echo true || echo false)"
 check "rotation apply: stored tokenId is the listed one" "1" "$(jq --arg i "$(jq -r .tokenId "$STORE")" '[.[] | select(.id == $i)] | length' "$S/pats.json")"
+
+# 11. --mirror-openbao copies the blob to agents/zitadel-reader, whole.
+: > "$S/ca.pem"
+MIRROR=(--openbao-url https://bao.test --openbao-root-token-secret bao-root-token --openbao-ca-file "$S/ca.pem" --mirror-openbao)
+bao_posts() { grep -c '^POST ' "$S/bao.log" 2>/dev/null || true; }
+reset_state; with_github_key
+out="$(sync "${MIRROR[@]}")"
+check "mirror dry run: planned" "1" "$(count 'would mirror room-broker-zitadel-reader' "$out")"
+check "mirror dry run: OpenBao untouched" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
+sync --apply "${MIRROR[@]}" > /dev/null
+check "mirror: written to the mapped path" "1" "$(grep -c '^POST agents/data/zitadel-reader$' "$S/bao.log" || true)"
+check "mirror: blob intact" "$(jq -cS . "$STORE")" "$(jq -cS '.data.data' "$S/bao.json")"
+out="$(sync --apply "${MIRROR[@]}")"
+check "mirror converged: no second write" "1" "$(bao_posts)"
+check "mirror converged: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+# A rebuilt OpenBao is empty while the store still holds a valid PAT.
+rm -f "$S/bao.json" "$S/bao.log"
+sync --apply "${MIRROR[@]}" > /dev/null
+check "mirror: refilled from the store after an OpenBao rebuild" "1" "$(bao_posts)"
+check "mirror: a rotated PAT replaces the mirrored one" "true" "$(expire_pats; sync --apply "${MIRROR[@]}" > /dev/null; [ "$(jq -r .data.data.pat "$S/bao.json")" = "$(jq -r .pat "$STORE")" ] && echo true || echo false)"
+rm -f "$S/bao.json"
+out="$(FAIL_BAO=1 sync --apply "${MIRROR[@]}")"
+check "mirror: refused write fails the run" "1" "$(count '^rc=[1-9]' "$out")"
+reset_state; with_github_key
+sync --apply > /dev/null
+check "no flag: OpenBao never called" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
+reset_state
+out="$(sync --apply "${MIRROR[@]}")"
+check "no GitHub key: mirror skipped, run still ok" "rc=0" "$(tail -1 <<< "$out")"
+check "no GitHub key: OpenBao never called" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
 
 exit "$fail"

@@ -38,6 +38,11 @@
 # Usage:
 #   zitadel-idp.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #   zitadel-idp.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
+#     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F --mirror-openbao]
+#
+# --mirror-openbao also copies `room-broker-zitadel-reader` to OpenBao's
+# agents/zitadel-reader (scripts/lib/bao-map.sh), where the broker's
+# ExternalSecret reads it. Without the GitHub key there is no reader: skipped.
 #
 # Dry-run unless --apply. The client secret is never printed.
 #
@@ -71,6 +76,8 @@ set -o pipefail
 . "$(dirname "$0")/../lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/zitadel-pat.sh
 . "$(dirname "$0")/../lib/zitadel-pat.sh"
+# shellcheck source=scripts/lib/openbao-mirror.sh
+. "$(dirname "$0")/../lib/openbao-mirror.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -80,6 +87,12 @@ CLOUD=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 GCP_PROJECT=""
 APPLY="false"
+# Same flags as zitadel-oidc-clients.sh. Without them the reader blob stays in
+# the managed store, which no cluster ExternalSecret reads.
+OPENBAO_URL=""
+OPENBAO_ROOT_TOKEN_SECRET=""
+OPENBAO_CA_FILE=""
+MIRROR_OPENBAO="false"
 
 IDP_NAME="Google Workspace"
 IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
@@ -121,6 +134,10 @@ while [ $# -gt 0 ]; do
         --region)  REGION="$2"; shift 2 ;;
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
+        --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
+        --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
+        --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
+        --mirror-openbao) MIRROR_OPENBAO="true"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -128,6 +145,13 @@ done
 [ "$COMMAND" = "sync" ] || { sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+if [ -n "$OPENBAO_URL" ]; then
+    [ -n "$OPENBAO_ROOT_TOKEN_SECRET" ] || { echo "--openbao-url requires --openbao-root-token-secret" >&2; exit 2; }
+    [ -f "$OPENBAO_CA_FILE" ] || { echo "--openbao-url requires a readable --openbao-ca-file" >&2; exit 2; }
+fi
+if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
+    echo "--mirror-openbao requires --openbao-url" >&2; exit 2
+fi
 [ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
@@ -504,6 +528,18 @@ ensure_broker_reader() {
                 | store_write "$READER_STORE_KEY" \
                 || { echo "[FAILED ] PAT ${minted_id} minted but ${READER_STORE_KEY} was not written; the stored credential is unchanged and the next --apply retries" >&2; return 1; }
             echo "[minted ] PAT for ${READER_USER}, expires ${expiry}, stored in ${READER_STORE_KEY}"
+        fi
+    fi
+
+    # Every run, not only after a write: a rebuilt OpenBao is empty while the
+    # store still holds a valid PAT. The mirror writes nothing when they agree.
+    if [ "$MIRROR_OPENBAO" = "true" ]; then
+        if [ "$APPLY" != "true" ]; then
+            echo "[dry-run] would mirror ${READER_STORE_KEY} to OpenBao"
+        else
+            stored="$(store_read "$READER_STORE_KEY")" \
+                || { echo "[FAILED ] ${READER_STORE_KEY} is unreadable; not mirrored" >&2; return 1; }
+            printf '%s' "$stored" | mirror_to_openbao "$READER_STORE_KEY" || return 1
         fi
     fi
 }

@@ -20,12 +20,13 @@ fail=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; fail=1; }
 
-body="$(sed -n '/^mirror_to_openbao() (/,/^)/p' "$S")"
-[ -n "$body" ] || { echo "could not extract mirror_to_openbao() from $S" >&2; exit 1; }
+M="${OPENBAO_MIRROR_LIB:-scripts/lib/openbao-mirror.sh}"
+body="$(sed -n '/^mirror_to_openbao() (/,/^)/p' "$M")"
+[ -n "$body" ] || { echo "could not extract mirror_to_openbao() from $M" >&2; exit 1; }
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"
 eval "$body"
-eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$S")"
+eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$M")"
 eval "$(sed -n '/^store_write_and_mirror() {/,/^}/p' "$S")"
 eval "$(sed -n '/^merge_secret() {/,/^}/p' "$S")"
 

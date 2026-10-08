@@ -47,6 +47,7 @@ bao_target_for() {
         apps/image-gallery/config) printf 'apps/image-gallery/config' ;;
         agents-rooms-proxy) printf 'agents/rooms-proxy' ;;
         agents-roomctl) printf 'agents/roomctl' ;;
+        room-broker-zitadel-reader) printf 'agents/zitadel-reader' ;;
         *) return 1 ;;
     esac
 }
