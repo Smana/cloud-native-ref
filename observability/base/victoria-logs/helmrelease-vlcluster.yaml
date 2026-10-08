@@ -181,6 +181,11 @@ spec:
 
     vector:
       enabled: true
+      # Node-critical so the kubelet stops Vector after the pods it ships for: at node shutdown it
+      # stops regular pods first, critical ones in the last window. At priority 0 Vector stopped
+      # beside an AgentRun pod (aws-0, 2026-10-07) and its final lines were never shipped.
+      # namespaces/base/observability.yaml's ResourceQuota is what lets GKE admit the class here.
+      podPriorityClassName: system-node-critical
 
       # Vector subchart: `securityContext` is the CONTAINER context
       # ("Specify securityContext on Vector containers" — vector values.yaml).

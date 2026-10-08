@@ -194,9 +194,26 @@ agent-run summary: 10 steps
 | `Pending` | Waiting for a node or pulling the image |
 | `Running` | The agent is working |
 | `Succeeded` | Finished. Its branch is in the `BRANCH` column. A run started by hand: find the PR with `gh pr list --head <branch>`. A factory run fills `status.pullRequest` (the `PR` column) |
-| `Failed` | The harness failed, the deadline passed, or the pod was lost (see the known issue below). `status.reason` is always `PodFailed`: read the step log |
+| `Failed` | The run did not finish; `status.reason` says why. `Disrupted`: its node was reclaimed or drained (a spot or preemptible reclaim, an eviction, an upgrade). `PodLost`: its pod was deleted or vanished with its node before a final state was read. `PodFailed`: the harness failed on its own (an error, a crash, out of memory, the deadline); read the step log |
 | `Revoked` | Stopped by hand (`agents.ogenki.io/revoked=manual`) or by the factory's stop |
 | `BudgetExhausted` | The run meter revoked it at its token cap |
+
+### Follow and feed a room from a terminal
+
+`roomctl` reads, chats, queues and forks; until a release ships its binaries, build it from
+agent-platform with `go build ./cmd/roomctl`. It never steers, interrupts, takes the driver token
+or approves: those stay in the web view, because a local agent can drive a terminal
+([ADR-0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}})).
+
+```bash
+roomctl configure --url … --issuer … --client-id … --project-id …  # the room list's "CLI setup" prints it
+roomctl login                                    # device flow: open the URL, enter the code
+roomctl rooms
+roomctl watch <room>                             # the last 50 events, then live
+roomctl post <room> --queue "address L42"        # for the next run's brief; without --queue, a chat
+roomctl fork <room> --at <seq> --role implementer --egress pypi --note "try uv"
+roomctl token                                    # your access token, for scripts
+```
 
 ### Stop or resume
 
@@ -205,8 +222,14 @@ kubectl delete agentrun -n agents <run>          # stops it; its GitHub token is
 task agent:run -- --role implementer --class public --branch agent/<id> --task-url <same issue>
 ```
 
-A run that loses its pod (a node going away, for example) **fails** rather than silently
-restarting. Resuming with `--branch` continues from what it already pushed.
+A run that loses its pod **fails** rather than silently restarting. *(Built, not yet deployed)* On
+the way out, within 15 s, the harness pauses the agent, commits an implementer's uncommitted changes
+to its branch with the trailer `Agent-Checkpoint: disruption` and pushes them, and lets the room read
+the transcript to its end. A factory run is then resumed on its own (see *Follow it*). Resume a run
+started by hand with `--branch`: it continues from what was pushed, the checkpoint included.
+
+Known: the same sequence runs when an implementer is revoked or deleted, so one with uncommitted
+changes pushes a checkpoint commit before its GitHub token is revoked.
 
 Known issue ([F12]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a lost pod is re-created within about a second,
 the run stays `Running`, and the task starts over in a fresh conversation, which can push twice. A
@@ -231,8 +254,8 @@ on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls 
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
 that room. Known issue ([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})): on the deployed build a very short run can lose its whole
-transcript, because the harness exits before the room-bridge's next poll. The fix is built, not yet
-deployed.
+transcript, because the harness exits before the room-bridge's next poll. Both halves of the fix are built, not yet
+deployed: the bridge reads the log to its end, and the harness asks it for that last read before it stops.
 
 ## Frequently asked questions
 

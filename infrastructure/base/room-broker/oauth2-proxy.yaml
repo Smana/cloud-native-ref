@@ -59,8 +59,10 @@ spec:
       cookie-refresh: 1h
       skip-provider-button: "true"
       reverse-proxy: "true"
-      # Phase 6 turns this on, with extra-jwt-issuers, for roomctl's bearer tokens.
-      skip-jwt-bearer-tokens: "false"
+      # roomctl's own JWT access tokens pass as bearers (phase 6), checked against
+      # the extra issuer below. The broker re-validates them and refuses steering
+      # and decisions from them (ruling P18).
+      skip-jwt-bearer-tokens: "true"
     # ZITADEL puts the project id in `aud` only when asked with this scope, and the
     # broker refuses a token without it (ruling AS). The id comes from the secret,
     # beside the client it belongs to: aws-0's vars carry no zitadel_project_id,
@@ -73,6 +75,17 @@ spec:
             key: project-id
       - name: OAUTH2_PROXY_SCOPE
         value: "openid profile email offline_access urn:zitadel:iam:org:project:id:$(ZITADEL_PROJECT_ID):aud"
+      # <issuer>=<roomctl client id>. Not optional: an unset issuer would start a
+      # proxy that refuses roomctl until someone restarts it. Until the sync has
+      # created the client, the new pod waits for the Secret and the old one serves;
+      # after 3 failed upgrades Helm rolls back to skip-jwt-bearer-tokens "false"
+      # and the release stalls. So after the sync:
+      # flux reconcile hr rooms-oauth2-proxy -n agent-system --force
+      - name: OAUTH2_PROXY_EXTRA_JWT_ISSUERS
+        valueFrom:
+          secretKeyRef:
+            name: rooms-proxy-extra-issuers
+            key: EXTRA_JWT_ISSUERS
     # It never calls the API server, and its CNP could not reach it anyway.
     serviceAccount:
       automountServiceAccountToken: false

@@ -33,6 +33,7 @@ data:
       issuer: ${identity_provider_url}
       jwksURL: ${identity_provider_url}/oauth/v2/keys
       clientIDFile: /etc/room-broker/oidc/client-id
+      roomctlClientIDFile: /etc/room-broker/roomctl/client-id
       projectIDFile: /etc/room-broker/oidc/project-id
       origin: https://rooms.${private_domain_name}
       groups:
