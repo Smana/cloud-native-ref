@@ -685,6 +685,9 @@ data:
                           branch: [status, branch]
                           # SP3's triage tier (R47): fixed per run, empty for task agent:run.
                           tier: [metadata, labels, agents.ogenki.io/tier]
+                          # The factory task's id, empty for a run started by hand: the run page lists
+                          # the task's other runs, a resumed one included (disruption design §6).
+                          task: [metadata, labels, agents.ogenki.io/task]
                   - name: status_phase
                     help: "The AgentRun's phase, one series per phase"
                     each:

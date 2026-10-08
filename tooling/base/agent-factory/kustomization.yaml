@@ -6,6 +6,7 @@ resources:
   - helm-values-configmap.yaml
   - helmrelease.yaml
   - externalsecret-github.yaml
+  - externalsecret-intake.yaml
   - externalsecret-merger.yaml
   - externalsecret-oidc.yaml
   - httproute.yaml

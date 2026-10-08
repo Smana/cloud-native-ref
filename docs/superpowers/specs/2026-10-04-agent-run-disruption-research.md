@@ -269,7 +269,7 @@ not a number.
 | Factory tiers 20/45/90 min, bounds 1..480 | CONFIRMED (plan and test fixture) / **UNVERIFIED** (deployed values) | `config_test.go` L42–44 (`factory-runlore`), `config.go` L33–34, L378; deployed factory config not found in either repo |
 | Our run-level exposure also includes node age (nodes live ≤ 24 h, reused across runs) and the advisor bucket of the instance types Karpenter picks (c/m gen 6+, 4–16 vCPU) | CONFIRMED (config) | `agents-gvisor-nodepool.yaml` |
 | Observed spot reclaims of agent nodes so far | None recorded | No mention in `docs/runbooks/agent-factory/` |
-| Actual rates for our types and regions | **UNVERIFIED** | Spot Advisor for eu-west-3 c/m 6+ types; GCE console "historical preemption rate" for the agents machine type and zone; Karpenter `karpenter_nodeclaims_disrupted_total{reason="spot_interruption"}` (VictoriaMetrics) over a month |
+| Actual rates for our types and regions | **UNVERIFIED** | Spot Advisor for eu-west-3 c/m 6+ types; GCE console "historical preemption rate" for the agents machine type and zone; Karpenter `karpenter_nodeclaims_disrupted_total{reason="spot_interrupted"}` (VictoriaMetrics) over a month |
 
 ---
 
@@ -354,5 +354,5 @@ gated replacement, and the run reads `PodFailed` or `PodLost`, depending on the 
 4. **Which reason the composition records for a real spot loss**: `PodFailed` (pod persisted `Failed`) or `PodLost` (gated replacement first). F12's live check (rooms plan Step 6) has no recorded result.
 5. **Does a reattached OpenHands conversation continue cleanly** after `ERROR` → `/run` (no repeated side effects, condenser intact)? This only matters if conversation state is made durable (PVC, or copying it off-pod) **and** `OH_SECRET_KEY` is made stable per run.
 6. **How much work a reclaim loses**, i.e. how often agents push mid-run. This sets the value of a SIGTERM WIP push against a transparent resume.
-7. **Spot reclaim frequency for our instance types and zones.** No per-run number is supportable from published sources. Measure `karpenter_nodeclaims_disrupted_total{reason="spot_interruption"}` and the GCE historical preemption rate.
+7. **Spot reclaim frequency for our instance types and zones.** No per-run number is supportable from published sources. Measure `karpenter_nodeclaims_disrupted_total{reason="spot_interrupted"}` and the GCE historical preemption rate.
 8. **PVC behaviour under runsc on aws-0 and attach/detach after an abrupt node loss.** Only relevant if a fix moves `/workspace` to a PVC; EBS is zonal and the zone is the one being reclaimed.

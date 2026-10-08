@@ -189,7 +189,7 @@ kubectl get agentrun -n agents $RUN2 -o jsonpath='{.status.branch}{"\n"}'
 ```
 
 Expected:
-- `Failed PodFailed`;
+- `Failed PodLost` (a plain delete leaves no `DisruptionTarget`; the composition sees the pod deleted);
 - `Error from server (NotFound)` for the old run's ServiceAccount;
 - the new run `Running` on the same `$BRANCH`.
 
@@ -201,7 +201,7 @@ refusing the recreate, not an error.
 > `roomRef` on `147819ff`; round 7 on a run without one still passed. Delete the run rather than
 > waiting it out, and record the step as FAIL (F12).
 
-**What this proves:** R7 as built. A lost pod fails closed, and `agent-run --branch` resumes the work.
+**What this proves:** R7 as built. A lost pod fails closed, and `agent-run --branch` resumes the work; a factory run resumes on its own ([10](10-disruption.md)).
 
 ### Cleanup
 

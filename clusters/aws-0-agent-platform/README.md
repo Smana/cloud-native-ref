@@ -19,6 +19,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-factory` | `tooling/aws-0/agent-factory` | The factory: Task CRD and controller, issue intake, run meter (SP3) |
 | `policy-bot` | `tooling/base/policy-bot` | The merge gate: policy-bot, its public hook and tailnet UI (SP3, ADR-0045) |
 | `agent-observability` | `observability/aws-0/agent-platform` | VMRules, the dashboards (`agent-platform`, `agent-run`, `agent-fleet`) and the agent trace collector |
+| `runlore-factory` | `observability/base/runlore-factory` | RunLore's notifier and intake token, merged into RunLore's values only while this umbrella ships them (SP3 §1) |
 
 ## Resume
 

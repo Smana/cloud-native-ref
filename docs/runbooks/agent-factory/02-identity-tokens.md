@@ -144,7 +144,7 @@ echo "copied gateway token dead $(( $(date +%s) - ISSUED )) s after issue"
 unset GHT GWT
 ```
 
-Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (the `preStop` revoke still reaches
+Expected: pod gone ≤ 60 s; GitHub token 401 ≤ 60 s (agent-run's revoke on SIGTERM still reaches
 `api.github.com` because the run's `Usage` holds its CNP open until the pod is fully gone); copied
 gateway token rejected **around 600 s** after issue, not earlier — a 10-minute run's tokens carry a
 600 s TTL (`max(600, 10×60)`), which is R2's whole point: they outlive kubelet's rotation instead of

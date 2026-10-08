@@ -43,6 +43,13 @@ data:
         clientIDFiles:
           - /etc/agent-factory-oidc/rooms-proxy-client-id
           - /etc/agent-factory-oidc/roomctl-client-id
+      # The RunLore intake (FR-9, §1). The strict parser requires every key below; the token
+      # is mounted from the agent-factory-intake ExternalSecret. OD-9 filters findings here.
+      runlore:
+        listen: ":8080"
+        tokenFile: /etc/agent-factory-intake/token
+        minConfidence: 0.75  # OD-9
+        dailyCap: 5          # OD-9
       poll: {issues: 60s, tasks: 30s, meter: 30s}
       # pair until a class goes live (FR-11): every task gets a reviewer (SP3 phase 3).
       defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
@@ -106,11 +113,15 @@ data:
         investigate: {roles: [triager]}  # R38: proposes a public issue text, never writes
       caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336, awaitingHumanWIP: 5}
       budgets:
-        # OD-10: a shadow week first (R3). The run cap is always enforced by the meter.
-        enforceTask: false
+        # OD-10: only the principal cap keeps its shadow week (R3); the task cap is enforced
+        # since a shadow one let a task reach 3.35 M of its 3 M. The meter always enforces the run cap.
+        enforceTask: true
         enforcePrincipal: false
         factoryDaily: 25000000
         humanDaily: 5000000
+      # Disruption design §4: a run lost to a reclaim or an eviction resumes on its own, twice per task
+      # at most, and only with a RunTokens left under the task's TaskTokens (enforced on that path).
+      resume: {maxPerTask: 2}
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428

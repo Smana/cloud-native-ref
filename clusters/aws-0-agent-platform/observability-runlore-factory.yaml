@@ -1,0 +1,19 @@
+---
+# RunLore's notifier and intake token, gated with the platform (SP3 §1). RunLore itself
+# runs outside the umbrella; only its values merge happens here, through the optional
+# valuesFrom in observability/base/runlore/helmrelease.yaml.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: runlore-factory
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 2m0s
+  path: ./observability/base/runlore-factory
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  dependsOn:
+    - name: agent-factory
