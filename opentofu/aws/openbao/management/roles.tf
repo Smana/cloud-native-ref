@@ -1,7 +1,7 @@
 resource "vault_pki_secret_backend_role" "this" {
   backend          = vault_mount.pki.path
   name             = lower(var.pki_organization)
-  allowed_domains  = var.pki_domains
+  allowed_domains  = concat(var.pki_domains, var.pki_additional_allowed_domains)
   allow_subdomains = true
   organization     = [var.pki_organization]
   country          = [var.pki_country]

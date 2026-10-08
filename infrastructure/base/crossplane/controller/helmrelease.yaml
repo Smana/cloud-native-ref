@@ -24,10 +24,18 @@ spec:
 
     replicas: 1
 
+    # Measured on aws-0 by the disruption plan's Task 13 (2026-10-07). At 512Mi, with GOMEMLIMIT set
+    # to the limit, a 278 MiB live heap forced about one GC a second: the CPU sat at its 500m limit
+    # (63% of periods throttled), and Crossplane was still OOM-killed 32 times in 24h. GOGC's 2x heap
+    # target (~560 MiB) plus ~3.5k goroutine stacks needs 1Gi. The cluster-wide pod informer behind
+    # AgentRun's runPod is a small share of that: about 190 pods.
     resourcesCrossplane:
+      requests:
+        cpu: 250m
+        memory: 640Mi
       limits:
-        cpu: 500m
-        memory: 512Mi
+        cpu: "1"
+        memory: 1Gi
 
     metrics:
       enabled: true

@@ -1,13 +1,18 @@
 # syntax=docker/dockerfile:1
 # The AgentRun harness (SP1 design §5, ADR-0041): OpenHands agent-server plus
-# the driver, the git credential helper, gh, and the Agent-Run trailer hook.
+# the driver, the git credential helper, gh with the PR provenance footer, and
+# the Agent-Run trailer hook.
 # The AgentRun composition pins this image by digest; a claim never names one.
 FROM ghcr.io/openhands/agent-server:1.49.6-python@sha256:02ef66fdf0b22a40b0b55c5cca8d1790cfd260c5069f7c0b99edc1b505d5ab37 AS harness
 
 # `.github/workflows/build-container-images.yml` tags the image with this.
 # H-1 (SP2 ruling P37): a new source version, so its merge never republishes SP1's v0.1.0 tag.
 # O-1 (observability plan O21): after H-1's v0.1.1.
-ARG AGENT_HARNESS_VERSION=v0.1.2
+# H-S3 (SP2 ruling P32): the provenance footer, after O-1's v0.1.2.
+# Disruption design §2: the SIGTERM sequence and the checkpoint trailer, on top of H-S3's footer.
+# A pull request build is pushed by hand as v0.3.0-pr<N>.<sha8>; v0.3.0 itself is published when it
+# merges, so it never republishes H-S3's v0.2.0.
+ARG AGENT_HARNESS_VERSION=v0.3.0
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.101.0
 ARG GH_SHA256_AMD64=9bca2d1c16825f109907a23307628a2f0698fbf99662b73a5cf0b020293072b8
@@ -43,7 +48,8 @@ RUN /usr/local/bin/python -m venv /agent-server/.venv \
       --only-binary=:all: --no-binary=func-timeout -r /tmp/requirements.txt \
  && rm /tmp/requirements.txt
 
-COPY --chmod=0755 agent_run.py git_credential_agent.py /opt/agent/
+COPY --chmod=0755 agent_run.py git_credential_agent.py pr_footer.py /opt/agent/
+COPY --chmod=0755 site /opt/agent/site
 COPY --chmod=0755 gh /usr/local/bin/gh
 COPY --chmod=0755 commit-msg /etc/agent/git-hooks/commit-msg
 COPY gitconfig /etc/gitconfig

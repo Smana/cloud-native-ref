@@ -8,8 +8,9 @@ terraform {
       version = "~> 7.17"
     }
     google-beta = {
-      source  = "hashicorp/google-beta"
-      version = "~> 7.17"
+      source = "hashicorp/google-beta"
+      # 7.39 added kubelet_config's shutdown grace fields (sandbox.tf).
+      version = "~> 7.39"
     }
   }
 }
