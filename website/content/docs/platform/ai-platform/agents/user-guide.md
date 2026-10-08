@@ -23,7 +23,7 @@ New to the vocabulary (run, role, sandbox, room)? Read
 | You need | Why |
 |---|---|
 | Access to the tailnet | The room UI, Grafana and the factory's API are private |
-| SSO membership in `agents-member` | To watch rooms and runs, and to start a run by hand. Requesting `internal` work or a `triager` run needs `agents-admin` |
+| SSO membership in `agents-member` | To watch rooms and runs, and to start a run by hand. Requesting `internal` work or a `triager` run needs `agents-admin`. A valid login that still 403s on the room UI: see the [FAQ](#frequently-asked-questions) |
 | Maintainer rights on the repository | Labels and reviews are how you steer. The agents never merge on their own, except for the low-risk classes below |
 | `roomctl login`, once | Only to start a run by hand: `task agent:run` sends the factory the token it prints, and the run is yours |
 
@@ -226,3 +226,16 @@ Every step is in the step log, the room and the trace.
 The agent runs arbitrary commands. gVisor answers their system calls in user space, so a kernel
 exploit hits gVisor, not the node. Escaping takes a gVisor bug as well; the node pool is dedicated
 and tainted to limit what that would reach.
+
+**I logged in with SSO and the room UI still gives me a 403. Why?**
+oauth2-proxy and the broker admit a token only when its `groups` claim names `agents-member` or
+`agents-admin`. A 403 after a valid login means the claim names neither, and two things put it there:
+
+1. the `groupsFromRoles` ZITADEL Action, which turns your project roles into that claim. A broken
+   or edited Action drops it from every token;
+2. a grant of one of those roles to your user. A fresh ZITADEL holds no grants (gcp-0 mints one
+   every build), and a user exists only after their first login, so log in once, then run
+   `scripts/provision/zitadel-oidc-clients.sh --grant agents-member=<your email>` (or
+   `agents-admin=` to own and approve).
+
+Check the Action first (it fails for everyone at once), then your grant (it fails for you alone).
