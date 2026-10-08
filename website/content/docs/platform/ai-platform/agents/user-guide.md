@@ -8,11 +8,11 @@ aliases:
 ---
 
 {{< callout type="info" >}}
-**Live on `aws-0`, not yet on `main`.** The task on this page ran on `aws-0` on 2026-10-07, from the
-`integration/agent-factory` branch, and the owner signed off the experience after that run. The
-programme's pull requests now merge in order. Until the merge gate goes live after them, it runs in
-shadow: it says what it would merge, and merges nothing. What runs where is on the
-[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}).
+**v1, pilot scope.** On `main` and running on `aws-0`, for one public repository: you label, the
+agents work, you review and merge. The merge gate runs in shadow: it says what it would merge, and
+merges nothing. The task below ran on 2026-10-07, before v1's release. What v1 proves, and what
+comes next, is on the
+[status page]({{< relref "/docs/platform/ai-platform/status.md#agent-factory" >}}).
 {{< /callout >}}
 
 New to the vocabulary (run, role, sandbox, room)? Read
@@ -268,15 +268,14 @@ Every model call is metered per run at the gateway, so the dashboard shows what 
 | What did it cost, how fast was it? | The dashboard: tokens in and out, cost, model latency, error rate. `agent-fleet` shows every run |
 | Where did the time go? | A trace per run: steps, model calls and tool calls, with timings. Metadata only: no prompts or outputs |
 
-A run's page is `/d/agent-run/agent-run?var-run=<id>`. Two known
-issues: a successful run's page showed no outcome or PR ([F18]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}); fixed
-on `integration`, deployed on gcp-0, live re-check pending), and MCP tool calls are not yet joined to the run's trace
-([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}})).
+A run's page is `/d/agent-run/agent-run?var-run=<id>`. A successful run shows its pull request; the
+outcome reason appears only when a run fails. One known issue: MCP tool calls are not yet joined to
+the run's trace ([F16]({{< relref "/docs/platform/ai-platform/status.md#live-findings" >}})).
 
 The full transcript (prompts and outputs) lives in the room, visible to the people with access to
 that room. It holds a run to its end: before the harness stops, even when its node is reclaimed, it
 asks the room-bridge to read its log to the last event
-([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings-on-gcp-0" >}}), fixed and verified on `aws-0` on 2026-10-07).
+([F11]({{< relref "/docs/platform/ai-platform/status.md#live-findings" >}}), fixed and verified on `aws-0` on 2026-10-07).
 
 ## Frequently asked questions
 

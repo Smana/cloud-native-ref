@@ -7,7 +7,7 @@ lastVerified: 2026-10-01
 
 One `AgentRun` object becomes a fully isolated, fully attributed run. The agent in the loop is not
 trusted, so every control on this page sits outside the sandbox. This page describes the design;
-what runs today is on the [status page]({{< relref "/docs/platform/ai-platform/status.md#runtime" >}}).
+what runs today is on the [status page]({{< relref "/docs/platform/ai-platform/status.md#v1-what-shipped" >}}).
 
 ![The agent runtime. An AgentRun claim goes through a Crossplane composition, which renders a ServiceAccount with projected tokens, a default-deny CiliumNetworkPolicy and a Sandbox. The Sandbox pod runs under gVisor on a dedicated pool, GKE Sandbox on gcp-0 or Karpenter on aws-0. Inside it, the OpenHands harness never holds the run token: the Envoy identity-proxy sidecar attaches it to every call to the agent gateway, and the room-bridge sidecar holds the room token. The gateway's token exchange reaches octo-sts, which mints a short-lived GitHub token for the agents' App, confined by rulesets to agent/** branches and no tags. OpenBao and External Secrets hold the platform's secrets, none of which reach the sandbox](/images/diagrams/ai-platform-3.svg)
 
