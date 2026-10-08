@@ -11,7 +11,7 @@ can read on GitHub.
 **Architecture:** The broker folds each room's log into one deterministic summary (`summary/v1`)
 that the web page and `roomctl status --json` both render. The factory writes structured task
 facts into the room; agents add short progress notes. Room visibility follows GitHub repo read
-access through a cached permission check keyed on a `github_login` claim ZITADEL adds. An
+access through a cached permission check on the GitHub login linked to their ZITADEL user. An
 open-format Agent Skill, shipped inside `roomctl`, teaches local agents the hand-off procedure.
 
 **Tech Stack:** Go 1.27 (broker, factory, `roomctl`), PostgreSQL via pgx, controller-runtime,
@@ -49,7 +49,7 @@ TypeScript + esbuild + vitest (web UI), ZITADEL Actions (JavaScript) applied by
 | `internal/summary/summary.go` (create), `summary_test.go`, `testdata/*.json` | The pure fold and the per-viewer view |
 | `internal/mcp/tools.go` (modify), `tools_test.go` | `room_progress` and its per-run note limiter |
 | `internal/factory/reconciler/text.go`, `internal/brief/brief.go` (modify), tests | The milestone-note instruction |
-| `internal/authn/jwt.go`, `humans.go` (modify), tests | `github_login` claim into `Principal.GitHubLogin` |
+| `internal/ghidentity/{ghidentity,zitadel}.go` (create), `internal/github/app.go` (modify), tests | ZITADEL GitHub link to the current GitHub login, cached |
 | `internal/github/app.go` (modify), `app_test.go` | `App.Permission(ctx, owner, repo, login)` |
 | `internal/repoaccess/repoaccess.go` (create), `repoaccess_test.go` | Cached GitHub read check, fail closed |
 | `internal/humanapi/access.go` (create), `rooms.go`, `ws.go`, `acts.go` (modify), tests | D7 gate, 404, fork keeps its repository, create requires one |
@@ -62,7 +62,7 @@ TypeScript + esbuild + vitest (web UI), ZITADEL Actions (JavaScript) applied by
 
 | File | Responsibility |
 |---|---|
-| `scripts/provision/zitadel-actions/github-login.js` (create), `zitadel-idp.sh` (modify), test | GitHub identity provider and the `github_login` claim |
+| `scripts/provision/zitadel-idp.sh` (modify), test | Link-only GitHub IdP, and the broker's read-only ZITADEL link reader |
 | `infrastructure/base/room-broker/config.yaml` (modify) | Repo-access settings |
 | `website/layouts/_partials/custom/head-end.html` (create), `website/assets/css/custom.css` (modify) | Zoomable mermaid diagrams |
 | `website/content/docs/decisions/0052-local-first-factory-ux.md` (create), `_index.md` | ADR for D2, D3 and D7 |
@@ -1072,20 +1072,166 @@ In `RoomTools`, add `notes := &noteGate{}` beside `appendAs`. If `server.go` alr
 - [ ] **Step 4: Run all brief and size tests**: `go test -race ./internal/factory/reconciler/ ./internal/brief/`. Expected: PASS.
 - [ ] **Step 5: Commit**: `git commit -am "feat(factory): implementers post a progress note at each milestone"`
 
-### Task 8: The `github_login` claim
+### Task 8: GitHub identity from the ZITADEL link
+
+The caller's GitHub identity comes from their ZITADEL user's **GitHub IdP link**, read by the broker,
+never from a token claim. No ZITADEL Action can read IdP links at token time. User metadata, the only
+other source, is writable by machine users for themselves and by `user.write` holders. A link can only
+be added by authenticating at GitHub, or by an admin. The link holds GitHub's **numeric** user id,
+which the broker resolves to the current login, so a GitHub rename cannot hand access to whoever
+registers the old login.
 
 **Files:**
-- Modify: `internal/authn/jwt.go` (`Claims` :67, `Principal` :315), `internal/authn/humans.go` (:86, :109)
-- Test: `internal/authn/humans_test.go`
+- Create: `internal/ghidentity/ghidentity.go`, `internal/ghidentity/ghidentity_test.go`
+- Create: `internal/ghidentity/zitadel.go`, `internal/ghidentity/zitadel_test.go` (the ZITADEL links client)
+- Modify: `internal/github/app.go` (add `UserLogin`), `internal/github/app_test.go`
 
 **Interfaces:**
-- Produces: `Claims.GitHubLogin string \`json:"github_login,omitempty"\``; `Principal.GitHubLogin string`.
+- Produces:
+  - `type Link struct{ IdPID, UserID string }`, where `UserID` is the external (GitHub numeric) id.
+  - `type Resolver struct{ Links func(ctx context.Context, zitadelUser string) ([]Link, error); LoginOf func(ctx context.Context, repo string, githubID int64) (string, error); IdPID string; TTL time.Duration; Now func() time.Time }`
+  - `func (r *Resolver) Login(ctx context.Context, sub, repo string) (string, error)`: the current GitHub login linked to ZITADEL user `sub`; `"", nil` when the user has no GitHub link; an error when ZITADEL or GitHub fails and no answer younger than TTL is cached (the caller fails closed).
+  - `func ZitadelLinks(hc *http.Client, issuer, pat string) func(ctx context.Context, user string) ([]Link, error)`: `POST {issuer}/v2/users/{user}/links/_search`, `Authorization: Bearer <pat>`, reading `result[].idpId` and `result[].userId`.
+  - `func (a *App) UserLogin(ctx context.Context, owner, repo string, id int64) (string, error)`: `GET {API}/user/{id}` with the installation token of `owner/repo`; returns `login`.
 
-- [ ] **Step 1: Write the failing test**: sign a human access token and an ID token with the test key the file already uses, carrying `"github_login":"smana"`. Authenticate both, assert `p.GitHubLogin == "smana"`, and assert a token without the claim yields `""`.
-- [ ] **Step 2: Run it**: `go test ./internal/authn/ -run GitHubLogin`. Expected: FAIL.
-- [ ] **Step 3: Implement**: add the field to `Claims` and `Principal`, and set `GitHubLogin: ac.GitHubLogin` (and `id.GitHubLogin`) in both human constructors. A GitHub login is matched case-insensitively later, so store it as given and lower-case it on comparison (Task 9).
-- [ ] **Step 4: Run them**: `go test -race ./internal/authn/`. Expected: PASS.
-- [ ] **Step 5: Commit**: `git commit -am "feat(authn): read the github_login claim"`
+- [ ] **Step 1: Write the failing tests**
+
+```go
+func TestLoginFollowsTheGitHubLink(t *testing.T) {
+	r := &ghidentity.Resolver{IdPID: "gh-idp", TTL: 5 * time.Minute, Now: time.Now,
+		Links: func(_ context.Context, user string) ([]ghidentity.Link, error) {
+			if user == "u1" {
+				return []ghidentity.Link{{IdPID: "google-idp", UserID: "1"}, {IdPID: "gh-idp", UserID: "583231"}}, nil
+			}
+			return []ghidentity.Link{{IdPID: "google-idp", UserID: "2"}}, nil
+		},
+		LoginOf: func(_ context.Context, repo string, id int64) (string, error) {
+			if id != 583231 {
+				t.Fatalf("resolved id %d", id)
+			}
+			return "octocat", nil
+		}}
+	if got, err := r.Login(context.Background(), "u1", "Smana/x"); err != nil || got != "octocat" {
+		t.Fatalf("linked user: %q %v", got, err)
+	}
+	if got, err := r.Login(context.Background(), "u2", "Smana/x"); err != nil || got != "" {
+		t.Fatalf("unlinked user: %q %v", got, err)
+	}
+}
+
+func TestOnlyTheConfiguredIdPCounts(t *testing.T) {
+	r := &ghidentity.Resolver{IdPID: "gh-idp", TTL: time.Minute, Now: time.Now,
+		Links: func(context.Context, string) ([]ghidentity.Link, error) {
+			return []ghidentity.Link{{IdPID: "other-oauth-idp", UserID: "583231"}}, nil
+		},
+		LoginOf: func(context.Context, string, int64) (string, error) { return "octocat", nil }}
+	if got, _ := r.Login(context.Background(), "u1", "Smana/x"); got != "" {
+		t.Fatalf("a non-GitHub IdP's link was trusted: %q", got)
+	}
+}
+
+func TestLoginFailsClosedPastTheCache(t *testing.T) {
+	now := time.Unix(0, 0)
+	fail := false
+	r := &ghidentity.Resolver{IdPID: "gh-idp", TTL: 5 * time.Minute, Now: func() time.Time { return now },
+		Links: func(context.Context, string) ([]ghidentity.Link, error) {
+			if fail {
+				return nil, errors.New("zitadel down")
+			}
+			return []ghidentity.Link{{IdPID: "gh-idp", UserID: "583231"}}, nil
+		},
+		LoginOf: func(context.Context, string, int64) (string, error) { return "octocat", nil }}
+	if got, _ := r.Login(context.Background(), "u1", "Smana/x"); got != "octocat" {
+		t.Fatal("first resolve")
+	}
+	fail = true
+	now = now.Add(4 * time.Minute)
+	if got, err := r.Login(context.Background(), "u1", "Smana/x"); got != "octocat" || err != nil {
+		t.Fatalf("a fresh cache must stand: %q %v", got, err)
+	}
+	now = now.Add(2 * time.Minute)
+	if _, err := r.Login(context.Background(), "u1", "Smana/x"); err == nil {
+		t.Fatal("must fail closed past the TTL")
+	}
+}
+```
+
+Also write an `httptest` test for `ZitadelLinks` (request path, bearer header, JSON body `{}`, parsing
+`result[].idpId` and `result[].userId`, a non-2xx answer is an error), and one for `App.UserLogin`
+in the style of `app_test.go`'s existing tests (path `/user/583231`, `login` parsed, 404 is an error).
+
+- [ ] **Step 2: Run them**: `go test ./internal/ghidentity/ ./internal/github/`. Expected: FAIL.
+- [ ] **Step 3: Implement** `ghidentity.go`:
+
+```go
+// Package ghidentity resolves a ZITADEL user to the GitHub login they linked (spec D7). The source
+// is the user's GitHub IdP link, never a token claim: a link is added only by authenticating at
+// GitHub, while user metadata is writable by machine users and user.write holders.
+package ghidentity
+
+type Link struct{ IdPID, UserID string }
+
+type Resolver struct {
+	Links func(ctx context.Context, zitadelUser string) ([]Link, error)
+	LoginOf func(ctx context.Context, repo string, githubID int64) (string, error)
+	IdPID string
+	TTL   time.Duration
+	Now   func() time.Time
+
+	mu    sync.Mutex
+	cache map[string]entry
+}
+
+type entry struct {
+	login string
+	at    time.Time
+}
+
+// maxEntries bounds the cache; past it the oldest entries are dropped.
+const maxEntries = 10_000
+
+// Login is sub's current GitHub login, "" when sub has no link to the GitHub IdP. A cached answer
+// stands for TTL; past it a failure is an error, so the caller fails closed.
+func (r *Resolver) Login(ctx context.Context, sub, repo string) (string, error) {
+	if sub == "" || r.IdPID == "" {
+		return "", nil
+	}
+	r.mu.Lock()
+	e, hit := r.cache[sub]
+	r.mu.Unlock()
+	if hit && r.Now().Sub(e.at) < r.TTL {
+		return e.login, nil
+	}
+	links, err := r.Links(ctx, sub)
+	if err != nil {
+		return "", fmt.Errorf("ghidentity: cannot read %s's links: %w", sub, err)
+	}
+	login := ""
+	for _, l := range links {
+		if l.IdPID != r.IdPID {
+			continue
+		}
+		id, err := strconv.ParseInt(l.UserID, 10, 64)
+		if err != nil || id <= 0 {
+			return "", fmt.Errorf("ghidentity: GitHub link of %s holds %q, not a numeric id", sub, l.UserID)
+		}
+		if login, err = r.LoginOf(ctx, repo, id); err != nil {
+			return "", fmt.Errorf("ghidentity: cannot resolve GitHub id %d: %w", id, err)
+		}
+		break
+	}
+	r.put(sub, entry{login: login, at: r.Now()})
+	return login, nil
+}
+```
+
+`put` stores the entry under the mutex and evicts the oldest entry when the cache holds
+`maxEntries`. An unlinked user is cached too (`login: ""`), so a user who links GitHub waits at most
+TTL. `zitadel.go` implements `ZitadelLinks` with a 10-second timeout and a 64 KiB reply bound, the
+same way `internal/github/app.go` bounds its replies.
+
+- [ ] **Step 4: Run them**: `go test -race ./internal/ghidentity/ ./internal/github/`. Expected: PASS.
+- [ ] **Step 5: Commit**: `git add internal/ghidentity/ internal/github/ && git commit -m "feat(rooms): resolve a user's GitHub login from their ZITADEL link"`
 
 ### Task 9: GitHub-backed room access (D7)
 
@@ -1097,6 +1243,7 @@ In `RoomTools`, add `notes := &noteGate{}` beside `appendAs`. If `server.go` alr
 - Test: `internal/humanapi/access_test.go`
 
 **Interfaces:**
+- Consumes: `ghidentity.Resolver.Login(ctx, sub, repo)` (Task 8). The humanapi tests stub it with a fixed map from the principal's `Sub` to a login.
 - Produces:
   - `func (a *App) Permission(ctx context.Context, owner, repo, login string) (string, error)`: GitHub's `permission`, `"none"` on 404.
   - `type Checker struct{ Perm func(ctx context.Context, owner, repo, login string) (string, error); TTL time.Duration; Now func() time.Time }`
@@ -1207,7 +1354,7 @@ The "fresh cache stands" case is the early return; past the TTL a failed call re
   - `GET /api/rooms` lists A and not B;
   - the WebSocket for B answers **404** `no such room`, the same as a missing room;
   - admin sees both;
-  - a token without `github_login` sees none;
+  - a user with no GitHub link sees none;
   - forking A yields a room with `Spec.Repository == "Smana/a"`;
   - `POST /api/rooms` without `repository` answers 400, and with a repo the caller cannot read answers 404.
 
@@ -1223,11 +1370,15 @@ func (s *Server) admits(ctx context.Context, room *v1alpha1.Room, p authn.Princi
 	if room.Spec.Repository == "" || s.Access == nil {
 		return false, nil
 	}
-	return s.Access.CanRead(ctx, room.Spec.Repository, p.GitHubLogin)
+	login, err := s.Identity.Login(ctx, p.Sub, room.Spec.Repository)
+	if err != nil || login == "" {
+		return false, err
+	}
+	return s.Access.CanRead(ctx, room.Spec.Repository, login)
 }
 ```
 
-Add `IsAdmin(p) bool { return in(p, g.Admin) }` to `policy.Groups`, and `Access *repoaccess.Checker` to `Server` (nil means admins-only, so fail closed). Call `admits` in `listRooms` (skip on false or error), in `ws.go` `lookup` (false gives the 404 `no such room`; an error gives 503 `access_unverified`), and before `createRoom` creates. Replace the 403 `not_permitted` on read with the same 404. In the fork act, copy `Repository` from the source room's spec. Wire the checker in `internal/app` from config: `rooms.access.ttl` defaults to 5m; `Perm` comes from the broker's existing `github.App`.
+Add `IsAdmin(p) bool { return in(p, g.Admin) }` to `policy.Groups`, and `Access *repoaccess.Checker` plus `Identity *ghidentity.Resolver` (Task 8) to `Server` (either nil means admins-only, so fail closed). Wire the resolver from config: `Links` = `ghidentity.ZitadelLinks` with the reader PAT, `LoginOf` = the broker `github.App.UserLogin` split on the room's repository, `IdPID` from the reader secret, the same TTL. Call `admits` in `listRooms` (skip on false or error), in `ws.go` `lookup` (false gives the 404 `no such room`; an error gives 503 `access_unverified`), and before `createRoom` creates. Replace the 403 `not_permitted` on read with the same 404. In the fork act, copy `Repository` from the source room's spec. Wire the checker in `internal/app` from config: `rooms.access.ttl` defaults to 5m; `Perm` comes from the broker's existing `github.App`.
 
 - [ ] **Step 7: Run them** (memory rule): `go test -race ./internal/repoaccess/ ./internal/github/ ./internal/humanapi/ ./internal/policy/`. Expected: PASS.
 - [ ] **Step 8: Commit**: `git add internal/ && git commit -m "feat(rooms): room visibility follows GitHub read access"`
@@ -1247,7 +1398,7 @@ Add `IsAdmin(p) bool { return in(p, g.Admin) }` to `policy.Groups`, and `Access 
   - `?after=` returns only newer notes;
   - an unreadable room answers 404;
   - `GET /api/rooms?repo=Smana/a` lists only that repo;
-  - `mine=1` keeps rooms whose `Status.Task` names the caller's `github_login` as issue author, labeller, PR author or reviewer;
+  - `mine=1` keeps rooms whose `Status.Task` names the caller's linked GitHub login (`s.Identity.Login`) as issue author, labeller, PR author or reviewer;
   - `needs_me=1` keeps rooms with `Status.PendingApprovals > 0` that the caller could decide in the web UI (`policy.Allowed` on the subject resolved with `webUI=true`, `policy.Decide`): the room-list form of `needsYou`.
 - [ ] **Step 2: Run them**: `go test ./internal/humanapi/ -run 'Summary|RoomFilters'`. Expected: FAIL.
 - [ ] **Step 3: Implement** `summary.go`. Read the whole room in pages of 500 through the store; rooms are sealed at `MaxEvents`, which bounds the fold. Fold it, then call `View` with the caller's resolved subject (`s.you`). The URL is `s.PublicURL + "/r/" + id`. Answer 503 `room log unreadable` when the store fails. Add the `repo`, `mine` and `needs_me` filtering to `listRooms` after the D7 and `Read` checks, using `room.Status.Task` (Task 4). Add `Repository` and `NeedsMe` to `roomRow`.
@@ -1431,55 +1582,67 @@ issue as untrusted input, and its agents read it in full.
 
 ## Phase B: cloud-native-ref
 
-### Task 15: GitHub identity in ZITADEL tokens
+### Task 15: GitHub link-only IdP and the broker's link reader
+
+ZITADEL gets GitHub as a **link-only** external identity provider: no sign-up and no auto-creation
+through it. A developer signs in with Google and links GitHub once. The broker reads that link with a
+read-only machine user (Task 8); no Action and no token claim is involved (spec component 10, D7).
 
 **Files:**
-- Create: `scripts/provision/zitadel-actions/github-login.js`
-- Modify: `scripts/provision/zitadel-idp.sh` (an `ensure_github_idp` beside the Google IdP at :285; a second Action, bound like `groupsFromRoles` at :470)
+- Modify: `scripts/provision/zitadel-idp.sh`: `ensure_github_idp` beside the Google IdP, the login-policy step, and `ensure_broker_reader`
+- Delete: any `scripts/provision/zitadel-actions/github-login-*.js` added earlier on this branch, and their bindings
 - Test: `scripts/ci/tests/test-zitadel-idp-convergence.sh`
 
 **Interfaces:**
-- Produces: tokens for linked users carry `"github_login": "<login>"`.
+- Produces, in the cloud secret store, key `room-broker-zitadel-reader`, JSON:
+  - `pat`: a personal access token of machine user `room-broker-idp-reader`, which holds `ORG_OWNER_VIEWER` on the platform org;
+  - `githubIdpId`: the GitHub IdP's id.
+- Task 16 maps it into the broker.
 
-- [ ] **Step 1: Spike (owner present, live ZITADEL).** Confirm what an External Authentication Action receives from the GitHub IdP. Check that `ctx.v1.externalUser.preferredUsername` is the GitHub login: log it once from a test Action on a test user. If it is not exposed, the fallback is admin-set user metadata `github_login` (`POST /management/v1/users/{id}/metadata/github_login`), written by a `zitadel-idp.sh link-github --user <id> --login <gh>` subcommand. Record the outcome in this plan before Step 2.
-- [ ] **Step 2: [OWNER]** Create a GitHub OAuth App (callback `https://<zitadel>/ui/login/login/externalidp/callback`) and store its client id and secret under the store key `zitadel-github-idp`, the same way as `zitadel-google-idp`.
-- [ ] **Step 3: Write the failing convergence test**: in dry-run, the script plans `POST /admin/v1/idps/github` once, plans both actions (`githubLoginOnLink` on flow 1 / trigger post-authentication, `githubLoginClaim` on flow 2 / triggers 4 and 5), and is idempotent on a second run.
-- [ ] **Step 4: Implement**:
+- [ ] **Step 1: Write the failing test.** It runs the **real** script, not a restated copy of its jq. Put a `curl` shim first on `PATH`, stub `kubectl` and `resolve_zitadel_pat` the same way, and serve canned JSON for the templates search, GetFlow, the machine-user search and the PAT list. Assert:
+  - a dry run with the store key `zitadel-github-idp` present plans `POST /admin/v1/idps/github` once;
+  - a second run against the "already exists" fixtures plans nothing;
+  - with the key absent, the script prints `[skip` for the GitHub IdP and plans no GitHub IdP and no login-policy change;
+  - the Google IdP is planned exactly as before;
+  - the reader machine user, its `ORG_OWNER_VIEWER` membership and its PAT are planned once, then not again;
+  - with `--apply`, a failed GetFlow (5xx) aborts before any `SetTriggerActions` POST, so existing bindings are never replaced by a partial list.
+- [ ] **Step 2: Run it**: `bash scripts/ci/tests/test-zitadel-idp-convergence.sh`. Expected: FAIL.
+- [ ] **Step 3: Implement**:
+  - `ensure_github_idp`: read `zitadel-github-idp` (`{"client_id","client_secret"}`) from the store **once**, then set a flag the login-policy step reads. Create or update the GitHub IdP with `isCreationAllowed: false`, `isAutoCreation: false`, `isLinkingAllowed: true`, `autoLinking` unset. Skip with a `[skip   ]` line when the key is absent.
+  - `ensure_broker_reader`, only when the GitHub IdP exists:
+    - ensure machine user `room-broker-idp-reader`;
+    - grant it `ORG_OWNER_VIEWER` on the org: read-only; ZITADEL has no narrower org role that includes `user.read`;
+    - ensure one PAT with a 1-year expiry, rotated when less than 30 days remain;
+    - write `{"pat","githubIdpId"}` to `room-broker-zitadel-reader` through the same store helper the script uses for other secrets.
+  - Keep the `ensure_flow` change that preserves existing trigger bindings, but abort under `--apply` when GetFlow fails. `{}` stands only for a successful response with no flow.
+  - Remove the two GitHub Actions and their bindings if an earlier commit on this branch added them.
+- [ ] **Step 4: Run it**: `bash scripts/ci/tests/test-zitadel-idp-convergence.sh` and `bash scripts/ci/tests/run.sh`. Expected: PASS.
+- [ ] **Step 5: Commit**: `git commit -m "feat(zitadel): link-only GitHub IdP and a read-only link reader for the room broker"`
 
-```javascript
-// github-login.js: two Actions. On an external login through the GitHub IdP, remember the GitHub
-// login as user metadata; on every token, assert it as the github_login claim, which the room
-// broker matches against GitHub repo permissions (spec D7).
-function githubLoginOnLink(ctx, api) {
-  var u = ctx.v1.externalUser;
-  if (!u || !u.preferredUsername) { return; }
-  api.v1.user.appendMetadata('github_login', u.preferredUsername);
-}
-
-function githubLoginClaim(ctx, api) {
-  var md = ctx.v1.user.getMetadata();
-  if (!md || !md.metadata) { return; }
-  for (var i = 0; i < md.metadata.length; i++) {
-    if (md.metadata[i].key === 'github_login') {
-      api.v1.claims.setClaim('github_login', md.metadata[i].value);
-      return;
-    }
-  }
-}
-```
-
-ZITADEL runs one function per Action, named like the Action, so split this into two files if `assert_action_name_matches_function` requires one function per file. Mirror `ensure_action` and `ensure_flow` for both. Apply the instance-level GitHub IdP with `POST /admin/v1/idps/github` from the store key.
-- [ ] **Step 5: Run it**: `bash scripts/ci/tests/test-zitadel-idp-convergence.sh`. Expected: PASS.
-- [ ] **Step 6: Commit**: `git commit -m "feat(zitadel): GitHub identity provider and the github_login claim"`
+**Owner, at the next bootstrap:**
+1. Create a GitHub OAuth App with callback `<IDP_URL>/ui/login/login/externalidp/callback`.
+2. Store `{"client_id","client_secret"}` under `zitadel-github-idp`.
+3. Run `zitadel-idp.sh sync --apply`.
+4. Link your GitHub account: sign in with Google, choose GitHub on the login page and pick "link", authenticate with Google, sign out, then sign in with GitHub once.
 
 ### Task 16: Broker settings for repo access
 
 **Files:**
-- Modify: `infrastructure/base/room-broker/config.yaml` (add `access: {ttl: 5m}` under the human config, matching Task 9's config key)
+- Modify: `infrastructure/base/room-broker/config.yaml`: the repo-access settings, under the key Task 9 recorded (ruling R2)
+- Create: an ExternalSecret for `room-broker-zitadel-reader` in `infrastructure/base/room-broker/`, mirroring the broker's existing ExternalSecrets
+- Modify: the broker's CiliumNetworkPolicy, only if ZITADEL's API is not already reachable
 
-- [ ] **Step 1:** Add the setting, and check that the factory App installation the broker already holds (`room-broker-factory-app`) has `metadata: read`. It does by default, and that covers the collaborator permission endpoint.
+**Interfaces:**
+- Consumes: the store key `room-broker-zitadel-reader` (Task 15), and the config keys Tasks 8 and 9 recorded.
+
+- [ ] **Step 1:** Add to the broker config:
+  - the access TTL (5m);
+  - the ZITADEL issuer, which the broker already has;
+  - the path of the mounted reader secret, holding the PAT and the GitHub IdP id.
+
+  Map the secret with an ExternalSecret backed by OpenBao, as the broker's other secrets are. Check that the broker's network policy allows HTTPS egress to the ZITADEL host it already uses for JWKS. Check that the factory App installation the broker holds has `metadata: read`, which it does by default and which covers `GET /repos/{o}/{r}/collaborators/{login}/permission` and `GET /user/{id}`.
 - [ ] **Step 2:** Run `./scripts/ci/validate-manifests.sh` (memory rule). Expected: rc=0.
-- [ ] **Step 3: Commit**: `git commit -am "feat(rooms): room-broker repo access settings"`
+- [ ] **Step 3: Commit**: `git commit -m "feat(rooms): room-broker repo access settings and ZITADEL link reader secret"`
 
 ### Task 17: Zoomable diagrams
 

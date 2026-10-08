@@ -88,7 +88,7 @@ register the repo with the factory. Each repo opts in explicitly; the factory is
 | 7 | Zoomable diagrams | cloud-native-ref docs site | Click any mermaid diagram to open it full screen with pan and zoom: one script + CSS in the site layout, every page. |
 | 8 | Observability checklist | cloud-native-ref runbook | Pass criteria for the next live run (below). |
 | 9 | Room repo + GitHub-backed read check (D7) | broker + factory | Every room carries its repo; reads check the caller's GitHub permission (cached 5 min), admins bypass. |
-| 10 | GitHub identity in the token | cloud-native-ref (ZITADEL config) | GitHub as an external identity provider in ZITADEL; an Action adds the `github_login` claim. |
+| 10 | GitHub identity from the IdP link | cloud-native-ref (ZITADEL config) + broker | GitHub as a link-only external identity provider in ZITADEL; the broker reads the user's GitHub link (numeric id) with a read-only ZITADEL credential and resolves the current login. |
 | 11 | `roomctl rooms` filters | roomctl + web room list | `--repo`, `--mine`, `--needs-me`. |
 
 ### The summary (`summary/v1`)
@@ -167,9 +167,15 @@ permissions. D7 closes that.
 - Every room carries its repo in the existing `RoomSpec.Repository` (`owner/name`), set by whoever
   creates it: the factory for a task (`rooms.Ensure`), the human for `POST /api/rooms`, the parent
   room for a fork. `POST /v1/runs` creates no room; it runs in an existing one.
-- The developer's token carries their GitHub login. ZITADEL links the identity through GitHub as an
-  external identity provider; a ZITADEL Action adds a `github_login` claim, the same mechanism as
-  today's `groupsFromRoles`.
+- The developer links their GitHub account to their ZITADEL user once: GitHub is a **link-only**
+  external identity provider (no sign-up through it). The broker reads that link, never a claim:
+  - it lists the user's IdP links (ZITADEL `ListIDPLinks`, read-only `ORG_OWNER_VIEWER` machine user)
+    and takes the GitHub link's numeric user id;
+  - it resolves the id to the current login (`GET /user/{id}`) and caches both for at most 5 minutes.
+- Why not a token claim: no ZITADEL Action can read IdP links at token time, and user metadata,
+  the only alternative, is writable by machine users for themselves and by `user.write` holders, so
+  a metadata claim is forgeable. A link can be added only by authenticating at GitHub, or by an
+  admin. The numeric id also survives a GitHub rename, and unlinking takes effect within 5 minutes.
 - On every room read the broker asks GitHub whether that login can read that repo, using the
   factory App's installation token (`GET /repos/{owner}/{repo}/collaborators/{login}/permission`).
   It caches the answer for at most 5 minutes. `agents-admin` bypasses the check.
@@ -182,14 +188,14 @@ you may read:
 | Filter | Lists |
 |---|---|
 | `--repo owner/name` | rooms for that repo |
-| `--mine` | rooms for issues you filed or labelled, and PRs you authored or review (matched on `github_login`) |
+| `--mine` | rooms for issues you filed or labelled, and PRs you authored or review (matched on your linked GitHub login) |
 | `--needs-me` | rooms whose `needsYou` names you |
 
 The skill answers "anything waiting on me?" with `roomctl rooms --needs-me`.
 
 ```mermaid
 flowchart LR
-  T["token: sub + github_login"] --> B{"broker: read room R (repo X)"}
+  T["token: sub"] --> L["ZITADEL link -> GitHub id -> login"] --> B{"broker: read room R (repo X)"}
   B -->|agents-admin| OK["allowed"]
   B -->|cache hit < 5 min| C{"can read X?"}
   B -->|cache miss| G["GitHub: permission of login on X"] --> C
@@ -208,7 +214,7 @@ flowchart LR
 | Progress note too long or too fast | Refused with the room tools' existing `invalid_arguments` / `rate_limited`; the run continues. |
 | `roomctl` missing or unauthenticated | The skill says so and gives the install or `roomctl login` step; it never falls back to the browser silently. |
 | GitHub permission API failing | A cached answer younger than 5 minutes stands; past that, **fail closed** for non-admins with "cannot verify your access to <repo> right now". |
-| Token has no `github_login` (identity not linked) | Non-admins see no rooms; `roomctl rooms` explains how to link GitHub in ZITADEL. |
+| No GitHub link on the ZITADEL user, or ZITADEL unreachable past the cache | Non-admins see no rooms; `roomctl rooms` explains how to link GitHub in ZITADEL. |
 | A room with no repo (created before this change) | Visible to admins only until backfilled; the factory backfills from its task. |
 
 ## Security
@@ -234,7 +240,7 @@ flowchart LR
 - **Web:** render tests per block; a watcher sees no actions.
 - **roomctl:** schema test of `--json`; the cursor returns only new items; `rooms --repo/--mine/--needs-me`.
 - **Access (D7):** table tests over (admin / member with read / member without read / no
-  `github_login` / GitHub erroring with and without a fresh cache) × (read, list, summary): only
+  GitHub link / ZITADEL or GitHub erroring with and without a fresh cache) × (read, list, summary): only
   the expected rooms are visible, and unreadable ones answer 404.
 - **Skill:** passes the repo's skill checks; exercised end to end in the next live run.
 
