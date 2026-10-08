@@ -31,7 +31,7 @@ losing my focus", not "open the factory to start my day".
 | # | Decision | Rejected | Why |
 |---|---|---|---|
 | D1 | The local agent **drafts and files** the issue; **starting work stays a separate human yes**: the developer applies `factory/ready` | One confirmation covering file + label; the agent deciding on its own | Starting factory work spends budget and runs code under the agents' identity. It stays a deliberate human act. |
-| D2 | Local integration = an **open-format Agent Skill + `roomctl`**, one binary, no MCP server in v1 | A local MCP server (`roomctl mcp`) | One artefact every agent reads (`.agents/skills`); no new server or auth path; each call visible in the developer's transcript; the procedure (draft, file, never label) belongs in a skill. MCP stays a later option only if a target agent cannot run a shell. |
+| D2 | Local integration = an **open-format Agent Skill + `roomctl`**, one binary, no MCP server in v1 | A local MCP server (`roomctl mcp`) | The open-standard skill location (`.agents/skills`, read by most agents; Claude Code reads only `.claude/skills`, which this repo symlinks to it); no new server or auth path; each call visible in the developer's transcript; the procedure (draft, file, never label) belongs in a skill. MCP stays a later option only if a target agent cannot run a shell. |
 | D3 | The room's top layer is a **deterministic summary of the room log plus the agents' own progress notes** | An LLM narrating the room | Exact, cheap, testable, cannot hallucinate; the notes give the *why* without a second model. LLM narration costs tokens, lags, and summarises untrusted agent text. |
 | D4 | **No approvals from the CLI or the skill** | An approve command or tool | ADR-0049: `roomctl` never approves. An approve tool in an agent's hands removes the human-in-the-loop guarantee. |
 | D5 | **Reviews stay in GitHub or the IDE's PR view** | Reviewing in the room | The room follows and steers a run; review lives where code review already happens. |
@@ -168,7 +168,7 @@ permissions. D7 closes that.
   creates it: the factory for a task (`rooms.Ensure`), the human for `POST /api/rooms`, the parent
   room for a fork. `POST /v1/runs` creates no room; it runs in an existing one.
 - The developer links their GitHub account to their ZITADEL user once: GitHub is a **link-only**
-  external identity provider (no sign-up through it). The broker reads that link, never a claim:
+  external identity provider (no sign-up and no auto-creation through it; ZITADEL still requires it on the login policy, so a linked user can also sign in with it, see Security). The broker reads that link, never a claim:
   - it lists the user's IdP links (ZITADEL `ListIDPLinks`, read-only `ORG_OWNER_VIEWER` machine user)
     and takes the GitHub link's numeric user id;
   - it resolves the id to the current login (`GET /user/{id}`) and caches both for at most 5 minutes.
@@ -217,7 +217,7 @@ flowchart LR
 | `roomctl` missing or unauthenticated | The skill says so and gives the install or `roomctl login` step; it never falls back to the browser silently. |
 | GitHub permission API failing | A cached answer younger than 5 minutes stands; past that, **fail closed** for non-admins with "cannot verify your access to <repo> right now". |
 | No GitHub link on the ZITADEL user, or ZITADEL unreachable past the cache | Non-admins see no rooms; `roomctl rooms` explains how to link GitHub in ZITADEL. |
-| A room with no repo (created before this change) | Visible to admins only until backfilled; the factory backfills from its task. |
+| A room created before this change | Carries the CRD default `spec.repository`, `Smana/cloud-native-ref`, which the API server applies: anyone who can read that public repo can read it until the factory backfills the real one. |
 
 ## Security
 
@@ -228,10 +228,16 @@ flowchart LR
   developer's `gh` token, which can label. The enforceable gate already exists server-side: only a
   maintainer's label starts work. An MCP server would not change this.
 - **The summary uses the room's read permission**; `actions` are filtered by standing.
-- **A room is never more visible than its repo (D7).** Revocation lags by at most the 5-minute
-  cache; an unreadable room answers 404, not 403, so its existence does not leak. Today the
+- **A room is never more visible than its repo (D7).** Revocation lags by at most the TTL (5 minutes),
+  plus one 30 s ping for a socket already open; an unreadable room answers 404, not 403, so its existence does not leak. Today the
   WebSocket answers 403 `not_permitted` for a known room you may not read; D7 changes it to the
   same 404 `no such room` as a missing one.
+- **GitHub sign-in is possible for linked users (accepted risk).** ZITADEL requires the IdP on the
+  instance login policy for linking, so a linked user can sign in with GitHub and receive their
+  project roles (EKS RBAC, Grafana, Harbor, Headlamp). Offboarding must deactivate the ZITADEL user,
+  not only the Google account.
+- **The reader PAT is not harmless if leaked**: it can mint more credentials for its own user.
+  Revoking means deleting all of its PATs and keys, or deactivating the user.
 - **The JSON is a versioned contract** (`summary/v1`), so `roomctl` and the skill do not break when
   the room evolves.
 

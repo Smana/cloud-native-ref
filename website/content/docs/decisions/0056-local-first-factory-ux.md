@@ -94,16 +94,17 @@ Details: [spec, "Rooms across repos"](https://github.com/Smana/cloud-native-ref/
 
 ### Positive
 
-- One skill file works across Claude Code, Codex, Cursor and Gemini CLI; no server to run locally.
+- One skill file, no server to run locally. `.agents/skills` is the open-standard location most agents read; Claude Code reads only `.claude/skills`, which this repo symlinks to it (`roomctl skill install` writes `.agents/skills`, so elsewhere the symlink is yours to add).
 - The summary is a versioned contract (`summary/v1`) tested with golden fixtures.
-- A room is never more visible than its repo; revocation lags by at most the cache.
+- A room is never more visible than its repo; revocation lags by at most the TTL (5 minutes), plus one 30 s ping for a socket that is already open.
 
 ### Negative
 
 | Cost | Mitigation |
 |---|---|
-| Users must link their GitHub account to their ZITADEL user once (GitHub is link-only, no sign-up through it); without a link non-admins see no rooms | `roomctl rooms` explains how to link it |
-| The broker holds an org-wide read-only ZITADEL credential (`ORG_OWNER_VIEWER` machine user) | Read-only; used only for `ListIDPLinks` |
+| Users must link their GitHub account to their ZITADEL user once (GitHub is link-only: no sign-up and no auto-creation through it); without a link non-admins see no rooms | `roomctl rooms` explains how to link it |
+| Linked users can also sign in with GitHub and receive their project roles (EKS RBAC, Grafana, Harbor, Headlamp), because ZITADEL needs the IdP on the login policy for linking. Accepted risk | Offboarding must deactivate the ZITADEL user, not only the Google account |
+| The broker holds an org-wide read-only ZITADEL credential (`ORG_OWNER_VIEWER` machine user) | Used only for `ListIDPLinks`. Not harmless if leaked: its PAT can mint more credentials for its own user, so revoking means deleting all of its PATs and keys, or deactivating the user |
 | Reads depend on the GitHub API, and on ZITADEL on a cache miss | 5-minute cache; fail closed for non-admins past it |
 | The WebSocket answers 404 `no such room` instead of 403 `not_permitted` for a known room the caller may not read | Intended: a 403 would confirm the room exists |
 | Progress notes are untrusted text, and the developer's own local agent is now a reader | Returned under `notes.untrusted: true`, the skill treats them as data, the web page escapes them |
@@ -111,7 +112,7 @@ Details: [spec, "Rooms across repos"](https://github.com/Smana/cloud-native-ref/
 
 ### Neutral
 
-- Rooms created before this change have no repo and are admin-only until the factory backfills them.
+- Rooms created before this change carry the CRD default `spec.repository`, `Smana/cloud-native-ref`, which the API server applies. Anyone who can read that public repo can read them until the factory backfills the real repository.
 - An MCP server stays a later option, not a rejected one.
 
 ---
