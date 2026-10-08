@@ -91,6 +91,16 @@
       "versioningTemplate": "semver"
     },
     {
+      "description": "The v-prefixed tags in opentofu/config.tm.hcl, today only `gateway_api_version`. The manager above matches bare x.y.z values, so this pin was invisible to Renovate: it bumped flux/sources/gitrepo-gateway-api.yaml alone (#2259) and the doc-claims lockstep check failed. The datasource's own versioning reads the `v` prefix.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^opentofu/config\\.tm\\.hcl$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*[a-z_]+\\s*=\\s*\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ]
+    },
+    {
       "description": "Pinned tool versions in container-images/**/Dockerfile ARGs. Otherwise bumped by hand, same as the openbao_version entry above - GCLOUD_VERSION is deliberately left unannotated there (see the Dockerfile comment): it's an apt package version from Google's own repo, not a GitHub release, and Renovate has no datasource for it.",
       "customType": "regex",
       "managerFilePatterns": [
@@ -240,6 +250,32 @@
       ],
       "groupName": "zitadel",
       "automerge": false
+    },
+    {
+      "description": "Gateway API: the Flux GitRepository tag and opentofu/config.tm.hcl's `gateway_api_version` in one PR, never automerged. Bootstrap installs the CRD bundle from the Terramate pin and Flux re-applies it from the tag, so a skew installs two CRD sets; cilium-operator reads them once at startup and silently disables its Gateway API controller if one is missing, which no CI job exercises.",
+      "matchPackageNames": [
+        "kubernetes-sigs/gateway-api"
+      ],
+      "groupName": "gateway-api",
+      "automerge": false
+    },
+    {
+      "description": "The agent harness installs a lock compiled by `uv pip compile` from requirements.in against upstream-constraints.txt, the third-party set OpenHands locked for its release. Renovate bumping one pin of either file breaks the resolution (#2253, #2260, #2261: lmnr 0.7.64 needs a newer opentelemetry-semantic-conventions than the constraints allow) and departs from the tested set. Both are regenerated together when the openhands-* pins in requirements.in move.",
+      "matchFileNames": [
+        "container-images/agent-harness/requirements.txt",
+        "container-images/agent-harness/upstream-constraints.txt"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Hold TypeScript below 6 for the Headlamp plugin. @kinvolk/headlamp-plugin 0.14's base tsconfig sets `baseUrl` and `moduleResolution: node10`, which TypeScript 6 rejects (TS5101, TS5107), so the build fails (#2074). Lift once the plugin toolchain ships a TypeScript 6 config; silencing with `ignoreDeprecations` only defers the break to TypeScript 7.",
+      "matchFileNames": [
+        "container-images/headlamp-plugin-app/package.json"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": "<6"
     }
   ],
   "registryAliases": {
