@@ -110,3 +110,11 @@ principle.
 records why this replaced an init-container sync, and
 [ADR-0003]({{< relref "/docs/decisions/0003-vllm-production-stack-over-kserve.md" >}})
 why vLLM Production Stack was chosen over KServe + llm-d.
+
+## Future improvements
+
+[kvcached](https://github.com/ovg-project/kvcached) gives the serving engine virtual memory for its
+KV cache, backed by GPU memory only on demand, so several models can share one GPU elastically; it
+could let the two small always-warm models, the FIM model (`xplane-qwen-coder-fim`) and LlamaGuard
+(`xplane-llamaguard3-1b`), which each hold a whole L4 today, share one. It needs GPU sharing in
+Kubernetes and a change to the `InferenceService` composition.

@@ -292,7 +292,7 @@ spec:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
             gateway.envoyproxy.io/owning-gateway-namespace: agent-system
-        # SP3's factory: one root span per task (O20, SP3 R46). Inert until SP3 ships.
+        # SP3's factory: one root span per task (O20, SP3 R46).
         - matchLabels:
             io.kubernetes.pod.namespace: agent-system
             app.kubernetes.io/name: agent-factory

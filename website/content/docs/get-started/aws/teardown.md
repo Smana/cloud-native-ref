@@ -2,7 +2,7 @@
 title: Teardown
 weight: 30
 description: Tear the platform down safely, in reverse dependency order.
-lastVerified: 2026-08-20
+lastVerified: 2026-10-05
 ---
 
 Destroying by hand, stack by stack, is easy to get wrong: the EKS cluster
@@ -33,17 +33,42 @@ Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 ## Full teardown
 
-Tears down every stack — EKS, OpenBao, Network — in one command:
+The **standard** teardown is a targeted set: the [EKS-only](#eks-only) path above, plus
+`openbao/cluster` if the secrets store must go with the cluster. It keeps, by design:
+
+| Kept by design | How it is kept |
+|---|---|
+| `openbao/lineage` + `openbao/management` (both clouds) | the `TM_LINEAGE_DESTROY` gate — a walk without it skips them, exit 0 |
+| `shared/tailscale` + `shared/aws-gcp-federation` | the `TM_TAILNET_DESTROY` / `TM_FEDERATION_DESTROY` gates |
+| The VPC and the `priv.aws.ogenki.io` private zone | **convention only — nothing gates it.** The targeted teardown simply never walks `aws/network`; the full destroy below deletes the VPC and the zone with it |
+
+Reserve the full walk for a permanent teardown — leaving the region, or handing the address space
+back. It destroys every stack in the selected lane: the EKS pair (`eks/init`, whose destroy also
+tears down `eks/configure` via `stage2-destroy-addons`), `openbao/cluster` (snapshot first, unless
+`TM_OPENBAO_SKIP_SNAPSHOT=true`), and the whole `aws/network` stack — subnets, endpoints, NAT
+gateway, **VPC and private zone included**.
 
 ```bash
 cd opentofu
-terramate script run --reverse destroy          # aws (the default)
-TM_CLOUD=all terramate script run --reverse destroy   # both clouds
+TM_CLOUD=aws TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy   # aws only
+TM_CLOUD=all TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy   # both clouds
 ```
 
-Reverse dependency order, with a single confirmation prompt
+Reverse dependency order — **always `--reverse`** — with a single confirmation prompt
 (`scripts/ops/teardown/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
 sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
+
+**Expect a second prompt without it.** The cache counts from the first answer and is never
+refreshed, and the CNPG pre-destroy seed in `eks-prepare-destroy.sh` can run for several
+minutes per database before the cluster delete even starts. A later stack's `confirm` then
+asks again, or exits 1 when there is no tty.
+
+{{< callout type="warning" >}}
+**Never run `terramate script run destroy` without `--reverse`.** Forward order reaches
+`aws/network` *before* the cluster: observed 2026-10-04, it destroyed the VPC endpoints and
+the NAT gateway while the EKS cluster was still ACTIVE, then failed on subnet dependencies —
+leaving a running cluster on a deleted network and a state file that no longer plans cleanly.
+{{< /callout >}}
 
 {{< callout type="info" >}}
 **Why `eks/configure` shows `[skip]`.** It is a registered stack
@@ -69,6 +94,14 @@ Before OpenTofu deletes anything, the script:
 - Disables Kyverno's and the Cilium operator's blocking admission webhooks —
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
+- Seeds every backed-up CNPG database, via
+  `scripts/ops/k8s/cnpg-pre-destroy-seed.sh` — the same hook the GKE destroy
+  runs: each SQLInstance with a `backup` block is promoted to a destroy-day
+  dated seed, then the `<app>-pre-destroy` alias the next bootstrap restores
+  from is refreshed from it once the seed verifies. A failed seed warns and
+  continues (the alias keeps the previous verified seed);
+  `CNPG_SKIP_PRE_DESTROY_SEED=true` skips. Runs here, before the CSI reclaim
+  below deletes the PVCs out from under postgres.
 - Reclaims CSI-provisioned EBS volumes, by calling
   `scripts/ops/k8s/reclaim-csi-volumes.sh` — the same script the GKE teardown
   calls, since every step of it is plain Kubernetes. It patches **every** PV's

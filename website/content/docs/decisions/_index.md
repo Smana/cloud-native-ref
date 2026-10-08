@@ -83,14 +83,16 @@ single-file fixes never need one.
 | [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
-| [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on AL2023 spot nodes, with OpenHands as the harness profile | Accepted | 2026-09-26 |
+| [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on a dedicated spot pool per cloud, with OpenHands as the harness profile | Accepted | 2026-09-26 |
 | [0042]({{< relref "/docs/decisions/0042-agent-router-identity-gateway.md" >}}) | Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens | Accepted | 2026-09-26 |
-| [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and a ruleset confines their App to agent branches | Accepted | 2026-09-26 |
+| [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags | Accepted | 2026-09-26 |
 | [0044]({{< relref "/docs/decisions/0044-room-session-protocol.md" >}}) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
+| 0045 | Reserved, not yet written: the merge policy gate (SP3) | Reserved | — |
 | [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
+| 0047 | Reserved, not yet written: how a request's complexity is classified for routing (SP4) | Reserved | — |
 | [0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}}) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
-| [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate: run id from the pod, metadata allowlist | Accepted | 2026-09-27 |
+| [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

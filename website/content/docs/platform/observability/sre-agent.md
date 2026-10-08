@@ -82,7 +82,7 @@ External Secret; no credential is ever inlined.
 | | |
 |---|---|
 | Chart | `deploy/helm/runlore` from the `runlore` `GitRepository` |
-| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.16.1` |
+| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.16.2` |
 | Image | `0.16.1` — signed, multi-arch, SBOM-attested |
 | Workload | `StatefulSet`, `replicaCount: 2`, leader election |
 | Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
