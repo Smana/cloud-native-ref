@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # AP-6's pre-release (agent-platform#28 at 91a6fb3), by digest (P33). Move it with the
-    # retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr28.91a6fb39@sha256:2889162f2dcbacb637769c6b3f7653e9a689a61e8bb5a39224a08a105cbfe884"
+    # agent-platform v0.6.1, by digest. Move it with the retention CronJob's,
+    # crd-rooms.yaml and atlasSchema.ref together.
+    tag: "v0.6.1@sha256:66b641009e5e771fdb00bc466309f987bfec25addc484edcfd5c0e6f54662292"
   # Two from phase 2 (§9): the leader lease picks the controller, and every
   # replica serves humans through the LISTEN/NOTIFY hub (ruling AT).
   replicas: 2

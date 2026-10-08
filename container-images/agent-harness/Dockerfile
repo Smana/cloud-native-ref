@@ -6,6 +6,9 @@
 FROM ghcr.io/openhands/agent-server:1.49.6-python@sha256:02ef66fdf0b22a40b0b55c5cca8d1790cfd260c5069f7c0b99edc1b505d5ab37 AS harness
 
 # `.github/workflows/build-container-images.yml` tags the image with this.
+# H-1 (SP2 ruling P37): a new source version, so its merge never republishes SP1's v0.1.0 tag.
+# O-1 (observability plan O21): after H-1's v0.1.1.
+# H-S3 (SP2 ruling P32): the provenance footer, after O-1's v0.1.2.
 # Disruption design §2: the SIGTERM sequence and the checkpoint trailer, on top of H-S3's footer.
 # A pull request build is pushed by hand as v0.3.0-pr<N>.<sha8>; v0.3.0 itself is published when it
 # merges, so it never republishes H-S3's v0.2.0.

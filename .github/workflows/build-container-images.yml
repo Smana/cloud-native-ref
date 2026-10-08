@@ -234,8 +234,9 @@ jobs:
         id: test-stage
         run: |
           # Generic, not agent-harness-specific: any Dockerfile that names a
-          # `test` build stage gets it run and gated here (review M4). Without
-          # this, a Renovate-automerged FROM-digest bump rebuilds and
+          # `test` build stage gets it run and gated here, before anything is
+          # pushed (review M4). The default target never builds that stage, so
+          # without this a Renovate-automerged FROM-digest bump rebuilds and
           # republishes an image whose test suite nobody ran.
           if grep -qE '^FROM .+ AS test$' "${{ matrix.dockerfile }}"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"

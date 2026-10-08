@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034
-# (functions lifted from zitadel-oidc-clients.sh read these globals)
+# shellcheck disable=SC2034,SC2218
+# (functions lifted from zitadel-oidc-clients.sh read these globals; eval defines them before
+# the calls, so shellcheck sees only the later stubs and wrongly reports SC2218)
 # requires: jq openssl
 #
 # The rooms-proxy consumer (SP2 ruling P12) and the agent groups. JWT access
