@@ -53,6 +53,16 @@
       ]
     },
     {
+      "description": "ZITADEL's image, pinned by tag and digest in the HelmRelease values, ahead of the chart's appVersion when upstream releases faster than the chart. The flux manager tracks only the chart version, so without this the pin would hold ZITADEL back once a chart ships a newer one. Grouped with the chart by the ZITADEL package rule.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^security/base/zitadel/helmrelease\\.yaml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*tag:\\s*\"(?<currentValue>v[^\"@]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ]
+    },
+    {
       "description": "OpenBao versions, its KMS seal plugins, and node_exporter, wherever an OpenBao node is configured: both clouds' cluster stacks and the restore drill. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written. The drill and the GCP startup script were added on 2026-09-26: #2095 bumped the clusters to 2.7.0 and left the drill on 2.6.2, because nothing here matched its `BAO_VERSION:` line. Plugin images carry tag and digest, and Renovate updates both.",
       "customType": "regex",
       "managerFilePatterns": [
@@ -220,6 +230,15 @@
         "registry.k8s.io/agent-sandbox/agent-sandbox-controller"
       ],
       "groupName": "agent-sandbox",
+      "automerge": false
+    },
+    {
+      "description": "ZITADEL chart and image: one PR, never automerged. ZITADEL is the identity provider for every SSO login, its setup Job migrates the database on upgrade, and CI never boots it, so a green PR proves nothing about logins still working. The image is pinned apart from the chart (security/base/zitadel/helmrelease.yaml `image.tag`) to run the latest release when the chart lags; grouped so a chart bump and its image move together, and the reviewer checks the image is not older than the chart's appVersion.",
+      "matchPackageNames": [
+        "zitadel",
+        "ghcr.io/zitadel/zitadel"
+      ],
+      "groupName": "zitadel",
       "automerge": false
     }
   ],
