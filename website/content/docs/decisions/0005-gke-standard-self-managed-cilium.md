@@ -73,7 +73,8 @@ stage-2 OpenTofu step, mirroring the existing EKS two-stage bootstrap.
   but it is now on a path with less community traffic).
 - Requires nodes to carry `node.cilium.io/agent-not-ready=true:NoSchedule` so pods do not land
   before the agent is ready — including on autoscaled nodes
-  (see [ADR-0006](0006-nap-computeclass-over-karpenter.md)).
+  (see [ADR-0006](0006-nap-computeclass-over-karpenter.md)). On GKE the key is non-default since
+  2026-10-01, `ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready` (ADR-0006).
 
 ### Option 2: GKE Standard + Dataplane V2
 
@@ -149,8 +150,9 @@ datapath as of 2026-08. So this is not "disable Dataplane V2" — it is "do not 
 - Unsupported by Google, and off Cilium's documented happy path.
   - *Mitigation*: pin `imageType` so kernel requirements are known; treat the CNI-displacement
     check as a permanent regression test rather than a one-off.
-- The `node.cilium.io/agent-not-ready` taint must reach every node, including autoscaled ones.
+- The agent-not-ready taint must reach every node, including autoscaled ones.
   - *Mitigation*: `ComputeClass.nodePoolConfig.taints[]`, verified by the autoscaling slice.
+    GKE uses a non-default key that the cluster autoscaler ignores; see ADR-0006.
 
 ### Neutral
 

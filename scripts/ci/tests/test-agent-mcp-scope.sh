@@ -34,17 +34,29 @@ VL_TOOLS = {"documentation", "query", "hits", "facets", "field_names", "field_va
             "stats_query", "stats_query_range", "streams", "stream_ids", "stream_field_names",
             "stream_field_values"}
 
+# SP2 §3: the same room tools on both listeners; room_handoff is not a reviewer's,
+# room_verdict is not an implementer's or a triager's.
+ROOM_TOOLS = {"room_read", "room_post", "room_handoff", "room_verdict"}
+ROOM_GRANTS = {
+    "implementer": {"room_read", "room_post", "room_handoff"},
+    "reviewer": {"room_read", "room_post", "room_verdict"},
+    "tester": ROOM_TOOLS,
+    "triager": {"room_read", "room_post", "room_handoff"},
+}
+
 EXPECTED_BACKEND_TOOLS = {
     "agent-mcp-public": {
         "flux-operator-mcp": {"search_flux_docs"},
         "mcp-victoriametrics": {"documentation"},
         "mcp-victorialogs": {"documentation"},
+        "room-broker": ROOM_TOOLS,
     },
     "agent-mcp-internal": {
         "flux-operator-mcp": {"search_flux_docs", "get_flux_instance", "get_kubernetes_api_versions",
                                "get_kubernetes_resources", "get_kubernetes_metrics", "get_kubernetes_logs"},
         "mcp-victoriametrics": VM_TOOLS,
         "mcp-victorialogs": VL_TOOLS,
+        "room-broker": ROOM_TOOLS,
     },
 }
 
@@ -66,18 +78,21 @@ _DOCS_ONLY_PUBLIC = {
     "mcp-victorialogs": {"documentation"},
 }
 
+def with_room(grants, role):
+    return {**grants, "room-broker": ROOM_GRANTS[role]}
+
 EXPECTED_ROLE_TOOLS = {
     "agent-mcp-public": {
-        "agent-router.implementer.public": _DOCS_ONLY_PUBLIC,
-        "agent-router.reviewer.public": _DOCS_ONLY_PUBLIC,
-        "agent-router.tester.public": _DOCS_ONLY_PUBLIC,
-        "agent-router.triager.public": _DOCS_ONLY_PUBLIC,
+        "agent-router.implementer.public": with_room(_DOCS_ONLY_PUBLIC, "implementer"),
+        "agent-router.reviewer.public": with_room(_DOCS_ONLY_PUBLIC, "reviewer"),
+        "agent-router.tester.public": with_room(_DOCS_ONLY_PUBLIC, "tester"),
+        "agent-router.triager.public": with_room(_DOCS_ONLY_PUBLIC, "triager"),
     },
     "agent-mcp-internal": {
-        "agent-router.implementer.internal": _IMPLEMENTER_INTERNAL,
-        "agent-router.reviewer.internal": _FULL_READER_INTERNAL,
-        "agent-router.tester.internal": _FULL_READER_INTERNAL,
-        "agent-router.triager.internal": _FULL_READER_INTERNAL,
+        "agent-router.implementer.internal": with_room(_IMPLEMENTER_INTERNAL, "implementer"),
+        "agent-router.reviewer.internal": with_room(_FULL_READER_INTERNAL, "reviewer"),
+        "agent-router.tester.internal": with_room(_FULL_READER_INTERNAL, "tester"),
+        "agent-router.triager.internal": with_room(_FULL_READER_INTERNAL, "triager"),
     },
 }
 

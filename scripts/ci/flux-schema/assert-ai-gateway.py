@@ -11,8 +11,9 @@ wrong:
       routes a principal can reach (programme contract C5). At least one such
       policy must exist -- zero is a layout regression, not compliance, and
       used to pass this check vacuously. A BackendTrafficPolicy that resolves
-      to a different Gateway class is out of scope, so a future non-budget
-      global rate limit elsewhere is not forced into this shape.
+      to a different Gateway class, or that targets a route rather than a
+      Gateway at all, is out of scope, so a future non-budget global rate
+      limit elsewhere is not forced into this shape.
   A2  Every such rule charges tokens, not calls: request cost 0, response cost
       from io.envoy.ai_gateway/llm_total_token (SP4 design section 6).
   A3  Every Gateway of class envoy-ai-gateway is covered by a
@@ -47,8 +48,11 @@ wrong:
       always forwards the validated JWT to the MCP proxy, and the MCPRoute
       API has no field to strip it; the proxy re-originates each backend
       call, so these are the three fields that feed forwarded headers -- any
-      one of them can hand a run's token to an MCP server. At least one such
-      MCPRoute must exist, for the same no-vacuous-pass reason.
+      one of them can hand a run's token to an MCP server. A backend's
+      `securityPolicy.apiKey` must name a header other than Authorization (or
+      a queryParam): without one the key goes out as `Authorization: Bearer`,
+      and no MCP hop carries a bearer. At least one such MCPRoute must exist,
+      for the same no-vacuous-pass reason.
   A7  Every agent-router listener that an AIGatewayRoute attaches to has an
       HTTPRoute on that same Gateway and sectionName which directly responds
       to an Exact `/v1/models` match via an HTTPRouteFilter's directResponse.
@@ -111,8 +115,11 @@ def check_rate_limit_rules(objs):
     def targets_ai_gateway(obj):
         ns = (obj.get("metadata") or {}).get("namespace", "")
         gateway_targets = [t for t in spec_of(obj).get("targetRefs") or [] if t.get("kind") == "Gateway"]
+        # No Gateway targetRef at all -- a route-only policy (an ordinary rate
+        # limit on some unrelated HTTPRoute, say) -- is out of scope for A1/A2.
+        # It still owes A4's mergeType, checked unconditionally below.
         if not gateway_targets:
-            return True
+            return False
         return any(gateway_classes.get((ns, t.get("name")), AI_GATEWAY_CLASS) == AI_GATEWAY_CLASS
                    for t in gateway_targets)
 
@@ -270,6 +277,13 @@ def check_mcp_token_passthrough(objs):
             if any((h.get("name") or "").lower() == "authorization" for h in backend.get("forwardHeaders") or []):
                 errors.append(f"{ref(obj)}: backend {backend.get('name')} forwards Authorization, "
                               "handing the run's token to an MCP server")
+            # An apiKey with neither header nor queryParam is injected as `Authorization: Bearer <key>`.
+            api_key = (backend.get("securityPolicy") or {}).get("apiKey")
+            if api_key is not None and (
+                    (api_key.get("header") or "").lower() == "authorization"
+                    or not (api_key.get("header") or api_key.get("queryParam"))):
+                errors.append(f"{ref(obj)}: backend {backend.get('name')} injects its apiKey as Authorization "
+                              "(set securityPolicy.apiKey.header): no MCP hop carries a bearer")
         security = spec.get("securityPolicy") or {}
         claim_to_headers = (security.get("oauth") or {}).get("claimToHeaders") or []
         if any((c.get("header") or "").lower() == "authorization" for c in claim_to_headers):
