@@ -70,20 +70,22 @@ GitHub-backed room visibility (D7).
 
 ```mermaid
 flowchart LR
-  T["token: sub"] --> L["ZITADEL link -> GitHub id -> login"] --> B{"broker: read room R (repo X)"}
+  T["token: sub"] --> B{"broker: read room R (repo X)"}
   B -->|agents-admin| OK["allowed"]
   B -->|cache hit < 5 min| C{"can read X?"}
-  B -->|cache miss| G["GitHub: permission of login on X"] --> C
+  B -->|cache miss| L["ZITADEL link -> GitHub id -> login"] --> G["GitHub: permission of login on X"] --> C
+  L -->|ZITADEL / GitHub unreachable: fail closed| D
+  G -->|unreachable: fail closed| D
   C -->|yes| S["standing rules: watch / steer / approve"]
   C -->|no| D["404: no such room"]
 ```
 
-D7 in one line: the broker lists the caller's ZITADEL IdP links (`ListIDPLinks`, read-only
-`ORG_OWNER_VIEWER` machine user), takes the GitHub link's numeric id, resolves it to the current login
-(`GET /user/{id}`), asks GitHub with the factory App's installation token whether that login can read
-the room's repo, caches each answer for at most 5 minutes, and fails closed on non-admins when
-ZITADEL or GitHub cannot be reached and the cache is stale. GitHub is a link-only IdP in ZITADEL. GitHub read access lets
-you see a room; it never grants steering or approving, which stay with the existing standings.
+D7 in one line: GitHub is a link-only IdP in ZITADEL. On a cache miss the broker lists the caller's
+IdP links (`ListIDPLinks`, read-only `ORG_OWNER_VIEWER` machine user), takes the GitHub link's numeric
+id, resolves it to the current login (`GET /user/{id}`), and asks GitHub with the factory App's
+installation token whether that login can read the room's repo. Each answer is cached for at most
+5 minutes, and non-admins fail closed when ZITADEL or GitHub cannot be reached. GitHub read access
+lets you see a room; it never grants steering or approving, which stay with the existing standings.
 Details: [spec, "Rooms across repos"](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-08-agent-factory-local-first-ux-design.md).
 
 ---

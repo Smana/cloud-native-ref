@@ -195,10 +195,12 @@ The skill answers "anything waiting on me?" with `roomctl rooms --needs-me`.
 
 ```mermaid
 flowchart LR
-  T["token: sub"] --> L["ZITADEL link -> GitHub id -> login"] --> B{"broker: read room R (repo X)"}
+  T["token: sub"] --> B{"broker: read room R (repo X)"}
   B -->|agents-admin| OK["allowed"]
   B -->|cache hit < 5 min| C{"can read X?"}
-  B -->|cache miss| G["GitHub: permission of login on X"] --> C
+  B -->|cache miss| L["ZITADEL link -> GitHub id -> login"] --> G["GitHub: permission of login on X"] --> C
+  L -->|ZITADEL / GitHub unreachable: fail closed| D
+  G -->|unreachable: fail closed| D
   C -->|yes| S["standing rules: watch / steer / approve"]
   C -->|no| D["404: no such room"]
 ```
