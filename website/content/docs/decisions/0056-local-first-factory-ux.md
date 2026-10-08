@@ -40,7 +40,8 @@ did not.
 | Option | Verdict |
 |---|---|
 | **Agent Skill (`.agents/skills`) + `roomctl`** | Chosen: one open format, one binary, the procedure (draft, file, never label) lives in the skill |
-| A local MCP server (`roomctl mcp`) | Rejected for v1: a second server and auth path to run; calls hidden behind a tool boundary; revisit only if a target agent cannot run a shell |
+| A local MCP server (`roomctl mcp`) | Deferred, not in v1: a second server and auth path to run; calls hidden behind a tool boundary; revisit only if a target agent cannot run a shell |
+| No local integration, browser room only (status quo) | Rejected: developers will not leave their agent or IDE for a browser to hand off or follow a side task |
 
 ### D3: the room's top layer
 
@@ -48,6 +49,7 @@ did not.
 |---|---|
 | **Deterministic fold of the room log, plus agents' progress notes** | Chosen: exact, cheap, testable; the notes carry the *why* without a second model |
 | An LLM narrating the room | Rejected: costs tokens, lags the run, and summarises untrusted agent text |
+| Raw event stream only (status quo) | Rejected: too much noise, no "where are we" view, unclear what the developer can do |
 
 ### D7: who may read a room
 
