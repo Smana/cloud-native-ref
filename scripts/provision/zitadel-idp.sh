@@ -29,6 +29,10 @@
 #      never by recreating, which would orphan every existing user link.
 #   4. Uploads scripts/provision/zitadel-actions/groups-from-roles.js as a v1 Action.
 #   5. Wires that Action into flow 2 (CustomiseToken) on BOTH triggers.
+#   6. If `zitadel-github-idp` is in the store, the same for a GitHub IdP, plus
+#      two Actions that put the user's GitHub login in tokens as `github_login`:
+#      githubLoginOnLink (flow 1 / trigger 1) and githubLoginClaim (flow 2 /
+#      triggers 4 and 5). Without the key, all of step 6 is skipped.
 #
 # Usage:
 #   zitadel-idp.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
@@ -91,8 +95,15 @@ IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
 # it is accepted, stored, and only ever fails at runtime.
 #
 # assert_action_name_matches_function() below makes that unrepeatable.
-ACTION_NAME="groupsFromRoles"
-ACTION_FILE="$(cd "$(dirname "$0")" && pwd)/zitadel-actions/groups-from-roles.js"
+ACTIONS_DIR="$(cd "$(dirname "$0")" && pwd)/zitadel-actions"
+ACTION_NAME="" ACTION_FILE=""
+# Selects the Action that ensure_action, action_by_name and the name assertion work on.
+use_action() { ACTION_NAME="$1"; ACTION_FILE="${ACTIONS_DIR}/$2"; }
+
+# GitHub: the room broker needs each human's GitHub login in their token
+# (spec D7). Optional -- an absent store key skips the IdP, see ensure_github_idp.
+GITHUB_IDP_NAME="GitHub"
+GITHUB_IDP_SECRET_KEY="zitadel-github-idp" # pragma: allowlist secret
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -108,7 +119,9 @@ done
 [ "$COMMAND" = "sync" ] || { sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
-[ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
+for f in groups-from-roles.js github-login-on-link.js github-login-claim.js; do
+    [ -r "${ACTIONS_DIR}/${f}" ] || { echo "cannot read ${ACTIONS_DIR}/${f}" >&2; exit 1; }
+done
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
@@ -177,7 +190,7 @@ api() {
 # is also called from main() where only the id is wanted.
 idp_template_by_name() {
     api POST /admin/v1/idps/templates/_search -d '{"queries":[]}' 2>/dev/null \
-        | jq -c --arg n "$IDP_NAME" '.result[]? | select(.name == $n)' | head -1
+        | jq -c --arg n "${1:-$IDP_NAME}" '.result[]? | select(.name == $n)' | head -1
 }
 
 idp_id_by_name() {
@@ -189,7 +202,7 @@ idp_id_by_name() {
     # JSON either way costs nothing. Same reasoning applied everywhere else
     # this function's output gets re-parsed.
     local template
-    template="$(idp_template_by_name || true)"
+    template="$(idp_template_by_name "${1:-}" || true)"
     jq -r '.id // empty' <<< "${template:-null}"
 }
 
@@ -289,6 +302,80 @@ ensure_idp() {
         return 1
     fi
     echo "[created] IdP '${IDP_NAME}' (${id}, client ${client_id})"
+}
+
+# ── the GitHub identity provider ──────────────────────────────────────────────
+#
+# Same instance scope and the same update-in-place rule as the Google IdP. The
+# OAuth App is created by hand (a GitHub OAuth App accepts exactly ONE callback
+# URL, so one app per ZITADEL); its credentials live in the store key as
+# {"client_id": "...", "client_secret": "..."}.
+#
+# Unlike Google this is OPTIONAL: an absent key skips the provider with a log
+# line instead of failing the run, so a platform without GitHub sign-in still
+# converges.
+#
+# isAutoCreation/isAutoUpdate false: GitHub may expose no e-mail, and a
+# silently created account would have no grants. A person signs in with Google
+# first and links GitHub from their ZITADEL profile (isLinkingAllowed), which
+# is also what attaches the github_login metadata to the right user.
+github_idp_payload() {
+    local ci="$1" cs="$2"
+    printf '%s' "$cs" | jq -Rs --arg n "$GITHUB_IDP_NAME" --arg ci "$ci" \
+        '{name: $n, clientId: $ci, clientSecret: .,
+          scopes: ["read:user","user:email"],
+          providerOptions: {isLinkingAllowed: true, isCreationAllowed: false,
+                            isAutoCreation: false, isAutoUpdate: false}}'
+}
+
+ensure_github_idp() {
+    local blob client_id client_secret template existing existing_client_id
+
+    blob="$(store_read "$GITHUB_IDP_SECRET_KEY" || true)"
+    if [ -z "$blob" ]; then
+        echo "[skip   ] ${GITHUB_IDP_SECRET_KEY} not in the ${CLOUD} store: no GitHub sign-in, no github_login claim"
+        return 0
+    fi
+    client_id="$(jq -r '.client_id // empty' <<< "$blob")"
+    client_secret="$(jq -r '.client_secret // empty' <<< "$blob")"
+    if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+        echo "[FAILED ] ${GITHUB_IDP_SECRET_KEY} has no client_id/client_secret" >&2
+        return 1
+    fi
+
+    template="$(idp_template_by_name "$GITHUB_IDP_NAME" || true)"
+    existing="$(jq -r '.id // empty' <<< "${template:-null}")"
+
+    if [ -n "$existing" ]; then
+        existing_client_id="$(jq -r '.config.github.clientId // empty' <<< "$template")"
+        if [ "$existing_client_id" = "$client_id" ]; then
+            echo "[ok     ] IdP '${GITHUB_IDP_NAME}' (${existing}), client id correct"
+            return 0
+        fi
+        echo "[STALE  ] IdP '${GITHUB_IDP_NAME}' (${existing}) client id: has ${existing_client_id:-<none>}, want ${client_id}"
+        if [ "$APPLY" != "true" ]; then
+            echo "           would update in place (user links kept)"
+            return 0
+        fi
+        github_idp_payload "$client_id" "$client_secret" \
+            | api PUT "/admin/v1/idps/github/${existing}" -d @- >/dev/null
+        echo "[updated] IdP '${GITHUB_IDP_NAME}' (${existing}) client id -> ${client_id}"
+        return 0
+    fi
+
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would create IdP '${GITHUB_IDP_NAME}' (client ${client_id})"
+        return 0
+    fi
+
+    local resp id
+    resp="$(github_idp_payload "$client_id" "$client_secret" | api POST /admin/v1/idps/github -d @-)"
+    id="$(jq -r '.id // empty' <<< "$resp")"
+    if [ -z "$id" ]; then
+        echo "[FAILED ] IdP creation returned no id: $(jq -c '.' <<< "$resp" | head -c 200)" >&2
+        return 1
+    fi
+    echo "[created] IdP '${GITHUB_IDP_NAME}' (${id}, client ${client_id})"
 }
 
 # The check that would have caught the day-long outage described at ACTION_NAME:
@@ -453,9 +540,10 @@ ensure_action() {
 # Flow 2 is CustomiseToken; 4 and 5 are PreUserinfoCreation and
 # PreAccessTokenCreation. Verified against a live instance rather than taken
 # from documentation: GET /management/v1/flows/2 reports
-# Action.Flow.Type.CustomiseToken.
+# Action.Flow.Type.CustomiseToken. Flow 1 is External Authentication, trigger 1
+# Post Authentication (management API reference, SetTriggerActions).
 #
-# BOTH triggers, because they are not interchangeable. Grafana reads the
+# BOTH triggers on flow 2, because they are not interchangeable. Grafana reads the
 # /userinfo response; a consumer validating the JWT itself reads the access
 # token. Wiring one leaves the other silently groupless -- which presents as
 # "SSO works but nobody has permissions", for only some of the tools.
@@ -467,39 +555,62 @@ ensure_action() {
 # list (GetFlow returns triggerActions[].actions[].id inline, confirmed
 # against the API reference), and only POST -- and only claim to have
 # written -- when it is not.
+#
+# SetTriggerActions REPLACES a trigger's list, and flow 2 now carries two
+# Actions per trigger: the POST sends the ids already bound plus this one, or
+# binding the second Action would unbind the first.
 ensure_flow() {
-    local action_id="$1" flow trigger bound
+    local action_id="$1" flow_type="$2" flow_label="$3" flow trigger bound ids
+    shift 3
 
     if [ "$action_id" = "DRYRUN-ACTION" ]; then
         # Nothing real to compare the flow against yet -- the action itself is
         # still only a dry-run plan.
-        for trigger in 4 5; do
-            echo "[dry-run] would bind action to flow 2 trigger ${trigger}"
+        for trigger in "$@"; do
+            echo "[dry-run] would bind action '${ACTION_NAME}' to flow ${flow_type} trigger ${trigger}"
         done
         return 0
     fi
 
-    flow="$(api GET /management/v1/flows/2 2>/dev/null || true)"
+    flow="$(api GET "/management/v1/flows/${flow_type}" 2>/dev/null || true)"
     [ -n "$flow" ] || flow='{}'
 
-    for trigger in 4 5; do
+    for trigger in "$@"; do
         bound="$(jq -r --arg t "$trigger" --arg a "$action_id" \
             '.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id | select(. == $a)' \
             <<< "$flow")"
         if [ -n "$bound" ]; then
-            echo "[ok     ] flow 2 (CustomiseToken) trigger ${trigger}: action already bound"
+            echo "[ok     ] flow ${flow_type} (${flow_label}) trigger ${trigger}: '${ACTION_NAME}' already bound"
             continue
         fi
 
-        echo "[STALE  ] flow 2 (CustomiseToken) trigger ${trigger}: has action not bound, want ${action_id} bound"
+        echo "[STALE  ] flow ${flow_type} (${flow_label}) trigger ${trigger}: has '${ACTION_NAME}' not bound, want ${action_id} bound"
         if [ "$APPLY" != "true" ]; then
             echo "           would bind it"
             continue
         fi
-        jq -n --arg a "$action_id" '{actionIds: [$a]}' \
-            | api POST "/management/v1/flows/2/trigger/${trigger}" -d @- >/dev/null
-        echo "[bound  ] flow 2 (CustomiseToken) trigger ${trigger}"
+        ids="$(jq -c --arg t "$trigger" --arg a "$action_id" \
+            '[.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id] + [$a]' <<< "$flow")"
+        jq -n --argjson ids "$ids" '{actionIds: $ids}' \
+            | api POST "/management/v1/flows/${flow_type}/trigger/${trigger}" -d @- >/dev/null
+        echo "[bound  ] flow ${flow_type} (${flow_label}) trigger ${trigger}"
     done
+}
+
+# bind_action <action-name> <file> <flow-type> <flow-label> <trigger>...
+bind_action() {
+    local name="$1" file="$2" id
+    shift 2
+    use_action "$name" "$file"
+    # Fails the run if the action name and the JS function disagree -- see ACTION_NAME.
+    assert_action_name_matches_function
+    id="$(ensure_action | tail -1)"
+    if [ -n "$id" ]; then
+        ensure_flow "$id" "$@"
+    elif [ "$APPLY" = "true" ]; then
+        echo "[FAILED ] no action id for '${name}'; flow not wired" >&2
+        exit 1
+    fi
 }
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -510,24 +621,27 @@ echo "scope:    instance (/admin/v1) for the IdP, org (/management/v1) for the a
 echo
 
 ensure_idp
+ensure_github_idp
 
 # Re-read rather than threading a return value out of ensure_idp: that function
 # has several exit paths (ok / stale dry-run / stale updated / create dry-run /
 # created) and reports the id inconsistently across them. Looking it up once
 # here is the same answer in every case.
 ensure_login_policy_idp "$(idp_id_by_name || true)"
-
-# Fails the run if the action name and the JS function disagree -- see ACTION_NAME.
-assert_action_name_matches_function
-
-ACTION_ID="$(ensure_action | tail -1)"
-if [ -n "$ACTION_ID" ]; then
-    ensure_flow "$ACTION_ID"
-elif [ "$APPLY" = "true" ]; then
-    echo "[FAILED ] no action id; flow not wired" >&2
-    exit 1
+# Absent GitHub IdP -> empty id -> the policy step would claim it "would add" a
+# provider that was skipped. Only touch the policy when the store key is there.
+GITHUB_IDP_ID="$(idp_id_by_name "$GITHUB_IDP_NAME" || true)"
+if [ -n "$GITHUB_IDP_ID" ] || [ -n "$(store_read "$GITHUB_IDP_SECRET_KEY" || true)" ]; then
+    ensure_login_policy_idp "$GITHUB_IDP_ID"
 fi
 
+bind_action groupsFromRoles groups-from-roles.js 2 "CustomiseToken" 4 5
+bind_action githubLoginOnLink github-login-on-link.js 1 "External Authentication" 1
+bind_action githubLoginClaim github-login-claim.js 2 "CustomiseToken" 4 5
+
+echo
+echo "GitHub-side, once per ZITADEL (a GitHub OAuth App takes exactly one callback URL):"
+echo "  ${IDP_URL}/ui/login/login/externalidp/callback"
 echo
 echo "Google-side, once per cluster -- this script cannot do it:"
 echo "  add this to the OAuth client's Authorized redirect URIs"

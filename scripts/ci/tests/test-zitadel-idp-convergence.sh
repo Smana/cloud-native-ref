@@ -108,4 +108,62 @@ payload="$(google_idp_payload "client-123" "$tricky_secret")"
 check "payload: clientId preserved"     "client-123"     "$(jq -r '.clientId' <<< "$payload")"
 check "payload: tricky secret round-trips" "$tricky_secret" "$(jq -r '.clientSecret' <<< "$payload")"
 
+# ── GitHub identity: the github_login claim (spec D7) ────────────────────────
+#
+# zitadel-idp.sh cannot run offline (it needs a live PAT), so the wiring a dry
+# run would print is checked in the source, and the Actions are executed
+# against stubbed ZITADEL contexts.
+ACTIONS="$HERE/../../provision/zitadel-actions"
+SCRIPT="$HERE/../../provision/zitadel-idp.sh"
+LINK="$ACTIONS/github-login-on-link.js"
+CLAIM="$ACTIONS/github-login-claim.js"
+
+# One function per file, named like the Action (assert_action_name_matches_function).
+check "on-link file defines githubLoginOnLink" "1" "$(grep -cE '^function githubLoginOnLink\(' "$LINK" 2>/dev/null || true)"
+check "on-link file defines one function"      "1" "$(grep -cE '^function ' "$LINK" 2>/dev/null || true)"
+check "claim file defines githubLoginClaim"    "1" "$(grep -cE '^function githubLoginClaim\(' "$CLAIM" 2>/dev/null || true)"
+check "claim file defines one function"        "1" "$(grep -cE '^function ' "$CLAIM" 2>/dev/null || true)"
+
+check "script creates the GitHub IdP once" "1" "$(grep -c 'api POST /admin/v1/idps/github' "$SCRIPT")"
+check "flow 1 / trigger 1 (External Authentication, Post Authentication)" "1" \
+    "$(grep -c '^bind_action githubLoginOnLink github-login-on-link.js 1 "External Authentication" 1$' "$SCRIPT")"
+check "flow 2 / triggers 4 5 (Complement Token)" "1" \
+    "$(grep -c '^bind_action githubLoginClaim github-login-claim.js 2 "CustomiseToken" 4 5$' "$SCRIPT")"
+check "absent GitHub store key skips, not fails" "1" "$(grep -c '^        echo "\[skip   \] ${GITHUB_IDP_SECRET_KEY} not in' "$SCRIPT")"
+
+# Binding a second Action must keep the first: SetTriggerActions replaces the list.
+flow2='{"flow":{"triggerActions":[{"triggerType":{"id":"4"},"actions":[{"id":"groups"}]}]}}'
+check "flow: POST keeps already-bound actions" '["groups","claim"]' \
+    "$(jq -c --arg t 4 --arg a claim '[.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id] + [$a]' <<< "$flow2")"
+
+run_action() { # <file> <function> <ctx json> -> JSON of what the Action wrote
+    node -e '
+      const fs = require("fs");
+      const [file, fn, ctxJson] = process.argv.slice(1);
+      const ctx = JSON.parse(ctxJson), out = {meta: {}, claims: {}};
+      const md = ctx.v1.user && ctx.v1.user.md;
+      if (md) { ctx.v1.user.getMetadata = () => md; }
+      const api = {v1: {user: {appendMetadataRaw: (k, v) => { out.meta[k] = v; }},
+                        claims: {setClaim: (k, v) => { out.claims[k] = v; }}}};
+      new Function("ctx", "api", fs.readFileSync(file, "utf8") + "\n;" + fn + "(ctx, api);")(ctx, api);
+      console.log(JSON.stringify(out));' "$@" 2>&1
+}
+EMPTY='{"meta":{},"claims":{}}'
+check "link: GitHub providerInfo.login is remembered" '{"meta":{"github_login":"Smana"},"claims":{}}' \
+    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"externalId":"1"},"providerInfo":{"login":"Smana"}}}')"
+check "link: Google login (no providerInfo.login) writes nothing" "$EMPTY" \
+    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"externalId":"1"},"providerInfo":{"email":"a@b.c"}}}')"
+check "link: never falls back to a preferredUsername" "$EMPTY" \
+    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"preferredUsername":"a@b.c"},"providerInfo":{}}}')"
+check "claim: metadata becomes the github_login claim" '{"meta":{},"claims":{"github_login":"Smana"}}' \
+    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":"Smana"}]}}}}')"
+check "claim: JSON-quoted metadata value is unquoted" '{"meta":{},"claims":{"github_login":"Smana"}}' \
+    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":"\"Smana\""}]}}}}')"
+check "claim: byte-array metadata value is decoded" '{"meta":{},"claims":{"github_login":"Smana"}}' \
+    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":[83,109,97,110,97]}]}}}}')"
+check "claim: no metadata -> no claim" "$EMPTY" \
+    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":0,"metadata":[]}}}}')"
+check "claim: other metadata keys ignored" "$EMPTY" \
+    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"x","value":"y"}]}}}}')"
+
 exit "$fail"
