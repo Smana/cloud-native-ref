@@ -48,7 +48,7 @@ tasks:
     desc: Promote a live CNPG archive to a frozen restore seed, or verify one
     cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-promote-seed.sh {{.CLI_ARGS}}"]
   github:agent-branch-ruleset:
-    desc: Apply the agents' branch ruleset (agent/** only for the agents' App) to one repository
+    desc: Apply the agents' branch and tag rulesets (agent/** branches only, no tags, for the agents' App) to one repository
     cmds: ["{{.TASKFILE_DIR}}/github/agent-branch-ruleset.sh {{.CLI_ARGS}}"]
   github:agent-merge-ruleset:
     desc: "MERGER_APP_SLUG=<slug>: apply the merge ruleset (main and the revert branches: human roles, Renovate and the merger App only) to one repository"

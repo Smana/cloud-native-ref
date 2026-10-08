@@ -696,13 +696,21 @@ data:
                         labelName: phase
                         path: [status, phase]
                         list: [Pending, Running, Succeeded, Failed, BudgetExhausted, Revoked]
+                  # Two series, not one: KSM drops an Info whose labelsFromPath has any missing
+                  # path, and a successful run has a pullRequest but no reason.
                   - name: outcome_info
-                    help: "Why the run ended, and its pull request, once known"
+                    help: "Why the run ended, set on failure only"
                     each:
                       type: Info
                       info:
                         labelsFromPath:
                           reason: [status, reason]
+                  - name: pull_request_info
+                    help: "The run's pull request, once the factory writes it"
+                    each:
+                      type: Info
+                      info:
+                        labelsFromPath:
                           pull_request: [status, pullRequest]
                   - name: usage_tokens
                     help: "status.usage.tokens as the meter reported it"

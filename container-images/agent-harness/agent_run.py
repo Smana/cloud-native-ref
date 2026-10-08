@@ -2,8 +2,11 @@
 """agent-run: the harness entrypoint of an AgentRun sandbox (SP1 design, section 5).
 
 Five steps: start agent-server, POST the conversation, wait for it to end,
-revoke the GitHub token, exit 0 or 1. Nothing here is a control (design
-section 4): every rule it passes to the agent is enforced outside the sandbox.
+revoke the GitHub token, exit 0 or 1. On SIGTERM it first pauses the agent,
+checkpoints an implementer's work to its branch and lets the room-bridge read
+the log to its end, each step boxed inside 15 s (disruption design §2). Nothing
+here is a control (design section 4): every rule it passes to the agent is
+enforced outside the sandbox.
 """
 import json
 import os
@@ -12,6 +15,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -22,6 +26,8 @@ AGENT_SERVER = "http://127.0.0.1:8000"
 # itself switches to 0.0.0.0 by default once a session key is set.
 SERVER_CMD = ["/agent-server/.venv/bin/python", "-m", "openhands.agent_server", "--host", "127.0.0.1", "--port", "8000"]
 REPO_DIR = "/workspace/repo"
+# agent-server's start-up hook (F29, see site/sitecustomize.py), beside this file in /opt/agent.
+SITE_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "site")
 TERMINAL_OK = {"finished"}
 TERMINAL_FAIL = {"error", "stuck"}
 # The model key is a placeholder: identity-proxy overwrites Authorization (S5).
@@ -62,6 +68,18 @@ TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 # the conversation closes (observability plan, Task 0.5): a 1 s batch, a close, then a wait.
 BSP_DELAY_MS = "1000"
 FLUSH_WAIT_S = 2
+# The shutdown budget (disruption design §2): a GKE preemptible VM gives a regular pod 15 s, fixed.
+# Each box is an upper bound; a step that overruns is abandoned, never waited for. The five sum to
+# 14 s, so the revoke is done a second before that SIGKILL; the root span's export gets the last one.
+PAUSE_S, CHECKPOINT_S, FINAL_READ_S, STOP_S, REVOKE_S = 1, 7, 3, 2, 1
+EXPORT_S = 1
+# What a checkpoint commits is whatever the agent left in the tree, pushed with no one looking: a
+# GitHub token, or more than an agent's work plausibly is, refuses it.
+CHECKPOINT_MAX_FILES, CHECKPOINT_MAX_BYTES = 200, 5 << 20
+# The commit hook turns CHECKPOINT_ENV into the trailer "Agent-Checkpoint: disruption" beside
+# Agent-Run, so a resumed run and its reviewers tell the platform's commit from the agent's.
+CHECKPOINT_SUBJECT = "chore(agent): checkpoint, the sandbox is stopping"
+CHECKPOINT_ENV = {"AGENT_CHECKPOINT": "disruption"}
 
 
 def start_run_span(env: dict, exporter=None):
@@ -297,6 +315,149 @@ def clone(env: dict) -> None:
     subprocess.run(["git", "-C", REPO_DIR, "checkout", "-B", env["BRANCH"], start], check=True)
 
 
+def report(name: str, status: str, started: float, box: float) -> None:
+    """One line per shutdown step: the 15 s budget is measured from these under gVisor."""
+    print("agent-run shutdown %s %s in %.2fs (box %ss)" % (name, status, time.monotonic() - started, box),
+          file=sys.stderr, flush=True)
+
+
+def timed(name: str, box: float, step) -> bool:
+    """Runs one shutdown step for at most box seconds (disruption design §2). A step that overruns
+    is left behind in its thread, never waited for, so no step can hold up the next. True when it
+    is done."""
+    out = {}
+
+    def run():
+        try:
+            out["done"] = step()
+        except Exception as exc:  # noqa: BLE001 -- a failed step never stops the next
+            out["error"] = exc
+
+    started = time.monotonic()
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(box)
+    if worker.is_alive():
+        status = "overrun"
+    elif "error" in out:
+        status = "failed: " + _short(out["error"], 200)
+    else:
+        status = "done" + (": " + _short(out["done"], 200) if out.get("done") else "")
+    report(name, status, started, box)
+    return status.startswith("done")
+
+
+def pause(cid: str) -> None:
+    """Stops new tool calls, so the work tree stops changing. /interrupt, not /pause: /pause waits
+    out the in-flight LLM call, /interrupt cancels it (agent-server 1.49.6)."""
+    http("POST", "/api/conversations/%s/interrupt" % cid, timeout=PAUSE_S)
+
+
+def _unfit(git) -> str | None:
+    """Why the staged tree must not be committed, or None. Never quotes what it found."""
+    listed = git("diff", "--cached", "--name-only", "-z")
+    if listed.returncode:
+        return "git diff failed"
+    names = listed.stdout.split("\0")[:-1]
+    if len(names) > CHECKPOINT_MAX_FILES:
+        return "%d files staged" % len(names)
+    paths = [os.path.join(REPO_DIR, n) for n in names]
+    size = sum(os.lstat(p).st_size for p in paths if os.path.lexists(p))
+    if size > CHECKPOINT_MAX_BYTES:
+        return "%d bytes staged" % size
+    # --text so a binary file is searched too; what textconv or an external diff shows may differ.
+    diff = git("diff", "--cached", "--text", "--irreversible-delete", "--no-textconv", "--no-ext-diff")
+    if diff.returncode:
+        return "git diff failed"
+    return "a GitHub token is staged" if redact(diff.stdout) != diff.stdout else None
+
+
+def checkpoint(env: dict, deadline: float) -> str:
+    """Commits what the agent left uncommitted (.gitignore applies) and pushes the branch when it
+    holds a commit origin lacks (disruption design §2). Implementer only: no other role can push.
+    git-credential-agent re-exchanges through identity-proxy, a sidecar that outlives the harness.
+    A refused checkpoint still pushes the agent's own commits."""
+    def git(*args, env=None):
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("no time left for git " + args[0])
+        return subprocess.run(["git", "-C", REPO_DIR, *args], capture_output=True, text=True, errors="replace",
+                              timeout=left, env=env)
+
+    git("add", "-A")
+    staged = git("diff", "--cached", "--quiet").returncode == 1
+    unfit = _unfit(git) if staged else None
+    committed = staged and not unfit
+    if committed:
+        done = git("commit", "-q", "-m", CHECKPOINT_SUBJECT, env={**os.environ, **CHECKPOINT_ENV})
+        if done.returncode:
+            raise RuntimeError("commit refused: " + done.stderr.strip())
+    refused = "checkpoint refused (%s), " % unfit if unfit else ""
+    if not git("rev-list", "-1", "HEAD", "--not", "--remotes=origin").stdout.strip():
+        return refused + "nothing to push"
+    pushed = git("push", "-q", "origin", "HEAD:refs/heads/" + env["BRANCH"])
+    if pushed.returncode:
+        raise RuntimeError("push refused: " + pushed.stderr.strip())
+    return refused + ("pushed a checkpoint commit" if committed else "pushed")
+
+
+def final_read(env: dict, steps=None) -> str:
+    """The room's last read of the harness log (F11, the harness half): the bridge reads the log to
+    its end and mirrors it before it answers, while agent-server is still up. On SIGTERM the step
+    log flushes beside it: both read agent-server."""
+    flush = threading.Thread(target=steps, daemon=True) if steps else None
+    if flush:
+        flush.start()
+    answer = ""
+    url = env.get("BRIDGE_URL")
+    if url:
+        req = urllib.request.Request(url.rstrip("/") + "/final-read", data=b"", method="POST")
+        with urllib.request.urlopen(req, timeout=FINAL_READ_S) as resp:
+            answer = resp.read(512).decode(errors="replace").strip()
+    if flush:
+        flush.join()
+    return answer
+
+
+def stop(server, timeout: float) -> str:
+    """Stops agent-server within timeout, killed for its last second. Always before the revoke: a
+    live agent-server could mint a fresh token between the revoke and its own exit."""
+    server.terminate()
+    try:
+        server.wait(timeout - 1)
+        return "stopped"
+    except subprocess.TimeoutExpired:
+        server.kill()
+    try:
+        server.wait(1)
+        return "killed"
+    except subprocess.TimeoutExpired:
+        # SIGKILL runs nothing more in the process, reaped or not.
+        return "killed, not yet reaped"
+
+
+def revoke() -> None:
+    """Revokes the run's GitHub token in-process: a second Python start-up under gVisor can take
+    longer than the revoke's 1 s box. The helper sits beside this file in /opt/agent, whatever
+    symlink started it."""
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import git_credential_agent
+
+    git_credential_agent.revoke()
+
+
+def disrupted(env: dict, cid: str, steps) -> None:
+    """The first half of a cut-short run's shutdown (disruption design §2): pause the agent, then
+    checkpoint its work (implementer only), then let the room read the log to its end. main's
+    finally then stops agent-server and revokes the token."""
+    timed("pause", PAUSE_S, lambda: pause(cid))
+    if env.get("ROLE") == "implementer":
+        timed("checkpoint", CHECKPOINT_S, lambda: checkpoint(env, time.monotonic() + CHECKPOINT_S))
+    timed("final-read", FINAL_READ_S, lambda: final_read(env, steps))
+    if steps:
+        steps.summary()
+
+
 def _on_sigterm(signum, frame):
     # Python's default SIGTERM exits without running `finally`, so deleting
     # the pod would leave the GitHub token live and agent-server running.
@@ -311,6 +472,7 @@ def server_env(env: dict) -> dict:
     """
     out = dict(env)
     out.setdefault("OH_SECRET_KEY", secrets.token_urlsafe(32))
+    out["PYTHONPATH"] = os.pathsep.join(p for p in (SITE_DIR, env.get("PYTHONPATH")) if p)
     return out
 
 
@@ -324,37 +486,55 @@ def main() -> int:
     span, provider, trace_env = start_run_span(env)
     trace_id = format(span.get_span_context().trace_id, "032x") if span else ""
     server = subprocess.Popen(SERVER_CMD, cwd="/", env=server_env({**env, **trace_env}))
+    cid, steps, code, signalled, read = None, None, None, False, False
     try:
         wait_ready()
         clone(env)
         with open(env["TASK_FILE"]) as t, open(env["RULES_FILE"]) as r:
             request = build_request(env, t.read(), r.read())
-        conversation = http("POST", "/api/conversations", request)
-        steps = StepLog(conversation["id"], trace_id)
-        try:
-            code = poll(conversation["id"], on_tick=steps)
-        finally:
-            steps()
-            steps.summary()
+        cid = http("POST", "/api/conversations", request)["id"]
+        steps = StepLog(cid, trace_id)
+        code = poll(cid, on_tick=steps)
+        steps()
+        steps.summary()
+        if env.get("BRIDGE_URL"):
+            read = timed("final-read", FINAL_READ_S, lambda: final_read(env))
         # Never on SIGTERM: the close can outlast the grace period and the revoke must not wait.
         if span:
-            close_conversation(conversation["id"])
+            close_conversation(cid)
+        return code
+    except SystemExit:
+        signalled = True
+        if code is None:
+            raise
+        # C1: the run had ended. The composition reads this exit code, and 143 would make a
+        # finished run look disrupted, which the factory resumes.
         return code
     finally:
-        # A second SIGTERM during cleanup must not abort the revoke, and
-        # agent-server must be stopped BEFORE the token is revoked so it
-        # cannot mint a fresh one between the revoke and its own exit.
+        # A second SIGTERM during cleanup must not abort the revoke.
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        server.terminate()
-        try:
-            server.wait(10)
-        except subprocess.TimeoutExpired:
-            server.kill()
-        subprocess.run(["/usr/local/bin/git-credential-agent", "revoke"], check=False)
+        if signalled and cid and code is None:
+            disrupted(env, cid, steps)
+        elif signalled and code is not None and env.get("BRIDGE_URL") and not read:
+            # Exit 0 latches the run Succeeded at once, and the broker takes the bridge's writes only
+            # while the run is live: the bridge's own flush may come too late, so this read is the
+            # room's last. Nothing is paused or checkpointed on this path, which leaves it time.
+            timed("final-read", FINAL_READ_S, lambda: final_read(env))
+        if signalled:
+            started = time.monotonic()
+            report("stop", "done: " + stop(server, STOP_S), started, STOP_S)
+            timed("revoke", REVOKE_S, revoke)
+        else:
+            stop(server, 10)
+            # Boxed too, never to bound it (its urlopen gives up at 10 s) but so that a revoke
+            # that raises in-process is logged instead of changing the run's exit code.
+            timed("revoke", 15, revoke)
         if span:
-            span.end()
-            provider.shutdown()
-
+            # Boxed on the signal path: a collector that never answers holds an export for up to two
+            # 5 s connects, and the pod's grace has no room left for it after the revoke.
+            end = threading.Thread(target=lambda: (span.end(), provider.shutdown()), daemon=True)
+            end.start()
+            end.join(EXPORT_S if signalled else None)
 
 if __name__ == "__main__":
     sys.exit(main())

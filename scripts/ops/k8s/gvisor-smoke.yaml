@@ -1,7 +1,7 @@
 # gVisor smoke probe for gcp-0 (GCP parity Task 8.5). Proves in one pod:
-#   - the GKE Sandbox pool scales from zero, through GKE's RuntimeClass and the
-#     Cilium-taint toleration (security/gcp-0/sandbox-policies adds it to every
-#     gVisor pod; written here too so the probe runs before that policy lands);
+#   - the GKE Sandbox pool scales from zero through GKE's RuntimeClass alone,
+#     WITHOUT tolerating Cilium's startup taint, and the pod starts only once
+#     the node's Cilium agent is ready (F2: no cilium-operator restart);
 #   - the pod runs under gVisor: it exits non-zero unless uname reports 4.4.0;
 #   - threads start under RuntimeDefault seccomp (the AWS spike's clone3 trap);
 #   - DNS through kube-dns's ClusterIP and a TCP connection to a ClusterIP work,
@@ -60,10 +60,6 @@ spec:
   activeDeadlineSeconds: 900
   automountServiceAccountToken: false
   enableServiceLinks: false
-  tolerations:
-    - key: node.cilium.io/agent-not-ready
-      operator: Exists
-      effect: NoSchedule
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001

@@ -52,7 +52,7 @@ resource "helm_release" "cilium" {
 
   # wait = false deliberately, matching AWS: the agent cannot become Ready until
   # it owns the CNI, and blocking here would deadlock against nodes that are still
-  # carrying the node.cilium.io/agent-not-ready taint.
+  # carrying Cilium's agent-not-ready taint.
   wait    = false
   timeout = 600
 }

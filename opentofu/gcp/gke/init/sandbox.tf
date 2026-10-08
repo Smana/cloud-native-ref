@@ -48,18 +48,25 @@ resource "google_container_node_pool" "agents_gvisor" {
       mode = "GKE_METADATA"
     }
 
+    # Disruption design §1: a Spot node's graceful shutdown is 30 s by default, 15 s of it for
+    # regular pods, all an agent run gets to checkpoint and let its room read the log. 120 s is GKE's
+    # maximum; the 15 s critical share keeps Cilium up while the runs stop. Needs a control plane
+    # >= 1.35.0-gke.1171000 and google-beta >= 7.39; changing it re-creates the pool's nodes.
+    kubelet_config {
+      shutdown_grace_period_seconds               = 120
+      shutdown_grace_period_critical_pods_seconds = 15
+    }
+
     shielded_instance_config {
       enable_secure_boot          = true
       enable_integrity_monitoring = true
     }
 
-    # Same as the static pool: nothing schedules before Cilium is ready, and
-    # Cilium clears it. GKE adds its own sandbox taint. The pool scales from
-    # zero only for a pod that tolerates this taint (ADR-0006, as on every
-    # ComputeClass): gVisor pods get the toleration from the Kyverno policy in
-    # security/gcp-0/sandbox-policies.
+    # Same as the static pool. No pod tolerates it: the autoscaler ignores the
+    # key when it simulates a node from zero (ADR-0006), and the scheduler holds
+    # gVisor pods until Cilium clears it. GKE adds its own sandbox taint.
     taint {
-      key    = "node.cilium.io/agent-not-ready"
+      key    = local.cilium_agent_not_ready_taint
       value  = "true"
       effect = "NO_SCHEDULE"
     }

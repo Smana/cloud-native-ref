@@ -233,7 +233,7 @@ def check_ksm():
     check(res.get("metricNamePrefix") == "agentrun", "the series are agentrun_*")
     check(res.get("labelsFromPath", {}).get("run_id") == ["status", "runId"], "every agentrun_* series carries run_id")
     metrics = {m["name"]: m["each"] for m in res.get("metrics", [])}
-    want = {"info", "status_phase", "outcome_info", "usage_tokens", "budget_max_tokens",
+    want = {"info", "status_phase", "outcome_info", "pull_request_info", "usage_tokens", "budget_max_tokens",
             "started_timestamp_seconds", "finished_timestamp_seconds"}
     check(set(metrics) == want, f"agentrun metrics are {sorted(want)}, got {sorted(metrics)}")
     check(metrics.get("status_phase", {}).get("stateSet", {}).get("list") == PHASES, "status_phase lists every XRD phase")
@@ -241,8 +241,10 @@ def check_ksm():
     check(info.get("tier") == ["metadata", "labels", "agents.ogenki.io/tier"], "agentrun_info carries the run's tier (O23)")
     check(info.get("task") == ["metadata", "labels", "agents.ogenki.io/task"],
           "agentrun_info carries the run's task, so a run page lists the task's other runs (disruption design §6)")
-    check(metrics.get("outcome_info", {}).get("info", {}).get("labelsFromPath") == {"reason": ["status", "reason"], "pull_request": ["status", "pullRequest"]},
-          "outcome_info reads status.reason and status.pullRequest")
+    check(metrics.get("outcome_info", {}).get("info", {}).get("labelsFromPath") == {"reason": ["status", "reason"]},
+          "outcome_info reads status.reason alone (a missing path drops the whole series)")
+    check(metrics.get("pull_request_info", {}).get("info", {}).get("labelsFromPath") == {"pull_request": ["status", "pullRequest"]},
+          "pull_request_info reads status.pullRequest alone, so a successful run still emits it")
     check(metrics.get("usage_tokens", {}).get("gauge", {}).get("path") == ["status", "usage", "tokens"], "usage_tokens reads status.usage.tokens")
     check(metrics.get("budget_max_tokens", {}).get("gauge", {}).get("path") == ["spec", "budget", "maxTokens"], "budget_max_tokens reads spec.budget.maxTokens")
     check(metrics.get("started_timestamp_seconds", {}).get("gauge", {}).get("path") == ["status", "startedAt"], "started_timestamp_seconds reads status.startedAt")

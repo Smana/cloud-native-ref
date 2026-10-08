@@ -83,6 +83,32 @@ path "agents/config" {
   capabilities = ["read", "update"]
 }
 
+# policy-bot's mount (SP3 R44): an administrator writes the merge-gate App's secret once
+# per lineage.
+path "merge-gate/data/*" {
+  capabilities = ["create", "read", "update", "patch", "delete", "list"]
+}
+
+path "merge-gate/metadata/*" {
+  capabilities = ["create", "read", "update", "list", "delete"]
+}
+
+path "merge-gate/delete/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/undelete/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/destroy/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/config" {
+  capabilities = ["read", "update"]
+}
+
 # Listing the mounts themselves, so the UI can render the secrets tree.
 path "sys/mounts" {
   capabilities = ["read"]
