@@ -58,6 +58,8 @@ did not.
 | **Follow GitHub: readable if and only if the repo is readable; admins bypass** | Chosen: a room is derived from its repo, so it inherits the repo's permission; no second system to drift |
 | Per-repo groups mirrored in ZITADEL | Rejected: a second permission system to keep in step with GitHub |
 | Every `agents-member` reads all rooms (today) | Rejected: a room leaks a private repo to anyone in the group |
+| Identity source: a `github_login` token claim (ZITADEL Action over user metadata) | Rejected: no Action can read IdP links at token time, and user metadata is writable by machine users for themselves and by `user.write` holders, so the claim is forgeable |
+| **Identity source: the user's GitHub IdP link, read by the broker** | Chosen: a link can be added only by authenticating at GitHub, or by an admin; the numeric id survives renames |
 
 ---
 
@@ -68,7 +70,7 @@ GitHub-backed room visibility (D7).
 
 ```mermaid
 flowchart LR
-  T["token: sub + github_login"] --> B{"broker: read room R (repo X)"}
+  T["token: sub"] --> L["ZITADEL link -> GitHub id -> login"] --> B{"broker: read room R (repo X)"}
   B -->|agents-admin| OK["allowed"]
   B -->|cache hit < 5 min| C{"can read X?"}
   B -->|cache miss| G["GitHub: permission of login on X"] --> C
@@ -76,9 +78,11 @@ flowchart LR
   C -->|no| D["404: no such room"]
 ```
 
-D7 in one line: the broker asks GitHub, with the factory App's installation token, whether the
-caller's `github_login` can read the room's repo, caches the answer for at most 5 minutes, and fails
-closed on non-admins when GitHub cannot be reached and the cache is stale. GitHub read access lets
+D7 in one line: the broker lists the caller's ZITADEL IdP links (`ListIDPLinks`, read-only
+`ORG_OWNER_VIEWER` machine user), takes the GitHub link's numeric id, resolves it to the current login
+(`GET /user/{id}`), asks GitHub with the factory App's installation token whether that login can read
+the room's repo, caches each answer for at most 5 minutes, and fails closed on non-admins when
+ZITADEL or GitHub cannot be reached and the cache is stale. GitHub is a link-only IdP in ZITADEL. GitHub read access lets
 you see a room; it never grants steering or approving, which stay with the existing standings.
 Details: [spec, "Rooms across repos"](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-08-agent-factory-local-first-ux-design.md).
 
@@ -96,8 +100,9 @@ Details: [spec, "Rooms across repos"](https://github.com/Smana/cloud-native-ref/
 
 | Cost | Mitigation |
 |---|---|
-| Users must link a GitHub identity in ZITADEL; without a `github_login` claim non-admins see no rooms | `roomctl rooms` explains how to link it |
-| Reads depend on the GitHub API | 5-minute cache; fail closed for non-admins past it |
+| Users must link their GitHub account to their ZITADEL user once (GitHub is link-only, no sign-up through it); without a link non-admins see no rooms | `roomctl rooms` explains how to link it |
+| The broker holds an org-wide read-only ZITADEL credential (`ORG_OWNER_VIEWER` machine user) | Read-only; used only for `ListIDPLinks` |
+| Reads depend on the GitHub API, and on ZITADEL on a cache miss | 5-minute cache; fail closed for non-admins past it |
 | The WebSocket answers 404 `no such room` instead of 403 `not_permitted` for a known room the caller may not read | Intended: a 403 would confirm the room exists |
 | Progress notes are untrusted text, and the developer's own local agent is now a reader | Returned under `notes.untrusted: true`, the skill treats them as data, the web page escapes them |
 | The "never apply a label" rule in the skill is advice, not a control | The enforceable gate is server-side: only a maintainer's label starts work |
