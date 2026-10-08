@@ -109,6 +109,16 @@ read:
 The resumed run, `huwttc64`, continued on the same branch and in the same room, and the task ended
 normally.
 
+Two reasons mark a run lost to the infrastructure, and the factory resumes both on its own, twice per
+task at most and within its budget:
+
+- `Disrupted`: its node was reclaimed or drained (a Spot or preemptible reclaim, an eviction, an upgrade);
+- `PodLost`: its pod was deleted, or vanished with its node, before a final state was read.
+
+A run that fails on its own reads `PodFailed` and is not resumed. On the way out, within 15 s, an
+implementer commits its uncommitted changes to its branch with the trailer
+`Agent-Checkpoint: disruption` and pushes them, so the resumed run starts from that commit.
+
 ### What the factory wrote on the issue
 
 The first comment, as posted:
@@ -153,6 +163,23 @@ tally is 1,078 k.
 | Undo a merged low-risk change | *(Once the merge gate is live)* Label it **`factory/revert`** within 7 days: the factory opens the revert, which merges as the `revert` class |
 | Start a run by hand | `task agent:run -- --role implementer --class public --task-url <issue>`. The factory creates it under your SSO identity |
 | Resume a run a stop ended | The same command with **`--branch agent/<run id>`**: it continues from what the run pushed |
+
+### From a terminal: `roomctl`
+
+`roomctl` reads, chats, queues and forks. It never steers, interrupts, takes the driver token or
+approves: those stay in the web view, because a local agent can drive a terminal
+([ADR-0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}})). Download it from an
+agent-platform release (`roomctl-<os>-<arch>`, checked against `roomctl.sha256`) or build it there
+with `go build ./cmd/roomctl`.
+
+```bash
+roomctl configure --url … --issuer … --client-id … --project-id …  # the room list's "CLI setup" prints it
+roomctl login                                    # device flow: open the URL, enter the code
+roomctl watch <room>                             # the last 50 events, then live
+roomctl post <room> --queue "address L42"        # for the next run's brief; without --queue, a chat
+roomctl fork <room> --at <seq> --role implementer --egress pypi --note "try uv"
+roomctl token                                    # your access token, for scripts
+```
 
 ## What the factory never does
 
