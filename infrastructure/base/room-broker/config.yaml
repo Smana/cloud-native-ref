@@ -1,0 +1,26 @@
+# The broker's one config file (agent-platform internal/config), Flux-substituted.
+# Decoded strictly: an unknown key fails the rollout. tls is left to its default,
+# /etc/room-broker/tls/tls.{crt,key}, where app.yaml mounts room-broker-tls.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: room-broker-config
+  namespace: agent-system
+data:
+  config.yaml: |
+    publicURL: https://rooms.${private_domain_name}
+    # The only run issuer today is this cluster's (C2 r5). A runtime with its own
+    # workload JWTs is one more entry here, not a new code path. The JWKS URI is
+    # per cloud: <issuer>/keys on EKS, <issuer>/jwks on GKE (GCP parity GP-12).
+    runIssuers:
+      - issuer: ${oidc_issuer_url}
+        jwksURL: ${oidc_jwks_uri}
+        subPattern: '^system:serviceaccount:agents:xplane-run-([a-z2-7]{8})$'
+    # System callers present audience rooms-system (ruling P3).
+    systemIssuer:
+      issuer: ${oidc_issuer_url}
+      jwksURL: ${oidc_jwks_uri}
+    # SP3's factory, commented until SP3 ships its ServiceAccount. Task 1.22 Step 8
+    # enables it for its probe only, then comments it again.
+    systemPrincipals: {}
+    #   system:serviceaccount:agent-system:agent-factory: system:factory

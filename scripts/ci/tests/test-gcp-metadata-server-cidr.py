@@ -29,7 +29,8 @@ _acs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_acs)
 reaches_port_80 = _acs.reaches_port_80
 CNP_KINDS = {"CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy"}
-MUST_SEE = {"barman-cloud-plugin", "openbao-snapshot"}  # the two GCP metadata-server consumers built from source
+# The GCP metadata-server consumers built from source.
+MUST_SEE = {"barman-cloud-plugin", "openbao-snapshot", "xplane-rooms-cnpg"}
 
 
 def load(text):

@@ -22,13 +22,14 @@ import sys
 
 import yaml
 
-SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
+SCOPED = re.compile(r"^overlay-(infrastructure|security|observability)-gcp-0-(agent-[a-z-]+|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
 RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp)\.yaml$")
 # By name, so a renamed overlay directory fails instead of silently leaving scope.
 EXPECTED = (
     "overlay-infrastructure-gcp-0-agent-router.yaml",
     "overlay-infrastructure-gcp-0-agent-mcp.yaml",
+    "overlay-infrastructure-gcp-0-room-broker.yaml",
     "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml",
     "overlay-infrastructure-gcp-0-envoy-gateway.yaml",
     "overlay-infrastructure-gcp-0-vllm-semantic-router.yaml",
@@ -150,11 +151,13 @@ def check_gcp0_secrets(bundle_dir):
             if r.get("kind") != "Password" or r.get("name") not in passwords:
                 problems.append(f"{f.name}: ai-gateway-api-keys generator {r.get('kind')}/{r.get('name')} "
                                 "is not a Password rendered beside it")
-    f = pathlib.Path(bundle_dir) / "overlay-security-gcp-0-agent-secrets.yaml"
-    es = _named(_docs(f), "ExternalSecret", "openbao-ca")
-    keys = [((d.get("remoteRef") or {}).get("key")) for d in ((es or {}).get("spec") or {}).get("data") or []]
-    if keys != ["openbao-priv-gcp-ca-chain"]:
-        problems.append(f"{f.name}: openbao-ca reads {keys or 'nothing'}, not Secret Manager's openbao-priv-gcp-ca-chain (GP-26)")
+    for overlay, name in (("overlay-security-gcp-0-agent-secrets.yaml", "openbao-ca"),
+                          ("overlay-infrastructure-gcp-0-room-broker.yaml", "room-broker-ca")):
+        f = pathlib.Path(bundle_dir) / overlay
+        es = _named(_docs(f), "ExternalSecret", name)
+        keys = [((d.get("remoteRef") or {}).get("key")) for d in ((es or {}).get("spec") or {}).get("data") or []]
+        if keys != ["openbao-priv-gcp-ca-chain"]:
+            problems.append(f"{f.name}: {name} reads {keys or 'nothing'}, not Secret Manager's openbao-priv-gcp-ca-chain (GP-26)")
     return problems
 
 

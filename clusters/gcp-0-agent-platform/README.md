@@ -14,6 +14,7 @@ no gVisor RuntimeClass child here (GKE provides it, GP-9).
 | `agent-router` | `infrastructure/gcp-0/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `octo-sts` | `security/gcp-0/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 | `agent-mcp` | `infrastructure/gcp-0/agent-mcp` | Flux, VictoriaMetrics, VictoriaLogs MCP servers and their MCPRoutes |
+| `room-broker` | `infrastructure/gcp-0/room-broker` | Room CRD, broker, room log (CNPG), retention, and from phase 2 oauth2-proxy (SP2) |
 | `agent-observability` | `observability/gcp-0/agent-platform` | VMRules, the dashboards (`agent-platform`, `agent-run`, `agent-fleet`) and the agent trace collector |
 
 `AgentGvisorPoolNearLimit` and the dashboard's pool-usage panel read Karpenter metrics, so they stay
