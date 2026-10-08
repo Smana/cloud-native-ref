@@ -1528,9 +1528,9 @@ litellm==1.93.0 \
     #   -r container-images/agent-harness/requirements.in
     #   openhands-sdk
     #   tom-swe
-lmnr==0.7.60 \
-    --hash=sha256:35076b302a8f4349824deb08f79d1c7e4c2486b5a14704c0e6efee9879942096 \
-    --hash=sha256:efec73de28eb8b66bcda6aaab7db0bda8247a26f982e63295a754412bee607f0
+lmnr==0.7.64 \
+    --hash=sha256:69312705bae82f87e862e3eaac2f7736849d1b41023447351539f5e57c198b1a \
+    --hash=sha256:f0bb656d615612a4cb06f4864144e60d14dd0c390d5e2c770eda91138ba76d72
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
     #   openhands-sdk
