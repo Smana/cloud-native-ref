@@ -98,9 +98,15 @@ roomctl status "<private-room>"               # same identity
 ZITADEL=https://auth.cloud.ogenki.io
 # dev2's own token (CLI-logged-in as dev2). Never a PAT with user.write.
 TOKEN=$(roomctl token)
-# Look the GitHub IdP id up with an admin token; do not hardcode it (394198010113835600 on aws-0 today).
-curl -sS -X POST "$ZITADEL/admin/v1/idps/templates/_search" -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"queries":[{"providerTypeQuery":{"providerType":"PROVIDER_TYPE_GITHUB"}}]}' | jq -r '.result[].id'
+# Look the GitHub IdP id up (read-only) with the admin PAT; do not hardcode it (394198010113835600 on aws-0 today).
+# The PAT goes into a 0600 curl config file, never argv or the terminal.
+umask 077; cfg=$(mktemp)
+aws --region eu-west-3 secretsmanager get-secret-value --secret-id zitadel/iam-admin-pat --query SecretString --output text \
+  | jq -r '"header = \"Authorization: Bearer \(.pat)\""' > "$cfg"
+curl -fsS -K "$cfg" -H 'Content-Type: application/json' -d '{}' "$ZITADEL/admin/v1/idps/templates/_search" \
+  | jq -r '.result[] | select(.type=="PROVIDER_TYPE_GITHUB") | .id'
+rm -f "$cfg"
+# The link attempt uses dev2's own token only.
 curl -sS -w '\nHTTP %{http_code}\n' -X POST "$ZITADEL/v2/users/<dev2-user-id>/links" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"idpLink":{"idpId":"<GitHub IdP id>","userId":"1","userName":"<github login>"}}'
