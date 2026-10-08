@@ -32,7 +32,7 @@
 #   6. If `zitadel-github-idp` is in the store: a LINK-ONLY GitHub IdP, and the
 #      room broker's read-only reader -- machine user room-broker-idp-reader with
 #      ORG_OWNER_VIEWER, one PAT (1 year, re-minted under 30 days) written to
-#      `room-broker-zitadel-reader` as {"pat","githubIdpId"}. Without the key,
+#      `room-broker-zitadel-reader` as {"pat","tokenId","githubIdpId"}. Without the key,
 #      all of step 6 is skipped.
 #
 # Usage:
@@ -393,7 +393,14 @@ ensure_github_idp() {
 # Old PATs are left to expire: the broker may still hold one while it picks up
 # the new store value.
 ensure_broker_reader() {
-    local gh_id="$1" resp user_id roles stored stored_pat stored_gh valid threshold expiry token
+    local gh_id="$1" resp user_id roles stored stored_pat stored_id stored_gh valid threshold expiry token minted_id
+
+    # idp_id_by_name swallows API errors and answers empty; storing that would
+    # shut every non-admin out of every room. Nothing is written without an id.
+    if [ "$APPLY" = "true" ] && [ -z "$gh_id" ]; then
+        echo "[FAILED ] cannot resolve the '${GITHUB_IDP_NAME}' IdP id; not touching the reader" >&2
+        return 1
+    fi
 
     resp="$(jq -nc --arg n "$READER_USER" \
         '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}' \
@@ -429,27 +436,33 @@ ensure_broker_reader() {
             echo "[dry-run] would grant ${READER_ROLE} to ${READER_USER}"
         elif [ "$roles" = "[]" ]; then
             jq -nc --arg u "$user_id" --arg r "$READER_ROLE" '{userId: $u, roles: [$r]}' \
-                | api POST /management/v1/orgs/me/members -d @- >/dev/null
+                | api POST /management/v1/orgs/me/members -d @- >/dev/null \
+                || { echo "[FAILED ] granting ${READER_ROLE} to ${READER_USER}" >&2; return 1; }
             echo "[granted] ${READER_ROLE} to ${READER_USER}"
         else
             jq -nc --arg r "$READER_ROLE" '{roles: [$r]}' \
-                | api PUT "/management/v1/orgs/me/members/${user_id}" -d @- >/dev/null
+                | api PUT "/management/v1/orgs/me/members/${user_id}" -d @- >/dev/null \
+                || { echo "[FAILED ] narrowing ${READER_USER} to ${READER_ROLE}; it still holds ${roles}" >&2; return 1; }
             echo "[updated] ${READER_USER} org roles ${roles} -> only ${READER_ROLE}"
         fi
     fi
 
-    # The stored PAT must be one ZITADEL still lists with enough life left. The
-    # token value cannot be read back, so a missing store entry means minting.
+    # The PAT the broker will read is the STORED one, so validity is the expiry
+    # of the token id stored beside it -- not "some PAT of the reader is fine",
+    # which would bless a freshly minted token whose store write failed while the
+    # stored one runs out. The token value cannot be read back from ZITADEL.
     stored="$(store_read "$READER_STORE_KEY" || true)"
     stored_pat="$(jq -r '.pat // empty' <<< "${stored:-null}" 2>/dev/null || true)"
+    stored_id="$(jq -r '.tokenId // empty' <<< "${stored:-null}" 2>/dev/null || true)"
     stored_gh="$(jq -r '.githubIdpId // empty' <<< "${stored:-null}" 2>/dev/null || true)"
     valid="false"
-    if [ -n "$user_id" ] && [ -n "$stored_pat" ]; then
+    if [ -n "$user_id" ] && [ -n "$stored_pat" ] && [ -n "$stored_id" ]; then
         resp="$(api POST "/management/v1/users/${user_id}/pats/_search" -d '{}')" \
             || { echo "[FAILED ] cannot list PATs of ${READER_USER}" >&2; return 1; }
         # RFC 3339 strings of one shape compare correctly as text.
         threshold="$(date -u -d "+${READER_PAT_ROTATE_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
-        if jq -e --arg t "$threshold" 'any(.result[]?; (.expirationDate // "") > $t)' <<< "$resp" >/dev/null; then
+        if jq -e --arg t "$threshold" --arg i "$stored_id" \
+            'any(.result[]?; .id == $i and (.expirationDate // "") > $t)' <<< "$resp" >/dev/null; then
             valid="true"
         fi
     fi
@@ -466,8 +479,10 @@ ensure_broker_reader() {
         if [ "$APPLY" != "true" ]; then
             echo "[dry-run] would update githubIdpId in ${READER_STORE_KEY}"
         else
-            printf '%s' "$stored_pat" | jq -Rs --arg id "$gh_id" '{pat: ., githubIdpId: $id}' \
-                | store_write "$READER_STORE_KEY"
+            printf '%s' "$stored_pat" | jq -Rs --arg id "$gh_id" --arg t "$stored_id" \
+                '{pat: ., tokenId: $t, githubIdpId: $id}' \
+                | store_write "$READER_STORE_KEY" \
+                || { echo "[FAILED ] ${READER_STORE_KEY} was not updated" >&2; return 1; }
             echo "[updated] ${READER_STORE_KEY} githubIdpId -> ${gh_id}"
         fi
     else
@@ -478,13 +493,16 @@ ensure_broker_reader() {
             [ -n "$gh_id" ] || { echo "[FAILED ] no GitHub IdP id to store" >&2; return 1; }
             expiry="$(date -u -d "+${READER_PAT_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
             resp="$(jq -nc --arg e "$expiry" '{expirationDate: $e}' \
-                | api POST "/management/v1/users/${user_id}/pats" -d @-)"
+                | api POST "/management/v1/users/${user_id}/pats" -d @-)" \
+                || { echo "[FAILED ] minting a PAT for ${READER_USER}" >&2; return 1; }
             token="$(jq -r '.token // empty' <<< "$resp")"
-            [ -n "$token" ] || { echo "[FAILED ] PAT creation returned no token" >&2; return 1; }
+            minted_id="$(jq -r '.tokenId // empty' <<< "$resp")"
+            [ -n "$token" ] && [ -n "$minted_id" ] || { echo "[FAILED ] PAT creation returned no token or tokenId" >&2; return 1; }
             # Stdin, never argv: the token is a credential.
-            printf '%s' "$token" | jq -Rs --arg id "$gh_id" '{pat: ., githubIdpId: $id}' \
+            printf '%s' "$token" | jq -Rs --arg id "$gh_id" --arg t "$minted_id" \
+                '{pat: ., tokenId: $t, githubIdpId: $id}' \
                 | store_write "$READER_STORE_KEY" \
-                || { echo "[FAILED ] PAT minted but ${READER_STORE_KEY} was not written; the next --apply mints another" >&2; return 1; }
+                || { echo "[FAILED ] PAT ${minted_id} minted but ${READER_STORE_KEY} was not written; the stored credential is unchanged and the next --apply retries" >&2; return 1; }
             echo "[minted ] PAT for ${READER_USER}, expires ${expiry}, stored in ${READER_STORE_KEY}"
         fi
     fi
@@ -712,7 +730,8 @@ ensure_flow() {
         ids="$(jq -c --arg t "$trigger" --arg a "$action_id" \
             '[.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id] + [$a]' <<< "$flow")"
         jq -n --argjson ids "$ids" '{actionIds: $ids}' \
-            | api POST "/management/v1/flows/2/trigger/${trigger}" -d @- >/dev/null
+            | api POST "/management/v1/flows/2/trigger/${trigger}" -d @- >/dev/null \
+            || { echo "[FAILED ] binding flow 2 trigger ${trigger}" >&2; return 1; }
         echo "[bound  ] flow 2 (CustomiseToken) trigger ${trigger}"
     done
 }
@@ -742,14 +761,14 @@ assert_action_name_matches_function
 
 ACTION_ID="$(ensure_action | tail -1)"
 if [ -n "$ACTION_ID" ]; then
-    ensure_flow "$ACTION_ID" || exit 1
+    ensure_flow "$ACTION_ID"
 elif [ "$APPLY" = "true" ]; then
     echo "[FAILED ] no action id; flow not wired" >&2
     exit 1
 fi
 
 if [ "$GITHUB_ENABLED" = "true" ]; then
-    ensure_broker_reader "$GITHUB_IDP_ID" || exit 1
+    ensure_broker_reader "$GITHUB_IDP_ID"
     echo
     echo "GitHub-side, once per ZITADEL (an OAuth App takes exactly one callback URL):"
     echo "  ${IDP_URL}/ui/login/login/externalidp/callback"

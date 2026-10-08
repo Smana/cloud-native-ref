@@ -143,6 +143,7 @@ case "$sub" in
     get-secret-value) [ -f "$(f "$id")" ] || exit 254; cat "$(f "$id")" ;;
     create-secret|put-secret-value)
         name="$(jq -r '.Name // .SecretId' "$json")"
+        [ "$name" = "${FAIL_STORE:-}" ] && { echo "AccessDenied" >&2; exit 254; }
         jq -r '.SecretString' "$json" > "$(f "$name")" ;;
 esac
 SHIM
@@ -162,10 +163,21 @@ while [ $# -gt 0 ]; do
 done
 path="${url#"$IDP_URL"}"
 echo "$method $path" >> "$S/calls.log"
+# FAIL_ON is a glob over "METHOD /path": that request answers a curl-style 500.
+# shellcheck disable=SC2053
+if [ -n "${FAIL_ON:-}" ] && [[ "$method $path" == $FAIL_ON ]]; then
+    echo "curl: (22) The requested URL returned error: 500" >&2; exit 22
+fi
 upd() { local file="$S/$1"; shift; jq "$@" "$file" > "$file.t" && mv "$file.t" "$file"; }
 next() { local n; n="$(cat "$S/n" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$S/n"; echo $((n + 1)); }
 case "$method $path" in
-    "POST /admin/v1/idps/templates/_search") jq -c '{result: .}' "$S/idps.json" ;;
+    "POST /admin/v1/idps/templates/_search")
+        # SEARCH_FAIL_AFTER=n: every template search after the n-th fails.
+        n="$(cat "$S/searches" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$S/searches"
+        if [ -n "${SEARCH_FAIL_AFTER:-}" ] && [ "$n" -ge "$SEARCH_FAIL_AFTER" ]; then
+            echo "curl: (22) The requested URL returned error: 500" >&2; exit 22
+        fi
+        jq -c '{result: .}' "$S/idps.json" ;;
     "POST /admin/v1/idps/google")
         upd idps.json --argjson d "$data" '. + [{id:"idp-google",name:"Google Workspace",config:{google:{clientId:$d.clientId}}}]'
         echo '{"id":"idp-google"}' ;;
@@ -210,7 +222,7 @@ SHIM
 chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
 
 reset_state() {
-    rm -f "$S/calls.log" "$S/n" "$S/store"/*
+    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/*
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
     echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
@@ -256,8 +268,8 @@ check "apply: GitHub IdP is link-only" '{"isLinkingAllowed":true,"isCreationAllo
     "$(jq -c '.providerOptions | {isLinkingAllowed, isCreationAllowed, isAutoCreation, autoLinking}' "$S/github-body.json")"
 check "apply: GitHub on the login policy" "1" "$(jq -r '.[]' "$S/policy.json" | grep -c idp-github || true)"
 check "apply: reader holds ORG_OWNER_VIEWER" '["ORG_OWNER_VIEWER"]' "$(jq -c '.[0].roles' "$S/members.json")"
-check "apply: store key holds the PAT and githubIdpId" '{"pat":true,"githubIdpId":"idp-github"}' \
-    "$(jq -c '{pat: (.pat | startswith("reader-pat-")), githubIdpId}' "$S/store/room-broker-zitadel-reader")"
+check "apply: store key holds the PAT, its tokenId and githubIdpId" '{"pat":true,"tokenId":true,"githubIdpId":"idp-github"}' \
+    "$(jq -c '{pat: (.pat | startswith("reader-pat-")), tokenId: (.tokenId | startswith("tok-")), githubIdpId}' "$S/store/room-broker-zitadel-reader")"
 out="$(sync)"
 check "converged: no [dry-run] lines" "0" "$(count '^\[dry-run\]' "$out")"
 check "converged: no [STALE] lines" "0" "$(count '^\[STALE' "$out")"
@@ -282,5 +294,55 @@ jq '.flow.triggerActions = []' "$S/flow2.json" > "$S/f.t" && mv "$S/f.t" "$S/flo
 out="$(FLOW_FAIL=1 sync --apply)"
 check "GetFlow 5xx: apply exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "GetFlow 5xx: no SetTriggerActions POST" "0" "$(calls 'POST /management/v1/flows/2/trigger')"
+
+# ── every reader write must fail the run ─────────────────────────────────────
+converge() { reset_state; with_github_key; sync --apply > /dev/null; : > "$S/calls.log"; rm -f "$S/searches"; }
+expire_pats() { jq 'map(.expirationDate = "'"$(date -u -d '+10 days' +%Y-%m-%dT%H:%M:%SZ)"'")' "$S/pats.json" > "$S/p.t" && mv "$S/p.t" "$S/pats.json"; }
+STORE="$S/store/room-broker-zitadel-reader"
+
+# 7. A failed member PUT/POST or trigger POST must not print success or exit 0.
+converge
+echo '[{"userId":"reader-1","roles":["ORG_OWNER_VIEWER","ORG_OWNER"]}]' > "$S/members.json"
+out="$(FAIL_ON='PUT /management/v1/orgs/me/members/*' sync --apply)"
+check "member PUT fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "member PUT fails: no success line" "0" "$(count '^\[updated\] room-broker' "$out")"
+check "member PUT fails: no PAT minted" "0" "$(count '^\[minted' "$out")"
+echo '[]' > "$S/members.json"
+out="$(FAIL_ON='POST /management/v1/orgs/me/members' sync --apply)"
+check "member POST fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "member POST fails: no success line" "0" "$(count '^\[granted\]' "$out")"
+echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
+out="$(FAIL_ON='POST /management/v1/flows/2/trigger/*' sync --apply)"
+check "trigger POST fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "trigger POST fails: no [bound] line" "0" "$(count '^\[bound' "$out")"
+
+# 8. The validity check follows the STORED token: a mint whose store write
+#    failed is retried and never reported ok.
+converge
+old_id="$(jq -r .tokenId "$STORE")"
+expire_pats
+out="$(FAIL_STORE=room-broker-zitadel-reader sync --apply)"
+check "store write fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "store write fails: not reported minted" "0" "$(count '^\[minted' "$out")"
+check "store write fails: stored credential unchanged" "$old_id" "$(jq -r .tokenId "$STORE")"
+out="$(sync)"
+check "next run: re-mint planned" "1" "$(count 'would mint a PAT' "$out")"
+check "next run: not reported ok" "0" "$(count '^\[ok     \] room-broker-zitadel-reader' "$out")"
+
+# 9. An unresolvable IdP id never reaches the store.
+converge
+out="$(SEARCH_FAIL_AFTER=3 sync --apply)"
+check "idp id unresolved: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "idp id unresolved: store keeps githubIdpId" "idp-github" "$(jq -r .githubIdpId "$STORE")"
+
+# 10. Rotation under --apply replaces the stored PAT and its tokenId.
+converge
+old_pat="$(jq -r .pat "$STORE")"; old_id="$(jq -r .tokenId "$STORE")"
+expire_pats
+out="$(sync --apply)"
+check "rotation apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotation apply: stored PAT changed" "true" "$([ "$(jq -r .pat "$STORE")" != "$old_pat" ] && echo true || echo false)"
+check "rotation apply: stored tokenId changed" "true" "$([ "$(jq -r .tokenId "$STORE")" != "$old_id" ] && echo true || echo false)"
+check "rotation apply: stored tokenId is the listed one" "1" "$(jq --arg i "$(jq -r .tokenId "$STORE")" '[.[] | select(.id == $i)] | length' "$S/pats.json")"
 
 exit "$fail"
