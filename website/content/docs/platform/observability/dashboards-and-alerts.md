@@ -60,7 +60,7 @@ scope for this always-on page:
 | Dashboard | Folder | Source |
 |---|---|---|
 | `kubernetes-views-{global,namespaces,nodes,pods}` | `observability` | Imported — vendored by the `victoria-metrics-k8s-stack` chart |
-| `kubernetes-node-exporter-full` | `kubernetes` | Authored in-repo |
+| `kubernetes-node-exporter-full` | `kubernetes` | Imported, [grafana.com dashboard 1860](https://grafana.com/grafana/dashboards/1860/) |
 | `kubernetes-karpenter` | `kubernetes` | Imported, [grafana.com dashboard 20398](https://grafana.com/grafana/dashboards/20398/) |
 | `app-all-in-one` | `apps` | Authored in-repo |
 | `runlore` | `runlore` | Authored in-repo |
