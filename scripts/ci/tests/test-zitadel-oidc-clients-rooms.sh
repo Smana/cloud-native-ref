@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034
-# (functions lifted from zitadel-oidc-clients.sh read these globals)
+# shellcheck disable=SC2034,SC2218
+# (functions lifted from zitadel-oidc-clients.sh read these globals; eval defines them before
+# the calls, so shellcheck sees only the later stubs and wrongly reports SC2218)
 # requires: jq openssl
 #
 # The rooms-proxy consumer (SP2 ruling P12) and the agent groups. JWT access
@@ -25,7 +26,7 @@ load_function() {
     eval "$body"
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
-         mirror_to_openbao force_sync_mirrored cmd_sync; do
+         mirror_to_openbao force_sync_mirrored stored_client_id previous_client_id cmd_sync; do
     load_function "$f" "$SRC"
 done
 # shellcheck source=scripts/lib/bao-map.sh
@@ -180,6 +181,8 @@ reconcile_workforce_audience() { :; }
 publish_project_id() { :; }
 reconcile_openbao_oidc() { :; }
 force_sync_mirrored() { :; }
+restart_rotated_consumers() { :; } # its own suite: test-zitadel-oidc-clients-restart.sh
+mirror_read() { :; }               # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
 store_probe() { return 0; }
 store_read() { printf '%s' "$p"; }
 store_write_and_mirror() { cat > "$T/written-$1"; }

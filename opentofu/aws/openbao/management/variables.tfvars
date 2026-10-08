@@ -12,6 +12,10 @@ pki_domains = [
   "priv.aws.ogenki.io",
   "priv.gcp.ogenki.io"
 ]
+# SP2's room-broker Certificate (infrastructure/base/room-broker/tls.yaml) names
+# agent-system's short-form Service names; gcp-0's stack grants these via the
+# same variable.
+pki_additional_allowed_domains = ["agent-system.svc.cluster.local", "agent-system.svc"]
 tags = {
   project = "cloud-native-ref"
   owner   = "Smana"
