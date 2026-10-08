@@ -27,7 +27,7 @@ load_function() {
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
          mirror_to_openbao force_sync_mirrored stored_client_id previous_client_id cmd_sync; do
-    case "$f" in mirror_to_openbao) load_function "$f" "$REPO_ROOT/scripts/lib/openbao-mirror.sh" ;; *) load_function "$f" "$SRC" ;; esac
+    case "$f" in mirror_to_openbao|force_sync_mirrored) load_function "$f" "$REPO_ROOT/scripts/lib/openbao-mirror.sh" ;; *) load_function "$f" "$SRC" ;; esac
 done
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"

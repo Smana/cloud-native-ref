@@ -11,7 +11,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/bao-map.sh"
 
 # The fields this script owns in a consumer secret: every key merge_secret and
-# converge_secret write. Onto an EXISTING OpenBao value the mirror copies only
+# converge_secret write, plus the room broker reader's `pat tokenId githubIdpId`
+# (zitadel-idp.sh). Onto an EXISTING OpenBao value the mirror copies only
 # these. The rest of a blob belongs to another writer -- seed's
 # GF_SECURITY_ADMIN_PASSWORD in grafana-envvars -- and OpenBao's copy of it may
 # be newer than the store's (a rotation made in OpenBao), so the mirror never
@@ -93,3 +94,38 @@ mirror_to_openbao() (
     fi
     echo "[mirrored] ${key} -> ${target}"
 )
+
+# Force-sync every ExternalSecret that reads a mirrored path. Left alone, each
+# waits out its refreshInterval (up to 1h) serving the dead directory's client.
+# Matched on store (openbao-<mount>, or agent-system's agents-secrets for the
+# agents mount) and key. Warn-only: the mirror already
+# converged OpenBao, and the next refresh picks it up regardless.
+force_sync_mirrored() {
+    [ "$APPLY" = "true" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ] || return 0
+    local key target es_json ns name now targets=()
+    for key in "$@"; do
+        target="$(bao_target_for "$key")" && targets+=("$target")
+    done
+    [ "${#targets[@]}" -gt 0 ] || return 0
+    if ! es_json="$(kubectl get externalsecrets -A -o json 2>/dev/null)"; then
+        echo "WARN: could not list ExternalSecrets; mirrored ones refresh on their own interval" >&2
+        return 0
+    fi
+    now="$(date +%s)"
+    jq -r '.items[]
+        | (.spec.secretStoreRef.name // "") as $store
+        | ($store | if . == "agents-secrets" then "agents"
+                    elif startswith("openbao-") then ltrimstr("openbao-")
+                    else empty end) as $mount
+        | select([(.spec.data // [])[].remoteRef.key?, (.spec.dataFrom // [])[].extract.key?]
+                 | map(select(. != null) | $mount + "/" + .)
+                 | any(IN($ARGS.positional[])))
+        | "\(.metadata.namespace) \(.metadata.name)"' --args "${targets[@]}" <<< "$es_json" \
+    | while read -r ns name; do
+        if kubectl annotate externalsecret "$name" -n "$ns" force-sync="$now" --overwrite >/dev/null; then
+            echo "[synced ] externalsecret ${ns}/${name}"
+        else
+            echo "WARN: could not force-sync externalsecret ${ns}/${name}" >&2
+        fi
+    done || echo "WARN: could not match ExternalSecrets to the mirrored paths" >&2
+}

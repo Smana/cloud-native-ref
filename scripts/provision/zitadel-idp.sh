@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Register the Google Workspace identity provider and the groups Action in
-# ZITADEL, from configuration this repository owns.
+# ZITADEL, plus an optional link-only GitHub IdP and the room broker's read-only
+# link reader, from configuration this repository owns.
 #
 # WHY THIS EXISTS
 #
@@ -554,6 +555,8 @@ ensure_broker_reader() {
             stored="$(store_read "$READER_STORE_KEY")" \
                 || { echo "[FAILED ] ${READER_STORE_KEY} is unreadable; not mirrored" >&2; return 1; }
             printf '%s' "$stored" | mirror_to_openbao "$READER_STORE_KEY" || return 1
+            # Otherwise the broker's ExternalSecret serves the old PAT for up to 20m.
+            force_sync_mirrored "$READER_STORE_KEY"
         fi
     fi
 }

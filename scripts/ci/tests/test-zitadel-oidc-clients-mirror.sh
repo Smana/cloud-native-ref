@@ -147,9 +147,9 @@ done
 # M-4: the ExternalSecrets reading a mirrored path are force-synced, so they do
 # not wait out their refreshInterval on the dead directory's clients. Matched on
 # store (openbao-<mount>) AND key, through both data and dataFrom.
-fs_body="$(sed -n '/^force_sync_mirrored() {/,/^}/p' "$S")"
+fs_body="$(sed -n '/^force_sync_mirrored() {/,/^}/p' "$M")"
 if [ -z "$fs_body" ]; then
-    bad "could not extract force_sync_mirrored() from $S"
+    bad "could not extract force_sync_mirrored() from $M"
 else
     eval "$fs_body"
     ES_JSON='{"items":[

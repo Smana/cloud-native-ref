@@ -944,41 +944,6 @@ store_write_and_mirror() {
     printf '%s' "$payload" | mirror_to_openbao "$key" || return 2
 }
 
-# Force-sync every ExternalSecret that reads a mirrored path. Left alone, each
-# waits out its refreshInterval (up to 1h) serving the dead directory's client.
-# Matched on store (openbao-<mount>, or agent-system's agents-secrets for the
-# agents mount) and key. Warn-only: the mirror already
-# converged OpenBao, and the next refresh picks it up regardless.
-force_sync_mirrored() {
-    [ "$APPLY" = "true" ] && [ "${MIRROR_OPENBAO:-false}" = "true" ] || return 0
-    local key target es_json ns name now targets=()
-    for key in "$@"; do
-        target="$(bao_target_for "$key")" && targets+=("$target")
-    done
-    [ "${#targets[@]}" -gt 0 ] || return 0
-    if ! es_json="$(kubectl get externalsecrets -A -o json 2>/dev/null)"; then
-        echo "WARN: could not list ExternalSecrets; mirrored ones refresh on their own interval" >&2
-        return 0
-    fi
-    now="$(date +%s)"
-    jq -r '.items[]
-        | (.spec.secretStoreRef.name // "") as $store
-        | ($store | if . == "agents-secrets" then "agents"
-                    elif startswith("openbao-") then ltrimstr("openbao-")
-                    else empty end) as $mount
-        | select([(.spec.data // [])[].remoteRef.key?, (.spec.dataFrom // [])[].extract.key?]
-                 | map(select(. != null) | $mount + "/" + .)
-                 | any(IN($ARGS.positional[])))
-        | "\(.metadata.namespace) \(.metadata.name)"' --args "${targets[@]}" <<< "$es_json" \
-    | while read -r ns name; do
-        if kubectl annotate externalsecret "$name" -n "$ns" force-sync="$now" --overwrite >/dev/null; then
-            echo "[synced ] externalsecret ${ns}/${name}"
-        else
-            echo "WARN: could not force-sync externalsecret ${ns}/${name}" >&2
-        fi
-    done || echo "WARN: could not match ExternalSecrets to the mirrored paths" >&2
-}
-
 # The client id a stored consumer payload carries, whichever field its consumer
 # names it by (merge_secret). The payload arrives on stdin: it holds the secret.
 stored_client_id() {

@@ -123,7 +123,12 @@ mkdir -p "$S/bin" "$S/store"
 
 cat > "$S/bin/kubectl" <<'SHIM'
 #!/usr/bin/env bash
-printf 'admin-pat' | base64
+case "$*" in
+    *"get externalsecrets"*)
+        echo '{"items":[{"metadata":{"namespace":"agent-system","name":"room-broker-zitadel-reader"},"spec":{"secretStoreRef":{"name":"agents-secrets"},"data":[{"remoteRef":{"key":"zitadel-reader"}}]}}]}' ;;
+    *"annotate externalsecret"*) echo "$*" >> "$FAKE_STATE/kube.log" ;;
+    *) printf 'admin-pat' | base64 ;;
+esac
 SHIM
 
 cat > "$S/bin/aws" <<'SHIM'
@@ -239,7 +244,7 @@ SHIM
 chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
 
 reset_state() {
-    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json"
+    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json" "$S/kube.log"
     echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
@@ -375,6 +380,7 @@ sync --apply "${MIRROR[@]}" > /dev/null
 check "mirror: written to the mapped path" "1" "$(grep -c '^POST agents/data/zitadel-reader$' "$S/bao.log" || true)"
 check "mirror: blob intact" "$(jq -cS . "$STORE")" "$(jq -cS '.data.data' "$S/bao.json")"
 out="$(sync --apply "${MIRROR[@]}")"
+check "mirror: the broker's ExternalSecret is force-synced" "true" "$(grep -q 'annotate externalsecret room-broker-zitadel-reader -n agent-system' "$S/kube.log" 2>/dev/null && echo true || echo false)"
 check "mirror converged: no second write" "1" "$(bao_posts)"
 check "mirror converged: exits 0" "rc=0" "$(tail -1 <<< "$out")"
 # A rebuilt OpenBao is empty while the store still holds a valid PAT.

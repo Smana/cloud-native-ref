@@ -190,13 +190,19 @@ script "deploy" {
         # never land. The mirror needs OpenBao's CA; without it the sync still
         # runs and only the mirror is skipped.
         IDP_MIRROR=()
-        [ "$${#OPENBAO_ARGS[@]}" -gt 0 ] && IDP_MIRROR=(--mirror-openbao)
+        if [ "$${#OPENBAO_ARGS[@]}" -gt 0 ]; then
+          IDP_MIRROR=(--mirror-openbao)
+        else
+          echo "[warn] no OpenBao CA: the room broker's reader is not mirrored; non-admin room access stays off until the IdP sync is re-run with the OpenBao flags"
+        fi
         echo "== syncing ${global.eks_cluster_name}'s IdPs and the room broker's link reader"
         IDP_URL="$${IDP_URL}" \
           bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync \
             --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
             $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} $${IDP_MIRROR[@]+"$${IDP_MIRROR[@]}"} || \
-          echo "[warn] IdP sync for ${global.eks_cluster_name} failed; re-run scripts/provision/zitadel-idp.sh by hand"
+          { echo "[warn] IdP sync for ${global.eks_cluster_name} failed. Non-admin room access stays off until this runs;"
+            echo "       re-run it by hand (fetch the CA with openbao-config.sh ca --ca-output-file <file>):"
+            echo "         IDP_URL=$${IDP_URL} scripts/provision/zitadel-idp.sh sync --cluster ${global.eks_cluster_name} --cloud aws --region ${global.region} --apply --openbao-url ${global.openbao_url} --openbao-root-token-secret ${global.root_token_secret_name} --openbao-ca-file <file> --mirror-openbao"; }
 
         # Consuming clusters. TM_CLOUD is the right source for "which lanes is
         # this invocation deploying" -- that is exactly the question, and it

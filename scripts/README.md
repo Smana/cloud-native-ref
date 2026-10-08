@@ -14,6 +14,6 @@ directly — none of them depend on the task runner.
 | `ops/github/` | GitHub-side configuration, run by the owner: `task ops:github:agent-branch-ruleset` applies the agents' branch and tag rulesets |
 | `docs/` | docs-site generators, run by hand. `build-og-card.html` opens in a browser |
 | `lib/` | sourced by the others, never run directly |
-| `provision/` | most are invoked by terramate and tofu, at plan, apply or destroy time; `zitadel-idp.sh` is run by hand. Four are indexed: `task provision:secret-store`, `task provision:zitadel-oidc-clients`, `task provision:zitadel-idp` and `task provision:openbao-snapshot` |
+| `provision/` | most are invoked by terramate and tofu, at plan, apply or destroy time; both deploys run `zitadel-idp.sh` (aws-0 and gcp-0), and it can be re-run by hand. Four are indexed: `task provision:secret-store`, `task provision:zitadel-oidc-clients`, `task provision:zitadel-idp` and `task provision:openbao-snapshot` |
 
 `scripts/` root holds no loose executables.
