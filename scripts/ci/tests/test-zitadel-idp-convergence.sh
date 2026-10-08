@@ -417,7 +417,7 @@ out="$(sync)"
 check "unnamed Google dry run: adoption announced" "1" "$(count "^\[adopt  \] Google IdP 293295084030403016 has name '', renaming to 'Google Workspace'" "$out")"
 check "unnamed Google dry run: no create planned" "0" "$(count "would create IdP 'Google Workspace'" "$out")"
 check "unnamed Google dry run: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
-reset_state; unnamed_google
+reset_state; unnamed_google; echo '["293295084030403016"]' > "$S/policy.json"
 out="$(sync --apply)"
 check "unnamed Google apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
 check "unnamed Google apply: no create call" "0" "$(calls '^POST /admin/v1/idps/google$')"
@@ -442,5 +442,20 @@ out="$(SEARCH_FAIL_AFTER=0 sync --apply)"
 check "search fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "search fails: no create" "0" "$(calls '^POST /admin/v1/idps/(google|github)$')"
 check "search fails: no write" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
+# 16. GitHub adoption follows the type, not the name.
+reset_state; with_github_key
+echo '[{"id":"g-only","name":"","type":"PROVIDER_TYPE_GOOGLE","owner":"IDP_OWNER_TYPE_SYSTEM","config":{"google":{"clientId":"google-id"}}}]' > "$S/idps.json"
+out="$(sync --apply)"
+check "unnamed Google is not adopted as GitHub: GitHub created" "1" "$(calls '^POST /admin/v1/idps/github$')"
+check "unnamed Google is not adopted as GitHub: no github PUT" "0" "$(calls '^PUT /admin/v1/idps/github/')"
+reset_state; with_github_key
+echo '[{"id":"gh-hand","name":"","type":"PROVIDER_TYPE_GITHUB","owner":"IDP_OWNER_TYPE_SYSTEM","config":{"github":{"clientId":"old-gh"}}}]' > "$S/idps.json"
+out="$(sync --apply)"
+check "unnamed GitHub: adoption announced" "1" "$(count "^\[adopt  \] GitHub IdP gh-hand has name '', renaming to 'GitHub'" "$out")"
+check "unnamed GitHub: no github create" "0" "$(calls '^POST /admin/v1/idps/github$')"
+check "unnamed GitHub: renamed through the github PUT" "1" "$(calls '^PUT /admin/v1/idps/github/gh-hand$')"
+check "unnamed GitHub: PUT keeps the link-only options" '{"isLinkingAllowed":true,"isCreationAllowed":false,"isAutoCreation":false,"isAutoUpdate":false}' \
+    "$(jq -c '.providerOptions' "$S/idp-put-body.json" 2>/dev/null)"
 
 exit "$fail"

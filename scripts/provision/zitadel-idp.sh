@@ -252,6 +252,7 @@ resolve_idp_template() {
             echo "[FAILED ] cannot search IdP templates; refusing to create without knowing what exists" >&2
             return 1
         fi
+        echo "[WARN   ] cannot search IdP templates; assuming none exist for this dry run" >&2
         all='{}'
     fi
     named="$(jq -c --arg n "$name" '[.result[]? | select(.name == $n)][0] // empty' <<< "$all")"
