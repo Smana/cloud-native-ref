@@ -201,13 +201,16 @@ case "$method $path" in
         fi
         jq -c '{result: .}' "$S/idps.json" ;;
     "POST /admin/v1/idps/google")
-        upd idps.json --argjson d "$data" '. + [{id:"idp-google",name:"Google Workspace",config:{google:{clientId:$d.clientId}}}]'
+        upd idps.json --argjson d "$data" '. + [{id:"idp-google",name:"Google Workspace",type:"PROVIDER_TYPE_GOOGLE",owner:"IDP_OWNER_TYPE_SYSTEM",config:{google:{clientId:$d.clientId}}}]'
         echo '{"id":"idp-google"}' ;;
     "POST /admin/v1/idps/github")
         echo "$data" > "$S/github-body.json"
-        upd idps.json --argjson d "$data" '. + [{id:"idp-github",name:"GitHub",config:{github:{clientId:$d.clientId}}}]'
+        upd idps.json --argjson d "$data" '. + [{id:"idp-github",name:"GitHub",type:"PROVIDER_TYPE_GITHUB",owner:"IDP_OWNER_TYPE_SYSTEM",config:{github:{clientId:$d.clientId}}}]'
         echo '{"id":"idp-github"}' ;;
-    "PUT /admin/v1/idps/"*) echo '{}' ;;
+    "PUT /admin/v1/idps/"*)
+        echo "$data" > "$S/idp-put-body.json"
+        upd idps.json --argjson d "$data" --arg i "${path##*/}" 'map(if .id == $i then .name = $d.name else . end)'
+        echo '{}' ;;
     "GET /admin/v1/policies/login") jq -c '{policy:{idps:[.[]|{idpId:.}]}}' "$S/policy.json" ;;
     "POST /admin/v1/policies/login/idps") upd policy.json --argjson d "$data" '. + [$d.idpId]'; echo '{}' ;;
     "GET /management/v1/policies/login") echo '{"policy":{"isDefault":true}}' ;;
@@ -244,7 +247,7 @@ SHIM
 chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
 
 reset_state() {
-    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json" "$S/kube.log"
+    rm -f "$S/calls.log" "$S/idp-put-body.json" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json" "$S/kube.log"
     echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
@@ -406,5 +409,38 @@ out="$(FAIL_ON='GET /admin/v1/policies/login' sync --apply)"
 check "no instance role: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "no instance role: names IAM_OWNER" "1" "$(count 'lacks the INSTANCE role IAM_OWNER' "$out")"
 check "no instance role: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
+# 13. A hand-made Google IdP with no name is adopted, never duplicated.
+unnamed_google() { echo '[{"id":"293295084030403016","name":"","type":"PROVIDER_TYPE_GOOGLE","owner":"IDP_OWNER_TYPE_SYSTEM","config":{"google":{"clientId":"old-id"}}}]' > "$S/idps.json"; }
+reset_state; unnamed_google
+out="$(sync)"
+check "unnamed Google dry run: adoption announced" "1" "$(count "^\[adopt  \] Google IdP 293295084030403016 has name '', renaming to 'Google Workspace'" "$out")"
+check "unnamed Google dry run: no create planned" "0" "$(count "would create IdP 'Google Workspace'" "$out")"
+check "unnamed Google dry run: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+reset_state; unnamed_google
+out="$(sync --apply)"
+check "unnamed Google apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "unnamed Google apply: no create call" "0" "$(calls '^POST /admin/v1/idps/google$')"
+check "unnamed Google apply: renamed through PUT by id" "1" "$(calls '^PUT /admin/v1/idps/google/293295084030403016$')"
+check "unnamed Google apply: PUT carries name and client id" '["Google Workspace","google-id"]' "$(jq -c '[.name, .clientId]' "$S/idp-put-body.json" 2>/dev/null)"
+check "unnamed Google apply: still one IdP, renamed" '["Google Workspace"]' "$(jq -c '[.[] | select(.type == "PROVIDER_TYPE_GOOGLE") | .name]' "$S/idps.json")"
+check "unnamed Google apply: login policy lists the adopted id" "1" "$(jq -r '.[]' "$S/policy.json" | grep -c 293295084030403016 || true)"
+out="$(sync)"
+check "unnamed Google converged: no adopt, no dry-run lines" "0" "$(count '^\[(adopt|dry-run)' "$out")"
+
+# 14. Two Google templates and none named: stop, write nothing.
+reset_state; unnamed_google
+jq '. + [{"id":"second","name":"Other","type":"PROVIDER_TYPE_GOOGLE","owner":"IDP_OWNER_TYPE_SYSTEM","config":{"google":{"clientId":"x"}}}]' "$S/idps.json" > "$S/i.t" && mv "$S/i.t" "$S/idps.json"
+out="$(sync --apply)"
+check "two Google IdPs: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "two Google IdPs: names both ids" "1" "$(count '293295084030403016 second' "$out")"
+check "two Google IdPs: no write" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
+# 15. A failed template search under --apply must not fall through to create.
+reset_state
+out="$(SEARCH_FAIL_AFTER=0 sync --apply)"
+check "search fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "search fails: no create" "0" "$(calls '^POST /admin/v1/idps/(google|github)$')"
+check "search fails: no write" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
 
 exit "$fail"

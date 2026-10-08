@@ -236,6 +236,41 @@ idp_template_by_name() {
         | jq -c --arg n "${1:-$IDP_NAME}" '.result[]? | select(.name == $n)' | head -1
 }
 
+# Name first, then adopt-by-type. A provider created by hand before this script
+# existed can carry any name, including none (aws-0 has one Google IdP whose name
+# is empty). Creating "Google Workspace" next to it would show two Google buttons,
+# and recreating it would orphan every user link, so a lone template of the right
+# type is taken over and renamed in place by the caller's PUT. Prints the template
+# JSON ({adopted:true} when found by type), "null" when nothing matches.
+#
+# A failed search is fatal under --apply: idp_template_by_name reads it as
+# "nothing exists", which is how a transient 5xx becomes a duplicate IdP.
+resolve_idp_template() {
+    local name="$1" type="$2" all named ids
+    if ! all="$(api POST /admin/v1/idps/templates/_search -d '{"queries":[]}')"; then
+        if [ "$APPLY" = "true" ]; then
+            echo "[FAILED ] cannot search IdP templates; refusing to create without knowing what exists" >&2
+            return 1
+        fi
+        all='{}'
+    fi
+    named="$(jq -c --arg n "$name" '[.result[]? | select(.name == $n)][0] // empty' <<< "$all")"
+    if [ -n "$named" ]; then
+        printf '%s\n' "$named"
+        return 0
+    fi
+    ids="$(jq -r --arg t "$type" \
+        '.result[]? | select(.type == $t and ((.owner // "IDP_OWNER_TYPE_SYSTEM") == "IDP_OWNER_TYPE_SYSTEM")) | .id' <<< "$all")"
+    case "$(grep -c . <<< "$ids" || true)" in
+        0) echo null ;;
+        1) jq -c --arg t "$type" \
+               '[.result[] | select(.type == $t and ((.owner // "IDP_OWNER_TYPE_SYSTEM") == "IDP_OWNER_TYPE_SYSTEM"))][0] + {adopted: true}' <<< "$all" ;;
+        *) echo "[FAILED ] several ${type} IdPs and none named '${name}': $(tr '\n' ' ' <<< "$ids")" >&2
+           echo "           An operator must pick one and rename it to '${name}'; nothing was changed." >&2
+           return 1 ;;
+    esac
+}
+
 idp_id_by_name() {
     # "null" rather than "" when nothing matched. jq -r without -e happens to
     # accept a truly empty stdin quietly (checked against this repo's jq
@@ -306,8 +341,21 @@ ensure_idp() {
         return 1
     fi
 
-    template="$(idp_template_by_name || true)"
-    existing="$(jq -r '.id // empty' <<< "${template:-null}")"
+    template="$(resolve_idp_template "$IDP_NAME" PROVIDER_TYPE_GOOGLE)" || return 1
+    existing="$(jq -r '.id // empty' <<< "$template")"
+
+    if [ -n "$existing" ] && [ "$(jq -r '.adopted // false' <<< "$template")" = "true" ]; then
+        echo "[adopt  ] Google IdP ${existing} has name '$(jq -r '.name // ""' <<< "$template")', renaming to '${IDP_NAME}'"
+        if [ "$APPLY" != "true" ]; then
+            echo "           would rename in place (user links kept)"
+            return 0
+        fi
+        # The PUT carries the name and the client id, so one call renames and converges.
+        google_idp_payload "$client_id" "$client_secret" \
+            | api PUT "/admin/v1/idps/google/${existing}" -d @- >/dev/null
+        echo "[updated] IdP '${IDP_NAME}' (${existing}) renamed, client id -> ${client_id}"
+        return 0
+    fi
 
     if [ -n "$existing" ]; then
         # clientId only -- ZITADEL never echoes a stored clientSecret back on
@@ -383,8 +431,20 @@ ensure_github_idp() {
     fi
     GITHUB_ENABLED="true"
 
-    template="$(idp_template_by_name "$GITHUB_IDP_NAME" || true)"
-    existing="$(jq -r '.id // empty' <<< "${template:-null}")"
+    template="$(resolve_idp_template "$GITHUB_IDP_NAME" PROVIDER_TYPE_GITHUB)" || return 1
+    existing="$(jq -r '.id // empty' <<< "$template")"
+
+    if [ -n "$existing" ] && [ "$(jq -r '.adopted // false' <<< "$template")" = "true" ]; then
+        echo "[adopt  ] GitHub IdP ${existing} has name '$(jq -r '.name // ""' <<< "$template")', renaming to '${GITHUB_IDP_NAME}'"
+        if [ "$APPLY" != "true" ]; then
+            echo "           would rename in place (user links kept)"
+            return 0
+        fi
+        github_idp_payload "$client_id" "$client_secret" \
+            | api PUT "/admin/v1/idps/github/${existing}" -d @- >/dev/null
+        echo "[updated] IdP '${GITHUB_IDP_NAME}' (${existing}) renamed, client id -> ${client_id}"
+        return 0
+    fi
 
     if [ -n "$existing" ]; then
         existing_client_id="$(jq -r '.config.github.clientId // empty' <<< "$template")"
