@@ -2,7 +2,7 @@
 title: Platform
 weight: 20
 description: Every domain the platform runs — networking, security, GitOps, observability, and the developer-facing abstraction on top.
-lastVerified: 2026-08-27
+lastVerified: 2026-10-07
 ---
 
 One section per domain: what runs, why it was chosen over the alternatives,
@@ -17,5 +17,6 @@ AI platform: self-hosted serving and the agent factory.
   {{< card link="/docs/platform/security/" title="Security" icon="lock-closed" subtitle="OpenBao's PKI and secrets engine, cert-manager and External Secrets, Kyverno and CiliumNetworkPolicy defaults." >}}
   {{< card link="/docs/platform/developer-platform/" title="Developer Platform" icon="cube-transparent" subtitle="The App claim, its data services, and the App Wizard — a Crossplane Configuration package pinned from a sibling repo." >}}
   {{< card link="/docs/platform/observability/" title="Observability" icon="chart-bar" subtitle="VictoriaMetrics, VictoriaLogs, and VictoriaTraces under one Grafana, plus the SRE agent that reacts to their alerts." >}}
-  {{< card link="/docs/platform/ai-platform/" title="AI Platform" icon="sparkles" subtitle="Opt-in vLLM serving behind Envoy AI Gateway, and the agent factory (work in progress): sandboxed coding agents under their own identity that turn labelled issues into pull requests." >}}
+  {{< card link="/docs/platform/ai-platform/" title="AI Platform" icon="sparkles" subtitle="Opt-in vLLM serving behind Envoy AI Gateway, and the agent factory: sandboxed coding agents under their own identity that turn labelled issues into pull requests." >}}
+  {{< card link="/docs/platform/ai-platform/agents/" title="Agent Factory" icon="user-group" subtitle="Label an issue and a team of sandboxed agents opens, reviews and revises the pull request, while you watch the room and steer with GitHub reviews. Running on aws-0." >}}
 {{< /cards >}}
