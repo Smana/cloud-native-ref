@@ -11,8 +11,9 @@ wrong:
       routes a principal can reach (programme contract C5). At least one such
       policy must exist -- zero is a layout regression, not compliance, and
       used to pass this check vacuously. A BackendTrafficPolicy that resolves
-      to a different Gateway class is out of scope, so a future non-budget
-      global rate limit elsewhere is not forced into this shape.
+      to a different Gateway class, or that targets a route rather than a
+      Gateway at all, is out of scope, so a future non-budget global rate
+      limit elsewhere is not forced into this shape.
   A2  Every such rule charges tokens, not calls: request cost 0, response cost
       from io.envoy.ai_gateway/llm_total_token (SP4 design section 6).
   A3  Every Gateway of class envoy-ai-gateway is covered by a
@@ -114,8 +115,11 @@ def check_rate_limit_rules(objs):
     def targets_ai_gateway(obj):
         ns = (obj.get("metadata") or {}).get("namespace", "")
         gateway_targets = [t for t in spec_of(obj).get("targetRefs") or [] if t.get("kind") == "Gateway"]
+        # No Gateway targetRef at all -- a route-only policy (an ordinary rate
+        # limit on some unrelated HTTPRoute, say) -- is out of scope for A1/A2.
+        # It still owes A4's mergeType, checked unconditionally below.
         if not gateway_targets:
-            return True
+            return False
         return any(gateway_classes.get((ns, t.get("name")), AI_GATEWAY_CLASS) == AI_GATEWAY_CLASS
                    for t in gateway_targets)
 

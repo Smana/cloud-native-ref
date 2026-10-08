@@ -28,11 +28,9 @@ spec:
       superuser: false
   atlasSchema:
     url: https://github.com/Smana/agent-platform
-    # A v* ref resolves as a tag, anything else as a branch, never a SHA. AP-3's stack tip
-    # (agent-platform#8), which holds every migration so far, the verdict index included;
-    # agent-platform main has none yet. It moves with the broker pin and crd-rooms.yaml, and
-    # 404s once that branch merges and is deleted. Phase 7 pins the release tag.
-    ref: feat/room-tools
+    # A v* ref resolves as a tag, anything else as a branch, never a SHA: the release tag
+    # of the broker image, so the schema and the binary match.
+    ref: v0.6.1
     path: internal/store/migrations
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).

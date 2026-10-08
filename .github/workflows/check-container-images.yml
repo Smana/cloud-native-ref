@@ -1,0 +1,226 @@
+name: Check Container Images
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'container-images/**'
+      - '.github/workflows/check-container-images.yml'
+
+# Read-only because every job below checks out the PR head and executes the
+# PR's Dockerfile — the same trust class ci.yaml accepts for pre-commit hooks
+# over PR code (see its permissions block). No job here may hold a write scope
+# or log in to a registry: publishing lives in build-container-images.yml,
+# which no pull request can trigger.
+permissions:
+  contents: read
+
+# One in-flight run per PR: a push that supersedes an earlier commit cancels
+# the run that was building it. Keyed on workflow and ref like ci.yaml, so
+# this file and ci.yaml never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  detect-changes:
+    name: Detect Changed Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47
+        with:
+          files: container-images/**
+          dir_names: true
+          dir_names_max_depth: 2
+          json: true
+          # REQUIRED alongside json: true. The action defaults escape_json to true, which
+          # backslash-escapes the quotes: the output arrives as [\"container-images/foo\"],
+          # and interpolating that into a shell string gives jq invalid JSON. jq then died
+          # with `parse error: Invalid numeric literal at line 1, column 3`, IMAGES silently
+          # became [], the build matrix came out empty, every build was skipped — and the
+          # workflow still reported success. That is why ghcr.io/smana/app-wizard was never
+          # published despite a green run on main.
+          escape_json: false
+
+      - name: Detect which images changed
+        id: filter
+        run: |
+          # Automatic trigger - detect changes.
+          #
+          # pipefail matters here: the extraction below is a pipeline whose LAST command
+          # (jq -R -s) succeeds even when the FIRST one (jq -r '.[]') dies. Without it a
+          # parse failure just yields an empty list and the workflow goes green having
+          # built nothing — exactly how app-wizard silently never shipped.
+          set -o pipefail
+
+          CHANGED_DIRS='${{ steps.changed-files.outputs.all_changed_files }}'
+
+          if [[ "$CHANGED_DIRS" == "[]" ]] || [[ -z "$CHANGED_DIRS" ]]; then
+            echo "No changes detected in container-images/"
+            echo "images=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Every entry is one of two shapes: a depth-2 image dir (container-images/<name>)
+          # or the depth-1 root (container-images) that dir_names reports when a file
+          # directly in the image root — the README — changes. The root names no image
+          # and is handled by the no-images exit below; an entry matching neither shape
+          # means the extraction is broken, so fail loud rather than skip the build
+          # behind a green tick.
+          if echo "$CHANGED_DIRS" | jq -r '.[]' | grep -vE '^(container-images|container-images/[^/]+)$' > /dev/null; then
+            echo "::error::detected changed dirs ${CHANGED_DIRS} but some entries are neither container-images/<name> nor the container-images root - image detection is broken"
+            exit 1
+          fi
+
+          # Extract unique image names from the depth-2 entries. The `|| true` swallows
+          # grep's no-match exit — a root-only change names no image, and under bash -e
+          # an unguarded no-match would abort the step — while pipefail still catches a
+          # jq parse failure.
+          IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | { grep -E '^container-images/[^/]+$' || true; } | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+
+          # No depth-2 entries: only root-level files changed, which names no image —
+          # the same outcome as the no-changes exit above.
+          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
+            echo "Only root-level container-images files changed - no images to build"
+            echo "images=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed images: ${IMAGES}"
+          echo "images=${IMAGES}" >> $GITHUB_OUTPUT
+
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          IMAGES='${{ steps.filter.outputs.images }}'
+
+          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create matrix with image metadata
+          MATRIX=$(echo "$IMAGES" | jq -c --arg registry "$REGISTRY" --arg user "$REGISTRY_USER" --arg sha "${{ github.sha }}" '[.[] | {
+            "name": .,
+            "context": ("container-images/" + .),
+            "dockerfile": ("container-images/" + . + "/Dockerfile"),
+            "tags": [
+              ($registry + "/" + $user + "/" + . + ":latest"),
+              ($registry + "/" + $user + "/" + . + ":" + $sha)
+            ]
+          }]' | jq -c '{include: .}')
+
+          echo "Build matrix: ${MATRIX}"
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          REGISTRY_USER: ${{ github.repository_owner }}
+
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    # Wider than the 15 used elsewhere: this builds linux/arm64 under QEMU
+    # emulation, which is minutes rather than seconds per layer.
+    timeout-minutes: 45
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.images != '[]'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Extract application version from Dockerfile
+        id: app-version
+        run: |
+          # The image's OWN version ARG: app-wizard -> APP_WIZARD_VERSION, pev2 -> PEV2_VERSION.
+          #
+          # This used to match any ARG *VERSION=, which breaks the moment a Dockerfile also
+          # pins a tool it vendors (app-wizard pins CROSSPLANE_VERSION for the render CLI):
+          # grep then returns two lines, the multi-line value is written to $GITHUB_OUTPUT
+          # without a delimiter, and the job dies with `Invalid format 'v2.3.3'`.
+          #
+          # The `^` anchor is load-bearing: openbao-snapshot's Dockerfile documents this
+          # very convention in a comment (`# \`ARG OPENBAO_SNAPSHOT_VERSION=\` ...`) that
+          # sits ABOVE the real ARG, so an unanchored match takes the comment's closing
+          # backtick, metadata-action sanitises it to `-`, and buildx dies on the invalid
+          # tag `<image>:-` before pushing anything.
+          ARG_NAME="$(printf '%s' '${{ matrix.name }}' | tr 'a-z-' 'A-Z_')_VERSION"
+          VERSION=$(grep -oP "^ARG ${ARG_NAME}=\K[^\s]+" "${{ matrix.dockerfile }}" | head -1 || echo "")
+          if [[ -n "$VERSION" ]]; then
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "Found application version (${ARG_NAME}): ${VERSION}"
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "No ${ARG_NAME} found in ${{ matrix.dockerfile }}"
+          fi
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            # The PR build's automatic tag is pr-<n>. There is no type=sha here:
+            # {{branch}} is empty on pull_request events, so prefix={{branch}}-
+            # renders the invalid tag "-<sha>" (leading dash) and buildx fails
+            # before it even decides not to push. The <branch>-<sha> tag is
+            # produced by build-container-images.yml, whose triggers always set
+            # {{branch}}.
+            type=ref,event=pr
+            type=raw,value=${{ steps.app-version.outputs.version }},enable=${{ steps.app-version.outputs.version != '' }}
+
+      - name: Build Docker image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [detect-changes, build]
+    if: always()
+    steps:
+      - name: Create build summary
+        run: |
+          echo "## 🏗️ Container Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Changed Images**: ${{ needs.detect-changes.outputs.images }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.detect-changes.outputs.images }}" == "[]" ]]; then
+            echo "ℹ️ No container images changed - build skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Build Status**: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+            echo "**Registry**: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          fi

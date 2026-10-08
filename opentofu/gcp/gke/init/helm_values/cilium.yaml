@@ -96,6 +96,13 @@ cni:
 ipam:
   mode: kubernetes
 
+# Must equal local.cilium_agent_not_ready_taint in ../main.tf, which every GKE
+# pool and ComputeClass carries. The default key made GKE's autoscaler refuse to
+# scale a pool from zero unless the pod tolerated it, and a tolerating pod ran
+# unpoliced until the agent was up (F2). aws-0 keeps the default: Karpenter
+# ignores startup taints in its simulation.
+agentNotReadyTaintKey: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready
+
 kubeProxyReplacement: true
 
 operator:
@@ -108,7 +115,9 @@ operator:
   # Empty restarts ALL unmanaged pods, which on GKE means the managed addons that
   # started before Cilium owned the CNI.
   extraArgs:
-    - --pod-restart-selector=
+    # Every unmanaged pod except agent runs (F31): a finished run pod loses its endpoint while its
+    # sidecars drain, the watcher deleted it, agent-sandbox recreated it, and the run ended PodLost.
+    - --pod-restart-selector=!agents.ogenki.io/run-id
   unmanagedPodWatcher:
     intervalSeconds: 15
     restart: true
@@ -120,10 +129,15 @@ prometheus:
   serviceMonitor:
     enabled: false
 
+# The agent sits at ~170-240Mi at rest on gcp-0, and a fresh node's startup burst
+# OOM-killed it at 256Mi (twice, F9 2026-10-01), holding Cilium's startup taint ~50 s.
 resources:
-  limits:
-    cpu: 300m
+  requests:
+    cpu: 100m
     memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 routingMode: native
 

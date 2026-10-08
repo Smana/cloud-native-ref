@@ -13,10 +13,10 @@
 #      crossplane-configuration-aws, gcp-0 gets `xsqlinstances-gcp...` from
 #      -gcp — so a claim naming the AWS one here would find no Composition.
 #
-#   2. No `objectStoreRecovery`. The AWS claim restores from a specific S3
-#      path captured in 2024; there is no GCS equivalent to restore from, and
-#      pointing at an empty bucket would fail the bootstrap rather than start
-#      a fresh database.
+#   2. No `objectStoreRecovery`. The AWS claim restores from the
+#      harbor-pre-destroy alias; no GCS equivalent exists until the first
+#      gcp-0 teardown creates it, and pointing at an empty prefix would fail
+#      the bootstrap rather than start a fresh database.
 #
 #   3. `backup.bucketName` names a `${project_id}-` bucket, not a `${region}-`
 #      one. GCS bucket names are globally unique, so the region is not what
@@ -30,10 +30,12 @@
 # name below resolves to. The Composition renders barman's ObjectStore and a
 # bucket-scoped GCPWorkloadIdentity from this block on its own.
 #
-# Still NO objectStoreRecovery, and that ordering is not optional: aws-0
-# restores from a prefix captured in 2024, and nothing equivalent exists on GCS
-# until these backups have actually run. Pointing recovery at an empty bucket
-# fails the bootstrap instead of starting a fresh database.
+# Still NO objectStoreRecovery today — switch to path: harbor-pre-destroy
+# once the gcp alias exists: the first gcp-0 teardown running the
+# stage2-seed-databases job (opentofu/gcp/gke/init/workflows.tm.hcl, same
+# hook as the AWS lane) creates it. The ordering is not optional: pointing
+# recovery at an empty prefix fails the bootstrap instead of starting a
+# fresh database. 2026-10-05 database-backup brief, Steps 4+6.
 
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance

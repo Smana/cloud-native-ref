@@ -121,6 +121,9 @@ load_function store_write_and_mirror "$SRC"
 load_function publish_project_id "$SRC"   # a no-op here: CLOUD=aws
 mirror_to_openbao() { cat >/dev/null; }
 force_sync_mirrored() { :; }   # its own suite; no kubectl here
+load_function stored_client_id "$SRC"
+# Its kubectl side has its own suite; here only WHICH keys reach it matters.
+restart_rotated_consumers() { printf '%s\n' "$@" > "$STORE_DIR/.rotated"; }
 
 # ── globals cmd_sync / converge_secret read ─────────────────────────────────
 CLUSTER="aws-0"
@@ -166,6 +169,7 @@ after="$(store_read headlamp-envvars)"
 check "converge: OIDC_SCOPES gains groups"     "profile,email,groups" "$(jq -r '.OIDC_SCOPES' <<< "$after")"
 check "converge: client secret untouched"      "do-not-touch-me"      "$(jq -r '.OIDC_CLIENT_SECRET' <<< "$after")"
 check "converge: client id still correct"      "existing-client-id"   "$(jq -r '.OIDC_CLIENT_ID' <<< "$after")"
+check "converge: same client id, nothing restarted" "" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
 
 case "$out" in
     *"[converged] headlamp"*) printf '  ok   converge: reported in the run output\n' ;;
@@ -215,5 +219,13 @@ case "$(cat "$OUT_FILE")" in
     *"delete the app"*) printf '  ok   secret truly absent: still gives the restore-or-recreate advice\n' ;;
     *) printf '  FAIL secret truly absent: the restore-or-recreate advice is gone\n'; fail=1 ;;
 esac
+
+# ── the store holds a client ZITADEL no longer knows: a rotation ──────────
+jq -c '.OIDC_CLIENT_ID = "dead-client-id"' <<< "$after" > "$STORE_DIR/headlamp-envvars"
+rm -f "$STORE_DIR/.rotated"
+( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1
+check "rotation: cmd_sync exits 0 under errexit" "0" "$?"
+check "rotation: the key and its new client id reach the restart" \
+    "headlamp-envvars=existing-client-id" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
 
 exit "$fail"

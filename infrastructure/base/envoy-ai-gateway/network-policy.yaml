@@ -43,6 +43,18 @@ spec:
         - ports:
             - port: "9443"
               protocol: TCP
+    # GKE's control plane reaches pods through konnectivity-agent, an ordinary
+    # kube-system pod, so the `kube-apiserver` entity never matches there and the
+    # webhook times out (seen on gcp-0: `dial tcp …:9443: i/o timeout`, no Envoy
+    # pod for any Gateway). Inert on EKS, which runs no konnectivity-agent.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: konnectivity-agent
+      toPorts:
+        - ports:
+            - port: "9443"
+              protocol: TCP
     # Extension Server gRPC from Envoy Gateway controller in
     # envoy-gateway-system.
     - fromEndpoints:

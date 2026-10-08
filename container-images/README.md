@@ -29,18 +29,20 @@ container-images/
 
 Container images are **automatically built and pushed** via GitHub Actions when changes are detected.
 
-### Workflow: `build-container-images.yml`
+### Workflows: `check-container-images.yml` and `build-container-images.yml`
+
+Split by trigger, so the write-scoped workflow never runs on a pull request.
 
 **Triggers:**
-- ✅ Push to `main` branch (when files in `container-images/` change)
-- ✅ Pull requests (builds but doesn't push)
-- ✅ Manual dispatch (build specific image or all)
+- ✅ Pull requests (when files in `container-images/` change) → `check-container-images.yml` builds each changed image with a read-only token — no registry login, no push
+- ✅ Push to `main` branch (when files in `container-images/` change) → `build-container-images.yml` builds, pushes and scans
+- ✅ Manual dispatch (build specific image or all) → `build-container-images.yml`
 
 **Features:**
 - 🔍 **Smart Change Detection**: Only builds images that have changed
 - 🏗️ **Multi-arch Builds**: Supports `linux/amd64` and `linux/arm64`
-- 🔒 **Security Scanning**: Trivy scans for HIGH/CRITICAL vulnerabilities
-- 📦 **Automatic Tagging**: `latest`, `<sha>`, `<branch>-<sha>`
+- 🔒 **Security Scanning** (publish workflow only): Trivy scans for HIGH/CRITICAL vulnerabilities
+- 📦 **Automatic Tagging** (published images): `latest`, `main`, `main-<sha>`, and the image's own `v*` version read from its Dockerfile `ARG`
 - 💾 **Build Cache**: GitHub Actions cache for faster builds
 - 📊 **Build Summary**: Detailed summary in workflow run
 
@@ -48,10 +50,10 @@ Container images are **automatically built and pushed** via GitHub Actions when 
 
 1. **Change Detection**
    ```yaml
-   # Workflow triggers only when these paths change:
+   # Both workflows trigger only when these paths change
+   # (each also filters on its own workflow file):
    paths:
      - 'container-images/**'
-     - '.github/workflows/build-container-images.yml'
    ```
 
 2. **Matrix Build**
@@ -76,7 +78,8 @@ Jobs:
 ├─ build-and-push (matrix: pev2)
 │  ├─ Build for linux/amd64, linux/arm64
 │  ├─ Push to ghcr.io/smana/pev2:latest
-│  ├─ Push to ghcr.io/smana/pev2:<sha>
+│  ├─ Push to ghcr.io/smana/pev2:main-<sha>
+│  ├─ Push to ghcr.io/smana/pev2:v1.17.0 (the Dockerfile ARG version)
 │  └─ Run Trivy scan
 └─ build-summary
    └─ Create GitHub summary with results

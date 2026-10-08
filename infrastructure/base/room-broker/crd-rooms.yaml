@@ -1,6 +1,6 @@
-# Vendored from Smana/agent-platform config/crd (ruling P16): the stack-tip branch until the merge wave, then the release asset.
-# Source: feat/room-tools at 91b25cef1ea7a0275f5dbf63233cf6178b789c47 (2026-10-01, agent-platform#8), the room-broker pin.
-# Refresh with every AP pin: gh api repos/Smana/agent-platform/contents/config/crd/agents.ogenki.io_rooms.yaml?ref=<branch or tag> --jq .content | base64 -d
+# Vendored from Smana/agent-platform (ruling P16): the release asset since the merge wave.
+# Source: the crd-rooms.yaml asset of agent-platform v0.6.1, the room-broker pin.
+# Refresh with every AP pin: gh release download <tag> --repo Smana/agent-platform --pattern crd-rooms.yaml
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
