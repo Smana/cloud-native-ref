@@ -5,9 +5,10 @@
 # human step is the owner's, prompted and waited for. The transcript it writes is what the docs
 # page and its diagram are built from (scripts/docs/factory-journey.py).
 #
-# usage: factory-walkthrough.sh --title "<issue title>" --body "<issue body>"
+# usage: factory-walkthrough.sh (--title "<issue title>" --body "<issue body>" | --issue <number>)
 #                               [--repo owner/name] [--out transcript.json] [--timeout-min 60]
-# The issue describes a real defect in a file on main: runs clone main (Task 1.13 Step 2).
+# The issue describes a real defect in a file on main: runs clone main (Task 1.13 Step 2). A restart
+# passes --issue with the issue the first run opened, or it files a duplicate (#2252).
 set -euo pipefail
 
 REPO=Smana/cloud-native-ref OUT=walkthrough-transcript.json TIMEOUT=60 NS=agent-system
@@ -32,6 +33,32 @@ wait_for() { # $1 what, then a command that succeeds once it is there
   done
 }
 
+open_issue() {
+  if [ -n "$ISSUE" ]; then
+    T[issue_opened]="$(gh api "repos/$REPO/issues/$ISSUE" | jq -r .created_at)"
+    return
+  fi
+  ISSUE="$(gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" | sed 's#.*/##')"
+  mark issue_opened
+  echo "a restart resumes this walkthrough with: --issue $ISSUE" >&2
+}
+
+# The owner's steps as GitHub recorded them: their marks are when Enter was pressed, so they carry
+# the owner's latency (#2251). A step GitHub has no event for keeps its mark.
+github_times() {
+  local timeline reviews
+  timeline="$(gh api --paginate "repos/$REPO/issues/$ISSUE/timeline?per_page=100")"
+  reviews="$(gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100")"
+  latest_into labelled "$timeline" 'select(.event == "labeled" and .label.name == "factory/ready") | .created_at'
+  latest_into changes_requested "$reviews" 'select(.state == "CHANGES_REQUESTED" and .user.type == "User") | .submitted_at'
+  latest_into approved "$reviews" 'select(.state == "APPROVED" and .user.type == "User") | .submitted_at'
+}
+latest_into() { # $1 the mark, $2 paged JSON arrays, $3 a filter over one element yielding a time
+  local at
+  at="$(jq -rn "[inputs | .[] | $3] | last // empty" <<<"$2")"
+  if [ -n "$at" ]; then T[$1]=$at; fi
+}
+
 transcript() {
   local tj ts
   tj="$(task_json)"
@@ -44,7 +71,7 @@ transcript() {
       tokens: $t.status.usage.tokens, phase: $t.status.phase, comments: $comments, timestamps: $ts}'
 }
 
-main() {
+parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --repo) REPO=$2; shift 2 ;;
@@ -52,14 +79,18 @@ main() {
       --timeout-min) TIMEOUT=$2; shift 2 ;;
       --title) TITLE=$2; shift 2 ;;
       --body) BODY=$2; shift 2 ;;
+      --issue) ISSUE=$2; shift 2 ;;
       *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
   done
-  if [ -z "$TITLE" ] || [ -z "$BODY" ]; then
-    echo "--title and --body are required: a real defect in a file on main" >&2; exit 2
+  if [ -z "$ISSUE" ] && { [ -z "$TITLE" ] || [ -z "$BODY" ]; }; then
+    echo "--title and --body are required without --issue: a real defect in a file on main" >&2; exit 2
   fi
-  ISSUE="$(gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" | sed 's#.*/##')"
-  mark issue_opened
+}
+
+main() {
+  parse_args "$@"
+  open_issue
   ask "apply the label factory/ready to issue #$ISSUE: a maintainer's label is what starts the factory"
   mark labelled
   wait_for "the task" has_task
@@ -87,6 +118,7 @@ main() {
   mark ended
   COMMENTS="$(gh issue view "$ISSUE" --repo "$REPO" --json comments \
     -q '[.comments[] | select(.author.login == "ogenki-agent-factory") | {at: .createdAt, body}]')"
+  github_times
   transcript >"$OUT"
   echo "transcript: $OUT" >&2
 }
