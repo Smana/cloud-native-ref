@@ -113,7 +113,8 @@ globals {
   # ref.tag -- Flux re-applies the same directory after bootstrap, so a skew
   # installs one CRD set at bootstrap and a different one on reconcile.
   # ./scripts/ci/validate-doc-claims.sh fails when the two disagree.
-  gateway_api_version = "v1.6.2"
+  # renovate: datasource=github-tags depName=kubernetes-sigs/gateway-api
+  gateway_api_version = "v1.6.3"
 
   # Flux sync configuration
   flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
