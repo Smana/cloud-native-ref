@@ -59,7 +59,7 @@ did not.
 | Per-repo groups mirrored in ZITADEL | Rejected: a second permission system to keep in step with GitHub |
 | Every `agents-member` reads all rooms (today) | Rejected: a room leaks a private repo to anyone in the group |
 | Identity source: a `github_login` token claim (ZITADEL Action over user metadata) | Rejected: no Action can read IdP links at token time, and user metadata is writable by machine users for themselves and by `user.write` holders, so the claim is forgeable |
-| **Identity source: the user's GitHub IdP link, read by the broker** | Chosen: a link can be added only by authenticating at GitHub, or by an admin; the numeric id survives renames |
+| **Identity source: the user's GitHub IdP link, read by the broker** | Chosen: a link can be added only by authenticating at GitHub, or by an admin; the numeric id survives renames. This holds from ZITADEL v4.17.3 and v4.18.0: older releases let a user add an unverified link to their own account through the API |
 
 ---
 

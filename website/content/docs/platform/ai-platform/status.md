@@ -2,7 +2,7 @@
 title: Status and roadmap
 weight: 60
 description: "The one place the AI platform's state lives: what serves, what is built, deployed and proven live for the agents, the open findings, and the serving roadmap."
-lastVerified: 2026-10-07
+lastVerified: 2026-10-08
 aliases:
   - /docs/platform/agent-factory/status/
   - /docs/platform/ai-platform/roadmap/
@@ -16,7 +16,7 @@ role page links to its row here instead of repeating it.
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
 | Agent runtime and identity | Built, reviewed, **proven live** on `aws-0` and `gcp-0`; runs survive a Spot reclaim (proven on `aws-0`) | [Runtime](#runtime) |
 | Agent gateway | Agent Router 1.1.0 running on `aws-0`; agentgateway selected, migration planned | [Agent gateway](#agent-gateway) |
-| Rooms | Running on `aws-0`, approvals included; fork and `roomctl` deployed | [Rooms](#rooms) |
+| Rooms | Running on `aws-0`, approvals included; fork and `roomctl` deployed; the local-first UX (summary, repo-scoped access, hand-off skill) on v0.8.0, validated except the D7 checks that need a second GitHub account | [Rooms](#rooms) |
 | Factory | Phases 1–9 running on `aws-0`, proven end to end on 2026-10-07 and **signed off by the owner**; the merge gate in shadow | [Factory](#factory) |
 | Agent observability | Running on `aws-0`, live gates partly passed | [Observability](#observability) |
 
@@ -219,6 +219,11 @@ Spot interruption and by a real one.
 CNPG log, the bridge and the web view run on `aws-0`. The approvals' live gate (SC-5) passed on
 2026-10-07; fork and `roomctl` are deployed.
 
+**Local-first UX, agent-platform v0.8.0, running on `aws-0` since 2026-10-08.** `roomctl status`, the
+five-block room page, the `factory-handoff` skill, and room access that follows GitHub (D7). Results
+and findings per check:
+[runbook 11](https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/11-v1-validation.md#results).
+
 ### Factory
 
 **Phases 1–9 built and running on `aws-0`; the merge gate in shadow.** The 2026-10-07 walkthrough
@@ -251,6 +256,7 @@ phase as it was recorded.
 | **SP2** rooms | 0.5 hardening, 1 log, 2 viewers, 3 tools, 4 driver | Built, reviewed, **live gates partly passed** | [#2137](https://github.com/Smana/cloud-native-ref/pull/2137) → [#2139](https://github.com/Smana/cloud-native-ref/pull/2139) → [#2146](https://github.com/Smana/cloud-native-ref/pull/2146) → [#2150](https://github.com/Smana/cloud-native-ref/pull/2150) | gcp-0, 2026-10-01: log 12 pass / 2 fail ([F12, F15](#live-findings-on-gcp-0)) / 1 owner step; viewers 3 pass / 1 fail ([F14](#live-findings-on-gcp-0)) and 6 pass / 2 blocked / 5 owner steps; phase 3: live gate 3.11 not run; driver (steering, gate 4.8): 1 pass, 5 owner steps pending |
 | **SP2** rooms | 5 approvals | Built, reviewed, running on `aws-0`, **live gate passed** | [#2205](https://github.com/Smana/cloud-native-ref/pull/2205); agent-platform [#11](https://github.com/Smana/agent-platform/pull/11) | aws-0, 2026-10-07: SC-5 passed |
 | **SP2** rooms | 6 fork and `roomctl`, 7 UX checkpoint | 6 built, reviewed and deployed on `aws-0`; 7 signed off with SP3's walkthrough | [#2226](https://github.com/Smana/cloud-native-ref/pull/2226); agent-platform [#28](https://github.com/Smana/agent-platform/pull/28) | aws-0, 2026-10-07: the owner's sign-off |
+| **Local-first UX** | A agent-platform v0.8.0, B pins, skill and runbook 11 | **Merged**, running on `aws-0`; runbook 11: 5 pass / 3 partial / 4 open (the D7 checks that need a second GitHub account) | [#2262](https://github.com/Smana/cloud-native-ref/pull/2262) → [#2265](https://github.com/Smana/cloud-native-ref/pull/2265); agent-platform [#47](https://github.com/Smana/agent-platform/pull/47) | aws-0, 2026-10-08: issue #2266, filed by the skill, to PR #2267 by the factory, merged |
 | **SP3** factory | 1 issue to narrated run, 2 revise from the PR, 3 pair template | Built, reviewed, running on `aws-0`; proven end to end by the 2026-10-07 walkthrough | [#2143](https://github.com/Smana/cloud-native-ref/pull/2143) → [#2152](https://github.com/Smana/cloud-native-ref/pull/2152) → [#2153](https://github.com/Smana/cloud-native-ref/pull/2153) | aws-0, 2026-10-07: issue #2238 → PR #2239, reviewed, revised after "Request changes", approved |
 | **SP3** factory | 4 triage and teams to 9 RunLore intake, and resume after a reclaim | Built, reviewed, running on `aws-0` | [#2184](https://github.com/Smana/cloud-native-ref/pull/2184) → [#2185](https://github.com/Smana/cloud-native-ref/pull/2185) → [#2187](https://github.com/Smana/cloud-native-ref/pull/2187) → [#2189](https://github.com/Smana/cloud-native-ref/pull/2189) → [#2191](https://github.com/Smana/cloud-native-ref/pull/2191); resume [#2222](https://github.com/Smana/cloud-native-ref/pull/2222) | aws-0, 2026-10-07: Kueue's hold (4.6), the kill-switch drill (8.4), resume after a FIS test and a real Spot interruption |
 | **SP3** factory | 10 the walkthrough and the merge wave | The walkthrough ran and the owner signed off; the merge wave has started | [#2192](https://github.com/Smana/cloud-native-ref/pull/2192) | aws-0, 2026-10-07: issue #2238 to PR #2239 |

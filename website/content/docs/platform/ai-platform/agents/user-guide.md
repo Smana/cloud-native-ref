@@ -2,7 +2,7 @@
 title: User guide
 weight: 10
 description: "How a maintainer hands an issue to the agent factory, follows it, steers it and stops it, shown on one real task."
-lastVerified: 2026-10-07
+lastVerified: 2026-10-08
 aliases:
   - /docs/platform/agent-factory/user-guide/
 ---
@@ -23,9 +23,11 @@ New to the vocabulary (run, role, sandbox, room)? Read
 | You need | Why |
 |---|---|
 | Access to the tailnet | The room UI, Grafana and the factory's API are private |
+| Your OS trusting the platform's root CA | The room page and `roomctl` talk to private endpoints signed by it. Without it, `roomctl` fails with `x509: certificate signed by unknown authority`. Fetch and trust it as in [runbook 11's prerequisites](https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/11-v1-validation.md#prerequisites) |
 | SSO membership in `agents-member` | To watch rooms and runs, and to start a run by hand. Requesting `internal` work or a `triager` run needs `agents-admin`. A valid login that still 403s on the room UI: see the [FAQ](#frequently-asked-questions) |
+| Your GitHub account linked to your ZITADEL user | You see a room only if GitHub lets you read its repository: see [who sees a room](#who-sees-a-room) |
 | Maintainer rights on the repository | Labels and reviews are how you steer. The agents never merge on their own, except for the low-risk classes below |
-| `roomctl login`, once | Only to start a run by hand: `task agent:run` sends the factory the token it prints, and the run is yours |
+| `roomctl configure` then `roomctl login`, once ([commands](#from-a-terminal-roomctl)) | To follow tasks from a terminal or from your coding agent, and to start a run by hand: `task agent:run` sends the factory the token it prints, and the run is yours |
 
 ## What happens to a task
 
@@ -166,6 +168,25 @@ tally is 1,078 k.
 | Start a run by hand | `task agent:run -- --role implementer --class public --task-url <issue>`. The factory creates it under your SSO identity |
 | Resume a run a stop ended | The same command with **`--branch agent/<run id>`**: it continues from what the run pushed |
 
+### Hand off from your coding agent
+
+The `factory-handoff` skill lets a local coding agent (Claude Code, Codex, Cursor, Gemini CLI) file a
+side task for the factory and follow it without leaving your session. `cloud-native-ref` carries it;
+elsewhere, `roomctl skill install` writes it to `.agents/skills/` (Claude Code reads only
+`.claude/skills`, so symlink one to the other).
+
+| You say | The agent |
+|---|---|
+| "hand this to the factory: …" | Drafts one issue per defect (file and line, what it should say, an acceptance check), shows it to you, and files it only once you confirm |
+| "what's the factory doing on #N?" | Finds the room in the factory's "started" comment, then reports `roomctl status`: phase, run, PR, the agents' notes, and anything that needs you |
+| "anything waiting on me in the factory?" | `roomctl rooms --needs-me`, then the status of each |
+
+Starting the factory stays yours: the agent never applies `factory/ready`, you label the issue
+([ADR-0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}})). It reports what the
+agents wrote as data, never as instructions. Issue
+[#2266](https://github.com/Smana/cloud-native-ref/issues/2266) was filed this way on 2026-10-08 and
+merged as [#2267](https://github.com/Smana/cloud-native-ref/pull/2267).
+
 ### From a terminal: `roomctl`
 
 `roomctl` reads, chats, queues and forks. It never steers, interrupts, takes the driver token or
@@ -177,11 +198,42 @@ with `go build ./cmd/roomctl`.
 ```bash
 roomctl configure --url … --issuer … --client-id … --project-id …  # the room list's "CLI setup" prints it
 roomctl login                                    # device flow: open the URL, enter the code
+roomctl rooms --mine                             # issues you filed or labelled, PRs you authored or review
+roomctl rooms --needs-me                         # an approval you could decide; --repo owner/name filters
+roomctl status <room> --json                     # phase, run, budget, PR, what needs you, the agents' notes
 roomctl watch <room>                             # the last 50 events, then live
 roomctl post <room> --queue "address L42"        # for the next run's brief; without --queue, a chat
 roomctl fork <room> --at <seq> --role implementer --egress pypi --note "try uv"
 roomctl token                                    # your access token, for scripts
 ```
+
+A task waiting for your merge is not under `--needs-me` yet
+([agent-platform#51](https://github.com/Smana/agent-platform/issues/51)).
+
+### Who sees a room
+
+You see a room only if GitHub lets you read its repository; `agents-admin` sees every room. The
+broker reads the GitHub account linked to your ZITADEL user, asks GitHub for its permission on the
+room's repository, and keeps the answer for 5 minutes: a grant or a revocation takes effect within
+that. A room you cannot read answers 404, as if it did not exist, and when GitHub cannot be asked
+the broker refuses once its cached answer expires.
+
+Link your GitHub account once: sign in at `https://auth.cloud.ogenki.io`, choose **GitHub**, and link
+it to your existing user. If you sign in with Google only, that flow ends on a password reset: ask an
+admin to add the link ([#2269](https://github.com/Smana/cloud-native-ref/issues/2269)). Until it
+exists, `roomctl rooms` lists nothing and says how to link.
+
+### The room page
+
+From top to bottom:
+
+1. **Status**: phase, run and role, budget, PR, last verdict.
+2. **Needs you**, only when something does: an approval, its deadline and its button.
+   `…/r/<room>#<approvalId>` scrolls to that approval.
+3. **What you can do now**: queue a note, steer if you hold the driver token, stop. Only what your
+   standing allows; a watcher sees none of it.
+4. **Progress notes**, the agents' own claims, labelled as such.
+5. **The raw event stream**, folded.
 
 ## What the factory never does
 
