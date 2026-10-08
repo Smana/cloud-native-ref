@@ -77,7 +77,9 @@ checks:
   # Networking
   # tlsSettingsMissing: ignore  # We handle TLS at ingress level
 
-# Exemptions — privileged-by-design workloads only.
+# Exemptions — privileged-by-design workloads, and false positives on a name
+# the workload fixes. Kept here, never as annotations on the workload, so this
+# stays the complete list.
 #
 # Rules of engagement (SPEC-007):
 #   * Exempt the SPECIFIC rules a workload needs, never a blanket exemption.
@@ -118,3 +120,12 @@ exemptions:
       - default-gha-runner-scale-set
     rules:
       - privilegeEscalationAllowed
+
+  # A false positive on one name: APP_SECRET_CERTIFICATE_FILE is octo-sts's fixed
+  # variable and holds a file path; the key itself is a Secret volume. The other
+  # way to pass the key, APP_SECRET_CERTIFICATE_ENV_VAR, trips the same check and
+  # puts the key in the environment.
+  - controllerNames:
+      - octo-sts
+    rules:
+      - sensitiveContainerEnvVar

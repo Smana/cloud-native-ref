@@ -1,0 +1,25 @@
+---
+# Agent platform, gcp-0's opt-in umbrella (the aws-0 twin, GCP parity). Default
+# suspend: true, so none of clusters/gcp-0-agent-platform/ exists. The sandbox
+# pool is OpenTofu (gke/init sandbox.tf) and GKE ships the gvisor RuntimeClass,
+# so unlike aws-0 no child builds nodes or a RuntimeClass.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-platform
+  namespace: flux-system
+spec:
+  suspend: true
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  # A sibling of clusters/gcp-0/, never a sub-path: flux-system syncs that tree
+  # recursively and would apply the children around this suspend.
+  path: ./clusters/gcp-0-agent-platform
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # Agents run on frontier models through the ai-gateway controllers, with zero
+  # GPUs: never llm-platform (C1).
+  dependsOn:
+    - name: ai-gateway

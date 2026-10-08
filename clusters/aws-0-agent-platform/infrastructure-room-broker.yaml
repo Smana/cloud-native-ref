@@ -1,0 +1,31 @@
+---
+# The room broker and its log (SP2). After agent-secrets: from phase 2 its
+# oauth2-proxy and client id come through that store. After agent-policies: its
+# exception is what admits the room-broker-ca ExternalSecret in agents.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: room-broker
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  retryInterval: 30s
+  # First deploy: a CNPG cluster, the Atlas migration, then the broker's startup probe.
+  timeout: 15m0s
+  path: ./infrastructure/aws-0/room-broker
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: agent-secrets
+    - name: agent-policies
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: room-broker
+      namespace: agent-system

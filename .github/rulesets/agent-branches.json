@@ -1,0 +1,17 @@
+{
+  "name": "agent-branches",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~ALL"],
+      "exclude": ["refs/heads/agent/**", "refs/heads/main", "refs/heads/revert-*", "refs/heads/revert-*/**"]
+    }
+  },
+  "rules": [
+    {"type": "creation"},
+    {"type": "update"},
+    {"type": "deletion"}
+  ],
+  "bypass_actors": []
+}

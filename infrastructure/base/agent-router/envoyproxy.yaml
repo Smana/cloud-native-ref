@@ -1,0 +1,98 @@
+---
+# Data-plane shape of the agents' Gateway. The Service name is pinned because
+# the identity-proxy bootstrap and every run CNP name it.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: agent-router-proxy
+  namespace: agent-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        name: agent-router
+        type: ClusterIP
+      # Two replicas and a PDB: a drain or a Karpenter consolidation never takes
+      # every in-flight completion at once, and the harness does not retry.
+      envoyPDB:
+        minAvailable: 1
+      envoyDeployment:
+        replicas: 2
+        # Spread the 2 replicas so a single node or zone loss can't take both:
+        # the PDB above only helps once they're already apart.
+        pod:
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: envoy-gateway
+                  app.kubernetes.io/component: proxy
+                  gateway.envoyproxy.io/owning-gateway-name: agent-router
+                  gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: envoy-gateway
+                  app.kubernetes.io/component: proxy
+                  gateway.envoyproxy.io/owning-gateway-name: agent-router
+                  gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+        container:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+  # x_ar_agent is the VERIFIED sub (the client's copy is stripped first), so
+  # every line attributes a request to the run that made it (SC-05, T8).
+  telemetry:
+    accessLog:
+      settings:
+        - format:
+            type: JSON
+            json:
+              start_time: "%START_TIME%"
+              method: "%REQ(:METHOD)%"
+              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              response_code: "%RESPONSE_CODE%"
+              response_flags: "%RESPONSE_FLAGS%"
+              listener_port: "%DOWNSTREAM_LOCAL_PORT%"
+              upstream_cluster: "%UPSTREAM_CLUSTER%"
+              upstream_host: "%UPSTREAM_HOST%"
+              x_ar_agent: "%REQ(X-AR-AGENT)%"
+              model: "%REQ(X-AI-EG-MODEL)%"
+              duration_ms: "%DURATION%"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout
+    # Spans to the agent trace collector over OTLP/gRPC, the one protocol Envoy Gateway
+    # 1.9 exports. Its pipeline has no allowlist: the tags this file adds are verified, but
+    # Envoy's default tags (http.url, user_agent) and the tracestate come from the request,
+    # so traces/router caps them. A run's traceparent survives identity-proxy, so these join
+    # the run's trace.
+    tracing:
+      samplingRate: 100
+      provider:
+        type: OpenTelemetry
+        serviceName: agent-router
+        backendRefs:
+          - name: agent-traces-collector
+            namespace: observability
+            port: 4317
+      tags:
+        agent.principal: "%REQ(X-AR-AGENT)%"

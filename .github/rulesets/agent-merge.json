@@ -1,0 +1,10 @@
+{
+  "name": "agent-merge",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {"include": ["refs/heads/main", "refs/heads/revert-*", "refs/heads/revert-*/**"], "exclude": []}
+  },
+  "rules": [{"type": "creation"}, {"type": "update"}, {"type": "deletion"}],
+  "bypass_actors": []
+}

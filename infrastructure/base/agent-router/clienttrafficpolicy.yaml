@@ -1,0 +1,32 @@
+---
+# Runs before authentication. claim_to_headers APPENDS, so a client-sent
+# identity header would survive next to the verified one (C5). Whole-Gateway,
+# so all three listeners (sts included), same namespace, all four headers: the
+# shape SP4's render gate A3 requires.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: agent-router
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+  headers:
+    earlyRequestHeaders:
+      remove:
+        - x-ar-agent
+        - x-ar-human
+        - x-ai-gateway-client-id
+        - agent-session-id
+        # Agent Router's own internal per-backend routing headers
+        # (internal/internalapi.MCPBackendHeader/MCPRouteHeader, v1.1.0).
+        # Generated per-backend HTTPRoutes match on these and attach only to
+        # the loopback aigateway-mcp-backend-listener (unauthenticated), not
+        # to public/internal; stripping a client-supplied value here is
+        # defense-in-depth against that relocation ever failing (review M4).
+        - x-ai-eg-mcp-backend
+        - x-ai-eg-mcp-route
+  connection:
+    bufferLimit: 8Mi

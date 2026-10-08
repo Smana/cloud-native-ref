@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Children of gcp-0's opt-in ai-gateway umbrella (../gcp-0/ai-gateway.yaml). The
+# first three moved from gcp-0-llm-platform/ with their names unchanged, so every
+# dependsOn edge that names them still resolves.
+resources:
+  - infrastructure-envoy-gateway.yaml
+  - infrastructure-envoy-ai-gateway.yaml
+  - infrastructure-vllm-semantic-router.yaml
+  - infrastructure-llm-gateway.yaml

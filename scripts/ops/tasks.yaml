@@ -47,6 +47,18 @@ tasks:
   k8s:cnpg-promote-seed:
     desc: Promote a live CNPG archive to a frozen restore seed, or verify one
     cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-promote-seed.sh {{.CLI_ARGS}}"]
+  github:agent-branch-ruleset:
+    desc: Apply the agents' branch and tag rulesets (agent/** branches only, no tags, for the agents' App) to one repository
+    cmds: ["{{.TASKFILE_DIR}}/github/agent-branch-ruleset.sh {{.CLI_ARGS}}"]
+  github:agent-merge-ruleset:
+    desc: "MERGER_APP_SLUG=<slug>: apply the merge ruleset (main and the revert branches: human roles, Renovate and the merger App only) to one repository"
+    cmds: ["{{.TASKFILE_DIR}}/github/agent-merge-ruleset.sh {{.CLI_ARGS}}"]
+  github:agent-merge-gate-ruleset:
+    desc: "POLICY_BOT_APP_SLUG=<slug>: apply the merge-gate ruleset (policy-bot: main from policy-bot's App) to one repository"
+    cmds: ["{{.TASKFILE_DIR}}/github/agent-merge-gate-ruleset.sh {{.CLI_ARGS}}"]
+  github:factory-walkthrough:
+    desc: "Drive the dark factory's developer journey live (issue, label, review, close) and write the transcript the docs journey page is built from"
+    cmds: ["{{.TASKFILE_DIR}}/github/factory-walkthrough.sh {{.CLI_ARGS}}"]
   demo:load:
     desc: Run an image-gallery load-generator scenario in-cluster
     cmds: ["{{.TASKFILE_DIR}}/demo/load.sh {{.CLI_ARGS}}"]

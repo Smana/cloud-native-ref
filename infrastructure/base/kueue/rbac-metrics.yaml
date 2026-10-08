@@ -1,0 +1,16 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kueue-metrics-reader
+rules:
+  - nonResourceURLs: ["/metrics"]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kueue-metrics-reader-vmagent
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: kueue-metrics-reader}
+subjects:
+  - {kind: ServiceAccount, name: vmagent-victoria-metrics-k8s-stack, namespace: observability}

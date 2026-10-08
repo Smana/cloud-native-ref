@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The agents' Gateway (SP1 S6, C1). SP4 owns the model mapping behind each
+# listener from its PR 2 (agent-models tiers, agent-models-internal, B1-B2).
+resources:
+  - envoyproxy.yaml
+  - gateway.yaml
+  - clienttrafficpolicy.yaml
+  - securitypolicy-public.yaml
+  - securitypolicy-internal.yaml
+  - securitypolicy-sts.yaml
+  - externalsecret-zai.yaml
+  - backend-zai.yaml
+  - aigatewayroute-agent-models.yaml
+  - httproute-agent-models-list.yaml
+  - httproutefilter-agent-models-list.yaml
+  # Lives in envoy-gateway-system, where Envoy Gateway runs the data plane.
+  - network-policy-data-plane.yaml

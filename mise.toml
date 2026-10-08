@@ -9,9 +9,9 @@ min_version = "2024.11.1"
 go = "1.27.1"
 "aqua:golangci/golangci-lint" = "2.14.0"
 nodejs = "24.21.0"
-opentofu = "1.13.0"
+opentofu = "1.13.1"
 pre-commit = "4.6.2"
-trivy = "0.74.0"
+trivy = "0.75.0"
 
 # Needed by the `terraform_tflint` pre-commit hook. Pinned here rather than
 # left to whatever is on PATH so CI and a local `pre-commit run -a` lint with
@@ -75,7 +75,7 @@ kustomize = "5.8.2"
 # Task runner (taskfile.yaml). Pinned here rather than installed separately so
 # the jdx/mise-action already in the job that calls `task`
 # (kubernetes-validation) installs it with no new action.
-task = "3.53.1"
+task = "3.54.0"
 
 # Google Cloud SDK — required by the GCP stacks (opentofu/gcp/**) for cluster
 # credentials and for the gcloud-based evidence commands in the GCP runbook.

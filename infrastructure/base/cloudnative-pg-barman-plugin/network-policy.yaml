@@ -7,7 +7,8 @@
 # (backup listing / store validation) directly against S3. The actual WAL
 # archiving / base-backup I/O is done by a sidecar injected into the CNPG
 # instance pods (SA `<name>-cnpg-cluster`); that sidecar's egress is governed by
-# a CNP rendered by the SQLInstance composition, not here.
+# a CNP written beside each claim (the room log's:
+# infrastructure/base/room-broker/network-policy-cnpg.yaml), not here.
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

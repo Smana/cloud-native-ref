@@ -1,7 +1,7 @@
 ---
 title: Serving
 weight: 10
-description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until two independent gates are both released.
+description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until three independent gates are all released.
 lastVerified: 2026-08-30
 ---
 
@@ -12,7 +12,7 @@ as a single Crossplane
 per model.
 
 {{< callout type="warning" >}}
-**This platform is off by default.** Two independent gates must both be
+**This platform is off by default.** Three independent gates must all be
 released before anything LLM-related exists on the cluster — see
 [Turning it on](#turning-it-on). A plain `terramate script run deploy` and a
 plain Flux reconciliation both leave the cluster LLM-free.
@@ -29,12 +29,13 @@ plain Flux reconciliation both leave the cluster LLM-free.
 | **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
 | **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
 | **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot-first instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
-| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.6` |
+| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.9.3` |
 
 ## Turning it on
 
-The two gates are deliberately independent, so neither one accidentally
-brings the other along:
+The AWS gate and the two Kubernetes gates are independent of each other, so releasing one does not
+bring the others along — but `llm-platform` itself `dependsOn` `ai-gateway`, so the second
+Kubernetes command must run before the third:
 
 ```bash
 # Gate 1 — AWS side (S3 Files filesystem + IAM). Terramate stack tagged
@@ -43,24 +44,31 @@ brings the other along:
 # and exits 0).
 TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
-# Gate 2 — Kubernetes side. The umbrella Flux Kustomization ships suspended
-# (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
+# Gate 2 — Kubernetes side, gateway layer. llm-platform depends on this
+# umbrella, so it must resume first or llm-platform stalls on
+# "dependency 'flux-system/ai-gateway' is not ready".
+flux resume kustomization ai-gateway -n flux-system
+
+# Gate 3 — Kubernetes side, GPU models. The umbrella Flux Kustomization ships
+# suspended (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
 flux resume kustomization llm-platform -n flux-system
 ```
 
-The umbrella aggregates **8** child Flux Kustomizations under
+The umbrella aggregates **5** child Flux Kustomizations under
 `clusters/aws-0-llm-platform/`:
 
 | Child | Renders | Path |
 |---|---|---|
-| `vllm-semantic-router` | Prompt-classification router (`MoM` virtual model) | `infrastructure/base/vllm-semantic-router` |
 | `runtimeclass-nvidia` | `RuntimeClass nvidia` | `infrastructure/base/runtimeclass-nvidia` |
 | `llm-platform-gpu-nodepools` | Karpenter `gpu-l4` NodePool + EC2NodeClass | `infrastructure/base/karpenter-nodepools-gpu` |
-| `envoy-gateway` | Envoy Gateway controller | `infrastructure/base/envoy-gateway` |
-| `envoy-ai-gateway` | Envoy AI Gateway + the Semantic Router `EnvoyPatchPolicy` | `infrastructure/base/envoy-ai-gateway` |
 | `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/llm` |
 | `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
+
+The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
+Router and the `ai-gateway` Gateway) is a separate umbrella, `ai-gateway`, under
+`clusters/aws-0-ai-gateway/`. It is CPU only and suspended by default: resume it before
+`llm-platform`, which depends on it.
 
 That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested
@@ -69,10 +77,11 @@ entirely.
 
 ### On `gcp-0`
 
-`gcp-0` has **one gate, not two**: the weights bucket is a Crossplane claim
-rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED` —
-the only gate is the umbrella Kustomization `clusters/gcp-0/llm-platform.yaml`
-(`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
+`gcp-0` has **no OpenTofu gate**: the weights bucket is a Crossplane claim
+rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED`.
+The two Kubernetes gates match aws-0's: `clusters/gcp-0/ai-gateway.yaml`,
+then `clusters/gcp-0/llm-platform.yaml`, which depends on it (both
+`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
 Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
 [ADR-0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}})
 for why, including what it gives up. Why the umbrella is still suspended, and

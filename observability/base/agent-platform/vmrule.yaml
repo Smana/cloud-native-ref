@@ -1,0 +1,60 @@
+---
+# Agent platform health (SP1 §8). Lives in the umbrella: on a cluster with the
+# platform suspended these would only ever be silent.
+# runbook_url points at the integration branch: the agent-factory runbooks live there until
+# Phase 7 re-points them (Ruling G).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: agent-platform
+  namespace: observability
+spec:
+  groups:
+    - name: agent-platform
+      rules:
+        - alert: AgentSandboxPodPending
+          expr: max by (pod) (kube_pod_status_phase{namespace="agents", phase="Pending"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agent sandbox pod {{ $labels.pod }} has been Pending for 15 minutes"
+            description: "Check the agents-gvisor pool (aws-0: NodePool limit; gcp-0: node pool max, cluster CPU ceiling, the Cilium-taint toleration), spot capacity and runsc on the node: kubectl describe pod -n agents {{ $labels.pod }}"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # aws-0 only: karpenter_nodepools_* has no series on gcp-0, whose pool is a
+        # GKE node pool (no Karpenter), so this can never fire there. On gcp-0 a
+        # full pool surfaces as AgentSandboxPodPending.
+        - alert: AgentGvisorPoolNearLimit
+          expr: sum by (resource_type) (karpenter_nodepools_usage{nodepool="agents-gvisor"}) / sum by (resource_type) (karpenter_nodepools_limit{nodepool="agents-gvisor"}) * 100 > 90
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "agents-gvisor is above 90 % of its {{ $labels.resource_type }} limit"
+            description: "New runs will stay Pending. Raise the NodePool limit or wait for runs to finish. aws-0 only (Karpenter metrics); gcp-0 relies on AgentSandboxPodPending."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/01-runtime-sandbox.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # No enforced per-run cap exists until SP4 PR 2 (design spec line 162):
+        # until then a run is bounded only by the gateway's 5M ceiling. These
+        # watch the same gen_ai counters the SP4 llm-gateway budget uses.
+        - alert: AgentRunTokenSpendHigh
+          expr: sum by (ar_agent) (increase(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*", gen_ai_token_type=~"input|output"}[8h])) > 5e6
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.ar_agent }} spent more than 5M tokens in 8h"
+            description: "No enforced per-run cap exists until SP4 PR 2. Revoke by hand: kubectl annotate agentrun -n agents <name> agents.ogenki.io/revoked=budget-run"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: AgentFleetTokenSpendHigh
+          expr: sum(increase(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*", gen_ai_token_type=~"input|output"}[1h])) > 1e7
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "The agent fleet spent more than 10M tokens in 1h"
+            description: "No enforced per-run cap exists until SP4 PR 2. Revoke the noisiest run by hand: kubectl annotate agentrun -n agents <name> agents.ogenki.io/revoked=budget-run"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"

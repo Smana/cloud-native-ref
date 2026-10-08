@@ -1,0 +1,37 @@
+# policy-bot (§6.5, T7). In: the gateways (the public one routes the hook path only), vmagent.
+# Out: DNS and GitHub. Nothing in agents or agent-system reaches it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: policy-bot
+  namespace: merge-gate
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: policy-bot}
+  ingress:
+    - fromEntities: [ingress, host]
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: api.github.com
+        - matchName: github.com
+      toPorts:
+        - ports: [{port: "443", protocol: TCP}]

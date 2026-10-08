@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# A render root of its own, so CI renders this base with gcp-0's fixture values
+# (GCP parity GP-14). The Flux child for gcp-0 points here.
+resources:
+  - ../../base/agent-platform

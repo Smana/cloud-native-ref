@@ -1,15 +1,20 @@
 ---
 title: Agents
 weight: 20
-description: "Work in progress. The agent factory: autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes end to end."
-lastVerified: 2026-10-01
+description: "The agent factory: autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes end to end."
+lastVerified: 2026-10-07
 aliases:
   - /docs/platform/agent-factory/
 ---
 
-{{< callout type="warning" >}}
-**Work in progress.** These pages describe the target design. What runs on `gcp-0` today, what is
-proven live and what is planned is on the
+{{< callout type="info" >}}
+**The first version runs on `aws-0`.** A labelled issue becomes a reviewed pull request; a GitHub
+review turns into a revision; runs are metered and capped, resumed after a reclaim and stopped by
+the kill switch; humans follow and approve in rooms. The owner signed off the experience on
+2026-10-07, after [one real task end to end]({{< relref "/docs/platform/ai-platform/agents/user-guide.md#one-real-task-end-to-end" >}}).
+Still to come: the merge gate going live, after which low-risk docs fixes merge themselves; then,
+with the model-routing work, routing by tier, the Anthropic backend for `internal` work and budgets
+enforced at the gateway. What is proven live is on the
 [status page]({{< relref "/docs/platform/ai-platform/status.md#agent-programme" >}}).
 {{< /callout >}}
 
@@ -20,6 +25,9 @@ and agents (an implementer, then a reviewer) work it on their own branch in a gV
 open a pull request, and the factory narrates each step on the issue. Humans steer through GitHub reviews, or by
 joining the agents' room. Only policy-defined low-risk changes merge themselves; everything else
 waits for a human.
+
+Which alternatives were considered, and why these choices? See
+[Alternatives considered]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}}).
 
 ## New here? The ideas in two minutes
 
@@ -62,7 +70,7 @@ The diagram below shows the **target** architecture: the whole programme once bu
 each box as deployed on `gcp-0` (noting where its live gate is pending), built but not yet
 deployed, or planned.
 
-![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels; a PR review asking for changes, built but not deployed), RunLore findings (planned), the task agent:run CLI, a developer in a browser (approving is planned), and roomctl (planned). The factory turns a labelled issue into a task: intake and narration from a fixed template, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all deployed on gcp-0, live gate pending. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are deployed, with the steering, room tools and verdicts still awaiting their live gate; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (deployed) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0, deployed and being replaced by agentgateway, selected on 2026-10-01, with a PoC instance on gcp-0), which routes to Z.ai GLM-5.3 (deployed), Claude on Bedrock for aws-0 and on Vertex AI for gcp-0 (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
+![The Agent Factory's target architecture. Triggers: a GitHub repository (the factory/ready and factory/stop labels; a PR review asking for changes, built but not deployed), RunLore findings (planned), the task agent:run CLI, a developer in a browser (approving is planned), and roomctl (planned). The factory turns a labelled issue into a task: intake and narration from a fixed template, then the Task controller, which starts one implementer per task, opens a room and runs the run meter, with a kill switch beside it; all deployed on gcp-0, live gate pending. The reviewer pair and revise flow are built but not deployed; teams with a tester, Kueue admission and the merge gate (policy-bot and a merger App, auto-merge and rollback in shadow) are planned. Rooms: a web UI behind oauth2-proxy and ZITADEL SSO, the room-broker and its append-only CNPG log are deployed, with the steering, room tools and verdicts still awaiting their live gate; approval cards and fork are planned. The runtime turns an AgentRun claim, through Crossplane, into a default-deny CiliumNetworkPolicy, projected tokens and a gVisor Sandbox pod holding the room-bridge sidecar, the OpenHands harness and an Envoy identity-proxy, on a GKE Sandbox pool on gcp-0 (deployed) or a Karpenter AL2023 pool on aws-0 (built). The proxy sends every call with a per-run JWT to Agent Router (Envoy AI Gateway 1.1.0, deployed and being replaced by agentgateway, selected on 2026-10-01, with a PoC instance on gcp-0), which routes to Z.ai GLM-5.3 (deployed), the Anthropic API direct for internal data with a gateway-held key (planned), Bedrock and Vertex AI optional per cloud (planned), the MCP servers and octo-sts, which mints a token for the agents' GitHub App, confined by rulesets to agent/** branches and no tags. Agent Router also carries the agents' room_* tools to the broker; token budgets and tiers are planned. The room-bridge streams events to the broker over TLS with a room token, and the broker posts verdicts on the PR. Spans go through the agent-traces-collector to VictoriaTraces, step logs to VictoriaLogs, and access logs, gen_ai metrics and AgentRun state to VictoriaMetrics, all shown on the agent-run and agent-fleet Grafana dashboards. The same manifests deploy to gcp-0, the live cluster, and aws-0, destroyed and rebuilt on demand](/images/diagrams/agent-factory.svg)
 
 *Source: [`docs/architecture/agent-factory.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/agent-factory.drawio).*
 

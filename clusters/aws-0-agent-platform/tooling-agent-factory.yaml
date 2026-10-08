@@ -1,0 +1,33 @@
+---
+# The agent factory (SP3). After the broker (rooms), the agents' store (App key) and the
+# agent policies (from phase 5, the one-creator rule).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-factory
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./tooling/aws-0/agent-factory
+  sourceRef:
+    kind: ExternalArtifact
+    name: tooling-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: agent-secrets
+    - name: room-broker
+    - name: agent-policies
+    # Its runs enqueue into the LocalQueues; without them a submitted run has
+    # no queue to name and sits unadmitted.
+    - name: kueue-queues
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agent-factory
+      namespace: agent-system

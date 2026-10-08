@@ -1,0 +1,22 @@
+# The factory's signed chart (SP3 §4). Signatures: release.yaml tags only (R20).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agent-factory
+  namespace: agent-system
+spec:
+  interval: 12h
+  url: oci://ghcr.io/smana/charts/agent-factory
+  # Flux pulls the digest (it wins over the tag), so a re-pushed tag changes nothing. The tag
+  # stays for Renovate and for readers.
+  ref:
+    tag: "0.8.0"  # agent-platform v0.8.0
+    digest: sha256:95d0d12a6dbc1d14c47bd6dcbfcab479101302187c02a7b02014d5a32d1944f9
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
+        subject: "^https://github\\.com/Smana/agent-platform/\\.github/workflows/release\\.yaml@refs/tags/v.*$"

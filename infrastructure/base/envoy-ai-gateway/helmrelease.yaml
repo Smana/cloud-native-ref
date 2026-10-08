@@ -15,42 +15,32 @@ spec:
   install:
     remediation:
       retries: 3
+  # The MCP session-seed Secret is watched: ESO's second write to it right after
+  # creation triggers a reconcile that cancels an in-flight upgrade ("context
+  # canceled"). With no upgrade retries that failure stalls the release for good.
+  upgrade:
+    remediation:
+      retries: 3
   # CRDs from the sibling HelmRelease must reconcile first.
   dependsOn:
     - name: envoy-ai-gateway-crds
       namespace: envoy-ai-gateway-system
   values:
     # -------------------------------------------------------------------------
-    # GenAI request traces (SPEC-006 FR-006, US-3) — CONDITIONAL, DISABLED.
+    # GenAI request traces (SPEC-006 FR-006, US-3): DISABLED.
     #
-    # The extproc emits OpenInference GenAI spans when OTLP export env-vars are
-    # set on the sidecar via `extProc.extraEnvVars`. Metrics stay Prometheus-
-    # scraped (see vmscrape.yaml) — `OTEL_METRICS_EXPORTER=none` avoids a
-    # double-export.
-    #
-    # Left DISABLED pending CL-4 / T005 on-cluster verification: the extproc
-    # OTel SDK autoexport appends the STANDARD OTLP path (`/v1/traces`) to
-    # OTEL_EXPORTER_OTLP_ENDPOINT, but VictoriaTraces' OTLP/HTTP ingest is the
-    # NON-standard `/insert/opentelemetry/v1/traces` on :10428, and its
-    # OTLP/gRPC :4317 listener requires `-otlpGRPCListenAddr` to be enabled
-    # (not currently enabled in observability/base/victoria-traces/). Whether
-    # the SDK accepts the full non-standard path without a collector can only
-    # be settled on the cluster (T005). Do NOT uncomment until T005 confirms
-    # IN-scope; if OUT, FR-006/US-3/SC-005 descope to a follow-up spec (record
-    # in plan Deviations + a CL). No OTel collector may be introduced (CL-1).
-    #
-    # extProc:
-    #   extraEnvVars:
-    #     - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    #       # verify per T005 e2e — standard SDK path would resolve to
-    #       # <endpoint>/v1/traces; VictoriaTraces needs /insert/opentelemetry/v1/traces
-    #       value: "http://victoria-traces-vt-single-server.observability:10428/insert/opentelemetry"
-    #     - name: OTEL_METRICS_EXPORTER
-    #       value: "none"
-    #     - name: OTEL_SERVICE_NAME
-    #       value: "ai-gateway"
+    # The extproc emits OpenInference GenAI spans when OTLP export env vars are
+    # set on the sidecar via `extProc.extraEnvVars`. For agent-router traffic
+    # those spans carry full prompts and completions, and they join the run's
+    # trace. They may reach storage only through agent-traces-collector with an
+    # allowlist pipeline, or not at all (ADR-0051): never export them straight
+    # to VictoriaTraces. Metrics stay Prometheus-scraped (vmscrape.yaml), so any
+    # such export also sets `OTEL_METRICS_EXPORTER=none`.
     # -------------------------------------------------------------------------
     controller:
+      # Per-principal token counters: the run meter (SP3) and the budget alerts
+      # read these labels. Per-run labels cost ~30 series per run (design R11).
+      metricsRequestHeaderAttributes: "x-ar-agent:ar_agent,x-ar-human:ar_human,x-ai-gateway-client-id:ar_client"
       resources:
         requests:
           cpu: 100m
@@ -70,3 +60,10 @@ spec:
           drop: ["ALL"]
         seccompProfile:
           type: RuntimeDefault
+  # Without this, the chart falls back to the
+  # published "default-insecure-seed" for every MCP session ID.
+  valuesFrom:
+    - kind: Secret
+      name: ai-gateway-mcp-session-seed
+      valuesKey: seed
+      targetPath: controller.mcp.sessionEncryption.seed

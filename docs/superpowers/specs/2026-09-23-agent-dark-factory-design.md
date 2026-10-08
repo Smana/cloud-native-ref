@@ -509,4 +509,4 @@ deciding risk · agents deploying anything · auto-reverting human merges · a m
 | 3 | `Smana/agent-platform` | `Task` CRD and controller (intake, run-request API, scheduler, triage, templates, run meter, CI/policy watch, auto-merge arming, revert watcher, metrics), strict config, envtest suite, signed chart | Unit and envtest suites green |
 | 4 | this repo | ADR-0048; HelmRelease, config, factory App key via `agents-secrets`, CNPs, Kyverno `AgentRun` creator rule, Kueue queues under `clusters/aws-0-agent-platform/`; RunLore `notify.templated` block; VMRule + dashboard inside the umbrella | `validate-manifests.sh`, `validate-vmrules.sh` exit 0 |
 | 5 | live trial | `link-rot` schedule, one review-class issue, the kill-switch drill, all `public`; budgets in shadow for the first week (OD-10) | SC-1…SC-8, SC-10…SC-14 → `/verify-spec` |
-| 6 | after SP4's Bedrock backend (OD-12/13) | A RunLore replay: `internal` tasks have no backend before it | SC-9 |
+| 6 | after the Anthropic API backend lands (agentgateway migration phase I, ADR-0054; OD-12/13) | A RunLore replay: `internal` tasks have no backend before it | SC-9 |

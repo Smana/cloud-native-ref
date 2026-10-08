@@ -42,6 +42,19 @@ spec:
       reconcileStrategy: Revision
   driftDetection:
     mode: enabled
+  # Base values first (always shipped), the agent factory's notifier values second
+  # and optional -- shipped only by the agent-platform umbrella. The order is the
+  # wiring: lists replace, so the umbrella's envFrom (which restates this one plus
+  # the intake Secret) wins only as the LATER entry (TW7; see the note in
+  # helm-values-configmap.yaml).
+  valuesFrom:
+    - kind: ConfigMap
+      name: runlore-base-values
+      valuesKey: values.yaml
+    - kind: ConfigMap
+      name: runlore-factory-values
+      valuesKey: values.yaml
+      optional: true
   values:
     # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
     # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct
@@ -354,15 +367,9 @@ spec:
       enabled: true
       interval: 30s
       path: /metrics
-    # Secret-backed env (GEMINI_API_KEY, GITHUB_APP_PRIVATE_KEY) from the
-    # runlore-credentials ExternalSecret. RunLore never inlines credentials.
-    envFrom:
-      - secretRef:
-          name: runlore-credentials
-      - secretRef:
-          name: runlore-slack
-      - secretRef:
-          name: runlore-webhook
+    # envFrom moved to helm-values-configmap.yaml (and the umbrella's optional
+    # runlore-factory-values): spec.values would REPLACE those lists, not merge
+    # into them (TW7).
     # Rendered verbatim into /etc/runlore/runlore.yaml (strict-parsed by the agent).
     config:
       gitops:
@@ -490,8 +497,8 @@ spec:
       # v0.2.0 fails closed (RequireWebhookAuth): with a model configured the
       # alert webhook MUST be authenticated, since alert labels/annotations flow
       # into the LLM prompt and bill the model. The bearer token comes from the
-      # runlore-webhook ExternalSecret (envFrom above); the Alertmanager runlore
-      # receiver posts it via authorization.credentials_file
+      # runlore-webhook ExternalSecret (envFrom in helm-values-configmap.yaml); the
+      # Alertmanager runlore receiver posts it via authorization.credentials_file
       # (observability/.../vm-common-helm-values-configmap.yaml).
       server:
         webhook_token_env: WEBHOOK_TOKEN  # pragma: allowlist secret

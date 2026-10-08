@@ -57,7 +57,7 @@
 #     Secret, both from security-openbao -- hence the dependsOn below.
 #   - Egress: security/base/openbao-snapshot/network-policy.yaml, default-deny
 #     both directions, allowing kube-dns, the metadata server via
-#     `toEntities: host` on 80 (a toCIDR for 169.254.169.254 silently fails),
+#     toCIDR 169.254.169.254/32 on 80 (gcp-0's patch: `host` never matches it),
 #     ${openbao_cidr} on 8200, and world:443 for Google APIs.
 #
 # dependsOn, and why there are now two edges:

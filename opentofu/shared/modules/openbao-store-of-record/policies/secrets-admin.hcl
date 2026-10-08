@@ -1,4 +1,4 @@
-# Full control of both secret mounts, for platform administrators.
+# Full control of the three secret mounts, for platform administrators.
 #
 # kv-v2 splits one logical mount across several API paths: values under `data/`,
 # version history and soft-deletes under `metadata/`, `delete/`, `undelete/` and
@@ -54,6 +54,58 @@ path "apps/destroy/*" {
 }
 
 path "apps/config" {
+  capabilities = ["read", "update"]
+}
+
+# The agents' mount (SP2 ruling P38): an administrator writes the GitHub App keys
+# and the Z.ai key there once per lineage, and deletes a leaked one.
+path "agents/data/*" {
+  capabilities = ["create", "read", "update", "patch", "delete", "list"]
+}
+
+path "agents/metadata/*" {
+  capabilities = ["create", "read", "update", "list", "delete"]
+}
+
+path "agents/delete/*" {
+  capabilities = ["update"]
+}
+
+path "agents/undelete/*" {
+  capabilities = ["update"]
+}
+
+path "agents/destroy/*" {
+  capabilities = ["update"]
+}
+
+path "agents/config" {
+  capabilities = ["read", "update"]
+}
+
+# policy-bot's mount (SP3 R44): an administrator writes the merge-gate App's secret once
+# per lineage.
+path "merge-gate/data/*" {
+  capabilities = ["create", "read", "update", "patch", "delete", "list"]
+}
+
+path "merge-gate/metadata/*" {
+  capabilities = ["create", "read", "update", "list", "delete"]
+}
+
+path "merge-gate/delete/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/undelete/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/destroy/*" {
+  capabilities = ["update"]
+}
+
+path "merge-gate/config" {
   capabilities = ["read", "update"]
 }
 

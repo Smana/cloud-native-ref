@@ -1,0 +1,57 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: agent-factory
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "agent-factory"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Agent factory",
+      "uid": "agent-factory",
+      "schemaVersion": 39,
+      "time": {"from": "now-7d", "to": "now"},
+      "templating": {"list": [{"name": "datasource", "type": "datasource", "query": "prometheus"}]},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Tasks by phase", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (phase) (agent_factory_tasks)", "legendFormat": "{{phase}}"}]},
+        {"id": 2, "type": "stat", "title": "Time to PR, p50 (SC-1: ≤ 30 min)", "gridPos": {"x": 12, "y": 0, "w": 6, "h": 8},
+         "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (increase(agent_factory_time_to_pr_seconds_bucket{tier=~\"light|standard\"}[7d])))"}]},
+        {"id": 3, "type": "stat", "title": "Reverted after auto-merge (SC-11: ≤ 5 %)", "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+         "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum(increase(agent_factory_pr_outcomes_total{outcome=\"reverted\"}[30d])) / clamp_min(sum(increase(agent_factory_pr_outcomes_total{outcome=\"auto_merged\"}[30d])), 1)"}]},
+        {"id": 4, "type": "timeseries", "title": "PR outcomes by class", "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (class, outcome) (increase(agent_factory_pr_outcomes_total[1d]))", "legendFormat": "{{class}} {{outcome}}"}]},
+        {"id": 5, "type": "timeseries", "title": "Tokens per finished task, p90", "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "histogram_quantile(0.9, sum by (le, tier, template) (increase(agent_factory_task_tokens_bucket[1d])))", "legendFormat": "{{tier}} {{template}}"}]},
+        {"id": 6, "type": "bargauge", "title": "Budget left today", "gridPos": {"x": 0, "y": 16, "w": 8, "h": 8},
+         "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "agent_factory_budget_remaining_tokens / agent_factory_budget_cap_tokens", "legendFormat": "{{principal}}"}]},
+        {"id": 7, "type": "timeseries", "title": "Human interventions (how dark is it?)", "gridPos": {"x": 8, "y": 16, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (kind) (increase(agent_factory_human_interventions_total[1d]))", "legendFormat": "{{kind}}"}]},
+        {"id": 8, "type": "table", "title": "Class mismatches (triage quality)", "gridPos": {"x": 16, "y": 16, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (predicted, matched) (increase(agent_factory_class_mismatch_total[30d]))", "format": "table", "instant": true}]},
+        {"id": 9, "type": "table", "title": "Budget fit by classifier (heuristic)", "gridPos": {"x": 0, "y": 24, "w": 16, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (classifier, fit, control) (increase(agent_factory_tier_fit_total[30d]))", "format": "table", "instant": true}]},
+        {"id": 10, "type": "stat", "title": "Kill switch", "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "max(agent_factory_kill_switch_engaged)"}]},
+        {"id": 11, "type": "timeseries", "title": "Automatic resumes by reason", "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "expr": "sum by (reason) (increase(agent_factory_resumes_total[1d]))", "legendFormat": "{{reason}}"}]}
+      ]
+    }

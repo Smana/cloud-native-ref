@@ -54,6 +54,8 @@ data "aws_security_group" "tailscale" {
   }
 }
 
+data "aws_caller_identity" "this" {}
+
 #tflint-ignore: terraform_unused_declarations
 data "aws_ecrpublic_authorization_token" "token" {
   provider = aws.virginia

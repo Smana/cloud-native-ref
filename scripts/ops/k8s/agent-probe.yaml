@@ -1,0 +1,140 @@
+# Throwaway identity probe for SP1 verification. A Sandbox in `agents` whose
+# curl container holds four tokens a real run never shows its harness: the
+# implementer gateway audience of each class, one reviewer audience (to
+# exercise the log-tool Allow rules implementer lacks), and the octo-sts one.
+# Apply, test, delete in the same session:
+#   kubectl apply -f scripts/ops/k8s/agent-probe.yaml
+#   kubectl -n agents patch sandbox agent-probe --type=merge \
+#     -p "{\"spec\":{\"shutdownTime\":\"$(date -u -d '+1 hour' +%FT%TZ)\"}}"
+#   kubectl delete -f scripts/ops/k8s/agent-probe.yaml --ignore-not-found
+# The pod ends at activeDeadlineSeconds and agent-sandbox v1.0.3 keeps the
+# terminated pod rather than recreating it, but it creates a new one if that pod
+# is ever removed, and the Sandbox, SA and CNP stay until deleted. The patch is
+# the backstop for a forgotten delete: at shutdownTime the controller removes
+# the pod, and shutdownPolicy Delete then removes the Sandbox.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-probe
+  namespace: agents
+automountServiceAccountToken: false
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-probe
+  namespace: agents
+spec:
+  endpointSelector:
+    matchLabels:
+      agents.ogenki.io/run-id: probe000
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Namespace pinned as a run's CNP pins it (CC-1): any namespace can name a
+    # Gateway `agent-router`. octo-sts is reached through its `sts` listener
+    # (:8082), never directly: that listener pins this cluster's issuer.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: agent-router
+            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+---
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-probe
+  namespace: agents
+spec:
+  service: false
+  shutdownPolicy: Delete
+  podTemplate:
+    metadata:
+      labels:
+        agents.ogenki.io/run-id: probe000
+        agents.ogenki.io/role: implementer
+    spec:
+      serviceAccountName: agent-probe
+      automountServiceAccountToken: false
+      runtimeClassName: gvisor
+      restartPolicy: Never
+      activeDeadlineSeconds: 3600
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: probe
+          image: docker.io/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+          command: ["sleep", "3600"]
+          # Ready means all three tokens are mounted, so `kubectl wait` is enough.
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "test -s /var/run/secrets/probe/public/token && test -s /var/run/secrets/probe/internal/token && test -s /var/run/secrets/probe/sts/token"]
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "test -s /var/run/secrets/probe/public/token"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - {name: public, mountPath: /var/run/secrets/probe/public, readOnly: true}
+            - {name: internal, mountPath: /var/run/secrets/probe/internal, readOnly: true}
+            - {name: internal-reviewer, mountPath: /var/run/secrets/probe/internal-reviewer, readOnly: true}
+            - {name: sts, mountPath: /var/run/secrets/probe/sts, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        # 600 s, not a run's deadline (R2): curl re-reads the file on every call,
+        # and a re-read sees kubelet's rotation even under gVisor.
+        - name: public
+          projected:
+            sources:
+              - serviceAccountToken: {audience: agent-router.implementer.public, expirationSeconds: 600, path: token}
+        - name: internal
+          projected:
+            sources:
+              - serviceAccountToken: {audience: agent-router.implementer.internal, expirationSeconds: 600, path: token}
+        # Exercises the Allow rules that only reviewer/tester/triager get
+        # (log tools), never proven live before (review M9). If this
+        # ServiceAccount isn't entitled to the audience, the TokenRequest
+        # itself fails closed -- also a useful, distinct signal.
+        - name: internal-reviewer
+          projected:
+            sources:
+              - serviceAccountToken: {audience: agent-router.reviewer.internal, expirationSeconds: 600, path: token}
+        - name: sts
+          projected:
+            sources:
+              - serviceAccountToken: {audience: octo-sts/Smana/cloud-native-ref/implementer, expirationSeconds: 600, path: token}

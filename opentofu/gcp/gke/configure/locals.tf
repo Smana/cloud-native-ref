@@ -25,6 +25,10 @@ locals {
 
   github_app_secret = jsondecode(data.google_secret_manager_secret_version.flux_github_app.secret_data)
 
+  # The GKE issuer: deterministic from project, location and name, and public.
+  # Its JWKS is <issuer>/jwks; EKS's is <issuer>/keys.
+  oidc_issuer_url = "https://container.googleapis.com/v1/projects/${var.project_id}/locations/${local.init.cluster_location}/clusters/${var.cluster_name}"
+
   # Hosting the IdP means serving it on THIS cluster's public domain; consuming
   # it means naming whichever cluster does. Derived in one place so the two
   # cannot disagree -- a literal in the vars ConfigMap is what let "which cloud
