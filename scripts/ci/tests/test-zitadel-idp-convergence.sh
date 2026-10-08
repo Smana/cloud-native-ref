@@ -108,62 +108,179 @@ payload="$(google_idp_payload "client-123" "$tricky_secret")"
 check "payload: clientId preserved"     "client-123"     "$(jq -r '.clientId' <<< "$payload")"
 check "payload: tricky secret round-trips" "$tricky_secret" "$(jq -r '.clientSecret' <<< "$payload")"
 
-# ── GitHub identity: the github_login claim (spec D7) ────────────────────────
+# ── the real script against a fake ZITADEL ───────────────────────────────────
 #
-# zitadel-idp.sh cannot run offline (it needs a live PAT), so the wiring a dry
-# run would print is checked in the source, and the Actions are executed
-# against stubbed ZITADEL contexts.
-ACTIONS="$HERE/../../provision/zitadel-actions"
+# Everything above restates a filter; this runs zitadel-idp.sh itself. curl,
+# kubectl and aws are shims first on PATH: curl is a small stateful ZITADEL
+# (IdPs, login policy, actions, flow 2, machine users, org members, PATs), aws
+# is a secret store backed by files, kubectl hands back the admin PAT that
+# resolve_zitadel_pat reads. State lives in files, so --apply followed by a dry
+# run proves convergence rather than asserting it.
 SCRIPT="$HERE/../../provision/zitadel-idp.sh"
-LINK="$ACTIONS/github-login-on-link.js"
-CLAIM="$ACTIONS/github-login-claim.js"
+S="$(mktemp -d)"
+trap 'rm -rf "$S"' EXIT
+mkdir -p "$S/bin" "$S/store"
 
-# One function per file, named like the Action (assert_action_name_matches_function).
-check "on-link file defines githubLoginOnLink" "1" "$(grep -cE '^function githubLoginOnLink\(' "$LINK" 2>/dev/null || true)"
-check "on-link file defines one function"      "1" "$(grep -cE '^function ' "$LINK" 2>/dev/null || true)"
-check "claim file defines githubLoginClaim"    "1" "$(grep -cE '^function githubLoginClaim\(' "$CLAIM" 2>/dev/null || true)"
-check "claim file defines one function"        "1" "$(grep -cE '^function ' "$CLAIM" 2>/dev/null || true)"
+cat > "$S/bin/kubectl" <<'SHIM'
+#!/usr/bin/env bash
+printf 'admin-pat' | base64
+SHIM
 
-check "script creates the GitHub IdP once" "1" "$(grep -c 'api POST /admin/v1/idps/github' "$SCRIPT")"
-check "flow 1 / trigger 1 (External Authentication, Post Authentication)" "1" \
-    "$(grep -c '^bind_action githubLoginOnLink github-login-on-link.js 1 "External Authentication" 1$' "$SCRIPT")"
-check "flow 2 / triggers 4 5 (Complement Token)" "1" \
-    "$(grep -c '^bind_action githubLoginClaim github-login-claim.js 2 "CustomiseToken" 4 5$' "$SCRIPT")"
-check "absent GitHub store key skips, not fails" "1" "$(grep -c '^        echo "\[skip   \] ${GITHUB_IDP_SECRET_KEY} not in' "$SCRIPT")"
+cat > "$S/bin/aws" <<'SHIM'
+#!/usr/bin/env bash
+# secretsmanager describe-secret | get-secret-value | create-secret | put-secret-value
+sub="$2"; id=""; json=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --secret-id) id="$2"; shift 2 ;;
+        --cli-input-json) json="${2#file://}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+f() { printf '%s/store/%s' "$FAKE_STATE" "${1//\//_}"; }
+case "$sub" in
+    describe-secret) [ -f "$(f "$id")" ] || { echo "ResourceNotFoundException" >&2; exit 254; } ;;
+    get-secret-value) [ -f "$(f "$id")" ] || exit 254; cat "$(f "$id")" ;;
+    create-secret|put-secret-value)
+        name="$(jq -r '.Name // .SecretId' "$json")"
+        jq -r '.SecretString' "$json" > "$(f "$name")" ;;
+esac
+SHIM
 
-# Binding a second Action must keep the first: SetTriggerActions replaces the list.
-flow2='{"flow":{"triggerActions":[{"triggerType":{"id":"4"},"actions":[{"id":"groups"}]}]}}'
-check "flow: POST keeps already-bound actions" '["groups","claim"]' \
-    "$(jq -c --arg t 4 --arg a claim '[.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id] + [$a]' <<< "$flow2")"
+cat > "$S/bin/curl" <<'SHIM'
+#!/usr/bin/env bash
+S="$FAKE_STATE"
+method=GET; url=""; data=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -X) method="$2"; shift 2 ;;
+        -d) if [ "$2" = "@-" ]; then data="$(cat)"; else data="$2"; fi; shift 2 ;;
+        -K|-H|--resolve) shift 2 ;;
+        http*) url="$1"; shift ;;
+        *) shift ;;
+    esac
+done
+path="${url#"$IDP_URL"}"
+echo "$method $path" >> "$S/calls.log"
+upd() { local file="$S/$1"; shift; jq "$@" "$file" > "$file.t" && mv "$file.t" "$file"; }
+next() { local n; n="$(cat "$S/n" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$S/n"; echo $((n + 1)); }
+case "$method $path" in
+    "POST /admin/v1/idps/templates/_search") jq -c '{result: .}' "$S/idps.json" ;;
+    "POST /admin/v1/idps/google")
+        upd idps.json --argjson d "$data" '. + [{id:"idp-google",name:"Google Workspace",config:{google:{clientId:$d.clientId}}}]'
+        echo '{"id":"idp-google"}' ;;
+    "POST /admin/v1/idps/github")
+        echo "$data" > "$S/github-body.json"
+        upd idps.json --argjson d "$data" '. + [{id:"idp-github",name:"GitHub",config:{github:{clientId:$d.clientId}}}]'
+        echo '{"id":"idp-github"}' ;;
+    "PUT /admin/v1/idps/"*) echo '{}' ;;
+    "GET /admin/v1/policies/login") jq -c '{policy:{idps:[.[]|{idpId:.}]}}' "$S/policy.json" ;;
+    "POST /admin/v1/policies/login/idps") upd policy.json --argjson d "$data" '. + [$d.idpId]'; echo '{}' ;;
+    "GET /management/v1/policies/login") echo '{"policy":{"isDefault":true}}' ;;
+    "POST /management/v1/actions/_search") jq -c '{result: .}' "$S/actions.json" ;;
+    "POST /management/v1/actions")
+        id="act-$(next)"
+        upd actions.json --argjson d "$data" --arg i "$id" '. + [$d + {id:$i}]'
+        echo "{\"id\":\"$id\"}" ;;
+    "PUT /management/v1/actions/"*) echo '{}' ;;
+    "GET /management/v1/flows/2")
+        if [ -n "${FLOW_FAIL:-}" ]; then echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; fi
+        cat "$S/flow2.json" ;;
+    "POST /management/v1/flows/2/trigger/"*)
+        upd flow2.json --argjson d "$data" --arg t "${path##*/}" \
+            '.flow.triggerActions = ([.flow.triggerActions[]? | select(.triggerType.id != $t)] + [{triggerType:{id:$t},actions:[$d.actionIds[]|{id:.}]}])'
+        echo '{}' ;;
+    "POST /management/v1/users/_search") jq -c '{result: .}' "$S/users.json" ;;
+    "POST /management/v1/users/machine")
+        upd users.json --argjson d "$data" '. + [{id:"reader-1",userName:$d.userName}]'
+        echo '{"userId":"reader-1"}' ;;
+    "POST /management/v1/orgs/me/members/_search") jq -c '{result: .}' "$S/members.json" ;;
+    "POST /management/v1/orgs/me/members") upd members.json --argjson d "$data" '. + [$d]'; echo '{}' ;;
+    "PUT /management/v1/orgs/me/members/"*)
+        upd members.json --argjson d "$data" --arg u "${path##*/}" 'map(if .userId == $u then .roles = $d.roles else . end)'
+        echo '{}' ;;
+    "POST /management/v1/users/"*"/pats/_search") jq -c '{result: .}' "$S/pats.json" ;;
+    "POST /management/v1/users/"*"/pats")
+        id="tok-$(next)"
+        upd pats.json --argjson d "$data" --arg i "$id" '. + [{id:$i,expirationDate:$d.expirationDate}]'
+        echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
+    *) echo "fake curl: unhandled $method $path" >&2; exit 22 ;;
+esac
+SHIM
+chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
 
-run_action() { # <file> <function> <ctx json> -> JSON of what the Action wrote
-    node -e '
-      const fs = require("fs");
-      const [file, fn, ctxJson] = process.argv.slice(1);
-      const ctx = JSON.parse(ctxJson), out = {meta: {}, claims: {}};
-      const md = ctx.v1.user && ctx.v1.user.md;
-      if (md) { ctx.v1.user.getMetadata = () => md; }
-      const api = {v1: {user: {appendMetadataRaw: (k, v) => { out.meta[k] = v; }},
-                        claims: {setClaim: (k, v) => { out.claims[k] = v; }}}};
-      new Function("ctx", "api", fs.readFileSync(file, "utf8") + "\n;" + fn + "(ctx, api);")(ctx, api);
-      console.log(JSON.stringify(out));' "$@" 2>&1
+reset_state() {
+    rm -f "$S/calls.log" "$S/n" "$S/store"/*
+    echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
+    echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
+    echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
+    echo '{"client_id":"google-id","client_secret":"gs"}' > "$S/store/zitadel-google-idp"
 }
-EMPTY='{"meta":{},"claims":{}}'
-check "link: GitHub providerInfo.login is remembered" '{"meta":{"github_login":"Smana"},"claims":{}}' \
-    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"externalId":"1"},"providerInfo":{"login":"Smana"}}}')"
-check "link: Google login (no providerInfo.login) writes nothing" "$EMPTY" \
-    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"externalId":"1"},"providerInfo":{"email":"a@b.c"}}}')"
-check "link: never falls back to a preferredUsername" "$EMPTY" \
-    "$(run_action "$LINK" githubLoginOnLink '{"v1":{"externalUser":{"preferredUsername":"a@b.c"},"providerInfo":{}}}')"
-check "claim: metadata becomes the github_login claim" '{"meta":{},"claims":{"github_login":"Smana"}}' \
-    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":"Smana"}]}}}}')"
-check "claim: JSON-quoted metadata value is unquoted" '{"meta":{},"claims":{"github_login":"Smana"}}' \
-    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":"\"Smana\""}]}}}}')"
-check "claim: byte-array metadata value is decoded" '{"meta":{},"claims":{"github_login":"Smana"}}' \
-    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"github_login","value":[83,109,97,110,97]}]}}}}')"
-check "claim: no metadata -> no claim" "$EMPTY" \
-    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":0,"metadata":[]}}}}')"
-check "claim: other metadata keys ignored" "$EMPTY" \
-    "$(run_action "$CLAIM" githubLoginClaim '{"v1":{"user":{"md":{"count":1,"metadata":[{"key":"x","value":"y"}]}}}}')"
+with_github_key() { echo '{"client_id":"gh-id","client_secret":"ghs"}' > "$S/store/zitadel-github-idp"; }
+sync() { # [--apply]; prints the script's output, last line is its exit status
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" sync --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+count() { grep -cE -- "$1" <<< "$2" || true; }
+calls() { grep -cE -- "$1" "$S/calls.log" 2>/dev/null || true; }
+
+# 1. Fresh platform, GitHub key present: one plan per piece, nothing written.
+reset_state; with_github_key
+out="$(sync)"
+check "dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "dry run: plans the Google IdP once" "1" "$(count "would create IdP 'Google Workspace'" "$out")"
+check "dry run: plans the GitHub IdP once" "1" "$(count "would create IdP 'GitHub'" "$out")"
+check "dry run: plans the reader machine user once" "1" "$(count "would create machine user 'room-broker-idp-reader'" "$out")"
+check "dry run: plans ORG_OWNER_VIEWER once" "1" "$(count "would grant ORG_OWNER_VIEWER" "$out")"
+check "dry run: plans one PAT" "1" "$(count "would mint a PAT" "$out")"
+check "dry run: writes nothing to ZITADEL" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+check "dry run: writes nothing to the store" "" "$(find "$S/store" -type f ! -name 'zitadel-*-idp' -printf '%f')"
+
+# 2. No GitHub key: skipped with a log line; Google exactly as before.
+reset_state
+out="$(sync)"
+check "no key: GitHub IdP skipped" "1" "$(count '^\[skip   \] zitadel-github-idp' "$out")"
+check "no key: no GitHub IdP planned" "0" "$(count "'GitHub'" "$out")"
+check "no key: Google planned once" "1" "$(count "would create IdP 'Google Workspace'" "$out")"
+check "no key: one login-policy plan (Google)" "1" "$(count 'would add .*login policy' "$out")"
+check "no key: no reader" "0" "$(count 'room-broker' "$out")"
+
+# 3. Apply, then converge: the second run plans nothing and mints nothing.
+reset_state; with_github_key
+out="$(sync --apply)"
+check "apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "apply: GitHub IdP created once" "1" "$(calls '^POST /admin/v1/idps/github$')"
+check "apply: GitHub IdP is link-only" '{"isLinkingAllowed":true,"isCreationAllowed":false,"isAutoCreation":false,"autoLinking":null}' \
+    "$(jq -c '.providerOptions | {isLinkingAllowed, isCreationAllowed, isAutoCreation, autoLinking}' "$S/github-body.json")"
+check "apply: GitHub on the login policy" "1" "$(jq -r '.[]' "$S/policy.json" | grep -c idp-github || true)"
+check "apply: reader holds ORG_OWNER_VIEWER" '["ORG_OWNER_VIEWER"]' "$(jq -c '.[0].roles' "$S/members.json")"
+check "apply: store key holds the PAT and githubIdpId" '{"pat":true,"githubIdpId":"idp-github"}' \
+    "$(jq -c '{pat: (.pat | startswith("reader-pat-")), githubIdpId}' "$S/store/room-broker-zitadel-reader")"
+out="$(sync)"
+check "converged: no [dry-run] lines" "0" "$(count '^\[dry-run\]' "$out")"
+check "converged: no [STALE] lines" "0" "$(count '^\[STALE' "$out")"
+: > "$S/calls.log"
+sync --apply > /dev/null
+check "converged apply: no second PAT" "0" "$(calls '/pats$')"
+check "converged apply: no mutation at all" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
+# 4. A PAT with under 30 days left is replaced.
+jq '.[0].expirationDate = "'"$(date -u -d '+10 days' +%Y-%m-%dT%H:%M:%SZ)"'"' "$S/pats.json" > "$S/p.t" && mv "$S/p.t" "$S/pats.json"
+out="$(sync)"
+check "rotation: near-expiry PAT is stale" "1" "$(count 'would mint a PAT' "$out")"
+
+# 5. SetTriggerActions replaces the list: an existing binding must survive.
+jq '.flow.triggerActions = [{triggerType:{id:"4"},actions:[{id:"hand-bound"}]}]' "$S/flow2.json" > "$S/f.t" && mv "$S/f.t" "$S/flow2.json"
+sync --apply > /dev/null
+check "flow: hand-bound action kept next to ours" "2" "$(jq '[.flow.triggerActions[] | select(.triggerType.id == "4") | .actions[]] | length' "$S/flow2.json")"
+
+# 6. GetFlow failing under --apply aborts before any binding is written.
+jq '.flow.triggerActions = []' "$S/flow2.json" > "$S/f.t" && mv "$S/f.t" "$S/flow2.json"
+: > "$S/calls.log"
+out="$(FLOW_FAIL=1 sync --apply)"
+check "GetFlow 5xx: apply exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "GetFlow 5xx: no SetTriggerActions POST" "0" "$(calls 'POST /management/v1/flows/2/trigger')"
 
 exit "$fail"

@@ -29,10 +29,11 @@
 #      never by recreating, which would orphan every existing user link.
 #   4. Uploads scripts/provision/zitadel-actions/groups-from-roles.js as a v1 Action.
 #   5. Wires that Action into flow 2 (CustomiseToken) on BOTH triggers.
-#   6. If `zitadel-github-idp` is in the store, the same for a GitHub IdP, plus
-#      two Actions that put the user's GitHub login in tokens as `github_login`:
-#      githubLoginOnLink (flow 1 / trigger 1) and githubLoginClaim (flow 2 /
-#      triggers 4 and 5). Without the key, all of step 6 is skipped.
+#   6. If `zitadel-github-idp` is in the store: a LINK-ONLY GitHub IdP, and the
+#      room broker's read-only reader -- machine user room-broker-idp-reader with
+#      ORG_OWNER_VIEWER, one PAT (1 year, re-minted under 30 days) written to
+#      `room-broker-zitadel-reader` as {"pat","githubIdpId"}. Without the key,
+#      all of step 6 is skipped.
 #
 # Usage:
 #   zitadel-idp.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
@@ -95,15 +96,23 @@ IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
 # it is accepted, stored, and only ever fails at runtime.
 #
 # assert_action_name_matches_function() below makes that unrepeatable.
-ACTIONS_DIR="$(cd "$(dirname "$0")" && pwd)/zitadel-actions"
-ACTION_NAME="" ACTION_FILE=""
-# Selects the Action that ensure_action, action_by_name and the name assertion work on.
-use_action() { ACTION_NAME="$1"; ACTION_FILE="${ACTIONS_DIR}/$2"; }
+ACTION_NAME="groupsFromRoles"
+ACTION_FILE="$(cd "$(dirname "$0")" && pwd)/zitadel-actions/groups-from-roles.js"
 
-# GitHub: the room broker needs each human's GitHub login in their token
-# (spec D7). Optional -- an absent store key skips the IdP, see ensure_github_idp.
+# GitHub is OPTIONAL and LINK-ONLY: a developer signs in with Google and links
+# GitHub once, and the room broker reads that link (ListIDPLinks) with a
+# read-only machine user (spec D7). No Action, no token claim: user metadata is
+# self-writable, an IdP link is not.
 GITHUB_IDP_NAME="GitHub"
 GITHUB_IDP_SECRET_KEY="zitadel-github-idp" # pragma: allowlist secret
+GITHUB_ENABLED="false" # set by ensure_github_idp from the one read of the key
+READER_USER="room-broker-idp-reader"
+# ORG_OWNER_VIEWER is read-only. ZITADEL has no narrower org role that includes
+# user.read, which ListIDPLinks needs.
+READER_ROLE="ORG_OWNER_VIEWER"
+READER_STORE_KEY="room-broker-zitadel-reader" # pragma: allowlist secret
+READER_PAT_DAYS=365
+READER_PAT_ROTATE_DAYS=30
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -119,9 +128,7 @@ done
 [ "$COMMAND" = "sync" ] || { sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
-for f in groups-from-roles.js github-login-on-link.js github-login-claim.js; do
-    [ -r "${ACTIONS_DIR}/${f}" ] || { echo "cannot read ${ACTIONS_DIR}/${f}" >&2; exit 1; }
-done
+[ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
@@ -306,34 +313,30 @@ ensure_idp() {
 
 # ── the GitHub identity provider ──────────────────────────────────────────────
 #
-# Same instance scope and the same update-in-place rule as the Google IdP. The
-# OAuth App is created by hand (a GitHub OAuth App accepts exactly ONE callback
-# URL, so one app per ZITADEL); its credentials live in the store key as
-# {"client_id": "...", "client_secret": "..."}.
+# Same instance scope and update-in-place rule as the Google IdP. A GitHub OAuth
+# App accepts exactly ONE callback URL, so there is one app per ZITADEL; its
+# credentials live in the store key as {"client_id": "...", "client_secret": "..."}.
 #
-# Unlike Google this is OPTIONAL: an absent key skips the provider with a log
-# line instead of failing the run, so a platform without GitHub sign-in still
-# converges.
-#
-# isAutoCreation/isAutoUpdate false: GitHub may expose no e-mail, and a
-# silently created account would have no grants. A person signs in with Google
-# first and links GitHub from their ZITADEL profile (isLinkingAllowed), which
-# is also what attaches the github_login metadata to the right user.
+# LINK-ONLY: isLinkingAllowed true; isCreationAllowed, isAutoCreation and
+# isAutoUpdate false; autoLinking unset. Nobody can sign up through GitHub, and
+# a GitHub account never attaches itself to a user by e-mail match.
 github_idp_payload() {
     local ci="$1" cs="$2"
     printf '%s' "$cs" | jq -Rs --arg n "$GITHUB_IDP_NAME" --arg ci "$ci" \
         '{name: $n, clientId: $ci, clientSecret: .,
-          scopes: ["read:user","user:email"],
+          scopes: ["read:user"],
           providerOptions: {isLinkingAllowed: true, isCreationAllowed: false,
                             isAutoCreation: false, isAutoUpdate: false}}'
 }
 
+# Reads the store key ONCE and records the answer in GITHUB_ENABLED, which the
+# login-policy step and ensure_broker_reader read instead of asking again.
 ensure_github_idp() {
     local blob client_id client_secret template existing existing_client_id
 
     blob="$(store_read "$GITHUB_IDP_SECRET_KEY" || true)"
     if [ -z "$blob" ]; then
-        echo "[skip   ] ${GITHUB_IDP_SECRET_KEY} not in the ${CLOUD} store: no GitHub sign-in, no github_login claim"
+        echo "[skip   ] ${GITHUB_IDP_SECRET_KEY} not in the ${CLOUD} store: no GitHub IdP, no broker reader"
         return 0
     fi
     client_id="$(jq -r '.client_id // empty' <<< "$blob")"
@@ -342,6 +345,7 @@ ensure_github_idp() {
         echo "[FAILED ] ${GITHUB_IDP_SECRET_KEY} has no client_id/client_secret" >&2
         return 1
     fi
+    GITHUB_ENABLED="true"
 
     template="$(idp_template_by_name "$GITHUB_IDP_NAME" || true)"
     existing="$(jq -r '.id // empty' <<< "${template:-null}")"
@@ -376,6 +380,114 @@ ensure_github_idp() {
         return 1
     fi
     echo "[created] IdP '${GITHUB_IDP_NAME}' (${id}, client ${client_id})"
+}
+
+# ── the broker's link reader ──────────────────────────────────────────────────
+#
+# The room broker decides who may see a room from the user's GitHub IdP link
+# (ListIDPLinks), so it needs a ZITADEL credential that can read users and
+# nothing else: machine user + ORG_OWNER_VIEWER + a PAT. The PAT is returned
+# once, at creation, so it is written to the store in the same step; a 1-year
+# expiry rotated under 30 days keeps it from silently dying.
+#
+# Old PATs are left to expire: the broker may still hold one while it picks up
+# the new store value.
+ensure_broker_reader() {
+    local gh_id="$1" resp user_id roles stored stored_pat stored_gh valid threshold expiry token
+
+    resp="$(jq -nc --arg n "$READER_USER" \
+        '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}' \
+        | api POST /management/v1/users/_search -d @-)" \
+        || { echo "[FAILED ] cannot search users for ${READER_USER}" >&2; return 1; }
+    user_id="$(jq -r --arg n "$READER_USER" '[.result[]? | select(.userName == $n) | .id][0] // empty' <<< "$resp")"
+
+    if [ -n "$user_id" ]; then
+        echo "[ok     ] machine user '${READER_USER}' (${user_id})"
+    elif [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would create machine user '${READER_USER}'"
+    else
+        user_id="$(jq -nc --arg n "$READER_USER" \
+            '{userName: $n, name: "Room broker IdP link reader",
+              description: "Read-only: lets the room broker read users'"'"' IdP links (ListIDPLinks).",
+              accessTokenType: "ACCESS_TOKEN_TYPE_BEARER"}' \
+            | api POST /management/v1/users/machine -d @- | jq -r '.userId // empty')"
+        [ -n "$user_id" ] || { echo "[FAILED ] machine user creation returned no id" >&2; return 1; }
+        echo "[created] machine user '${READER_USER}' (${user_id})"
+    fi
+
+    if [ -z "$user_id" ]; then
+        echo "[dry-run] would grant ${READER_ROLE} to ${READER_USER}"
+    else
+        resp="$(jq -nc --arg u "$user_id" '{queries: [{userIdQuery: {userId: $u}}]}' \
+            | api POST /management/v1/orgs/me/members/_search -d @-)" \
+            || { echo "[FAILED ] cannot list org members" >&2; return 1; }
+        roles="$(jq -c --arg u "$user_id" '[.result[]? | select(.userId == $u) | .roles[]?] | sort' <<< "$resp")"
+        if [ "$roles" = "[\"${READER_ROLE}\"]" ]; then
+            echo "[ok     ] ${READER_USER} holds exactly ${READER_ROLE}"
+        elif [ "$APPLY" != "true" ]; then
+            echo "[STALE  ] ${READER_USER} org roles: has ${roles}, want only ${READER_ROLE}"
+            echo "[dry-run] would grant ${READER_ROLE} to ${READER_USER}"
+        elif [ "$roles" = "[]" ]; then
+            jq -nc --arg u "$user_id" --arg r "$READER_ROLE" '{userId: $u, roles: [$r]}' \
+                | api POST /management/v1/orgs/me/members -d @- >/dev/null
+            echo "[granted] ${READER_ROLE} to ${READER_USER}"
+        else
+            jq -nc --arg r "$READER_ROLE" '{roles: [$r]}' \
+                | api PUT "/management/v1/orgs/me/members/${user_id}" -d @- >/dev/null
+            echo "[updated] ${READER_USER} org roles ${roles} -> only ${READER_ROLE}"
+        fi
+    fi
+
+    # The stored PAT must be one ZITADEL still lists with enough life left. The
+    # token value cannot be read back, so a missing store entry means minting.
+    stored="$(store_read "$READER_STORE_KEY" || true)"
+    stored_pat="$(jq -r '.pat // empty' <<< "${stored:-null}" 2>/dev/null || true)"
+    stored_gh="$(jq -r '.githubIdpId // empty' <<< "${stored:-null}" 2>/dev/null || true)"
+    valid="false"
+    if [ -n "$user_id" ] && [ -n "$stored_pat" ]; then
+        resp="$(api POST "/management/v1/users/${user_id}/pats/_search" -d '{}')" \
+            || { echo "[FAILED ] cannot list PATs of ${READER_USER}" >&2; return 1; }
+        # RFC 3339 strings of one shape compare correctly as text.
+        threshold="$(date -u -d "+${READER_PAT_ROTATE_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+        if jq -e --arg t "$threshold" 'any(.result[]?; (.expirationDate // "") > $t)' <<< "$resp" >/dev/null; then
+            valid="true"
+        fi
+    fi
+
+    # Read by store_write.
+    # shellcheck disable=SC2034
+    local STORE_WRITE_DESCRIPTION="Room broker's read-only ZITADEL credential. Written by zitadel-idp.sh."
+    # shellcheck disable=SC2034
+    local STORE_WRITE_LABEL="zitadel-idp"
+    if [ "$valid" = "true" ] && [ "$stored_gh" = "$gh_id" ]; then
+        echo "[ok     ] ${READER_STORE_KEY}: PAT valid for over ${READER_PAT_ROTATE_DAYS} days, githubIdpId current"
+    elif [ "$valid" = "true" ]; then
+        echo "[STALE  ] ${READER_STORE_KEY}: githubIdpId has ${stored_gh:-<none>}, want ${gh_id:-<new IdP>}"
+        if [ "$APPLY" != "true" ]; then
+            echo "[dry-run] would update githubIdpId in ${READER_STORE_KEY}"
+        else
+            printf '%s' "$stored_pat" | jq -Rs --arg id "$gh_id" '{pat: ., githubIdpId: $id}' \
+                | store_write "$READER_STORE_KEY"
+            echo "[updated] ${READER_STORE_KEY} githubIdpId -> ${gh_id}"
+        fi
+    else
+        echo "[STALE  ] ${READER_STORE_KEY}: no PAT with over ${READER_PAT_ROTATE_DAYS} days left"
+        if [ "$APPLY" != "true" ]; then
+            echo "[dry-run] would mint a PAT (${READER_PAT_DAYS} days) for ${READER_USER} and store it in ${READER_STORE_KEY}"
+        else
+            [ -n "$gh_id" ] || { echo "[FAILED ] no GitHub IdP id to store" >&2; return 1; }
+            expiry="$(date -u -d "+${READER_PAT_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+            resp="$(jq -nc --arg e "$expiry" '{expirationDate: $e}' \
+                | api POST "/management/v1/users/${user_id}/pats" -d @-)"
+            token="$(jq -r '.token // empty' <<< "$resp")"
+            [ -n "$token" ] || { echo "[FAILED ] PAT creation returned no token" >&2; return 1; }
+            # Stdin, never argv: the token is a credential.
+            printf '%s' "$token" | jq -Rs --arg id "$gh_id" '{pat: ., githubIdpId: $id}' \
+                | store_write "$READER_STORE_KEY" \
+                || { echo "[FAILED ] PAT minted but ${READER_STORE_KEY} was not written; the next --apply mints another" >&2; return 1; }
+            echo "[minted ] PAT for ${READER_USER}, expires ${expiry}, stored in ${READER_STORE_KEY}"
+        fi
+    fi
 }
 
 # The check that would have caught the day-long outage described at ACTION_NAME:
@@ -540,10 +652,9 @@ ensure_action() {
 # Flow 2 is CustomiseToken; 4 and 5 are PreUserinfoCreation and
 # PreAccessTokenCreation. Verified against a live instance rather than taken
 # from documentation: GET /management/v1/flows/2 reports
-# Action.Flow.Type.CustomiseToken. Flow 1 is External Authentication, trigger 1
-# Post Authentication (management API reference, SetTriggerActions).
+# Action.Flow.Type.CustomiseToken.
 #
-# BOTH triggers on flow 2, because they are not interchangeable. Grafana reads the
+# BOTH triggers, because they are not interchangeable. Grafana reads the
 # /userinfo response; a consumer validating the JWT itself reads the access
 # token. Wiring one leaves the other silently groupless -- which presents as
 # "SSO works but nobody has permissions", for only some of the tools.
@@ -556,35 +667,44 @@ ensure_action() {
 # against the API reference), and only POST -- and only claim to have
 # written -- when it is not.
 #
-# SetTriggerActions REPLACES a trigger's list, and flow 2 now carries two
-# Actions per trigger: the POST sends the ids already bound plus this one, or
-# binding the second Action would unbind the first.
+# SetTriggerActions REPLACES a trigger's list, so the POST sends the ids already
+# bound plus this one. That is only safe if the list that was read is the real
+# one: a failed GetFlow must never degrade to "nothing bound" under --apply, or
+# the POST would wipe whatever was bound by hand. `{}` stands only for a
+# SUCCESSFUL response that carries no flow.
 ensure_flow() {
-    local action_id="$1" flow_type="$2" flow_label="$3" flow trigger bound ids
-    shift 3
+    local action_id="$1" flow trigger bound ids
 
     if [ "$action_id" = "DRYRUN-ACTION" ]; then
         # Nothing real to compare the flow against yet -- the action itself is
         # still only a dry-run plan.
-        for trigger in "$@"; do
-            echo "[dry-run] would bind action '${ACTION_NAME}' to flow ${flow_type} trigger ${trigger}"
+        for trigger in 4 5; do
+            echo "[dry-run] would bind action to flow 2 trigger ${trigger}"
         done
         return 0
     fi
 
-    flow="$(api GET "/management/v1/flows/${flow_type}" 2>/dev/null || true)"
+    if ! flow="$(api GET /management/v1/flows/2 2>&1)"; then
+        if [ "$APPLY" = "true" ]; then
+            echo "[FAILED ] GET /management/v1/flows/2 failed: ${flow}" >&2
+            echo "           not binding: the POST would replace bindings it could not read" >&2
+            return 1
+        fi
+        echo "[WARN   ] GET /management/v1/flows/2 failed; planning as if nothing were bound" >&2
+        flow='{}'
+    fi
     [ -n "$flow" ] || flow='{}'
 
-    for trigger in "$@"; do
+    for trigger in 4 5; do
         bound="$(jq -r --arg t "$trigger" --arg a "$action_id" \
             '.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id | select(. == $a)' \
             <<< "$flow")"
         if [ -n "$bound" ]; then
-            echo "[ok     ] flow ${flow_type} (${flow_label}) trigger ${trigger}: '${ACTION_NAME}' already bound"
+            echo "[ok     ] flow 2 (CustomiseToken) trigger ${trigger}: action already bound"
             continue
         fi
 
-        echo "[STALE  ] flow ${flow_type} (${flow_label}) trigger ${trigger}: has '${ACTION_NAME}' not bound, want ${action_id} bound"
+        echo "[STALE  ] flow 2 (CustomiseToken) trigger ${trigger}: has action not bound, want ${action_id} bound"
         if [ "$APPLY" != "true" ]; then
             echo "           would bind it"
             continue
@@ -592,25 +712,9 @@ ensure_flow() {
         ids="$(jq -c --arg t "$trigger" --arg a "$action_id" \
             '[.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id] + [$a]' <<< "$flow")"
         jq -n --argjson ids "$ids" '{actionIds: $ids}' \
-            | api POST "/management/v1/flows/${flow_type}/trigger/${trigger}" -d @- >/dev/null
-        echo "[bound  ] flow ${flow_type} (${flow_label}) trigger ${trigger}"
+            | api POST "/management/v1/flows/2/trigger/${trigger}" -d @- >/dev/null
+        echo "[bound  ] flow 2 (CustomiseToken) trigger ${trigger}"
     done
-}
-
-# bind_action <action-name> <file> <flow-type> <flow-label> <trigger>...
-bind_action() {
-    local name="$1" file="$2" id
-    shift 2
-    use_action "$name" "$file"
-    # Fails the run if the action name and the JS function disagree -- see ACTION_NAME.
-    assert_action_name_matches_function
-    id="$(ensure_action | tail -1)"
-    if [ -n "$id" ]; then
-        ensure_flow "$id" "$@"
-    elif [ "$APPLY" = "true" ]; then
-        echo "[FAILED ] no action id for '${name}'; flow not wired" >&2
-        exit 1
-    fi
 }
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -628,20 +732,29 @@ ensure_github_idp
 # created) and reports the id inconsistently across them. Looking it up once
 # here is the same answer in every case.
 ensure_login_policy_idp "$(idp_id_by_name || true)"
-# Absent GitHub IdP -> empty id -> the policy step would claim it "would add" a
-# provider that was skipped. Only touch the policy when the store key is there.
-GITHUB_IDP_ID="$(idp_id_by_name "$GITHUB_IDP_NAME" || true)"
-if [ -n "$GITHUB_IDP_ID" ] || [ -n "$(store_read "$GITHUB_IDP_SECRET_KEY" || true)" ]; then
+if [ "$GITHUB_ENABLED" = "true" ]; then
+    GITHUB_IDP_ID="$(idp_id_by_name "$GITHUB_IDP_NAME" || true)"
     ensure_login_policy_idp "$GITHUB_IDP_ID"
 fi
 
-bind_action groupsFromRoles groups-from-roles.js 2 "CustomiseToken" 4 5
-bind_action githubLoginOnLink github-login-on-link.js 1 "External Authentication" 1
-bind_action githubLoginClaim github-login-claim.js 2 "CustomiseToken" 4 5
+# Fails the run if the action name and the JS function disagree -- see ACTION_NAME.
+assert_action_name_matches_function
 
-echo
-echo "GitHub-side, once per ZITADEL (a GitHub OAuth App takes exactly one callback URL):"
-echo "  ${IDP_URL}/ui/login/login/externalidp/callback"
+ACTION_ID="$(ensure_action | tail -1)"
+if [ -n "$ACTION_ID" ]; then
+    ensure_flow "$ACTION_ID" || exit 1
+elif [ "$APPLY" = "true" ]; then
+    echo "[FAILED ] no action id; flow not wired" >&2
+    exit 1
+fi
+
+if [ "$GITHUB_ENABLED" = "true" ]; then
+    ensure_broker_reader "$GITHUB_IDP_ID" || exit 1
+    echo
+    echo "GitHub-side, once per ZITADEL (an OAuth App takes exactly one callback URL):"
+    echo "  ${IDP_URL}/ui/login/login/externalidp/callback"
+fi
+
 echo
 echo "Google-side, once per cluster -- this script cannot do it:"
 echo "  add this to the OAuth client's Authorized redirect URIs"
