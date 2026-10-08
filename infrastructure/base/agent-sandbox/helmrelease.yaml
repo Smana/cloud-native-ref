@@ -53,7 +53,7 @@ spec:
       # bytes). A digest would need a postRenderers kustomize images override,
       # a third value to keep in step.
       repository: registry.k8s.io/agent-sandbox/agent-sandbox-controller
-      tag: v1.0.3
+      tag: v1.0.5
     controller:
       # Bare Sandboxes only (S1): the controller runs no SandboxTemplate,
       # SandboxClaim or warm-pool reconciler. The chart still installs their
