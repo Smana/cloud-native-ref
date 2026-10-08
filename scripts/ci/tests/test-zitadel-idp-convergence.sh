@@ -108,4 +108,303 @@ payload="$(google_idp_payload "client-123" "$tricky_secret")"
 check "payload: clientId preserved"     "client-123"     "$(jq -r '.clientId' <<< "$payload")"
 check "payload: tricky secret round-trips" "$tricky_secret" "$(jq -r '.clientSecret' <<< "$payload")"
 
+# ── the real script against a fake ZITADEL ───────────────────────────────────
+#
+# Everything above restates a filter; this runs zitadel-idp.sh itself. curl,
+# kubectl and aws are shims first on PATH: curl is a small stateful ZITADEL
+# (IdPs, login policy, actions, flow 2, machine users, org members, PATs), aws
+# is a secret store backed by files, kubectl hands back the admin PAT that
+# resolve_zitadel_pat reads. State lives in files, so --apply followed by a dry
+# run proves convergence rather than asserting it.
+SCRIPT="$HERE/../../provision/zitadel-idp.sh"
+S="$(mktemp -d)"
+trap 'rm -rf "$S"' EXIT
+mkdir -p "$S/bin" "$S/store"
+
+cat > "$S/bin/kubectl" <<'SHIM'
+#!/usr/bin/env bash
+case "$*" in
+    *"get externalsecrets"*)
+        echo '{"items":[{"metadata":{"namespace":"agent-system","name":"room-broker-zitadel-reader"},"spec":{"secretStoreRef":{"name":"agents-secrets"},"data":[{"remoteRef":{"key":"zitadel-reader"}}]}}]}' ;;
+    *"annotate externalsecret"*) echo "$*" >> "$FAKE_STATE/kube.log" ;;
+    *) printf 'admin-pat' | base64 ;;
+esac
+SHIM
+
+cat > "$S/bin/aws" <<'SHIM'
+#!/usr/bin/env bash
+# secretsmanager describe-secret | get-secret-value | create-secret | put-secret-value
+sub="$2"; id=""; json=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --secret-id) id="$2"; shift 2 ;;
+        --cli-input-json) json="${2#file://}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+f() { printf '%s/store/%s' "$FAKE_STATE" "${1//\//_}"; }
+case "$sub" in
+    describe-secret) [ -f "$(f "$id")" ] || { echo "ResourceNotFoundException" >&2; exit 254; } ;;
+    get-secret-value) [ -f "$(f "$id")" ] || exit 254; cat "$(f "$id")" ;;
+    create-secret|put-secret-value)
+        name="$(jq -r '.Name // .SecretId' "$json")"
+        [ "$name" = "${FAIL_STORE:-}" ] && { echo "AccessDenied" >&2; exit 254; }
+        jq -r '.SecretString' "$json" > "$(f "$name")" ;;
+esac
+SHIM
+
+cat > "$S/bin/curl" <<'SHIM'
+#!/usr/bin/env bash
+S="$FAKE_STATE"
+method=GET; url=""; data=""; out=/dev/null; wcode=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -X) method="$2"; shift 2 ;;
+        -o) out="$2"; shift 2 ;;
+        -w) wcode=1; shift 2 ;;
+        --data-binary) data="$(cat)"; shift 2 ;;
+        -d) if [ "$2" = "@-" ]; then data="$(cat)"; else data="$2"; fi; shift 2 ;;
+        -K|-H|--resolve) shift 2 ;;
+        http*) url="$1"; shift ;;
+        *) shift ;;
+    esac
+done
+# A fake OpenBao KV v2 (the mirror's GET and POST), kept out of calls.log so
+# "no ZITADEL mutation" stays checkable.
+if [[ "$url" == https://bao.test/v1/* ]]; then
+    echo "$method ${url#https://bao.test/v1/}" >> "$S/bao.log"
+    if [ -n "${FAIL_BAO:-}" ] && [ "$method" = POST ]; then
+        echo "curl: (22) The requested URL returned error: 403" >&2; exit 22
+    fi
+    case "$method" in
+        GET) if [ -f "$S/bao.json" ]; then cat "$S/bao.json" > "$out"; [ -z "$wcode" ] || printf 200
+             else [ -z "$wcode" ] || printf 404; exit 22; fi ;;
+        POST) jq -c '{data: {data: .data}}' <<< "$data" > "$S/bao.json" ;;
+    esac
+    exit 0
+fi
+path="${url#"$IDP_URL"}"
+echo "$method $path" >> "$S/calls.log"
+# FAIL_ON is a glob over "METHOD /path": that request answers a curl-style 500.
+# shellcheck disable=SC2053
+if [ -n "${FAIL_ON:-}" ] && [[ "$method $path" == $FAIL_ON ]]; then
+    echo "curl: (22) The requested URL returned error: 500" >&2; exit 22
+fi
+upd() { local file="$S/$1"; shift; jq "$@" "$file" > "$file.t" && mv "$file.t" "$file"; }
+next() { local n; n="$(cat "$S/n" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$S/n"; echo $((n + 1)); }
+case "$method $path" in
+    "POST /admin/v1/idps/templates/_search")
+        # SEARCH_FAIL_AFTER=n: every template search after the n-th fails.
+        n="$(cat "$S/searches" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$S/searches"
+        if [ -n "${SEARCH_FAIL_AFTER:-}" ] && [ "$n" -ge "$SEARCH_FAIL_AFTER" ]; then
+            echo "curl: (22) The requested URL returned error: 500" >&2; exit 22
+        fi
+        jq -c '{result: .}' "$S/idps.json" ;;
+    "POST /admin/v1/idps/google")
+        upd idps.json --argjson d "$data" '. + [{id:"idp-google",name:"Google Workspace",config:{google:{clientId:$d.clientId}}}]'
+        echo '{"id":"idp-google"}' ;;
+    "POST /admin/v1/idps/github")
+        echo "$data" > "$S/github-body.json"
+        upd idps.json --argjson d "$data" '. + [{id:"idp-github",name:"GitHub",config:{github:{clientId:$d.clientId}}}]'
+        echo '{"id":"idp-github"}' ;;
+    "PUT /admin/v1/idps/"*) echo '{}' ;;
+    "GET /admin/v1/policies/login") jq -c '{policy:{idps:[.[]|{idpId:.}]}}' "$S/policy.json" ;;
+    "POST /admin/v1/policies/login/idps") upd policy.json --argjson d "$data" '. + [$d.idpId]'; echo '{}' ;;
+    "GET /management/v1/policies/login") echo '{"policy":{"isDefault":true}}' ;;
+    "POST /management/v1/actions/_search") jq -c '{result: .}' "$S/actions.json" ;;
+    "POST /management/v1/actions")
+        id="act-$(next)"
+        upd actions.json --argjson d "$data" --arg i "$id" '. + [$d + {id:$i}]'
+        echo "{\"id\":\"$id\"}" ;;
+    "PUT /management/v1/actions/"*) echo '{}' ;;
+    "GET /management/v1/flows/2")
+        if [ -n "${FLOW_FAIL:-}" ]; then echo "curl: (22) The requested URL returned error: 500" >&2; exit 22; fi
+        cat "$S/flow2.json" ;;
+    "POST /management/v1/flows/2/trigger/"*)
+        upd flow2.json --argjson d "$data" --arg t "${path##*/}" \
+            '.flow.triggerActions = ([.flow.triggerActions[]? | select(.triggerType.id != $t)] + [{triggerType:{id:$t},actions:[$d.actionIds[]|{id:.}]}])'
+        echo '{}' ;;
+    "POST /management/v1/users/_search") jq -c '{result: .}' "$S/users.json" ;;
+    "POST /management/v1/users/machine")
+        upd users.json --argjson d "$data" '. + [{id:"reader-1",userName:$d.userName}]'
+        echo '{"userId":"reader-1"}' ;;
+    "POST /management/v1/orgs/me/members/_search") jq -c '{result: .}' "$S/members.json" ;;
+    "POST /management/v1/orgs/me/members") upd members.json --argjson d "$data" '. + [$d]'; echo '{}' ;;
+    "PUT /management/v1/orgs/me/members/"*)
+        upd members.json --argjson d "$data" --arg u "${path##*/}" 'map(if .userId == $u then .roles = $d.roles else . end)'
+        echo '{}' ;;
+    "POST /management/v1/users/"*"/pats/_search") jq -c '{result: .}' "$S/pats.json" ;;
+    "POST /management/v1/users/"*"/pats")
+        id="tok-$(next)"
+        upd pats.json --argjson d "$data" --arg i "$id" '. + [{id:$i,expirationDate:$d.expirationDate}]'
+        echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
+    *) echo "fake curl: unhandled $method $path" >&2; exit 22 ;;
+esac
+SHIM
+chmod +x "$S/bin/kubectl" "$S/bin/aws" "$S/bin/curl"
+
+reset_state() {
+    rm -f "$S/calls.log" "$S/n" "$S/searches" "$S/store"/* "$S/bao.log" "$S/bao.json" "$S/kube.log"
+    echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
+    echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
+    echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
+    echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
+    echo '{"client_id":"google-id","client_secret":"gs"}' > "$S/store/zitadel-google-idp"
+}
+with_github_key() { echo '{"client_id":"gh-id","client_secret":"ghs"}' > "$S/store/zitadel-github-idp"; }
+sync() { # [--apply]; prints the script's output, last line is its exit status
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" sync --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+count() { grep -cE -- "$1" <<< "$2" || true; }
+calls() { grep -cE -- "$1" "$S/calls.log" 2>/dev/null || true; }
+
+# 1. Fresh platform, GitHub key present: one plan per piece, nothing written.
+reset_state; with_github_key
+out="$(sync)"
+check "dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "dry run: plans the Google IdP once" "1" "$(count "would create IdP 'Google Workspace'" "$out")"
+check "dry run: plans the GitHub IdP once" "1" "$(count "would create IdP 'GitHub'" "$out")"
+check "dry run: plans the reader machine user once" "1" "$(count "would create machine user 'room-broker-idp-reader'" "$out")"
+check "dry run: plans ORG_OWNER_VIEWER once" "1" "$(count "would grant ORG_OWNER_VIEWER" "$out")"
+check "dry run: plans one PAT" "1" "$(count "would mint a PAT" "$out")"
+check "dry run: writes nothing to ZITADEL" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+check "dry run: writes nothing to the store" "" "$(find "$S/store" -type f ! -name 'zitadel-*-idp' ! -name bao-root-token -printf '%f')"
+
+# 2. No GitHub key: skipped with a log line; Google exactly as before.
+reset_state
+out="$(sync)"
+check "no key: GitHub IdP skipped" "1" "$(count '^\[skip   \] zitadel-github-idp' "$out")"
+check "no key: no GitHub IdP planned" "0" "$(count "'GitHub'" "$out")"
+check "no key: Google planned once" "1" "$(count "would create IdP 'Google Workspace'" "$out")"
+check "no key: one login-policy plan (Google)" "1" "$(count 'would add .*login policy' "$out")"
+check "no key: no reader" "0" "$(count 'room-broker' "$out")"
+
+# 3. Apply, then converge: the second run plans nothing and mints nothing.
+reset_state; with_github_key
+out="$(sync --apply)"
+check "apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "apply: GitHub IdP created once" "1" "$(calls '^POST /admin/v1/idps/github$')"
+check "apply: GitHub IdP is link-only" '{"isLinkingAllowed":true,"isCreationAllowed":false,"isAutoCreation":false,"autoLinking":null}' \
+    "$(jq -c '.providerOptions | {isLinkingAllowed, isCreationAllowed, isAutoCreation, autoLinking}' "$S/github-body.json")"
+check "apply: GitHub on the login policy" "1" "$(jq -r '.[]' "$S/policy.json" | grep -c idp-github || true)"
+check "apply: reader holds ORG_OWNER_VIEWER" '["ORG_OWNER_VIEWER"]' "$(jq -c '.[0].roles' "$S/members.json")"
+check "apply: store key holds the PAT, its tokenId and githubIdpId" '{"pat":true,"tokenId":true,"githubIdpId":"idp-github"}' \
+    "$(jq -c '{pat: (.pat | startswith("reader-pat-")), tokenId: (.tokenId | startswith("tok-")), githubIdpId}' "$S/store/room-broker-zitadel-reader")"
+out="$(sync)"
+check "converged: no [dry-run] lines" "0" "$(count '^\[dry-run\]' "$out")"
+check "converged: no [STALE] lines" "0" "$(count '^\[STALE' "$out")"
+: > "$S/calls.log"
+sync --apply > /dev/null
+check "converged apply: no second PAT" "0" "$(calls '/pats$')"
+check "converged apply: no mutation at all" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
+# 4. A PAT with under 30 days left is replaced.
+jq '.[0].expirationDate = "'"$(date -u -d '+10 days' +%Y-%m-%dT%H:%M:%SZ)"'"' "$S/pats.json" > "$S/p.t" && mv "$S/p.t" "$S/pats.json"
+out="$(sync)"
+check "rotation: near-expiry PAT is stale" "1" "$(count 'would mint a PAT' "$out")"
+
+# 5. SetTriggerActions replaces the list: an existing binding must survive.
+jq '.flow.triggerActions = [{triggerType:{id:"4"},actions:[{id:"hand-bound"}]}]' "$S/flow2.json" > "$S/f.t" && mv "$S/f.t" "$S/flow2.json"
+sync --apply > /dev/null
+check "flow: hand-bound action kept next to ours" "2" "$(jq '[.flow.triggerActions[] | select(.triggerType.id == "4") | .actions[]] | length' "$S/flow2.json")"
+
+# 6. GetFlow failing under --apply aborts before any binding is written.
+jq '.flow.triggerActions = []' "$S/flow2.json" > "$S/f.t" && mv "$S/f.t" "$S/flow2.json"
+: > "$S/calls.log"
+out="$(FLOW_FAIL=1 sync --apply)"
+check "GetFlow 5xx: apply exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "GetFlow 5xx: no SetTriggerActions POST" "0" "$(calls 'POST /management/v1/flows/2/trigger')"
+
+# ── every reader write must fail the run ─────────────────────────────────────
+converge() { reset_state; with_github_key; sync --apply > /dev/null; : > "$S/calls.log"; rm -f "$S/searches"; }
+expire_pats() { jq 'map(.expirationDate = "'"$(date -u -d '+10 days' +%Y-%m-%dT%H:%M:%SZ)"'")' "$S/pats.json" > "$S/p.t" && mv "$S/p.t" "$S/pats.json"; }
+STORE="$S/store/room-broker-zitadel-reader"
+
+# 7. A failed member PUT/POST or trigger POST must not print success or exit 0.
+converge
+echo '[{"userId":"reader-1","roles":["ORG_OWNER_VIEWER","ORG_OWNER"]}]' > "$S/members.json"
+out="$(FAIL_ON='PUT /management/v1/orgs/me/members/*' sync --apply)"
+check "member PUT fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "member PUT fails: no success line" "0" "$(count '^\[updated\] room-broker' "$out")"
+check "member PUT fails: no PAT minted" "0" "$(count '^\[minted' "$out")"
+echo '[]' > "$S/members.json"
+out="$(FAIL_ON='POST /management/v1/orgs/me/members' sync --apply)"
+check "member POST fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "member POST fails: no success line" "0" "$(count '^\[granted\]' "$out")"
+echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
+out="$(FAIL_ON='POST /management/v1/flows/2/trigger/*' sync --apply)"
+check "trigger POST fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "trigger POST fails: no [bound] line" "0" "$(count '^\[bound' "$out")"
+
+# 8. The validity check follows the STORED token: a mint whose store write
+#    failed is retried and never reported ok.
+converge
+old_id="$(jq -r .tokenId "$STORE")"
+expire_pats
+out="$(FAIL_STORE=room-broker-zitadel-reader sync --apply)"
+check "store write fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "store write fails: not reported minted" "0" "$(count '^\[minted' "$out")"
+check "store write fails: stored credential unchanged" "$old_id" "$(jq -r .tokenId "$STORE")"
+out="$(sync)"
+check "next run: re-mint planned" "1" "$(count 'would mint a PAT' "$out")"
+check "next run: not reported ok" "0" "$(count '^\[ok     \] room-broker-zitadel-reader' "$out")"
+
+# 9. An unresolvable IdP id never reaches the store.
+converge
+out="$(SEARCH_FAIL_AFTER=3 sync --apply)"
+check "idp id unresolved: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "idp id unresolved: store keeps githubIdpId" "idp-github" "$(jq -r .githubIdpId "$STORE")"
+
+# 10. Rotation under --apply replaces the stored PAT and its tokenId.
+converge
+old_pat="$(jq -r .pat "$STORE")"; old_id="$(jq -r .tokenId "$STORE")"
+expire_pats
+out="$(sync --apply)"
+check "rotation apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotation apply: stored PAT changed" "true" "$([ "$(jq -r .pat "$STORE")" != "$old_pat" ] && echo true || echo false)"
+check "rotation apply: stored tokenId changed" "true" "$([ "$(jq -r .tokenId "$STORE")" != "$old_id" ] && echo true || echo false)"
+check "rotation apply: stored tokenId is the listed one" "1" "$(jq --arg i "$(jq -r .tokenId "$STORE")" '[.[] | select(.id == $i)] | length' "$S/pats.json")"
+
+# 11. --mirror-openbao copies the blob to agents/zitadel-reader, whole.
+: > "$S/ca.pem"
+MIRROR=(--openbao-url https://bao.test --openbao-root-token-secret bao-root-token --openbao-ca-file "$S/ca.pem" --mirror-openbao)
+bao_posts() { grep -c '^POST ' "$S/bao.log" 2>/dev/null || true; }
+reset_state; with_github_key
+out="$(sync "${MIRROR[@]}")"
+check "mirror dry run: planned" "1" "$(count 'would mirror room-broker-zitadel-reader' "$out")"
+check "mirror dry run: OpenBao untouched" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
+sync --apply "${MIRROR[@]}" > /dev/null
+check "mirror: written to the mapped path" "1" "$(grep -c '^POST agents/data/zitadel-reader$' "$S/bao.log" || true)"
+check "mirror: blob intact" "$(jq -cS . "$STORE")" "$(jq -cS '.data.data' "$S/bao.json")"
+out="$(sync --apply "${MIRROR[@]}")"
+check "mirror: the broker's ExternalSecret is force-synced" "true" "$(grep -q 'annotate externalsecret room-broker-zitadel-reader -n agent-system' "$S/kube.log" 2>/dev/null && echo true || echo false)"
+check "mirror converged: no second write" "1" "$(bao_posts)"
+check "mirror converged: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+# A rebuilt OpenBao is empty while the store still holds a valid PAT.
+rm -f "$S/bao.json" "$S/bao.log"
+sync --apply "${MIRROR[@]}" > /dev/null
+check "mirror: refilled from the store after an OpenBao rebuild" "1" "$(bao_posts)"
+check "mirror: a rotated PAT replaces the mirrored one" "true" "$(expire_pats; sync --apply "${MIRROR[@]}" > /dev/null; [ "$(jq -r .data.data.pat "$S/bao.json")" = "$(jq -r .pat "$STORE")" ] && echo true || echo false)"
+rm -f "$S/bao.json"
+out="$(FAIL_BAO=1 sync --apply "${MIRROR[@]}")"
+check "mirror: refused write fails the run" "1" "$(count '^rc=[1-9]' "$out")"
+reset_state; with_github_key
+sync --apply > /dev/null
+check "no flag: OpenBao never called" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
+reset_state
+out="$(sync --apply "${MIRROR[@]}")"
+check "no GitHub key: mirror skipped, run still ok" "rc=0" "$(tail -1 <<< "$out")"
+check "no GitHub key: OpenBao never called" "false" "$([ -e "$S/bao.log" ] && echo true || echo false)"
+
+# 12. A PAT without the instance role stops the run with one clear message, before
+#     any step can read the 403 as "nothing exists".
+reset_state; with_github_key
+out="$(FAIL_ON='GET /admin/v1/policies/login' sync --apply)"
+check "no instance role: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "no instance role: names IAM_OWNER" "1" "$(count 'lacks the INSTANCE role IAM_OWNER' "$out")"
+check "no instance role: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+
 exit "$fail"

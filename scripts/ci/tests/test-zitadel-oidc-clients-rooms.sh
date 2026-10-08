@@ -27,11 +27,11 @@ load_function() {
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
          mirror_to_openbao force_sync_mirrored stored_client_id previous_client_id cmd_sync; do
-    load_function "$f" "$SRC"
+    case "$f" in mirror_to_openbao|force_sync_mirrored) load_function "$f" "$REPO_ROOT/scripts/lib/openbao-mirror.sh" ;; *) load_function "$f" "$SRC" ;; esac
 done
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"
-eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$SRC")"
+eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$REPO_ROOT/scripts/lib/openbao-mirror.sh")"
 eval "$(grep -E '^ZITADEL_PROJECT_ROLES=\(' "$SRC")"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 IDP_URL=https://auth.example; HEADLAMP_OIDC_SCOPES=profile; APPLY=true
