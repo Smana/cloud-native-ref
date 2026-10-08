@@ -39,5 +39,8 @@ data:
       groups:
         admin: agents-admin
         member: agents-member
-      # access: (D7: readerFile /etc/room-broker/zitadel-reader/reader.json, ttl 5m)
-      # lands with the v0.8.0 pin -- v0.7.x's strict decoder refuses the key.
+      # D7: room access is read from GitHub-link ZITADEL grants. v0.7.x's strict decoder
+      # refuses this key, so it only ever lands with the v0.8.0 pin.
+      access:
+        readerFile: /etc/room-broker/zitadel-reader/reader.json
+        ttl: 5m

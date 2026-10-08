@@ -65,6 +65,7 @@ Mixes rounds 4 to 6 (from `580042e6` on). Round 6 took issue #2112 to PR #2114 (
 | [08-observability.md](08-observability.md) | Agent-platform VMRules, dashboard, SP4 gateway metrics, the per-run view (SO-1…SO-5) | No | ~15 min |
 | [09-app-key-compromise.md](09-app-key-compromise.md) | The App key-compromise procedure (SD14): stop, rotate, reload, revoke, resume and audit, for all four Apps | Yes — the App's installation page and settings | ~20 min |
 | [10-disruption.md](10-disruption.md) | Disruption design acceptance 1–6 | Yes — a maintainer's `factory/ready`; aws-0 Step 7 needs IAM | ~60 min |
+| [11-v1-validation.md](11-v1-validation.md) | Local-first UX: the skill, `roomctl status`, the room page, zoomable diagrams, D7 room access, observability on one run, one task end to end on release pins | Yes — a maintainer's `factory/ready`; a second, non-admin identity and a private test repo | ~90 min |
 
 **Out of scope:** SC-15/SC-16 (gVisor overhead ratio and `validate-manifests.sh`/`task check`
 exit codes) are already closed by the phase-0 spike and by CI — no live step adds evidence.
