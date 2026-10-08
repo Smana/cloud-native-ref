@@ -10,9 +10,9 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/room-broker
-    # AP-1's pre-release (agent-platform#5), by digest (P33). Move it with the
-    # retention CronJob's, crd-rooms.yaml and atlasSchema.ref together.
-    tag: "v0.0.1-pr5.f3ac98ce@sha256:c99e8d8ba4d910822a3314fc69b2de8afaaa6e5e8b290e427751b244972b33cb"
+    # agent-platform v0.6.1, by digest. Move it with the retention CronJob's,
+    # crd-rooms.yaml and atlasSchema.ref together.
+    tag: "v0.6.1@sha256:66b641009e5e771fdb00bc466309f987bfec25addc484edcfd5c0e6f54662292"
   # One replica in phase 1; phase 2 moves to two with a PDB.
   replicas: 1
   service:
