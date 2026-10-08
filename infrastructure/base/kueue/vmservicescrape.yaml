@@ -1,0 +1,17 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: kueue
+  namespace: agent-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kueue
+  endpoints:
+    - port: https
+      scheme: https
+      path: /metrics
+      interval: 60s
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true  # Kueue's self-signed serving cert; the token is the authn
