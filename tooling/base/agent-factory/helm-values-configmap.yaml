@@ -18,6 +18,7 @@ data:
     config:
       repository: Smana/cloud-native-ref
       maintainers: [Smana]
+      controlIssue: 2188
       triggerLabel: factory/ready
       factoryLogin: ogenki-agent-factory[bot]
       agentsLogin: ogenki-agents[bot]
