@@ -65,6 +65,12 @@ variable "pki_domains" {
   default     = ["cluster.local"]
 }
 
+variable "pki_additional_allowed_domains" {
+  description = "Extra domains the cert-manager PKI role may issue for, on top of pki_domains. Mirrors gcp/openbao/management's variable of the same name: SP2's room-broker Certificate requests the short-form agent-system.svc names (tls.yaml), which cluster.local alone does not cover."
+  type        = list(string)
+  default     = []
+}
+
 variable "pki_max_lease_ttl" {
   description = "Maximum TTL (in seconds) for the mount and the leases issued from it (default 3 years). The intermediate's own lifetime comes from the offline signing ceremony, not this variable."
   type        = number

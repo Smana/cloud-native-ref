@@ -1,0 +1,37 @@
+---
+# The agents' Gateway on the ai-gateway umbrella's controllers (C1).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-router
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  # The proxy Deployment can still be rolling out when Envoy Gateway reports
+  # Programmed=False; retry soon rather than holding agent-mcp back a whole interval.
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/aws-0/agent-router
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: envoy-ai-gateway
+    - name: agent-secrets
+  # Flux evaluates healthCheckExprs only for resources named in healthChecks;
+  # Gateway API v1 has no Ready condition, so the expression is what waits.
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: agent-router
+      namespace: agent-system
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      current: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'True')
+      failed: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'False')

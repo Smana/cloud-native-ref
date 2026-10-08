@@ -1,0 +1,169 @@
+# 07 — End to end
+
+The capstone: a real implementer run, on a real issue, opens a real PR within budget (SC-04); a
+long-running read-only run's tokens survive without a single 401 across most of an hour (SC-06);
+revoking a run by annotation drives it to `BudgetExhausted` with correct status projection rules
+(SC-13); and after deletion nothing tagged with the run's id survives anywhere in the cluster
+(SC-14). This is the longest runbook — budget close to two hours, most of it waiting. See
+[README.md](README.md) for prerequisites; run [00](README.md#runbook-00-one-time-cluster-setup) and
+ideally 01–06 first (they de-risk the pieces this one composes).
+
+## Prerequisites
+
+- Runbook 00 done.
+- Owner actions 1–4 (OpenBao policy and role, Z.ai key, ruleset, GitHub App).
+- **Owner action 5**: a trivial issue URL ready, exported as `ISSUE_URL`.
+
+## Step 1 — confirm the harness pin
+
+```bash
+kubectl get composition xagentruns.cloud.ogenki.io -o yaml | grep -o 'ghcr.io/smana/agent-harness:[^@"]*' | sort -u
+```
+
+Expected: one line, the repo-built harness. At crossplane-configuration `v0.7.2-pr35.465e19f` that is
+`ghcr.io/smana/agent-harness:v0.2.0-pr2142.10c062c2`, a pre-release pin until the plain tag ships.
+
+## Step 2 — SC-04: an implementer run ends in a PR within 30 minutes
+
+```bash
+RUN=$(task agent:run -- --role implementer --class public --task-url "$ISSUE_URL" | tail -1); echo "$RUN"
+date -u +%FT%TZ
+kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Succeeded --timeout=30m
+kubectl get agentrun -n agents $RUN -o jsonpath='{.status.startedAt} {.status.finishedAt} {.status.branch}{"\n"}'
+BRANCH=$(kubectl get agentrun -n agents $RUN -o jsonpath='{.status.branch}')
+gh pr list --repo Smana/cloud-native-ref --head "$BRANCH" --json number,author,headRefName
+PR=$(gh pr list --repo Smana/cloud-native-ref --head "$BRANCH" --json number --jq '.[0].number')
+gh pr view --repo Smana/cloud-native-ref "$PR" --json commits --jq '.commits[].messageBody' | grep -c "Agent-Run: ${RUN#xplane-run-}"
+```
+
+Expected: `Succeeded` within 30 minutes of the printed start; one PR from `agent/<runId>` whose
+author login is `app/ogenki-agents`; at least one commit carrying `Agent-Run: <runId>`. (Only SP3's
+factory sets `spec.branch` to `agent/<taskId>`; `task agent:run --task-url` leaves the composition's
+default.)
+
+If it fails: read `kubectl logs -n agents $RUN -c harness` and the `agent-router` access log for the
+run's `x_ar_agent` (same LogsQL pattern as runbook 02, Part A Step 2) before changing anything.
+
+**What this proves:** SC-04 — the whole chain (Sandbox → identity-proxy → agent-router → GLM-5.3 →
+octo-sts → PR) works, unattended, inside the time budget.
+
+Keep this PR open — it's the owner's to review, not to merge or close as part of this session.
+
+## Step 3 — SC-06: a long run gets no 401s across its lifetime
+
+```bash
+LONG=$(task agent:run -- --role implementer --class public --minutes 60 \
+  --task "Read every Markdown file under docs/superpowers/specs one at a time, and run 'sleep 110' in the terminal between two files. For each, list the relative links it contains. Stop after 45 minutes. Do not change, commit or push anything. Finish with the full list." | tail -1)
+kubectl wait -n agents agentrun/$LONG --for=jsonpath='{.status.phase}'=Running --timeout=15m
+```
+
+At minute 45 or later (or at the run's end if it finishes sooner — record actual duration either
+way):
+
+```bash
+Q="rate(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:$LONG\"}[5m])"
+ENC=$(python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$Q")
+kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=$ENC" | jq .
+curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
+  "query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.response_code) count() n"
+```
+
+Expected: the VM query confirms the run is actually making calls; the LogsQL result shows no `401`
+bucket for this run's `x_ar_agent` at any point in its lifetime. Its tokens live until its 60-minute
+deadline (R2, runbook 02) — nothing has to rotate, and a rotated token would not reach the proxy
+under gVisor anyway. The `sleep 110` pacing keeps the run making calls for most of the hour; a run
+that finishes early still counts, so record its actual duration.
+
+```bash
+kubectl delete agentrun -n agents $LONG --wait
+```
+
+**What this proves:** SC-06 — the R2 token-lifetime fix holds up over a realistic run length, not
+just the short probes in runbook 02.
+
+## Step 4 — SC-13: revocation by annotation, and status-projection guards
+
+SP3's run meter writes `agents.ogenki.io/usage-tokens` every 30 s once a run has made a model call,
+and the composition never lowers `status.usage.tokens`. So the valid case annotates a value above the
+meter's reading.
+
+```bash
+B=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1)
+kubectl wait -n agents agentrun/$B --for=jsonpath='{.status.phase}'=Running --timeout=15m
+sleep 60   # one meter interval after the first model call
+U=$(kubectl get agentrun -n agents $B -o jsonpath='{.status.usage.tokens}'); echo "meter: ${U:-none}"
+kubectl annotate agentrun -n agents $B --overwrite agents.ogenki.io/usage-tokens=-5
+sleep 30; kubectl get agentrun -n agents $B -o jsonpath='{.status.usage.tokens}{"\n"}'
+HIGH=$(( ${U:-0} + 100000 ))
+kubectl annotate agentrun -n agents $B --overwrite agents.ogenki.io/usage-tokens=$HIGH
+sleep 30; kubectl get agentrun -n agents $B -o jsonpath='{.status.usage.tokens}'; echo " (want $HIGH)"
+T0=$(date +%s); kubectl annotate agentrun -n agents $B agents.ogenki.io/revoked=budget-run
+kubectl wait -n agents agentrun/$B --for=jsonpath='{.status.phase}'=BudgetExhausted --timeout=2m
+until ! kubectl get pod -n agents $B >/dev/null 2>&1; do sleep 2; done; echo "BudgetExhausted, pod gone after $(( $(date +%s) - T0 )) s"
+```
+
+Expected:
+- After `-5`: still `$U` (empty if the meter had not written yet), never `-5`. A malformed value is
+  rejected, never projected.
+- After `$HIGH`: exactly `$HIGH`, and it stays there after the meter's next, lower write. If you read
+  the meter's value instead, the meter overwrote the annotation before Crossplane reconciled: re-run
+  those two lines.
+- `BudgetExhausted` reached, with the pod gone ≤ 60 s after the `revoked=budget-run` annotation.
+
+**What this proves:** SC-13 — malformed usage values never reach status, valid ones do, and the
+revocation path SP3's run meter drives at a run's cap actually tears the run down.
+
+## Step 5 — SC-14: nothing left after deletion
+
+```bash
+kubectl delete agentrun -n agents $B --wait
+for r in $LONG $B; do
+  echo "== ${r#xplane-run-} =="
+  kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=${r#xplane-run-}
+done
+```
+
+Expected: `No resources found` for both run ids.
+
+**What this proves:** SC-14 — deletion is complete: no ServiceAccount, ConfigMap, CNP, Sandbox, pod
+or `Usage` outlives its `AgentRun`.
+
+## Cleanup
+
+Nothing further — every run this runbook created is already deleted except `$RUN`'s PR (Step 2),
+which stays open for owner review.
+
+## Results
+
+### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
+
+Only these rows were recorded on gcp-0.
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 — harness pin | The repo-built harness | `ghcr.io/smana/agent-harness:v0.1.0-pr2110.29b5f228@sha256:3cc93e00…` (crossplane-configuration `v0.7.2-pr31.988146f`) | PASS |
+| 2 — SC-04 | `Succeeded` ≤ 30 min; PR by `app/ogenki-agents`; trailer present | `xplane-run-4iv2rpdq` took issue #2140 to PR #2141. Pod on `gke-gcp-0-agents-gvisor-0166ac85-plzh` (`sandbox.gke.io/runtime=gvisor`); `agent-router` `:8080` `200` ×10 and `:8082` (sts) `200` ×1 for its `x_ar_agent`, with the GKE-issued token accepted by `agent-router` and octo-sts | PASS |
+| 5 — SC-14 | `No resources found` | Runbook 01's `xplane-run-peiuqflu`: CNP, pod and Usage still present right after `delete --wait` returned, all gone by the final sweep | PASS |
+
+### Earlier rounds — aws-0
+
+| Step | Expected | Observed | Pass/Fail |
+|---|---|---|---|
+| 1 — harness pin | `1` (or `0`, noted) | `0` — composition still pins `ghcr.io/openhands/agent-server:1.49.5-python@sha256:1e7b0...`, not the repo-built harness (#2110 not landed, as expected) | PASS (the documented `0` outcome) |
+| 2 — SC-04 (round 3, upstream image) | `Succeeded` ≤ 30 min; PR by `app/ogenki-agents`; trailer present | `xplane-run-n7tfcziv` on `#2112`: reached `phase=Running`, `conversationId=396c8ad6-...` allocated, but zero LLM calls, zero `agent-router` traffic, zero octo-sts activity, no PR after 8+ minutes idle — the task was never submitted at all (upstream image, no bootstrap) | BLOCKED (harness image, #2110) — historical, image now replaced |
+| 2 — SC-04 (round 5, real harness `v0.1.0-pr2110.d8134ede`) | `Succeeded` ≤ 30 min; PR by `app/ogenki-agents`; trailer present | Real harness works — cloned, branched `agent/<id>`, started a conversation, called the model (`POST /api/paas/v4/chat/completions` → `200`, 4539ms, 8144 tokens metered by the gateway) — **then the OpenHands SDK itself crashes** parsing that response's usage: `AttributeError: 'PromptTokensDetailsWrapper' object has no attribute 'cache_creation_tokens'` in `openhands/sdk/llm/utils/telemetry.py:68` (`normalize_usage`). `phase=Failed`/`PodFailed` within ~30-45s of `Running`, every time. **Reproduced twice** (`xplane-run-3s7i55r7`, `xplane-run-mun2l7g2`), both on the very first model turn, before any git push — no octo-sts activity, no branch pushed to GitHub, no PR, no `status.usage`/`status.pullRequest`. See Platform findings | **FAIL** (platform bug, harness SDK, see Platform findings) |
+| 1 — harness pin (round 6) | `1` | The live composition pins the pre-release harness `ghcr.io/smana/agent-harness:v0.1.0-pr2110.29b5f228@sha256:3cc93e00…` (crossplane-configuration PR #29, `v0.7.2-pr29.9d7d479`). The step's old grep for a plain `v0.1.0` tag could not match a pre-release pin; Step 1 now prints the tag | PASS |
+| 2 — SC-04 (round 6, harness `v0.1.0-pr2110.29b5f228`) | `Succeeded` ≤ 30 min; PR by `app/ogenki-agents`; trailer present | `xplane-run-zma62cms` on `#2112`: `Pending` 07:44:06 → `Running` 07:46:17 → `Succeeded` 07:47:25. That is 68 s of agent work over 10 steps, visible in the step log in VictoriaLogs. PR **#2114** by `app/ogenki-agents` on `agent/zma62cms` changes one file; its body is `Fixes #2112` and commit 2e3b4f33 carries `Agent-Run: zma62cms`. CI went green after one public-ECR 429 rerun. The owner merged it (3dea2b7a), which closed `#2112`. Two harness fixes made the difference: OpenHands 1.49.6 with litellm `<1.95.1` (software-agent-sdk#5213), and `reasoning_effort` sent in the request body (litellm had dropped it, so GLM-5.3 ran at maximum thinking) | **PASS**. It supersedes rounds 3 and 5 |
+| 3 — SC-06 (round 6) | No 401 bucket for the run's `x_ar_agent` | `xplane-run-hbrkmjrj`, 60-minute budget. The runbook's read-only task now finishes in about a minute, so the task paced itself with `sleep 110` between model calls. It ran 31 steps over 58 min (gateway traffic from 09:38:18 to 10:36:43Z): 44 × `200`, **0 × `401`**. The only other codes were MCP noise in the first minute (1 × `400` ping, agent-router#2715; 2 × `405` GET; 7 × `202`). The run ended `Failed`/`PodFailed` at its deadline because the agent overshot "stop after 50 min" by 5 steps; the 60-min deadline is enforced as designed | **PASS** |
+| 4 — SC-13 negative | Empty `status.usage` | `xplane-run-lkorndmd`, after `usage-tokens=-5`: `status.usage` empty on every poll | PASS |
+| 4 — SC-13 valid | `1234` | After `usage-tokens=1234` (overwrite): `status.usage.tokens` = `1234` immediately | PASS |
+| 4 — SC-13 revoke | `BudgetExhausted`, pod gone ≤ 60 s | After `revoked=budget-run`: `phase=BudgetExhausted` reached, pod gone 4 s later | PASS |
+| 5 — SC-14 | `No resources found` ×2 | `kubectl get sa,cm,cnp,sandbox,pod,usages.protection.crossplane.io -A -l agents.ogenki.io/run-id=<id>` for both `n7tfcziv` and `lkorndmd`: `No resources found`. `n7tfcziv` was round 3's SC-04 run, not a `$LONG`; round 6's `$LONG` (`hbrkmjrj`) was not recorded | PASS |
+
+**Static verification (code on `main`):** the XRD's `status` schema has exactly `branch,
+conversationId, finishedAt, phase, pullRequest, reason, runId, startedAt, usage.tokens`, and
+`phase` enum is `Pending, Running, Succeeded, Failed, BudgetExhausted, Revoked` — matching every
+`jsonpath` this runbook reads. `docs/superpowers/plans/2026-09-25-agent-runtime-identity-plan.md`
+carries the composition's own KCL unit tests asserting `agents.ogenki.io/usage-tokens: "-5"` is
+rejected and `agents.ogenki.io/revoked: "budget-run"` maps to `BudgetExhausted` — exactly the two
+cases Step 4 exercises, now also confirmed live.

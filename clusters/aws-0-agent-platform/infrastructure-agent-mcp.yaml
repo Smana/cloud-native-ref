@@ -1,0 +1,37 @@
+---
+# Read-only MCP servers and the two MCPRoutes on agent-router (SP1 §6).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-mcp
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  # The Deployments/HelmRelease can still be rolling out on first apply; retry
+  # soon rather than holding dependents back a whole interval (mirrors agent-secrets).
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/aws-0/agent-mcp
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: agent-router
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: flux-operator-mcp
+      namespace: agent-system
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: mcp-victoriametrics
+      namespace: agent-system
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: mcp-victorialogs
+      namespace: agent-system

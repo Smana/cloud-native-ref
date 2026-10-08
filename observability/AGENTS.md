@@ -70,10 +70,11 @@ and Polaris never reads rules at all. An unbalanced paren or an unknown function
 clean and cost you the alert at runtime — vmalert logs a parse error, the group never evaluates,
 and **the alert silently never fires**.
 
-A group is checked when its `type` is unset, empty, or `prometheus`. Today that skips exactly one
-group — `loggen` in `base/loggen/demo-vmrule.yaml`, whose `type: vlogs` expressions are LogsQL —
-and it **must not be made to pass**. Rules written inline in a HelmRelease `values:` block are
-repo-authored but not seen by the script; there are none today.
+A group is checked when its `type` is unset, empty, or `prometheus`. Today that skips two `type:
+vlogs` groups — `loggen` in `base/loggen/demo-vmrule.yaml` and `agent-platform-logs` in
+`base/agent-platform/vmrule-logs.yaml`, both LogsQL — and neither **must be made to pass**. Rules
+written inline in a HelmRelease `values:` block are repo-authored but not seen by the script; there
+are none today.
 
 PromQL is a subset of MetricsQL, so this gate can in principle reject a valid expression. Nothing
 relies on MetricsQL-only syntax today. When someone hits it, the fix is not to delete the gate:

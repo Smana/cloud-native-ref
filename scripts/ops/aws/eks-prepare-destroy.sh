@@ -103,6 +103,23 @@ done
 # also fires during destroy when the gateway-api CRDs go away).
 kubectl delete validatingadmissionpolicybinding --all --wait=false 2>/dev/null || true
 
+# ── CNPG pre-destroy seed ──────────────────────────────────────────────────
+# The OpenBao pre-destroy-snapshot pattern (opentofu/aws/openbao/cluster/workflows.tm.hcl,
+# TM_OPENBAO_SKIP_SNAPSHOT) extended to the databases: promote every SQLInstance
+# with backups configured to a destroy-day dated seed, then refresh the stable
+# `<app>-pre-destroy` alias the next bootstrap restores from. Placement is the
+# safety: after the Flux suspension above (GitOps cannot shuffle resources under
+# a running backup) and after the fail-closed webhooks are down (Kyverno would
+# otherwise block the one-shot Backup CR), and before the CSI reclaim / NodePool
+# drain below — past those, the operator and barman-plugin pods the backup
+# needs may already be unschedulable.
+#
+# The hook itself is shared with the GKE destroy lane:
+# scripts/ops/k8s/cnpg-pre-destroy-seed.sh carries the gate
+# (CNPG_SKIP_PRE_DESTROY_SEED), the discovery and the warn-not-block posture;
+# the bucket name is the only cloud-specific input.
+"$(dirname "$0")/../k8s/cnpg-pre-destroy-seed.sh" --cloud aws --bucket "${REGION}-ogenki-cnpg-backups" || true
+
 # Reclaim CSI-provisioned volumes BEFORE any node teardown. Must run while the
 # CSI controller is still schedulable, i.e. before the Karpenter NodePool
 # deletion below starts draining nodes.

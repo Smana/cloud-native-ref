@@ -1,0 +1,16 @@
+---
+# What every sandbox shares: the identity-proxy bootstrap, and deny-all for any
+# pod in `agents` that its run's own CNP does not open.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agent-runtime
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 2m0s
+  path: ./infrastructure/base/agent-runtime
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact

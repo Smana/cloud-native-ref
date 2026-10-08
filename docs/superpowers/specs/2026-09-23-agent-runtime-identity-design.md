@@ -24,7 +24,7 @@ the sandbox dies at the **run's deadline**, `max(600, maxMinutes × 60)` s (C3, 
 | S4 | runsc runs on `systrap` (its default), with `oci-seccomp` **off** | `ptrace` (the AWS blueprint's choice); `kvm`; `oci-seccomp=true` | `ptrace` is the slow legacy platform, and `kvm` needs nested virtualisation. runsc ignores `errnoRet` ([#14688](https://github.com/google/gvisor/issues/14688)), so under `oci-seccomp` RuntimeDefault's `clone3` answer becomes EPERM and no glibc ≥ 2.34 process can start a thread (spike Q5). The Sentry is the boundary |
 | S5 | Tokens reach the harness through an **in-pod `identity-proxy`**: an Envoy native sidecar with `credential_injector`, the only container that mounts the projected tokens | A run-long token passed as the harness's API key | OpenHands reads its LLM key once per conversation ([llm.py](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/llm/llm.py)), and the harness never holds a token: every harness gets the same localhost contract. Under gVisor no rotation reaches an in-pod reader, so the tokens live until the run's deadline (R2) |
 | S6 | A dedicated **`agent-router` Gateway** in `agent-system` (`agent-platform` umbrella, on the `ai-gateway` umbrella's controllers, C1). It has **one listener per data class**, `public` (:8080) and `internal` (:8081). Each listener's `SecurityPolicy` accepts exactly its class's four audiences | A listener on the human `ai-gateway`; one listener with per-route `SecurityPolicy`s | No semantic router, so pinning is structural (C5). The same logical name maps to different backends per class. Two routes on one listener would both match `x-ai-eg-model`, and a route-level policy runs only after the route is chosen. A listener per class makes "`internal` never reaches Z.ai" structural |
-| S7 | The harness is **OpenHands agent-server** (MIT) in a repo-built image, selected by a platform **profile**. The claim never carries an image | Headless Claude Code (not OSS); kagent v1 (alpha); OpenHands `AgentSandboxWorkspace` (built on warm pools) | OSS, non-root, OpenAI-compatible, and it satisfies SP2's four-operation bridge interface. An image field would make every claim a supply-chain input |
+| S7 | The harness is **OpenHands agent-server** (MIT) in a repo-built image, selected by a platform **profile**. The claim never carries an image | Headless Claude Code (not OSS); kagent v1 (alpha; [re-evaluated 2026-10-04](2026-10-04-kagent-evaluation-research.md): Substrate-only, no BYO path without an A2A adapter); OpenHands `AgentSandboxWorkspace` (built on warm pools) | OSS, non-root, OpenAI-compatible, and it satisfies SP2's four-operation bridge interface. An image field would make every claim a supply-chain input |
 | S8 | **Self-hosted octo-sts**, with the App key as a PEM | PATs; ESO GitHub generator; OpenBao GitHub plugin; a git proxy (programme non-goal) | Trust policies live in the repository's default branch. Installations are resolved by account login, so the user-owned `Smana` account works ([ghinstall.go](https://github.com/octo-sts/app/blob/main/pkg/ghinstall/ghinstall.go)) |
 | S9 | A **namespaced `SecretStore` in `agent-system`**, backed by its own OpenBao JWT role that reads only the dedicated `agents` mount (`agents/*`, SP2 plan P38) | The `openbao-platform` ClusterSecretStore | That store has no namespace `conditions`, so any namespace could use it (T14). `agents` must never be able to reach `platform/` |
 | S10 | Egress is default-deny: `toFQDNs` **profiles**, plus a DNS L7 rule that **answers only allowlisted names** | `world:443`; the agent-sandbox managed NetworkPolicy | A run can last hours, so it is not the one-shot case `security/AGENTS.md` trap 4 allows. The managed policy opens the whole Internet |
@@ -87,7 +87,7 @@ flowchart LR
     F[factory · SP3]
   end
   ZAI[api.z.ai · GLM-5.2]
-  BED[Bedrock EU · self-hosted · SP4]
+  BED[Anthropic API · ADR-0054 · Bedrock/Vertex optional]
   GH[github.com]
   API[(kube-apiserver)]
 
@@ -188,7 +188,7 @@ The XRD is `cloud.ogenki.io/v1alpha1`, namespaced, in `crossplane-configuration`
 | `spec.budget.maxMinutes` | 120, max 480 | Becomes `activeDeadlineSeconds` |
 | `spec.harness` | `openhands` | A profile, which the composition maps to an image digest: the upstream agent-server until the repo-built harness is published, then `agent-harness` (a second release) |
 | `spec.size` | `small` | `small`/`medium`/`large` = 1→2 / 2→4 / 4→8 CPU (request→limit), 2 GiB per CPU, 10/20/40 Gi scratch |
-| `spec.egress.profiles` | `[]` | Any of `pypi`, `npm`, `golang`, `crates`. `github` is always on |
+| `spec.egress.profiles` | `[]` | `public` runs: any of `pypi`, `npm`, `golang`, `crates`; `github` always on. `internal` runs: **none, and no direct GitHub egress.** They read GitHub through the gateway's read-only route, which strips credentials. XRD CEL: `self.dataClass != 'internal' \|\| !has(self.egress) \|\| size(self.egress.profiles) == 0` (external review R04) |
 | `status.runId` · `conversationId` · `startedAt` · `finishedAt` · `reason` | — | `conversationId` = `metadata.uid` |
 
 Every spec field is immutable (CEL) except `budget.maxTokens`: a run's
@@ -292,8 +292,8 @@ Z.ai backend and the first `agent-models` route. SP4 owns the model mapping behi
   - `sts` accepts exactly the four `octo-sts/Smana/cloud-native-ref/<role>` audiences, and an
     `HTTPRoute` sends `/sts/exchange` on to octo-sts. EG forwards the validated token, so octo-sts
     checks it again against the trust policy.
-- **Z.ai routes attach only to `public`.** `internal` carries Bedrock EU and self-hosted backends
-  (SP4, OD-13), so an `internal` run cannot reach Z.ai whatever logical name it sends.
+- **Z.ai routes attach only to `public`.** `internal` carries the Anthropic API (ADR-0054; Bedrock,
+  Vertex and self-hosted optional; OD-13, external review R13), so an `internal` run cannot reach Z.ai whatever logical name it sends.
 - **`ClientTrafficPolicy`.** `earlyRequestHeaders.remove: [x-ar-agent, x-ar-human,
   x-ai-gateway-client-id, agent-session-id]` runs before authentication, because
   `claim_to_headers` appends (C5).
@@ -382,7 +382,7 @@ A budget 429 (`x-envoy-ratelimited`, **UNVERIFIED** as in SP4; reset > 60 s) is 
 | `Gateway agent-router` + `EnvoyProxy` | Class `envoy-ai-gateway`, listeners `public` :8080, `internal` :8081 and `sts` :8082 (in front of octo-sts), Service pinned to ClusterIP `agent-router`, restricted securityContext. **Its data-plane CNP is scoped by gateway name and namespace** and allows egress to the MCP servers and the room broker's :8090. The existing `envoy-data-plane` CNP selected every EG proxy, so SP4's first PR narrows it to `ai-gateway`, or its allows would leak onto this Gateway (R5). The whole-Gateway `ClientTrafficPolicy` stripping the four identity headers is what SP4's gate A3 checks |
 | `Backend zai` → `AIServiceBackend` | `api.z.ai:443`, system CAs, schema `OpenAI` with `prefix: /api/paas/v4` (RunLore's `base_url`) |
 | `BackendSecurityPolicy` | `APIKey` from an ExternalSecret on the `agent-system` SecretStore → `agents/zai`, the agents' own key (SP4 S12) |
-| `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (Bedrock EU and self-hosted) |
+| `AIGatewayRoute agent-models` | `parentRefs` sectionName `public`: `agent-default` → `glm-5.2` (`modelNameOverride`), 100 %. SP4 then owns the file, adds the tiers, and adds the `internal` routes (the Anthropic API, ADR-0054; external review R13) |
 | `SecretStore agents-secrets` | OpenBao JWT auth as SA `agent-system/agents-secrets`. A new policy in `opentofu/aws/openbao/management` grants read on `platform/data/agents/*` only; its JWT role sits with the per-cluster mount in `opentofu/aws/eks/configure/openbao.tf`. A namespaced store reads its CA from its own namespace, so the public OpenBao chain (certificates only) is copied into `agent-system` from the cloud store |
 
 **MCP servers.** All three are read-only and reachable only from the `agent-router` data plane.
@@ -477,8 +477,8 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T1 | Prompt injection (task, issues, repo, web, MCP output) | No human credentials (D3); §4; audit outside the sandbox (gateway, octo-sts, GitHub, room log) | Hostile code on the run's own PR branch. The SP3 gate or a human decides |
 | T2 | Sandbox escape | gVisor (`systrap`; `oci-seccomp` off until #14688); dedicated tainted pool; PSS `restricted`; IMDS hop limit 1 + CNP; daily node recycling | A Sentry zero-day reaches the node's IAM role, co-located sandboxes and node-scoped kubelet credentials. Kata is the next tier |
 | T3 | Credential theft | No provider key in `agents`. SA tokens only in sidecars. The GitHub token is in memory and revoked on exit | A stolen implementer token can push to `agent/**` of one repo for ≤ 1 h |
-| T4 | Exfiltration to github.com with attacker credentials | none: an FQDN rule cannot see whose credentials are used | **Accepted** (programme non-goal). The repos are public |
-| T5 | Exfiltration through other allowlisted services | Profiles are opt-in per claim | Same class as T4 |
+| T4 | Exfiltration to github.com with attacker credentials | `public`: none, an FQDN rule cannot see whose credentials are used. `internal`: no direct GitHub egress; the gateway's GitHub route allows `GET`/`HEAD` and `POST …/git-upload-pack` only, and strips `Authorization` (external review R04) | `public`: **Accepted** (repos are public). `internal`: **Closed**: no direct GitHub or profile egress |
+| T5 | Exfiltration through other allowlisted services (`npm publish` with a presented token is the same class) | Profiles are opt-in per claim, and refused on `internal` runs (XRD CEL, R04) | `public`: same class as T4, accepted. `internal`: **Closed**: no profile egress |
 | T6 | DNS exfiltration | The L7 DNS rule answers allowlisted names only | Lookups under allowlisted domains, which are answered by their owners' servers |
 | T7 | Resource abuse | Requests and limits, ephemeral storage, `activeDeadlineSeconds`, pool limits, R1 + `BudgetExhausted` | One `large` run for `maxMinutes` |
 | T8 | Token replay | Audience binds role and repo; TTL = the run's deadline (R2); ingress only from `agents`; octo-sts only behind the `sts` listener, which pins this cluster's issuer where the trust policies match any EKS issuer in the region (OD-5); audience reservation; the broker watches the run's `AgentRun` | A token copied out of a compromised sandbox replays until the run's deadline (≤ 8 h), returning 401 if missing/unsigned/wrongly-signed, or 403 if the audience is valid but wrong for the target listener, and either blocks the attacker. The admin-port path is closed (Q8) |
@@ -486,7 +486,7 @@ secrets; `id-token: write` only on push and schedule workflows.
 | T10 | Unauthorised claims | After SP3, only the factory SA creates `AgentRun`s (SP3's Kyverno rule, admins included), and the factory derives the principal. A repo opts in three times: the branch ruleset, trust policies and App install | Before SP3, the owner creates runs directly. Break-glass is suspending the rule through Flux, which is visible in Git |
 | T11 | Harness supply chain | Profiles pinned by digest; Trivy; no image field in the claim | Lands with the next reviewed bump |
 | T12 | MCP data exposure | Read-only, no `secrets`, per-role tools | Logs and ConfigMaps may hold secrets. Cluster-wide `get pods` also exposes pod specs (env `value`, args) and, under `FallbackToLogsOnError`, `status...terminated.message` (log tail) — reachable by every `internal` run, not only reviewer/tester/triager (review M3) |
-| T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | A modified script runs with its job's own scope: `contents: read` everywhere, plus `security-events: write` (`ci.yaml`'s SARIF upload) or `pull-requests: write` (`render-diff`, same-repo PRs only) on some jobs — never repository content, secrets or deploy credentials |
+| T13 | CI tampering | No `workflows` permission; PR CI holds no secrets | `contents: read` in every job that runs PR code. Write scopes live only in jobs that run no PR code (`sarif-upload`, `render-diff-comment`), enforced by the T8 lint (SP3 plan Task 6.3) |
 | T14 | **Pre-existing:** the `openbao-platform` ClusterSecretStore has no namespace `conditions`, so any namespace can read any `platform/` path | SP1 never uses it (S9). `agents-no-secret-import` blocks ESO objects in `agents` | Any *other* namespace with ExternalSecret rights can read `platform/agents/*`. Fixing the cluster store is out of scope (O1) | **Addressed by SP2 plan P38 (2026-09-27):** agent credentials move to a dedicated `agents` mount that the `external-secrets` policy does not cover.
 | T15 | `internal` data reaching a SaaS model | `dataClass` is required at creation. The audience binds the class. Z.ai routes only on `public`. Cluster-read MCP tools only on `internal` | A human creating a run can misclassify internal content as `public`. Once SP3 ships it sets the class from the task source |
 | T16 | Reserved-audience minting from an excluded namespace | Kyverno's global config excludes `kube-system` and `security` (its own namespace) from admission, so a pod there (ESO, cert-manager) can still mint the reserved audiences with a live `TokenRequest` call; `agent-audience-token-request` covers every other namespace | **Accepted:** needs a compromised platform controller in `kube-system` or `security` |
@@ -526,6 +526,14 @@ broker-sequenced log keep the records of truth outside the sandbox instead.
 authorization and `toolSelector`, and API-key injection. agentgateway's extra OSS feature, an RFC
 8693 client, is unused. Its CEL authorization might express the `sub` prefix EG cannot
 (**UNVERIFIED**), but SP1 closes that gap by other means.
+
+> **2026-10-01 note.** Now **verified from source**: agentgateway v1.5.0's CEL registers
+> `startsWith` and its RBAC tests match on `jwt.sub`; a live check is part of the agentgateway PoC
+> running on gcp-0. The Envoy Gateway pin is 1.9.2, not 1.9.1. See the [gap matrix](2026-10-01-agentgateway-gap-matrix-research.md).
+>
+> **2026-10-01 outcome.** The PoC's check P1 passed on gcp-0, so the `sub` prefix is now **verified
+> live**: a correct-audience token from another namespace got 403. PoC GO; the owner selected
+> agentgateway for agent-router, and an ADR superseding ADR-0042 and ADR-0050 Option 1 follows.
 
 ## gcp-0 follow-up
 
@@ -576,7 +584,7 @@ bridge internals (SP2), merge policy and trailer checks (SP3), tiers and budget 
 | R4 | agent-sandbox is `v1beta1` and ships weekly | Pin the tag; its schema is in the CI catalog |
 | R5 | EG pod labels `gateway.envoyproxy.io/owning-gateway-name` and `-namespace` are assumed | Confirm on first render. Every selector of the `agent-router` data plane pins both |
 | R6 | Whether the `DeletingPolicy` time function exists (UNVERIFIED) | Delete terminal runs daily until proven |
-| R7 | A *deleted* pod (spot interruption, expiry) ends its run `Failed`: the spike's same-second recreate holds for the Sandbox controller alone, but the composition latches the transient `Finished=PodFailed` and F2b refuses the recreated pod (**live, 2026-09-27**) | `agent-run --branch` resumes an existing `spec.branch` in a new run; retries spend from the same `maxTokens`. Transparent resume needs the composition to see the pod's `deletionTimestamp`/`DisruptionTarget` (CC-1 follow-up) |
+| R7 | A pod lost to its node (spot or preemptible reclaim, eviction, an upgrade drain) ends its run `Failed`, reason `Disrupted` or `PodLost` ([disruption design](2026-10-04-agent-run-disruption-design.md) §3). Node expiry cannot kill a run: Karpenter's drain skips a `do-not-disrupt` pod and waits for the run to end | On SIGTERM the harness checkpoints uncommitted work to the branch, and the factory resumes the run on its own, twice per task at most, within the task's token cap. A retry or a resume gets a fresh `RunTokens` cap; the shared cap is the task's `TaskTokens` (corrected 2026-10-04) |
 | R8 | A run can request any logical name on its listener, and binding it to `spec.model` at the gateway is unverified (C5) | Within a class the blast radius is cost, capped by R1 and `maxTokens`. SP4 carries the route-level check |
 | R9 | All runs share one App, and the ruleset is `agent/**`-wide, so a run can push another task's agent branch | Accepted (SP2 noted it too). The PR gate reviews the head commit's `Agent-Run` trailer against the task (SP3) |
 

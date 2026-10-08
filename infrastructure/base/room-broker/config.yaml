@@ -1,0 +1,46 @@
+# The broker's one config file (agent-platform internal/config), Flux-substituted.
+# Decoded strictly: an unknown key fails the rollout. tls is left to its default,
+# /etc/room-broker/tls/tls.{crt,key}, where app.yaml mounts room-broker-tls.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: room-broker-config
+  namespace: agent-system
+data:
+  config.yaml: |
+    publicURL: https://rooms.${private_domain_name}
+    # The only run issuer today is this cluster's (C2 r5). A runtime with its own
+    # workload JWTs is one more entry here, not a new code path. The JWKS URI is
+    # per cloud: <issuer>/keys on EKS, <issuer>/jwks on GKE (GCP parity GP-12).
+    runIssuers:
+      - issuer: ${oidc_issuer_url}
+        jwksURL: ${oidc_jwks_uri}
+        subPattern: '^system:serviceaccount:agents:xplane-run-([a-z2-7]{8})$'
+    # System callers present audience rooms-system (ruling P3).
+    systemIssuer:
+      issuer: ${oidc_issuer_url}
+      jwksURL: ${oidc_jwks_uri}
+    # SP3's factory (FR-1): system callers present audience rooms-system (ruling P3).
+    # The broker reads this file once: restart it after a change.
+    systemPrincipals:
+      system:serviceaccount:agent-system:agent-factory: system:factory
+    # SP3 phase 5: runs for hand to role, fork and add agent come from the factory, with the
+    # human's own token; the broker no longer renders a claim for the owner (C3).
+    factoryURL: http://agent-factory.agent-system.svc.cluster.local:8443
+    # Humans, through oauth2-proxy (phase 2). Required by the broker. The ids are
+    # files, never literals: gcp-0 mints a fresh ZITADEL every build (ruling AS-a).
+    human:
+      issuer: ${identity_provider_url}
+      jwksURL: ${identity_provider_url}/oauth/v2/keys
+      clientIDFile: /etc/room-broker/oidc/client-id
+      roomctlClientIDFile: /etc/room-broker/roomctl/client-id
+      projectIDFile: /etc/room-broker/oidc/project-id
+      origin: https://rooms.${private_domain_name}
+      groups:
+        admin: agents-admin
+        member: agents-member
+      # D7: room access is read from GitHub-link ZITADEL grants. v0.7.x's strict decoder
+      # refuses this key, so it only ever lands with the v0.8.0 pin.
+      access:
+        readerFile: /etc/room-broker/zitadel-reader/reader.json
+        ttl: 5m

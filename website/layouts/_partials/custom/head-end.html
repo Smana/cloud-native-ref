@@ -1,0 +1,30 @@
+{{- /* Mermaid diagrams render as inline SVG in a <pre class="mermaid">, so the site's image zoom
+     (medium-zoom, images only) never reaches them. Click one: it opens full screen; wheel zooms,
+     drag pans, Escape or a click on the backdrop closes. The handler is delegated on document and
+     looks for the SVG at click time, because mermaid renders after page load. */ -}}
+<script>
+document.addEventListener('click', function (e) {
+  var pre = e.target.closest && e.target.closest('pre.mermaid');
+  if (!pre || document.querySelector('.diagram-zoom')) { return; }
+  var svg = pre.querySelector('svg');
+  if (!svg) { return; }
+  var box = document.createElement('div');
+  box.className = 'diagram-zoom';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', 'Diagram, full screen. Scroll to zoom, drag to pan, Escape to close.');
+  var clone = svg.cloneNode(true);
+  clone.removeAttribute('width'); clone.removeAttribute('height'); clone.style.maxWidth = 'none';
+  box.appendChild(clone);
+  document.body.appendChild(box);
+  var s = 1, x = 0, y = 0, drag = null;
+  function apply() { clone.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')'; }
+  function close() { box.remove(); document.removeEventListener('keydown', onKey); }
+  function onKey(k) { if (k.key === 'Escape') { close(); } }
+  box.addEventListener('wheel', function (w) { w.preventDefault(); s = Math.min(8, Math.max(0.5, s * (w.deltaY < 0 ? 1.15 : 0.87))); apply(); }, { passive: false });
+  box.addEventListener('pointerdown', function (p) { drag = { px: p.clientX - x, py: p.clientY - y, moved: false }; });
+  box.addEventListener('pointermove', function (p) { if (drag) { drag.moved = true; x = p.clientX - drag.px; y = p.clientY - drag.py; apply(); } });
+  box.addEventListener('pointerup', function (p) { var was = drag; drag = null; if (was && !was.moved && p.target === box) { close(); } });
+  document.addEventListener('keydown', onKey);
+});
+</script>

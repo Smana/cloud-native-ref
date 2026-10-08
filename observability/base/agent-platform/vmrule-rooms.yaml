@@ -1,0 +1,148 @@
+---
+# Room alerts (SP2 §9). Inside the agent-platform umbrella: suspended, silent.
+# Phase 5 adds RoomApprovalPendingTooLong (SP2 Task 5.4, S5).
+# The broker's exporter adds no suffix (agent-platform internal/metrics): every name
+# here is exposed byte for byte, counters with their own _total.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: agent-rooms
+  namespace: observability
+spec:
+  groups:
+    - name: agent-rooms
+      rules:
+        - alert: RoomBrokerDown
+          expr: absent(up{namespace="agent-system", service="room-broker"} == 1)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No room-broker replica is up"
+            description: "Runs keep working and their bridges buffer, but nothing reaches the room log. kubectl get pods -n agent-system -l app.kubernetes.io/name=room-broker"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomLogAppendErrors
+          expr: sum(increase(rooms_append_errors_total[10m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The room log is refusing appends"
+            description: "Check the xplane-rooms CNPG cluster: kubectl get cluster -n agent-system xplane-rooms-cnpg-cluster"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomRedactionsSpike
+          expr: sum(increase(rooms_redactions_total[15m])) > 20
+          labels:
+            severity: warning
+          annotations:
+            summary: "More than 20 secrets redacted from room logs in 15 minutes"
+            description: "An agent is handling credentials. Read the rooms with the newest redactions: SELECT room_id, seq, redactions FROM events WHERE redactions <> '{}' ORDER BY ts DESC LIMIT 20"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomLogDiskFilling
+          expr: max(kubelet_volume_stats_used_bytes{namespace="agent-system", persistentvolumeclaim=~"xplane-rooms-cnpg-cluster-.*"} / kubelet_volume_stats_capacity_bytes{namespace="agent-system", persistentvolumeclaim=~"xplane-rooms-cnpg-cluster-.*"}) > 0.8
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The room log volume is above 80 %"
+            description: "Shorten spec.retention on busy rooms, or grow storageSize on SQLInstance xplane-rooms."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # The gauge exists for every room with a Running run, whatever its phase: the room
+        # turns AwaitingHuman at 30 min silent, and the series must outlive that flip.
+        - alert: RoomStalled
+          expr: time() - max by (room) (rooms_last_event_timestamp_seconds) > 1800
+          labels:
+            severity: warning
+          annotations:
+            summary: "Room {{ $labels.room }} has a running run and no event for 30 minutes"
+            description: "The run is Running but silent, and the room shows AwaitingHuman. Find its run: kubectl get agentrun -n agents -o custom-columns=RUN:.metadata.name,ROOM:.spec.roomRef | grep {{ $labels.room }}, then check the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id=<RUN without xplane-run-> -c room-bridge"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # A stall or a 400 is a bridge/harness contract break, not load: alert on any.
+        - alert: RoomBridgeHarnessStalled
+          expr: sum by (reason) (increase(rooms_bridge_harness_stalls_total[10m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "A bridge cannot move past the harness log ({{ $labels.reason }})"
+            description: "The bridge's cursor holds and its room was told a harness_error with code {{ $labels.reason }}, so the transcript stops there. List room runs: kubectl get agentrun -n agents -o custom-columns=RUN:.metadata.name,ROOM:.spec.roomRef, then read the bridge: kubectl logs -n agents -l agents.ogenki.io/run-id=<RUN without xplane-run-> -c room-bridge"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomBridgeItemsRefused
+          expr: sum(increase(rooms_bridge_items_stubbed_total{reason="refused"}[10m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker refused harness items, kept as stubs in the room log"
+            description: "The broker answered 400 to a lone item: the bridge and the broker disagree on the envelope. Read the broker's refusals: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep 'bridge item refused'"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # Harness content the log cannot hold as sent: a value PostgreSQL rejects (a NUL in
+        # tool output) or keys that collide once redacted. Expected now and then,
+        # so info: a steady rate means a harness pattern worth a look, not a contract break.
+        - alert: RoomBridgeItemsUnstorable
+          expr: sum by (reason) (increase(rooms_bridge_items_stubbed_total{reason=~"invalid_value|key_collision"}[1h])) > 0
+          labels:
+            severity: info
+          annotations:
+            summary: "Harness items were kept as stubs ({{ $labels.reason }})"
+            description: "invalid_value: the store rejected a value; key_collision: keys collide once redacted. Neither loses the slot. Read the broker: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep -E 'payload refused by the database|keys collide once redacted'"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#9-observability-and-constitution-compliance"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # The broker's held keys stop verifying 24h after the last fetch: 6h leaves time to act.
+        - alert: RoomAuthnJWKSStale
+          expr: time() - max by (issuer) (rooms_authn_jwks_last_refresh_timestamp_seconds) > 6 * 3600
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker has not refreshed {{ $labels.issuer }}'s JWKS for 6 hours"
+            description: "At 24 hours its held keys stop verifying and every token from that issuer is refused. Check the broker's egress to the issuer: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep jwks"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#decisions"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # The human issuer's verifier is lazy: an IdP unreachable since the broker
+        # started leaves no series at all, which the age alert above cannot see.
+        - alert: RoomAuthnHumanIssuerNeverFetched
+          expr: absent(rooms_authn_jwks_last_refresh_timestamp_seconds{issuer="${identity_provider_url}"}) and on() (sum(up{namespace="agent-system", service="room-broker"}) > 0)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker has never fetched ZITADEL's JWKS"
+            description: "Every human is refused until it does. Check the broker's egress to ${identity_provider_url}: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep jwks"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#decisions"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomRejectedActionsSpike
+          expr: sum(increase(rooms_rejected_actions_total[10m])) > 30
+          labels:
+            severity: warning
+          annotations:
+            summary: "The broker refused more than 30 actions in 10 minutes"
+            description: "A client is probing the section 1 matrix, or a UI bug is sending actions a role cannot take. Break down by reason: sum by (reason) (increase(rooms_rejected_actions_total[10m]))"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#1-room-model"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        # A stuck verdict retries at most every 15 min (ruling TC's backoff cap) plus a 15 s
+        # tick: the error window must outlast that gap, or every gap resets `for`.
+        - alert: RoomVerdictsNotReachingGitHub
+          expr: sum(increase(rooms_verdict_posts_total{result="error"}[20m])) > 0 unless sum(increase(rooms_verdict_posts_total{result="posted"}[30m])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agents' review verdicts have not reached GitHub for 30 minutes"
+            description: "They stay in the room and SP3 still reads them there. Check the key (kubectl get externalsecret -n agent-system room-broker-factory-app) and the broker log: kubectl logs -n agent-system -l app.kubernetes.io/name=room-broker | grep -i verdict"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#3-agent-collaboration-and-the-broker"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+        - alert: RoomApprovalPendingTooLong
+          expr: max(rooms_approvals_oldest_pending_seconds) > 900
+          labels:
+            severity: warning # routes to Slack (ADR-0037)
+          annotations:
+            summary: "An approval has waited more than 15 minutes"
+            description: "A run is parked, keeping its sandbox and spending no tokens. Open the room and decide; unattended rooms auto-deny at spec.approvals.ttl."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-collaboration-rooms-design.md#6-approvals"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-platform"

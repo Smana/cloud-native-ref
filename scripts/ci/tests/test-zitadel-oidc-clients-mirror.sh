@@ -20,12 +20,13 @@ fail=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; fail=1; }
 
-body="$(sed -n '/^mirror_to_openbao() (/,/^)/p' "$S")"
-[ -n "$body" ] || { echo "could not extract mirror_to_openbao() from $S" >&2; exit 1; }
+M="${OPENBAO_MIRROR_LIB:-scripts/lib/openbao-mirror.sh}"
+body="$(sed -n '/^mirror_to_openbao() (/,/^)/p' "$M")"
+[ -n "$body" ] || { echo "could not extract mirror_to_openbao() from $M" >&2; exit 1; }
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"
 eval "$body"
-eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$S")"
+eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$M")"
 eval "$(sed -n '/^store_write_and_mirror() {/,/^}/p' "$S")"
 eval "$(sed -n '/^merge_secret() {/,/^}/p' "$S")"
 
@@ -133,7 +134,7 @@ store_read() { :; }
 IDP_URL="https://auth.example.invalid"
 HEADLAMP_OIDC_SCOPES="profile,email,groups"
 missing=""
-for consumer in grafana headlamp flux-ui harbor openbao headlamp-proxy; do
+for consumer in grafana headlamp flux-ui harbor openbao headlamp-proxy rooms-proxy; do
     keys="$(merge_secret k "$consumer" id-fixture fake-secret | jq -r 'keys[]')"  # pragma: allowlist secret
     [ -n "$keys" ] || missing="${missing} ${consumer}:<no output>"
     while IFS= read -r k; do
@@ -146,9 +147,9 @@ done
 # M-4: the ExternalSecrets reading a mirrored path are force-synced, so they do
 # not wait out their refreshInterval on the dead directory's clients. Matched on
 # store (openbao-<mount>) AND key, through both data and dataFrom.
-fs_body="$(sed -n '/^force_sync_mirrored() {/,/^}/p' "$S")"
+fs_body="$(sed -n '/^force_sync_mirrored() {/,/^}/p' "$M")"
 if [ -z "$fs_body" ]; then
-    bad "could not extract force_sync_mirrored() from $S"
+    bad "could not extract force_sync_mirrored() from $M"
 else
     eval "$fs_body"
     ES_JSON='{"items":[

@@ -74,6 +74,9 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    groups action, so every consumer authenticates and then has no groups.
 #    On a hosting cluster, $OPENBAO points OpenBao at whatever client ZITADEL
 #    now holds; leaving it out strands OpenBao on a client ZITADEL forgot.
+#    A client id that REPLACES one the cluster held also restarts the
+#    Deployments reading it from env (oauth2-proxy, Headlamp, Grafana), once
+#    their Secret carries it. Only with kubectl on --cluster; otherwise it warns.
 ./scripts/provision/zitadel-oidc-clients.sh sync $CL $OPENBAO --apply
 ```
 
@@ -89,7 +92,9 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 # 3. The Google identity provider, the LOGIN POLICY entry that actually enables
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
-IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL --apply
+#    With $OPENBAO, it also mirrors the room broker's ZITADEL link reader into
+#    OpenBao (non-admin room access stays off until it runs).
+IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL $OPENBAO --mirror-openbao --apply
 ```
 
 **There is no manual step for Harbor.** Step 1 already wrote its client id and

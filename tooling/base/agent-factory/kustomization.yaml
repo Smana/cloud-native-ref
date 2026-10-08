@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The agent factory (SP3). Every file here is a gate path (.policy.yml): agents never change it.
+resources:
+  - helm-values-configmap.yaml
+  - helmrelease.yaml
+  - externalsecret-github.yaml
+  - externalsecret-intake.yaml
+  - externalsecret-merger.yaml
+  - externalsecret-oidc.yaml
+  - httproute.yaml
+  - network-policy.yaml
+  - vmservicescrape.yaml

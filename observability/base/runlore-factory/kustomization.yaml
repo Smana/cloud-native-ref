@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# RunLore's factory notifier (SP3 §1): the intake token and the optional values it merges
+# into RunLore's HelmRelease. Gate path (.policy.yml); shipped only by the agent-platform
+# umbrella, so a cluster without it renders RunLore exactly as before.
+resources:
+  - externalsecret-intake.yaml
+  - helm-values-configmap.yaml

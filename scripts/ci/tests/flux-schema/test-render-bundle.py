@@ -375,9 +375,11 @@ check(
 
 
 # --- The repo's own wiring still resolves -------------------------------------
-# Guards the contract end-to-end: these four are the ConfigMap-backed entries
-# the fix exists for, and a rename on either side must fail here rather than
-# quietly shrink the bundle.
+# Guards the contract end-to-end: these five are the entries the fix exists for, and
+# a rename on either side must fail here rather than quietly shrink the bundle. The
+# fifth is runlore's -- a sibling base ConfigMap plus the agent-platform umbrella's
+# OPTIONAL cross-directory one, whose envFrom replacement is pinned in both states
+# below (TW7).
 
 print("real HelmReleases:")
 
@@ -396,7 +398,7 @@ for path in sorted((rb.REPO_ROOT / "observability" / "base").rglob("*.yaml")):
         if doc.get("kind") == "HelmRelease" and (doc.get("spec") or {}).get("valuesFrom"):
             real.append((path, doc))
 
-check("found the observability HelmReleases that use valuesFrom", len(real) == 4, f"got {len(real)}")
+check("found the observability HelmReleases that use valuesFrom", len(real) == 5, f"got {len(real)}")
 
 for path, doc in real:
     objects = []
@@ -411,6 +413,59 @@ for path, doc in real:
         error is None and len(values) > 1,
         f"{error!r}",
     )
+
+# --- runlore's envFrom, BOTH states (TW7) --------------------------------------
+# Flux merges spec.values LAST over the valuesFrom result, and later valuesFrom
+# entries replace earlier ones -- for a LIST like envFrom, replace, never merge.
+# That order is the whole wiring of the factory intake: envFrom cannot sit in
+# spec.values (it would clobber the umbrella's four-entry list), and no static
+# gate can see the resumed-umbrella render. So pin both states against the real
+# manifests: suspended umbrella -> the base three entries, byte-equal to what
+# spec.values carried before; resumed umbrella -> the intake Secret as fourth.
+
+runlore_path = rb.REPO_ROOT / "observability" / "base" / "runlore" / "helmrelease.yaml"
+runlore_doc = next(d for p, d in real if p == runlore_path)
+runlore_objects = []
+for sibling in sorted(runlore_path.parent.glob("*.yaml")):
+    runlore_objects += [d for d in yaml.safe_load_all(sibling.read_text()) if isinstance(d, dict)]
+factory_cm = next(
+    d for d in yaml.safe_load_all(
+        (rb.REPO_ROOT / "observability" / "base" / "runlore-factory" / "helm-values-configmap.yaml").read_text()
+    ) if isinstance(d, dict)
+)
+
+check("runlore spec.values owns no envFrom (spec.values merges LAST)",
+      "envFrom" not in (runlore_doc["spec"].get("values") or {}))
+check("runlore wires the base CM first, the umbrella CM second and optional",
+      [r["name"] for r in runlore_doc["spec"]["valuesFrom"]] == ["runlore-base-values", "runlore-factory-values"]
+      and not runlore_doc["spec"]["valuesFrom"][0].get("optional")
+      and runlore_doc["spec"]["valuesFrom"][1].get("optional") is True,
+      f"{runlore_doc['spec']['valuesFrom']!r}")
+
+BASE_ENV = [{"secretRef": {"name": n}}
+            for n in ("runlore-credentials", "runlore-slack", "runlore-webhook")]
+
+values, error, _ = resolve(runlore_doc["spec"], runlore_objects, cluster="aws-0")
+check("umbrella suspended: envFrom renders the base three, as before",
+      error is None and values.get("envFrom") == BASE_ENV,
+      f"{error or values.get('envFrom')!r}")
+
+values, error, _ = resolve(runlore_doc["spec"], runlore_objects + [factory_cm], cluster="aws-0")
+check("umbrella resumed: envFrom renders four, intake Secret last",
+      error is None and values.get("envFrom") == BASE_ENV + [{"secretRef": {"name": "runlore-factory-intake"}}],
+      f"{error or values.get('envFrom')!r}")
+
+# --- A digest-pinned chartRef renders that digest, never a tag ---------------
+# Flux resolves ref.digest before semver and tag. Rendering by tag (or with no
+# --version, i.e. helm's latest) would validate a chart the cluster never pulls.
+oci = {("OCIRepository", "c", "ns"): {"_kind": "OCIRepository", "url": "oci://r/c",
+                                      "ref": {"digest": "sha256:ab", "tag": "1.0.0"}}}
+source, chart, version = rb._resolve_chart({"chartRef": {"kind": "OCIRepository", "name": "c"}}, oci, "ns")
+check("digest-pinned chartRef passes no --version", chart is None and version is None, f"{version!r}")
+check("digest-pinned chartRef renders <url>@<digest>", rb.chartref_path(source) == "oci://r/c@sha256:ab",
+      rb.chartref_path(source))
+check("tag-pinned chartRef renders the bare url",
+      rb.chartref_path({"url": "oci://r/c", "ref": {"tag": "1"}}) == "oci://r/c")
 
 print()
 if FAILURES:

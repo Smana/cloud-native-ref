@@ -24,6 +24,17 @@ metadata:
 data:
   values.yaml: |
     vector:
+      # Ship sandbox logs too: the agents-gvisor pool is tainted (SP1 §8).
+      tolerations:
+        - key: agents.ogenki.io/runtime
+          operator: Equal
+          value: gvisor
+          effect: NoSchedule
+        # gcp-0's GKE Sandbox taint (GCP parity GP-9)
+        - key: sandbox.gke.io/runtime
+          operator: Equal
+          value: gvisor
+          effect: NoSchedule
       # ============================================================================
       # Vector Custom Configuration for PostgreSQL Query Plan History Parsing
       # ============================================================================

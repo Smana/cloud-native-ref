@@ -59,6 +59,18 @@ locals {
       namespace       = "security"
       policies        = ["snapshot"]
     }
+    agents-secrets = {
+      service_account = "agents-secrets"
+      namespace       = "agent-system"
+      # SP1 S9, SP2 P38: the agent-system SecretStore, the `agents` mount only.
+      policies = ["default", "agents-secrets"]
+    }
+    merge-gate-secrets = {
+      service_account = "merge-gate-secrets"
+      namespace       = "merge-gate"
+      # SP3: policy-bot's store, the merge-gate mount and nothing else (R44).
+      policies = ["default", "merge-gate-secrets"]
+    }
   }
 }
 

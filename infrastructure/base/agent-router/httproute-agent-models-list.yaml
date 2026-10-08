@@ -1,0 +1,30 @@
+---
+# Envoy AI Gateway enables its ext_proc per route, only on the two `agent-models`
+# routes -- and on `public` ext_proc precedes jwt_authn in the filter chain, so
+# ext_proc answers GET /v1/models itself before authentication ever runs
+# (verified live: no token, a wrong audience and a forged token all got 200).
+# This route carries no ext_proc, so the listener's JWT policy (agent-router-public)
+# applies normally -- and an Exact path outranks `agent-models`' generated `/`
+# prefix match, so it wins regardless of header.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models-list
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: public
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /v1/models
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: agent-models-list

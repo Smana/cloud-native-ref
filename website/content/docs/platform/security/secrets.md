@@ -23,24 +23,49 @@ developer types to get one.
 
 ## Where a secret lives
 
-**OpenBao is the store of record.** It holds two kv-v2 mounts, both in the root
+**OpenBao is the store of record.** It holds three kv-v2 mounts, all in the root
 namespace:
 
 | Mount | Holds | Example path *within* the mount |
 |---|---|---|
 | `platform/` | platform component credentials | `harbor/admin-password` |
 | `apps/` | application credentials | `image-gallery/config` |
+| `agents/` | the agent platform's own keys: `github-app`, `factory-app`, `zai` | `github-app` |
 
 Paths are shown relative to their mount throughout this page, because that is
 what a consumer writes: a `ClusterSecretStore` is scoped to one mount, so nothing
 outside OpenBao itself ever spells the mount and the path together.
 
-Two mounts rather than one because External Secrets' `vault` provider takes
-exactly one mount per store, so the split is what lets the two audiences carry
-different policies without path-prefix gymnastics inside a single policy
-document. Both live in **root** because a policy binds only within the namespace
-it is created in, and the OIDC mount and every identity group are in root — the
+`platform/` and `apps/` are two mounts rather than one because External Secrets'
+`vault` provider takes exactly one mount per store, so the split is what lets the
+two audiences carry different policies without path-prefix gymnastics inside a
+single policy document. All three live in **root** because a policy binds only
+within the namespace it is created in, and the OIDC mount and every identity
+group are in root — the
 reasoning is in [ADR-0036]({{< relref "/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md" >}}).
+
+### Why the agents have a mount of their own
+
+`external-secrets` reads all of `platform/` through `openbao-platform`, a
+`ClusterSecretStore` any namespace can use. Under `platform/agents/*`, any
+namespace allowed to create an `ExternalSecret` could read the agents' GitHub App
+key. A mount is a boundary no prefix grant elsewhere can widen, so `agents/` is
+named by exactly two policies:
+
+| Policy | On `agents/` |
+|---|---|
+| `agents-secrets` | read `data/*`, read and list `metadata/*` — the `SecretStore agents-secrets` in `agent-system` |
+| `secrets-admin` | full control, including `destroy` |
+| every other policy, `external-secrets` included | nothing — `scripts/ci/tests/test-openbao-agent-mounts.sh` fails on any grant |
+
+**A new agent secret goes on this mount, never under `platform/`:**
+
+```bash
+bao kv put -mount=agents <key> <field>=-     # the value on stdin, never on argv
+```
+
+The `ExternalSecret` then names `<key>` with no prefix, through
+`SecretStore agents-secrets`.
 
 ### What deliberately does *not* live there
 
@@ -74,17 +99,18 @@ Putting the store of record on OpenBao was gated on that drill running green.
 
 ## Who may read it
 
-Three kinds of caller reach these mounts, and each gets a different answer.
+Four kinds of caller reach these mounts, and each gets a different answer.
 
 | Caller | Authenticates by | May read | May write |
 |---|---|---|---|
-| A platform admin | ZITADEL OIDC → `openbao-admin` group | both mounts | both mounts, including `destroy` |
+| A platform admin | ZITADEL OIDC → `openbao-admin` group | all three mounts | all three mounts, including `destroy` |
 | An app's owner | ZITADEL OIDC → `openbao-app-<name>` group | `apps/<name>/*` | `apps/<name>/*`, **never `destroy`** |
-| External Secrets | projected ServiceAccount token → `jwt/<cluster>` | both mounts | **nothing** |
+| External Secrets | projected ServiceAccount token → `jwt/<cluster>`, role `external-secrets` | `platform/`, `apps/` | **nothing** |
+| agent-system's store | projected ServiceAccount token → `jwt/<cluster>`, role `agents-secrets` | `agents/` only | **nothing** |
 
 ### Machines read, humans write
 
-That last row is the one that makes the second row mean anything.
+The External Secrets row is the one that makes the second row mean anything.
 
 External Secrets resolves a store with the **controller's** identity, not the
 requester's. The controller reads on behalf of whatever `ExternalSecret` asks. If
@@ -92,8 +118,8 @@ it could also write, then anything able to shape an `ExternalSecret` — any
 workload with create access in its own namespace — could launder a value into
 another app's prefix, and per-app ownership would be decorative.
 
-So the `external-secrets` role holds a read-only policy over both mounts and no
-write capability of any kind:
+So the `external-secrets` role holds a read-only policy over `platform/` and
+`apps/` and no write capability of any kind:
 
 ```hcl
 path "platform/data/*" { capabilities = ["read"] }
@@ -211,7 +237,9 @@ auth:
 There are two `ClusterSecretStore`s, one per mount, both shaped like this and
 differing only in `path: platform` / `path: apps`. Both reach OpenBao in-cluster
 at `openbao.security.svc.cluster.local:8200` and verify its certificate against
-the `openbao-ca` Secret from the bootstrap tier.
+the `openbao-ca` Secret from the bootstrap tier. `agents/` has no
+`ClusterSecretStore`, deliberately: its only store is the namespaced
+`SecretStore agents-secrets` in `agent-system`.
 
 The cluster's third store, `clustersecretstore`, still points at the cloud
 managed store and still serves the bootstrap tier. Its shape and the reasoning

@@ -1,0 +1,72 @@
+---
+# Agent factory alerts (SP3 §7). Inside the umbrella: a suspended factory alerts on nothing.
+# Phase 8 added the rest of the set, and the factory dashboard (Task 8.3) is what `dashboard`
+# points at.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: agent-factory
+  namespace: observability
+spec:
+  groups:
+    - name: agent-factory
+      rules:
+        - alert: AgentFactoryIntakeErrors
+          expr: sum(rate(agent_factory_intake_errors_total[5m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The agent factory has failed to poll its triggers for 15 minutes"
+            description: "Labelled issues are not becoming tasks. Only the leader polls, so read every replica: kubectl logs -n agent-system -l app.kubernetes.io/name=agent-factory --prefix | grep 'poll failed'. A 401 from GitHub means the factory App key or installation changed."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#1-intake"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: AgentFactoryAutoMergeReverted
+          expr: sum(increase(agent_factory_pr_outcomes_total{outcome="reverted"}[15m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "An auto-merged agent PR was reverted"
+            description: "Its class is paused until the factory config changes (§6.4). Read why on the task: kubectl get task -n agent-system -o wide | grep Reverted"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#64-rollback"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: AgentFactoryDailyBudgetHigh
+          expr: (1 - agent_factory_budget_remaining_tokens / agent_factory_budget_cap_tokens) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.principal }} has spent more than 80 % of today's agent tokens"
+            description: "Past the cap, runs are refused (429) or revoked with budget-principal once enforcement is on. Resets at 00:00 UTC."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#62-caps-and-budgets"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: AgentFactoryTaskStuck
+          # Waiting phases (Queued, AwaitingHuman, Escalated) are excluded: they wait by design.
+          expr: max by (task, phase) (agent_factory_task_phase_seconds{phase=~"Received|Triaged|Implementing|Reviewing|AwaitingCI|AutoMerging|Verifying"}) > 7200
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agent factory task {{ $labels.task }} has been {{ $labels.phase }} for over 2 hours"
+            description: "kubectl get task -n agent-system {{ $labels.task }} -o yaml; the factory's logs carry task.id={{ $labels.task }}."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#4-orchestrator"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: PolicyBotUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="merge-gate", deployment="policy-bot"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "policy-bot has no ready pod: agent PRs wait, owner and Renovate PRs bypass"
+            description: "kubectl get pods -n merge-gate; webhook delivery errors are in the ogenki-merge-gate App's Advanced tab."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#5-merge-policy-gate-d4"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: AgentFactoryKillSwitchEngaged
+          expr: max(agent_factory_kill_switch_engaged) == 1
+          labels:
+            severity: info
+          annotations:
+            summary: "The agent factory's stop is engaged"
+            description: "Resume: kubectl -n agent-system delete configmap agent-factory-stop, and remove factory/stop from the control issue."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#61-kill-switch"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"

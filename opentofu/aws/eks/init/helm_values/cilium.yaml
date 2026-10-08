@@ -6,7 +6,14 @@ bpf:
   preallocateMaps: true
 # Explicitly specify devices to prevent Cilium from using tailscale0 MTU
 # See: https://tailscale.com/kb/1236/kubernetes-operator#cilium
-devices: "eth+ pod-id-link+"
+#
+# eth+ is Bottlerocket's naming. AL2023 (the gVisor agent pool, ADR-0041) uses
+# predictable names: enpXsY on current Nitro families, ens5 on older ones. With
+# eth+ alone, the agent on an AL2023 node matched no ENI, fell back to cilium_host's
+# 65520 MTU, tried to set it on the secondary ENI, and crashlooped with
+# "unable to change MTU of link enp40s0 to 65520: invalid argument" (2026-09-26).
+# Neither pattern matches tailscale0.
+devices: "eth+ enp+ ens+ pod-id-link+"
 egressMasqueradeInterfaces: eth0
 eni:
   enabled: true
@@ -57,7 +64,9 @@ operator:
   # Setting to empty restarts ALL unmanaged pods (EBS CSI, etc.)
   # See: https://docs.cilium.io/en/stable/cmdref/cilium-operator/
   extraArgs:
-    - --pod-restart-selector=
+    # Every unmanaged pod except agent runs (F31): a finished run pod loses its endpoint while its
+    # sidecars drain, the watcher deleted it, agent-sandbox recreated it, and the run ended PodLost.
+    - --pod-restart-selector=!agents.ogenki.io/run-id
   unmanagedPodWatcher:
     intervalSeconds: 15
     restart: true
