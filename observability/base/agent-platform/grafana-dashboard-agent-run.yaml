@@ -42,7 +42,8 @@ spec:
          "targets": [
            {"refId": "A", "instant": true, "format": "table", "expr": "topk(1, tlast_over_time(agentrun_info{namespace=\"agents\", run_id=\"$${run}\"}[$__range]))"},
            {"refId": "B", "instant": true, "format": "table", "expr": "max by (run_id, phase) (last_over_time(agentrun_status_phase{namespace=\"agents\", run_id=\"$${run}\"}[$__range]) == 1)"},
-           {"refId": "C", "instant": true, "format": "table", "expr": "topk(1, tlast_over_time(agentrun_outcome_info{namespace=\"agents\", run_id=\"$${run}\"}[$__range]))"}
+           {"refId": "C", "instant": true, "format": "table", "expr": "topk(1, tlast_over_time(agentrun_outcome_info{namespace=\"agents\", run_id=\"$${run}\"}[$__range]))"},
+           {"refId": "D", "instant": true, "format": "table", "expr": "topk(1, tlast_over_time(agentrun_pull_request_info{namespace=\"agents\", run_id=\"$${run}\"}[$__range]))"}
          ],
          "transformations": [
            {"id": "merge", "options": {}},

@@ -31,13 +31,18 @@ nested `SQLInstance` claim, which in turn renders the `postgresql.cnpg.io/v1`
       - name: myapp-app
         superuser: false
     backup:
-      schedule: "0 2 * * *"    # if set, bucketName is required
+      schedule: "0 0 2 * * *"  # six fields, seconds first — daily at 02:00
+                               # if set, bucketName is required
       bucketName: myapp-db-backups
       retentionPolicy: "30d"
 ```
 
 A backup `schedule` requires `backup.bucketName` — the API server enforces
-this. Schema migrations are declared via `atlasSchema` (a Git `url`, `ref`,
+this — and CNPG parses it with robfig/cron, **seconds first**, not with
+Kubernetes CronJob syntax: a five-field expression is silently reinterpreted
+one position left, so `"0 2 * * *"` fires hourly, not daily (measured; the
+warning is documented in `security/base/zitadel/sqlinstance.yaml`). Schema
+migrations are declared via `atlasSchema` (a Git `url`, `ref`,
 and `path` to migration files); the composition renders a
 `GitRepository` + `Kustomization` + `AtlasMigration` pipeline per database
 so Atlas Operator applies them declaratively

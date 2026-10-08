@@ -10,6 +10,9 @@ spec:
   secretName: room-broker-tls  # pragma: allowlist secret
   duration: 720h # 30d
   renewBefore: 240h # 10d
+  # The PKI role requires a CN, and signs these names only because gcp-0's role adds
+  # agent-system's cluster-local domains (pki_additional_allowed_domains).
+  commonName: room-broker.agent-system.svc.cluster.local
   dnsNames:
     - room-broker.agent-system.svc.cluster.local
     - room-broker.agent-system.svc

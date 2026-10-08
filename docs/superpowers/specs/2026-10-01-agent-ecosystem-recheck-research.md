@@ -142,6 +142,34 @@ one CPU model per pool.
 **Re-check**: keep **2026-12-15**. Reword the no-spot trigger to "removes the no-spot rule from
 `tools/setup-gcp/README.md`", and add "authorization enforced beyond Atespace CRUD".
 
+### 2026-10-04 re-check: ax and Substrate claims against code
+
+Read at `google/ax@ac23328` (no commit since 2026-09-27) and `agent-substrate/substrate@16b863a`
+(59 commits past v0.3.0). The verdict stands; three earlier statements were imprecise.
+
+| Claim | Verdict | Evidence |
+|---|---|---|
+| ax's control plane has no authentication or authorization | **Holds** | [ax#376](https://github.com/google/ax/issues/376) open, no fix merged. "Critical" is the reporter's account of the Google OSS VRP triage. `cmd/ax-server/main.go` has outbound (ax → Substrate) auth flags only |
+| ax runs an unvalidated branch through `git fetch` | **Holds** | [ax#363](https://github.com/google/ax/issues/363) open; [`setup.go#L224-L227`](https://github.com/google/ax/blob/ac23328/internal/workspace/setup.go#L224-L227) passes `branch` positionally, no `--` |
+| ax supports Gemini only and puts the key in every task | **Holds** | [`client.go#L486-L495`](https://github.com/google/ax/blob/ac23328/internal/model/client.go#L486-L495); [`reconciler.go#L153-L154`](https://github.com/google/ax/blob/ac23328/internal/controller/reconciler.go#L153-L154) |
+| ax v0.3.0 left no harness | **Corrected** | [`dc4f36c`](https://github.com/google/ax/commit/dc4f36c) removed `internal/controller/eventlog/` and `python/antigravity/harness_server.py`, but `cmd/ax-task-runner/antigravity_bootstrap.py` now starts Google's Antigravity agent when a goal and `GEMINI_API_KEY` are set. ax has a harness; it is Gemini-only. [`ac23328`](https://github.com/google/ax/commit/ac23328) is unreleased (latest v0.3.1, 2026-09-25) |
+| Substrate actors share worker pods | **Holds** | [`glossary.md#L48-L50`](https://github.com/agent-substrate/substrate/blob/16b863a/docs/glossary.md#L48-L50); `--max-actors` defaults to 1000 ([`ateom-gvisor/main.go#L70`](https://github.com/agent-substrate/substrate/blob/16b863a/cmd/ateom-gvisor/main.go#L70)). Actors share a hostname and interior IP ([`observability.md#L427`](https://github.com/agent-substrate/substrate/blob/16b863a/docs/observability.md#L427)) |
+| Substrate has no per-actor network policy | **Corrected** | Each actor has a default-deny `EgressPolicy`, shipped in v0.3.0 ([`ateapi.proto#L422-L457`](https://github.com/agent-substrate/substrate/blob/16b863a/pkg/proto/ateapipb/ateapi.proto#L422-L457)), enforced at the egress gateway on a per-actor mTLS certificate. It is not a Kubernetes or Cilium policy, covers egress only, and port 53 bypasses it. Constitution §3.1 still holds only at the worker |
+| Substrate has no authorization | **Corrected** | The docs still say so ([`authentication.md#L28`](https://github.com/agent-substrate/substrate/blob/16b863a/docs/authentication.md#L28)), but v0.3.0 ships OpenFGA enforcement behind `--experimental-enable-authz`, off by default ([`ateapi/main.go#L84`](https://github.com/agent-substrate/substrate/blob/16b863a/cmd/ateapi/main.go#L84)); access-policy APIs followed on `main` ([#1965](https://github.com/agent-substrate/substrate/pull/1965)) |
+| Substrate forbids spot workers | **Reworded** | A documented warning, not enforced: an actor still awake 30 minutes after its worker is deleted is `CRASHED`, terminally ([`setup-gcp/README.md#L100-L106`](https://github.com/agent-substrate/substrate/blob/16b863a/tools/setup-gcp/README.md#L100-L106)) |
+| Substrate documents only GKE | **Holds** | kind (local dev) and a GKE quickstart marked "Development" ([`README.md#L86-L147`](https://github.com/agent-substrate/substrate/blob/16b863a/README.md#L86-L147)); no EKS guide. WebSocket egress is still blocked (`docs/egress-traffic.md`) |
+
+Triggers that moved, both on `main` and **unreleased**:
+
+| Trigger | 2026-10-01 | 2026-10-04 | Evidence |
+|---|---|---|---|
+| Substrate closes #1898 (ClusterTrustBundle v1) | Open | **Closed 2026-10-02** | #1924 prefers v1 and falls back to v1beta1. PodCertificateRequest is still required; whether EKS serves it is **UNVERIFIED** |
+| Private registries (#432, #868) | Open | **#432 closed** (kubelet credential provider, #917, #2108); #868 open | `gh issue view 432 868 -R agent-substrate/substrate` |
+
+**Re-check**: keep **2026-12-15**. ax's blockers are untouched, and Substrate's remaining gaps are
+the shared-pod model against per-workload CNP and ServiceAccount, experimental authorization, the
+no-spot warning and no EKS path.
+
 ## References
 
 - agentgateway: [releases](https://github.com/agentgateway/agentgateway/releases), [v1.5.0](https://github.com/agentgateway/agentgateway/releases/tag/v1.5.0), [joins AAIF](https://agentgateway.dev/blog/2026-06-04-agentgateway-joins-aaif/), [MCP tool access](https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/tool-access/), [MCP spec compatibility](https://agentgateway.dev/docs/kubernetes/latest/documentation/mcp/spec-compatibility/), [A2A](https://agentgateway.dev/docs/kubernetes/latest/documentation/agent/a2a/)

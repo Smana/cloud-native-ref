@@ -1,9 +1,9 @@
 ---
-title: Coding agents run in agent-sandbox Sandboxes under gVisor, on AL2023 spot nodes, with OpenHands as the harness profile
+title: Coding agents run in agent-sandbox Sandboxes under gVisor, on a dedicated spot pool per cloud, with OpenHands as the harness profile
 linkTitle: 0041 · Agent sandbox runtime
 weight: 410
-description: Every agent run is a bare agent-sandbox Sandbox on a dedicated Karpenter AL2023 spot pool where runsc is installed at boot, because Bottlerocket ships no runsc. The harness is OpenHands agent-server, selected by a platform profile the claim cannot override. Kata, OpenHands Enterprise, Coder and hosted sandboxes were rejected.
-lastVerified: 2026-09-26
+description: Every agent run is a bare agent-sandbox Sandbox under gVisor on a dedicated spot pool. On aws-0 that is a Karpenter AL2023 pool where runsc is installed at boot, because Bottlerocket ships no runsc; on gcp-0 it is a GKE Sandbox node pool. The harness is OpenHands agent-server, selected by a platform profile the claim cannot override. Kata, OpenHands Enterprise, Coder and hosted sandboxes were rejected.
+lastVerified: 2026-10-01
 ---
 
 **Status**: Accepted
@@ -87,6 +87,20 @@ OpenHands agent-server profile.
 **Rationale**: It is the only option that is open source, runs on EKS without nested
 virtualisation, and lets identity be composed per run.
 
+### gcp-0 amendment (2026-10-01)
+
+gcp-0 is now the live cluster (ADR-0052); aws-0 stays supported. The decision holds there with a
+different pool:
+
+| | aws-0 | gcp-0 |
+|---|---|---|
+| Pool | Karpenter `agents-gvisor`, AL2023 | GKE Sandbox node pool `agents-gvisor`, COS_CONTAINERD, built by OpenTofu in the GKE init stack (`opentofu/gcp/gke/init/`) |
+| runsc | Installed by user-data | Shipped by GKE (`sandbox_config { sandbox_type = "gvisor" }`); no user-data |
+| RuntimeClass | `infrastructure/base/runtimeclass-gvisor/` | GKE's own `gvisor`, which pins pods to the pool through the `sandbox.gke.io/runtime` taint |
+| Scale | Karpenter, spot | Cluster autoscaler, spot, 0 to N nodes |
+
+The `AgentRun` names only `runtimeClassName: gvisor`, so the composition is the same on both clouds.
+
 ---
 
 ## Consequences
@@ -98,8 +112,14 @@ virtualisation, and lets identity be composed per run.
 
 ### Negative
 
-- A Sentry escape reaches the node's IAM role and co-located runs. Mitigations: dedicated tainted
-  pool, IMDS hop limit 1, daily node replacement (`expireAfter: 24h`). Kata is the next tier
+- A Sentry escape reaches the node's cloud identity and co-located runs. Kata is the next tier.
+  Mitigations differ per cloud:
+
+  | Mitigation | aws-0 | gcp-0 |
+  |---|---|---|
+  | Dedicated tainted pool | Yes | Yes; the autoscaler can also place gVisor pods on its own `nap-*` sandbox nodes |
+  | Node metadata | IMDS hop limit 1 | GKE metadata server (`GKE_METADATA`) |
+  | Node lifetime | Replaced daily (`expireAfter: 24h`) | No maximum lifetime, only GKE auto-upgrade: a gap |
 - `RuntimeDefault` seccomp is not enforced inside the sandbox until gVisor honours `errnoRet`, and
   NoNewPrivileges is not reliable under it. gVisor is the control
 - Vector needs a toleration for the pool's taint to ship sandbox logs
@@ -112,10 +132,10 @@ virtualisation, and lets identity be composed per run.
 
 ## Implementation Notes
 
-`infrastructure/base/karpenter-nodepools-agents/`, `infrastructure/base/runtimeclass-gvisor/`,
-`infrastructure/base/agent-sandbox/`, Kyverno `agents-pod-shape` in `security/base/agent-policies/`,
+aws-0: `infrastructure/base/karpenter-nodepools-agents/` and `infrastructure/base/runtimeclass-gvisor/`.
+gcp-0: the `agents-gvisor` pool in `opentofu/gcp/gke/init/`. Both: `infrastructure/base/agent-sandbox/`, Kyverno `agents-pod-shape` in `security/base/agent-policies/`,
 all behind the `agent-platform` umbrella. The XR is `AgentRun` in `Smana/crossplane-configuration`.
-Spike results: the SP1 agent-runtime-identity spike notes (a superpowers spec, landing with #2092).
+Spike results: [SP1 agent-runtime-identity spike](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-spike.md).
 
 ---
 
