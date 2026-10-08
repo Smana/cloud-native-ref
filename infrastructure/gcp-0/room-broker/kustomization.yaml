@@ -61,3 +61,32 @@ patches:
         value: openbao-priv-gcp-ca-chain
       - op: remove
         path: /spec/data/0/remoteRef/property
+  # ZITADEL on gcp-0 is this cluster's own Gateway VIP: Envoy enforces policy on
+  # its runtime listener port, so any toPorts fails (ruling AU; measured in
+  # tooling/gcp-0/headlamp/network-policy.yaml).
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: rooms-oauth2-proxy
+    patch: |-
+      - op: test
+        path: /spec/egress/1/toFQDNs/0/matchName
+        value: auth.${public_domain_name}
+      - op: replace
+        path: /spec/egress/1
+        value:
+          toEntities:
+            - all
+  - target:
+      group: cilium.io
+      kind: CiliumNetworkPolicy
+      name: room-broker
+    patch: |-
+      - op: test
+        path: /spec/egress/4/toFQDNs/0/matchName
+        value: auth.${public_domain_name}
+      - op: replace
+        path: /spec/egress/4
+        value:
+          toEntities:
+            - all
