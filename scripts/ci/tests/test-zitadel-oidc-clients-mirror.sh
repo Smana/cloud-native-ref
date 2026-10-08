@@ -129,7 +129,7 @@ POST_RC=0
 
 # MIRRORED_FIELDS is the one list of what the sync owns: every key merge_secret
 # writes must be in it, or that field never reaches OpenBao.
-store_exists() { return 1; }
+store_probe() { return 1; }
 store_read() { :; }
 IDP_URL="https://auth.example.invalid"
 HEADLAMP_OIDC_SCOPES="profile,email,groups"

@@ -62,7 +62,7 @@ zitadel_pat_secret_name() {
 # $1 is required: `hosting` when the current kube context runs this directory's
 # ZITADEL, `consuming` when the caller only registers clients in another cloud's.
 resolve_zitadel_pat() {
-    local role="${1:-}" name stored="" current="" token="" b64=""
+    local role="${1:-}" name stored="" current="" token="" b64="" probe=0
     local dry_run="${ZITADEL_PAT_DRY_RUN:-false}"
     case "$role" in
         hosting|consuming) ;;
@@ -80,11 +80,17 @@ resolve_zitadel_pat() {
                  -n "$ZITADEL_PAT_K8S_NAMESPACE" -o jsonpath='{.data.pat}' 2>/dev/null || true)"
     fi
     [ -n "$b64" ] && token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
+    # A failed read is not "absent" (#2086). Taken for one, it rewrote the store
+    # below, or told the operator to mint a PAT the store already holds.
+    store_probe "$name" || probe=$?
+    if [ "$probe" -eq 0 ] && ! stored="$(store_read "$name")"; then
+        probe=2 STORE_PROBE_ERR="the read failed"
+    fi
+    current="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null || true)"
     if [ -n "$token" ]; then
-        if store_exists "$name" && stored="$(store_read "$name")"; then
-            current="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null || true)"
-        fi
-        if [ "$current" != "$token" ]; then
+        if [ "$probe" -ge 2 ]; then
+            echo "WARN: ${name} not rewritten, cannot read it: ${STORE_PROBE_ERR}" >&2
+        elif [ "$current" != "$token" ]; then
             if [ "$dry_run" = "true" ]; then
                 echo "[dry-run] would write the cluster's admin PAT to ${name}" >&2
             else
@@ -103,10 +109,12 @@ resolve_zitadel_pat() {
     # 2. The store: the only source after a restore from a seed, where
     #    FirstInstance never ran and the chart wrote no Secret. Stored as
     #    {"pat": ...}, the one shape store_write's AWS branch accepts.
-    if store_exists "$name" && stored="$(store_read "$name")" \
-        && token="$(printf '%s' "$stored" | jq -r '.pat // empty' 2>/dev/null)" \
-        && [ -n "$token" ]; then
-        printf '%s' "$token"
+    if [ "$probe" -ge 2 ]; then
+        echo "ERROR: cannot read ${name} from the secret store: ${STORE_PROBE_ERR}" >&2
+        return 1
+    fi
+    if [ -n "$current" ]; then
+        printf '%s' "$current"
         return 0
     fi
 

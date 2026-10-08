@@ -8,6 +8,10 @@ check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
 
 # shellcheck source=scripts/lib/zitadel-pat.sh
 . "$HERE/../../lib/zitadel-pat.sh"
+# Every case below stubs store_probe; like the real one, this is false for
+# "absent" and "cannot tell" alike, and it keeps the real CLI out of reach.
+store_exists() { store_probe "$1"; }
+THROTTLED="An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded"
 
 CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
 check "aws secret name" "zitadel/iam-admin-pat" "$(zitadel_pat_secret_name)"
@@ -19,7 +23,7 @@ CLOUD=aws
 #    one. A fresh directory every build makes a stored PAT belong to a directory
 #    that no longer exists, and every call made with it gets a 401.
 persisted=""
-store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { printf '%s' '{"pat":"stale-token"}'; }
 store_write()  { persisted="$(cat)"; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
@@ -41,7 +45,7 @@ check "the store serves a restored directory" "token-from-store" "$(resolve_zita
 
 # 2. Store empty, cluster has it -> used AND persisted.
 persisted=""
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 # A stub called via a herestring runs in the CURRENT shell, so this assignment
 # is visible to the test -- called via a pipe it would run in a subshell and
@@ -67,7 +71,7 @@ check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .
 # second, bare call runs resolve_zitadel_pat in the CURRENT shell, so
 # store_write_called's mutation (or lack of one) is actually visible here.
 store_write_called=0
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 store_write()  { store_write_called=1; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
@@ -87,7 +91,7 @@ unset ZITADEL_PAT_DRY_RUN
 # existed, and the one every caller still gets unless it explicitly sets the
 # variable to "true".
 store_write_called=0
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 store_write()  { store_write_called=1; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }
@@ -104,7 +108,7 @@ STORE_WRITE_DESCRIPTION="caller-provenance"
 STORE_WRITE_LABEL="caller-label"
 CLUSTER="aws-0"
 seen_desc="" seen_label=""
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 store_write()  { seen_desc="$STORE_WRITE_DESCRIPTION"; seen_label="$STORE_WRITE_LABEL"; cat >/dev/null; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
@@ -122,7 +126,7 @@ unset STORE_WRITE_DESCRIPTION STORE_WRITE_LABEL CLUSTER
 #    argv) would get wrong, and the one nobody would notice broke.
 awkward=$'tok"en\\with\ttabs and\na newline in the middle'
 seeded=""
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 store_write()  { seeded="$(cat)"; }
 kubectl()      { printf '%s' "$awkward" | base64 -w0; }
@@ -132,13 +136,13 @@ check "awkward token seeds"     "$awkward" "$(resolve_zitadel_pat hosting 2>/dev
 # inside the command substitution's own subshell the check above just ran in.
 resolve_zitadel_pat hosting >/dev/null 2>&1
 
-store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { printf '%s' "$seeded"; }
 kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
 check "awkward token reads back" "$awkward" "$(resolve_zitadel_pat hosting 2>/dev/null)"
 
 # 4. Neither -> fail, with a diagnosis, and no token on stdout.
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 kubectl()      { return 1; }
 out="$(resolve_zitadel_pat hosting 2>/dev/null)"; rc=$?
@@ -154,7 +158,7 @@ case "$err" in *FIRSTINSTANCE*) printf '  ok   explains FirstInstance\n' ;;
 #    401 every call there. The store answers, and nothing is written.
 store_write_called=0
 KUBECTL_MARK="$(mktemp)"; rm -f "$KUBECTL_MARK"   # kubectl runs inside $(...): a variable would not survive
-store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { printf '%s' '{"pat":"token-from-idp-store"}'; }
 store_write()  { store_write_called=1; cat >/dev/null; }
 kubectl()      { : > "$KUBECTL_MARK"; printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # leftover Secret
@@ -165,7 +169,7 @@ check "consuming: the local Secret is never read" "no" "$([ -e "$KUBECTL_MARK" ]
 rm -f "$KUBECTL_MARK"
 
 # 5a. Consuming with an empty store: fail, still without trusting the local Secret.
-store_exists() { return 1; }
+store_probe()  { return 1; }
 store_read()   { return 1; }
 out="$(resolve_zitadel_pat consuming 2>/dev/null)"; rc=$?
 check "consuming, empty store: fails" "1" "$rc"
@@ -176,7 +180,7 @@ resolve_zitadel_pat >/dev/null 2>&1; rc=$?
 check "no role: refused" "2" "$rc"
 
 # 6. Review M-2: a failed overwrite warns and still returns the cluster token.
-store_exists() { return 0; }
+store_probe()  { return 0; }
 store_read()   { printf '%s' '{"pat":"stale-token"}'; }
 store_write()  { cat >/dev/null; return 1; }
 kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }
@@ -196,5 +200,36 @@ check "dry-run, stale store: cluster token returned" "token-from-cluster" "$(res
 resolve_zitadel_pat hosting >/dev/null 2>&1
 check "dry-run, stale store: nothing written" "0" "$store_write_called"
 unset ZITADEL_PAT_DRY_RUN
+
+# 8. #2086: a failed read is not an empty store. Taken for one, the store was
+#    rewritten, or the operator told to mint a PAT the store already holds.
+store_probe()  { STORE_PROBE_ERR="$THROTTLED"; return 2; }
+store_read()   { printf '%s' '{"pat":"token-from-store"}'; }
+store_write_called=0
+store_write()  { store_write_called=1; cat >/dev/null; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+check "throttled, cluster has it: token returned" "token-from-cluster" "$(resolve_zitadel_pat hosting 2>/dev/null)"
+ERR="$(mktemp)"
+resolve_zitadel_pat hosting >/dev/null 2>"$ERR"   # bare: store_write_called must survive
+check "throttled, cluster has it: store not rewritten" "0" "$store_write_called"
+check "throttled, cluster has it: shows the store error" yes "$(grep -q ThrottlingException "$ERR" && echo yes || echo no)"
+rm -f "$ERR"
+
+store_write_called=0
+store_probe()  { return 0; }
+store_read()   { return 254; }
+resolve_zitadel_pat hosting >/dev/null 2>&1
+check "unreadable, cluster has it: store not rewritten" "0" "$store_write_called"
+
+store_probe()  { STORE_PROBE_ERR="$THROTTLED"; return 2; }
+kubectl()      { return 1; }
+for role in hosting consuming; do
+    out="$(resolve_zitadel_pat "$role" 2>/dev/null)"; rc=$?
+    err="$(resolve_zitadel_pat "$role" 2>&1 >/dev/null)"
+    check "throttled, $role, no cluster Secret: fails" "1" "$rc"
+    check "throttled, $role, no cluster Secret: silent stdout" "" "$out"
+    check "throttled, $role: shows the store error" yes "$(grep -q ThrottlingException <<< "$err" && echo yes || echo no)"
+    check "throttled, $role: no mint-a-PAT advice" no "$(grep -qE 'Mint a PAT|sync --apply first' <<< "$err" && echo yes || echo no)"
+done
 
 exit $fail

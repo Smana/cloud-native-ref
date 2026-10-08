@@ -35,6 +35,8 @@ eval "$(sed -n '/^MIRRORED_FIELDS=(/,/^)/p' "$REPO_ROOT/scripts/lib/openbao-mirr
 eval "$(grep -E '^ZITADEL_PROJECT_ROLES=\(' "$SRC")"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 IDP_URL=https://auth.example; HEADLAMP_OIDC_SCOPES=profile; APPLY=true
+# Cases stub store_probe; like the real one, this is false for "absent" and "cannot tell" alike.
+store_exists() { store_probe "$1"; }
 
 echo "== 1. JWT access tokens, on create AND on the redirect repair =="
 check "create: JWT" OIDC_TOKEN_TYPE_JWT "$(oidc_config_payload https://rooms.x/oauth2/callback rooms-proxy jwt | jq -r .accessTokenType)"
@@ -50,13 +52,13 @@ check "repair PUT: others bearer" OIDC_TOKEN_TYPE_BEARER "$(jq -r .accessTokenTy
 unset -f api
 
 echo "== 2. The oauth2-proxy payload: cookie secret exactly 32 characters, and preserved =="
-store_exists() { return 1; }
+store_probe() { return 1; }
 store_read() { echo '{}'; }
 p="$(merge_secret agents-rooms-proxy rooms-proxy CID SECRET)"
 check "client-id" CID "$(jq -r '."client-id"' <<<"$p")"
 check "client-secret" SECRET "$(jq -r '."client-secret"' <<<"$p")"
 check "cookie length" 32 "$(jq -r '."cookie-secret" | length' <<<"$p")"
-store_exists() { return 0; }
+store_probe() { return 0; }
 store_read() { echo '{"cookie-secret":"kept-cookie-fixture"}'; }  # pragma: allowlist secret
 check "an existing cookie secret is kept" kept-cookie-fixture \
     "$(merge_secret agents-rooms-proxy rooms-proxy CID SECRET | jq -r '."cookie-secret"')"
@@ -201,6 +203,16 @@ check "create: with the project id" p1 "$(jq -r '."project-id"' "$T/written-agen
 check "grants: both --grant-admin and --grant" "agents-member dev@x p1
 admin a@x p1" "$(sort -r "$T/grants")"
 
+# #2086: an unreadable store stops the create before ZITADEL mints a client
+# secret it returns only once, and before the stored blob is replaced.
+store_probe() { STORE_PROBE_ERR="An error occurred (ThrottlingException): Rate exceeded"; return 2; }
+rm -f "$T/create" "$T/written-agents-rooms-proxy"
+run_cmd_sync
+check "throttled store: exit 1, no app created, nothing written" "1 none none" \
+    "$rc $([ -e "$T/create" ] && echo created || echo none) $([ -e "$T/written-agents-rooms-proxy" ] && echo written || echo none)"
+check "throttled store: shows the store error" yes "$(grep -q ThrottlingException <<<"$out" && echo yes || echo no)"
+store_probe() { return 0; }
+
 grant_role() { return 1; }
 rm -f "$T/create"
 run_cmd_sync
@@ -251,7 +263,7 @@ api() { printf '%s' "$4" > "$T/put"; }
 app_set_redirect p1 a1 http://localhost:8765/callback native
 check "repair PUT: native kept" "OIDC_APP_TYPE_NATIVE OIDC_AUTH_METHOD_TYPE_NONE" "$(jq -r '"\(.appType) \(.authMethodType)"' "$T/put")"
 # Its id is not a credential, but the broker, oauth2-proxy and SP3's factory all need it (ruling P12).
-store_exists() { return 1; }
+store_probe() { return 1; }
 check "payload: the client id alone" '{"client-id":"RID"}' "$(merge_secret agents-roomctl roomctl RID '' | jq -c .)"
 check "converge: the client id follows ZITADEL" '{"client-id":"RID2"}' "$(converge_secret roomctl RID2 '{"client-id":"RID"}' | jq -c .)"
 check "bao-map: agents-roomctl" agents/roomctl "$(bao_target_for agents-roomctl 2>/dev/null)"
