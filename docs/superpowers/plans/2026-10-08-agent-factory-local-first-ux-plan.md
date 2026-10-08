@@ -1761,6 +1761,7 @@ pre.mermaid { cursor: zoom-in; }
 
 **Files:**
 - Modify: `tooling/base/agent-factory/helm-values-configmap.yaml` (image `v0.8.0@sha256:<digest>`), `flux/sources/ocirepo-agent-factory.yaml` (tag `0.8.0` plus digest), `infrastructure/base/room-broker/app.yaml` and `retention-cronjob.yaml` (broker `v0.8.0@sha256:<digest>`), the vendored `crd-rooms.yaml` (from the v0.8.0 release asset), and `atlasSchema.ref: v0.8.0`
+- Modify, in the same commit as the broker pin (R25): `infrastructure/base/room-broker/config.yaml` re-adds `human.access: {readerFile: /etc/room-broker/zitadel-reader/reader.json, ttl: 5m}` where its breadcrumb comment sits. A v0.7.x broker's strict decoder refuses that key, so it never lands without the v0.8.0 pin.
 
 - [ ] **Step 1:** Take each digest from Task 14's verification, and nothing else.
 - [ ] **Step 2:** Run `task check` (memory rule; `XRD_CRDS_FILE` unset, since this is a release pin). Expected: rc=0.
