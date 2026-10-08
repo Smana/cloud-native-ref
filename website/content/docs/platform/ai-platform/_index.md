@@ -1,35 +1,33 @@
 ---
 title: AI Platform
 weight: 50
-description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until three independent gates are all released.
-lastVerified: 2026-08-30
+description: "Self-hosted model serving and the agent factory that puts models to work: vLLM behind Envoy AI Gateway, and sandboxed coding agents under their own identity."
+lastVerified: 2026-10-01
 ---
 
-An OpenAI-compatible inference platform on EKS: vLLM on L4 spot GPUs, fronted
-by Envoy AI Gateway, scaled by KEDA on vLLM saturation signals, and declared
-as a single Crossplane
-[`InferenceService` claim]({{< relref "/docs/platform/ai-platform/inference-service.md" >}})
-per model.
+Two halves, one platform. **Serving** runs open-weights models on the cluster's own GPUs behind an
+OpenAI-compatible gateway. **Agents** put models to work: a labelled issue becomes a sandboxed agent
+run that opens a pull request, under its own identity and in a room humans can watch and steer.
 
 {{< callout type="warning" >}}
-**This platform is off by default.** Three independent gates must all be
-released before anything LLM-related exists on the cluster — see
-[Turning it on](#turning-it-on). A plain `terramate script run deploy` and a
-plain Flux reconciliation both leave the cluster LLM-free.
+**Serving is off by default, and the agents are a work in progress.** What runs where, what is proven live and what
+is planned lives on one page: [Status and roadmap]({{< relref "/docs/platform/ai-platform/status.md" >}}).
+Every other page here describes the design.
 {{< /callout >}}
 
-## At a glance
+## How the parts fit
 
-| | |
-|---|---|
-| **Engine** | vLLM, one Deployment per model, port 8000 |
-| **Gateway** | Envoy Gateway + Envoy AI Gateway `1.1.0` |
-| **Routing** | `AIGatewayRoute`, keyed on the `x-ai-eg-model` header |
-| **Prompt routing** | vLLM Semantic Router, as a gRPC `ext_proc` filter — only acts on `model: MoM` |
-| **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
-| **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
-| **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot-first instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
-| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.6` |
+![The AI Platform in one view. On the serving side, developers and coding clients send OpenAI-compatible requests over the tailnet to ai-gateway (Envoy AI Gateway with an API key and the Semantic Router), which routes them to vLLM models declared as InferenceService claims, on L4 GPUs and scaled by KEDA. On the agents side, a maintainer labels a GitHub issue; the Agent Factory turns it into a task, starts an agent run in a gVisor sandbox and opens a room the maintainer watches and steers. Every call the agent makes goes through the agent gateway with a per-run identity, to frontier models, MCP tools and octo-sts for a GitHub token; the agent pushes a branch and opens a PR. Both halves send traces, logs and metrics to the Victoria stack and Grafana](/images/diagrams/ai-platform-1.svg)
+
+*Source: [`docs/architecture/ai-platform.drawio`](https://github.com/Smana/cloud-native-ref/blob/main/docs/architecture/ai-platform.drawio), page 1.*
+
+| Part | What it does | Page |
+|---|---|---|
+| **Serving** | vLLM, one Crossplane `InferenceService` claim per model, on Karpenter L4 GPUs, scaled by KEDA | [Serving]({{< relref "/docs/platform/ai-platform/serving/_index.md" >}}) |
+| **Gateways** | `ai-gateway` for humans and coding clients; the agent gateway for agent runs, with a per-run identity | [Gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}}) |
+| **Coding clients** | OpenCode, Continue and OpenWebUI pointed at `ai-gateway` | [Coding clients]({{< relref "/docs/platform/ai-platform/coding-clients.md" >}}) |
+| **Agents** | The factory, rooms and the sandboxed runtime | [Agents]({{< relref "/docs/platform/ai-platform/agents/_index.md" >}}) |
+| **Observability** | vLLM, KEDA and gateway metrics; per-run traces, step logs and dashboards | [Observability]({{< relref "/docs/platform/ai-platform/observability.md" >}}) |
 
 ## Why self-host at all
 
@@ -51,106 +49,21 @@ platform exists for the things a hosted API cannot give you:
   web app never touches.
 
 And the honest side of the ledger: there is **no scale-to-zero** — see
-[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}})
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/serving/autoscaling-and-gpu.md" >}})
 for the four-GPU cost floor that implies, and why it is a deadlock rather
 than a missing feature.
 
-## Turning it on
-
-The AWS gate and the two Kubernetes gates are independent of each other, so releasing one does not
-bring the others along — but `llm-platform` itself `dependsOn` `ai-gateway`, so the second
-Kubernetes command must run before the third:
-
-```bash
-# Gate 1 — AWS side (S3 Files filesystem + IAM). Terramate stack tagged
-# `opt-in`; skipped unless TM_LLM_PLATFORM_ENABLED=true (verified in
-# opentofu/aws/llm-platform/workflows.tm.hcl — unset or != "true" echoes [skip]
-# and exits 0).
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
-
-# Gate 2 — Kubernetes side, gateway layer. llm-platform depends on this
-# umbrella, so it must resume first or llm-platform stalls on
-# "dependency 'flux-system/ai-gateway' is not ready".
-flux resume kustomization ai-gateway -n flux-system
-
-# Gate 3 — Kubernetes side, GPU models. The umbrella Flux Kustomization ships
-# suspended (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
-flux resume kustomization llm-platform -n flux-system
-```
-
-The umbrella aggregates **5** child Flux Kustomizations under
-`clusters/aws-0-llm-platform/`:
-
-| Child | Renders | Path |
-|---|---|---|
-| `runtimeclass-nvidia` | `RuntimeClass nvidia` | `infrastructure/base/runtimeclass-nvidia` |
-| `llm-platform-gpu-nodepools` | Karpenter `gpu-l4` NodePool + EC2NodeClass | `infrastructure/base/karpenter-nodepools-gpu` |
-| `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/llm` |
-| `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
-| `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
-
-The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
-Router and the `ai-gateway` Gateway) is a separate umbrella, `ai-gateway`, under
-`clusters/aws-0-ai-gateway/`. It is CPU only and suspended by default: resume it before
-`llm-platform`, which depends on it.
-
-That directory is a **sibling** of `clusters/aws-0/`, not a child, on
-purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested
-path would be auto-discovered and applied — bypassing the suspend gate
-entirely.
-
-### On `gcp-0`
-
-`gcp-0` has **no OpenTofu gate**: the weights bucket is a Crossplane claim
-rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED`.
-The two Kubernetes gates match aws-0's: `clusters/gcp-0/ai-gateway.yaml`,
-then `clusters/gcp-0/llm-platform.yaml`, which depends on it (both
-`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
-Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
-[ADR-0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}})
-for why, including what it gives up. **The umbrella stays suspended on cost
-and an open GPU quota, not on missing identity**: each claim's per-claim GCP
-read identity *is* rendered as of `crossplane-configuration` v0.4.6 — the
-version already pinned here. The first resume (2026-08-28) proved as much on
-a live cluster — the per-claim `GCPWorkloadIdentity` reached Ready and the
-preload Job wrote the weights to GCS — and stalled only once it reached the
-GPU itself: `GPUS_ALL_REGIONS` is `0` on the project, a Google quota this
-repository cannot route around. See `clusters/gcp-0-llm-platform/README.md`
-for the full failure-order watch list before the next resume.
-
-## Security posture
-
-- **Zero trust by default.** Every workload carries a default-deny
-  `CiliumNetworkPolicy`. The serving pod's egress is kube-dns only; only the
-  bounded preload Job is granted `world:443`, because it is short-lived and
-  the serving pod cannot reach HuggingFace even in principle.
-- **No credentials in Git.** API keys and the HuggingFace token come from AWS
-  Secrets Manager through External Secrets — see
-  [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-- **Read-only IAM on the serving pod.** Each claim's serving
-  ServiceAccount carries a per-claim EKS Pod Identity scoped to *read* its
-  own weights prefix, rendered by the composition; only the shared preload
-  Job's identity can write to the bucket.
-- **Private ingress only.** Reachable exclusively from the tailnet — see
-  [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}}).
-
-## Known gaps
-
-- **`xplane-llamaguard3-1b` holds a GPU and serves no automatic traffic** —
-  it runs at `min=1` but appears in no Semantic Router decision rule.
-- **Gateway routing is half-migrated** — only `xplane-qwen-coder` is
-  composition-owned; the other three claims still route through the
-  hand-written `apps/base/ai/llm/ai-gateway-routes/route.yaml`.
-- **The Gateway API Inference Extension's endpoint picker is implemented but
-  enabled on zero claims.** It is mutually exclusive with LoRA canaries, and
-  the only gateway-enabled claim uses a canary.
-- **No distributed tracing.** OTLP export from the AI Gateway extproc is
-  written but not enabled, pending verification against VictoriaTraces.
-
 {{< cards >}}
-  {{< card link="/docs/platform/ai-platform/inference-service/" title="The InferenceService claim" icon="document-text" subtitle="One model, one YAML file — a complete claim with its reasoning intact, what it renders, and every field it accepts." >}}
-  {{< card link="/docs/platform/ai-platform/gateway-and-routing/" title="Gateway & routing" icon="switch-horizontal" subtitle="A worked request, the two gateways and two filters it crosses, API-key auth, and what `model: MoM` does." >}}
-  {{< card link="/docs/platform/ai-platform/autoscaling-and-gpu/" title="Autoscaling & GPUs" icon="chip" subtitle="Three KEDA triggers on leading vLLM signals, the scale-to-zero deadlock, the gpu-l4 NodePool and S3 Files weights." >}}
+  {{< card link="/docs/platform/ai-platform/serving/" title="Serving" icon="server" subtitle="Turning the opt-in serving platform on, what it deploys, and its security posture." >}}
+  {{< card link="/docs/platform/ai-platform/serving/inference-service/" title="The InferenceService claim" icon="document-text" subtitle="One model, one YAML file — a complete claim with its reasoning intact, what it renders, and every field it accepts." >}}
+  {{< card link="/docs/platform/ai-platform/serving/autoscaling-and-gpu/" title="Autoscaling & GPUs" icon="chip" subtitle="Three KEDA triggers on leading vLLM signals, the scale-to-zero deadlock, the gpu-l4 NodePool and S3 Files weights." >}}
+  {{< card link="/docs/platform/ai-platform/gateways/" title="Gateways" icon="switch-horizontal" subtitle="ai-gateway for humans and coding clients, the agent gateway for agent runs: identity, routing and what they share." >}}
   {{< card link="/docs/platform/ai-platform/coding-clients/" title="Coding clients" icon="terminal" subtitle="Connecting OpenCode, Continue and OpenWebUI to the gateway — authentication, model IDs, and troubleshooting." >}}
-  {{< card link="/docs/platform/ai-platform/roadmap/" title="Roadmap" icon="map" subtitle="What's still open on the upgrade path — bigger models, multi-replica serving, and per-tenant cost attribution." >}}
+  {{< card link="/docs/platform/ai-platform/agents/" title="Agents" icon="beaker" subtitle="Autonomous coding agents that run sandboxed under their own identity, collaborate with humans in rooms, and ship small changes." >}}
+  {{< card link="/docs/platform/ai-platform/agents/runtime/" title="Agent runtime" icon="shield-check" subtitle="The gVisor sandbox, per-run identity, octo-sts and the rulesets that confine every run." >}}
+  {{< card link="/docs/platform/ai-platform/agents/rooms/" title="Rooms" icon="chat-alt-2" subtitle="The append-only log of a task: live view, steering, room tools and approvals." >}}
+  {{< card link="/docs/platform/ai-platform/agents/factory/" title="Factory" icon="cog" subtitle="From a labelled issue to a merged PR: intake, triage, teams, revise, the merge gate and the kill switch." >}}
+  {{< card link="/docs/platform/ai-platform/agents/user-guide/" title="Agents user guide" icon="book-open" subtitle="How a developer gives work to agents, follows it, steers it and stops it." >}}
+  {{< card link="/docs/platform/ai-platform/observability/" title="Observability" icon="chart-bar" subtitle="Serving metrics and alerts, and per-run traces, step logs, gen_ai metrics and dashboards." >}}
+  {{< card link="/docs/platform/ai-platform/status/" title="Status and roadmap" icon="map" subtitle="The one place state lives: what serves, what is built, deployed and proven live, and the roadmap." >}}
 {{< /cards >}}

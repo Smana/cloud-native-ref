@@ -217,6 +217,64 @@ if acs.check_metadata_egress(bundle({"chart-observability-gcp-0-runlore-runlore.
 if not acs.check_metadata_egress(bundle({"chart-observability-aws-0-runlore-runlore.yaml": METADATA})):
     fails.append("no gcp-0 chart CNP reaching the metadata server is vacuous and must fail")
 
+# F2: nothing off the host network may tolerate Cilium's startup taint on gcp-0.
+KEY = "ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agent-not-ready"
+taint_root = pathlib.Path(tempfile.mkdtemp())
+(taint_root / "opentofu/gcp/gke/init/helm_values").mkdir(parents=True)
+(taint_root / acs.CILIUM_VALUES).write_text(f"agentNotReadyTaintKey: {KEY}\n")
+WORKLOAD = """apiVersion: apps/v1
+kind: {kind}
+metadata: {{name: w, namespace: n}}
+spec:
+  template:
+    spec:
+      {extra}
+      containers: [{{name: c, image: i}}]
+"""
+CHART = "chart-observability-gcp-0-x-x.yaml"
+
+
+def taint(kind="Deployment", extra="tolerations: []", name=CHART, root=taint_root):
+    return acs.check_startup_taint(bundle({name: WORKLOAD.format(kind=kind, extra=extra)}), root)
+
+
+if taint():
+    fails.append("a gcp-0 Deployment with no toleration must pass")
+if not taint(extra=f"tolerations: [{{key: {KEY}, operator: Exists, effect: NoSchedule}}]"):
+    fails.append("a gcp-0 Deployment tolerating the startup taint must fail")
+if not taint(extra="tolerations: [{operator: Exists}]"):
+    fails.append("a gcp-0 Deployment with a key-less Exists toleration must fail")
+# A CronJob's pod spec sits one level deeper than the other controllers'.
+cron = """apiVersion: batch/v1
+kind: CronJob
+metadata: {name: c, namespace: n}
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          tolerations: [{operator: Exists, effect: NoSchedule}]
+          containers: [{name: c, image: i}]
+"""
+if not acs.check_startup_taint(bundle({CHART: cron}), taint_root):
+    fails.append("a gcp-0 CronJob pod with a blanket NoSchedule toleration must fail")
+if taint(extra="tolerations: [{operator: Exists, effect: NoExecute}]"):
+    fails.append("a key-less Exists limited to NoExecute does not tolerate a NoSchedule taint and must pass")
+if taint(kind="DaemonSet", extra="hostNetwork: true\n      tolerations: [{operator: Exists}]"):
+    fails.append("a hostNetwork DaemonSet tolerating everything has no endpoint to wait for and must pass")
+if taint(extra="tolerations: [{operator: Exists}]", name="chart-observability-aws-0-x-x.yaml") != [
+        "no gcp-0 or base pod template in the bundle: the startup-taint check would be vacuous"]:
+    fails.append("aws-0 renders are not judged, and a bundle with no gcp-0 or base pod template is vacuous")
+# gcp-0 applies agent-sandbox and others straight from base: their renders name no cluster.
+# Asserted on the finding itself: the vacuity problem alone would also be non-empty.
+for base_name in ("chart-infrastructure-base-agent-sandbox-agent-system-agent-sandbox.yaml",
+                  "overlay-infrastructure-base-agent-runtime.yaml"):
+    if not any("Deployment/w tolerates every taint" in p
+               for p in taint(extra="tolerations: [{operator: Exists}]", name=base_name)):
+        fails.append(f"{base_name}: a base Deployment with a key-less Exists toleration lands on gcp-0 and must fail")
+if not taint(root=pathlib.Path(tempfile.mkdtemp())):
+    fails.append("a missing agentNotReadyTaintKey must fail rather than judge nothing")
+
 for f in fails:
     print("FAIL", f)
 if fails:

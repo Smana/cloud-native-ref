@@ -36,8 +36,9 @@ On an **existing** cluster, first apply `opentofu/gcp/openbao/management` then
 `SecretStore agents-secrets` never goes Ready. On a feature-branch cluster, `gke/configure` needs
 `TF_VAR_flux_git_ref=refs/heads/<branch>`.
 
-The owner prerequisites come next, in this order (ADR-0043): the branch ruleset
-(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref`), then the GitHub App installed
+The owner prerequisites come next, in this order (ADR-0043): the agents' rulesets
+(`task ops:github:agent-branch-ruleset -- Smana/cloud-native-ref` applies every ruleset this
+repository ships), then the GitHub App installed
 and its key written to `github-app` on gcp-0's `agents` mount:
 
     bao kv put -mount=agents github-app app_id=<id> private_key=@<pem file>
@@ -49,7 +50,9 @@ other two agent keys are written the same way, once per GCP lineage:
     bao kv put -mount=agents zai api_key=-
     bao kv put -mount=agents factory-app app_id=<App ID> private_key=@<pem file>
 
-`factory-app` has no consumer on gcp-0 until SP2/SP3; write it now so their gates find it.
+`factory-app` is the factory App `ogenki-agent-factory`'s key (SP3's, created early). From SP2
+phase 3 the room broker posts reviewers' verdicts with it; without it the broker still runs, and
+the verdicts stay in the room instead of reaching the pull request.
 
     flux resume kustomization ai-gateway -n flux-system
     flux resume kustomization agent-platform -n flux-system
