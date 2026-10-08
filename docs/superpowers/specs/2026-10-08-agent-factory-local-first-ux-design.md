@@ -73,7 +73,10 @@ sequenceDiagram
 factory?", it suggests candidates and does nothing until the developer says which.
 
 **Opting a repo in.** Add the skill (`roomctl skill install`), create the `factory/ready` label,
-register the repo with the factory. Each repo opts in explicitly; the factory is multi-repo.
+register the repo with the factory. Each repo opts in explicitly. Today the factory takes issues
+from one repository (`Smana/cloud-native-ref`); opting further repositories in is the
+[planned extension](../../../website/content/docs/platform/ai-platform/agents/_index.md#one-repository-at-first),
+not a step you can take today.
 
 ## Components
 
