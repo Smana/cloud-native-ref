@@ -78,9 +78,7 @@ resumes just the GCP stacks the halt skipped. See
 {{< /callout >}}
 
 No cloud flag either: `TM_CLOUD` defaults to `aws`, so this builds the AWS lane
-and skips GCP. While GCP is primary
-([ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})), an
-unset `TM_CLOUD` fails with exit 3; pass `TM_CLOUD=aws`. Set `TM_CLOUD=aws,gcp` (or `all`) to build both clouds in the same
+and skips GCP. Set `TM_CLOUD=aws,gcp` (or `all`) to build both clouds in the same
 run — see [Commands]({{< relref "/docs/reference/commands.md" >}}).
 
 What that one command does, in order:

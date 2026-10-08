@@ -43,6 +43,9 @@ from the 2026-05 LLM designs, which were scoped "solo experimental".
 > Router has not added 2025-11-25 support by 2026-12-15. A gap matrix found no blocker to replacing
 > the agent router, and a time-boxed PoC is running on gcp-0. See the
 > [ecosystem re-check](2026-10-01-agent-ecosystem-recheck-research.md) and the [gap matrix](2026-10-01-agentgateway-gap-matrix-research.md).
+>
+> **2026-10-01 outcome.** PoC GO on gcp-0; the owner selected agentgateway for agent-router, and an
+> ADR superseding ADR-0042 and ADR-0050 Option 1 follows. The note above is kept as the record.
 
 ## Verified during design (supersedes the raw research notes)
 

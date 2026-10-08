@@ -69,13 +69,6 @@ it stands, what it did, what it cost and where its time went.
 | Traces | [VictoriaTraces](https://docs.victoriametrics.com/victoriatraces/), behind an OpenTelemetry Collector that keeps only allowlisted metadata | One trace per run: steps, model calls and tool calls. Metadata only: no prompts or outputs |
 | Dashboards | [Grafana](https://grafana.com) | `agent-run`, one page per run, and `agent-fleet`, the overview |
 
-{{< callout type="warning" >}}
-**Scrape the factory's pods directly.** The service-proxy path (`kubectl get --raw
-".../services/agent-factory:metrics/proxy/metrics"`) hangs on the cluster, and its counters live
-only on the lease-holder replica — the other replicas serve nothing. Point the scrape config at
-the pod endpoints and expect non-empty counters from one replica only.
-{{< /callout >}}
-
 The full transcript (prompts and outputs) stays in the
 [room]({{< relref "/docs/platform/ai-platform/agents/rooms.md" >}}), behind room access. Alerting
 on runs belongs to the factory's rules, per the

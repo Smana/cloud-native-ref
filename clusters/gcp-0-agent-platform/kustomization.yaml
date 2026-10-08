@@ -18,4 +18,3 @@ resources:
   - infrastructure-kueue.yaml
   - tooling-agent-factory.yaml
   - observability-agent-platform.yaml
-  - infrastructure-agentgateway-poc.yaml

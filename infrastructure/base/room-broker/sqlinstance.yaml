@@ -28,16 +28,10 @@ spec:
       superuser: false
   atlasSchema:
     url: https://github.com/Smana/agent-platform
-    # A v* ref resolves as a tag, anything else as a branch, never a SHA. AP-6's stack tip
-    # (agent-platform#28), which holds every migration so far, the approvals projection and its
-    # CONCURRENTLY indexes included (AP-6 adds none); agent-platform main has none yet. It moves with the broker pin
-    # and crd-rooms.yaml, and 404s once that branch merges and is deleted. Phase 7 pins the release tag.
-    # The broker pin is agent-platform#22's integration build: its migrations equal this branch's.
-    ref: feat/room-approvals
+    # A v* ref resolves as a tag, anything else as a branch, never a SHA: the release tag
+    # of the broker image, so the schema and the binary match.
+    ref: v0.7.0
     path: internal/store/migrations
-  # objectStoreRecovery (path: rooms-pre-destroy) lands once the destroy hook
-  # has created that alias — an empty recovery prefix fails the bootstrap
-  # instead of starting fresh. 2026-10-05 database-backup brief, Step 4.
   backup:
     # SIX fields, seconds first: CNPG uses robfig/cron (security/base/zitadel/sqlinstance.yaml).
     schedule: "0 0 2 * * *"

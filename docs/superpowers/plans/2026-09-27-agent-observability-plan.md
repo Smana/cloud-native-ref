@@ -39,6 +39,10 @@ join those series with VictoriaLogs, the gateway's `gen_ai_*` metrics and Victor
 
 - **Target** aws-0 only, like SP1 and SP2. gcp-0 gets the shared kube-state-metrics config (O11)
   and nothing else.
+- **GCP parity cross-plan edit (2026-09-29).** Every child O-1 adds to
+  `clusters/aws-0-agent-platform/` (the collector and the rest) gets its twin in
+  `clusters/gcp-0-agent-platform/`, with `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it
+  substitutes, under the same rule as SP2's [Cross-plan edits](2026-09-29-gcp-parity-plan.md#cross-plan-edits).
 - **Owner decisions, 2026-09-27.** Traces carry metadata only: timing, model, token counts, tool
   names, status and errors. No prompts, completions or tool output. Build now, on SP1, before SP2.
 - **Metadata only is enforced outside the sandbox.** The collector is the control, and SO-3 is
@@ -127,7 +131,7 @@ the spec; the rulings worth promoting into it are repeated in [Spec deltas propo
 | O9 | "Agent fleet" is a **new** dashboard, `uid: agent-fleet`. "Agent platform" stays unchanged as the capacity view that the M9 `dashboard` annotations link to | The alerts already link `/d/agent-platform`, and SP2 and SP3 add their own dashboards beside it | Two pages instead of one, linked both ways |
 | O10 | The dashboards live in the existing `agents` folder with **Grafana's default permissions**, which every SSO Viewer has | Grafana OSS has no team sync, and `role_attribute_path` makes every SSO user a Viewer. Any Viewer already reads the same data in Explore, so a folder ACL would hide the page, not the data. `agents-member` does not exist before SP2's S2 | Developers outside the agent groups read run metadata. The metadata-only decision is what makes that acceptable |
 | O11 | kube-state-metrics' custom-resource state goes into the shared `vm-common-helm-values`, which both clouds read, and not under the agent umbrella | The spec names the stack's single KSM (Task 0.3). The `AgentRun` CRD ships in the always-on Crossplane package, and KSM discovers CRDs itself. With no runs there are no series | A read-only list/watch on `agentruns` in a cluster that runs no agents |
-| O12 | **Stacking.** O-1 stacks on H-1 (`fix/agent-review-hardening`) and CC-O1 on CC-H1 (`ci/prerelease-xrd-crds`). SP2's CC-S1 must then stack on CC-O1, and SP2's S1 should stack on O-1 | Integration pins one crossplane-configuration package, so that stack must be linear. S1 and O-1 both edit `agent-run.sh`, its test and the agent-platform kustomization | SP2 Phase 1 starts after O-1 and CC-O1 exist. Those are the SP2 plan edits under [Cross-plan edits](#cross-plan-edits) |
+| O12 | **Stacking.** O-1's *Base* is `feat/gcp-agent-platform` (GCP parity G-5), itself on H-1 (GCP parity cross-plan edit, 2026-09-29; was `fix/agent-review-hardening` directly). CC-O1 stacks on CC-H1 (`ci/prerelease-xrd-crds`). SP2's CC-S1 must then stack on CC-O1, and SP2's S1 should stack on O-1 | Integration pins one crossplane-configuration package, so that stack must be linear. S1 and O-1 both edit `agent-run.sh`, its test and the agent-platform kustomization | SP2 Phase 1 starts after O-1 and CC-O1 exist. Those are the SP2 plan edits under [Cross-plan edits](#cross-plan-edits) |
 | O13 | *(Superseded by O21, 2026-09-29: Task 0.5 verified the loss, so the harness change is no longer conditional.)* A harness change is made **only if Task 3.3 loses the root span**. It lands in O-1 as harness source `v0.1.2`: `agent_run.py` waits 25 s instead of 10 for agent-server's shutdown. It is not made on `feat/agent-harness` | `feat/agent-harness` sits below #2111 and H-1 (whose source is `v0.1.1`, M4). A change there would be merged up two branches and would re-pin SP1's CC-2 | H-S3 must then stack on O-1 to ship it in `v0.2.0` |
 | O14 | agent-router's spans are found by the Envoy tag **`agent.principal`**, not by a derived `agent.run_id` | Deriving the run id needs a regex replacement with `$1`, which crosses Flux's and the collector's `$` escaping. The principal already names the run. `traceparent` puts these spans in the harness trace anyway: the harness sends one (Task 0.1), and Task 3.3 checks it survives identity-proxy | The router search uses a longer tag value |
 | O15 | **ADR-0051** records the collector as the agent trace gate | The repo rule: rejected alternatives exist. Filtering inside the sandbox, exporting straight to VictoriaTraces, and Vector's OTLP source (ADR-0030) were all rejected. It also reverses SPEC-006 CL-1's "no collector" for this path | One ADR task |
@@ -231,7 +235,7 @@ sign-off** (P33). Each PR is based on its *Base*: merge-only, never rebased.
 | # | Repo · branch | Base (stack parent) | Needs | Carries | Live gate (aws-0) |
 |---|---|---|---|---|---|
 | CC-O1 | crossplane-configuration · `feat/agentrun-observability` | `ci/prerelease-xrd-crds` (SP2 CC-H1, on SP1 CC-2 `feat/agentrun-harness` @ `d9c4449`) | CC-H1 open | Run CNP: DNS name and L7 egress to the collector's `POST /v1/traces`; harness OTEL env; printer columns | via O-1 |
-| O-1 | this · `feat/agent-observability` | `fix/agent-review-hardening` (SP2 H-1, on SP1 PR 6 `feat/agent-e2e` #2111) | H-1 open; CC-O1's pre-release | ADR-0051; the collector (HelmRepository, HelmRelease, Role, CNP, scrape); agent-router tracing and data-plane egress; KSM `AgentRun` state; the two dashboards; `agent-run.sh` stderr link; runbook 08 steps; the CC-O1 pin; harness `v0.1.2` (Task 2.8a, O21) | SO-1…SO-5 on the next rebuild (Phase 3) |
+| O-1 | this · `feat/agent-observability` | `feat/gcp-agent-platform` (GCP parity G-5, itself on SP2 H-1 `fix/agent-review-hardening`, on SP1 PR 6 `feat/agent-e2e` #2111) (GCP parity cross-plan edit, 2026-09-29; was `fix/agent-review-hardening` directly) | H-1 open; CC-O1's pre-release | ADR-0051; the collector (HelmRepository, HelmRelease, Role, CNP, scrape); agent-router tracing and data-plane egress; KSM `AgentRun` state; the two dashboards; `agent-run.sh` stderr link; runbook 08 steps; the CC-O1 pin; harness `v0.1.2` (Task 2.8a, O21) | SO-1…SO-5 on gcp-0, after GCP parity Task 8.6 (Phase 3) |
 
 **Neither base exists yet.** H-1 and CC-H1 are SP2's Phase 0.5, which runs first. This plan's Phase 0
 spikes need neither and can run today.
@@ -297,7 +301,7 @@ After its live gate, O-1 leaves draft and stays open until the wave.
 
 | Marker | Task | What |
 |---|---|---|
-| [OWNER] | 3.1 | The next aws-0 rebuild, from an `integration/agent-factory` checkout with O-1 merged in. This is the same rebuild as SP2's Task 0.5.14 |
+| [OWNER] | 3.1 | gcp-0, after GCP parity Task 8.6 (GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild"), from an `integration/agent-factory` checkout with O-1 merged in. This is the same rebuild as SP2's Task 0.5.14 |
 | [OWNER] | 3.5 | One look at the two dashboards: Grafana is SSO-gated, so no agent can open them headlessly (runbook 08 correction) |
 | [OWNER] | 3.6 | Only under O13, and only if the session's gh token lacks `write:packages`: push the harness pre-release |
 | [OWNER] | — | The programme's UX sign-off (P33) before any merge |
@@ -308,8 +312,9 @@ After its live gate, O-1 leaves draft and stays open until the wave.
 
 Gate: each spike records its outcome in its task, and in O-1's PR body under "Spikes". Tasks 0.1–0.3
 answer the spec's three unverified points; Task 0.4 answers the points this plan adds. Each is
-**VERIFIED offline** (source or a local run) **and UNVERIFIED live**: its live half runs at the next
-aws-0 rebuild (Tasks 3.1–3.4).
+**VERIFIED offline** (source or a local run) **and UNVERIFIED live**: its live half runs on gcp-0,
+after GCP parity Task 8.6 (GCP parity cross-plan edit, 2026-09-29; was "the next aws-0 rebuild")
+(Tasks 3.1–3.4).
 
 ### Task 0.1: The SDK's content capture and the harness env (spec: unverified point 1)
 
@@ -3055,10 +3060,11 @@ Crossplane XRD CRDs from`.
 
 ---
 
-## Phase 3 — Live gates on the next aws-0 rebuild
+## Phase 3 — Live gates on gcp-0, after GCP parity Task 8.6
 
-aws-0 is destroyed today, so this phase waits for the owner's next rebuild. That is the same rebuild
-as SP2's Task 0.5.14 for H-1. Every output goes into O-1's "Live evidence" and runbook 08's Results.
+This phase waits for GCP parity Task 8.6 (GCP parity cross-plan edit, 2026-09-29; was "the next
+aws-0 rebuild" — aws-0 is destroyed today). That is the same rebuild as SP2's Task 0.5.14 for H-1.
+Every output goes into O-1's "Live evidence" and runbook 08's Results.
 
 ### Task 3.1: [LIVE] Deploy, and the platform checks
 
@@ -3212,3 +3218,13 @@ The owner accepted three additions from a further external review. SP3's share i
 | F1 | A trigger-rooted trace per task | Task 0.5; Tasks 1.3a, 2.2a, 2.8a, 3.3a; O20, O21; Δ9; SP3 R46 | The composition projects `agents.ogenki.io/traceparent` as `TRACEPARENT`. The harness's `agent-run` span parents on it, or starts a fresh trace, and agent-server's root span joins it through `LMNR_SPAN_CONTEXT`. The collector's :4317 takes the factory's task spans. The harness closes the conversation before the stop, so the root span survives (was O13) |
 | F2 | The step log carries `trace_id` | Tasks 2.6a, 2.8a, 3.3a; O22; Δ10 | Step lines end with `\| trace_id=<hex>`, and the run page turns it into a "View Trace" link through the existing `log.trace_id` derived field. Correlation only: attribution stays on `x_ar_agent` and the connection-stamped `agent.run_id` |
 | F3 | Routing tier vs spend | Tasks 2.5a, 2.6a, 2.7a; O23, O24; SP3 R47 | `agentrun_info{tier}` from the claim label `agents.ogenki.io/tier`. The fleet page compares tier with tokens and steps per run, and tokens by tier; the run page shows the tier. One tier per run, never re-routed within it |
+
+## GCP parity cross-plan edits (2026-09-29)
+
+Applied from the GCP parity plan's [Cross-plan edits](2026-09-29-gcp-parity-plan.md#cross-plan-edits) (Observability share).
+
+| ID | Where | What |
+|---|---|---|
+| O12 | Ruling O12; PR map's O-1 row | O-1's *Base* is `feat/gcp-agent-platform` (GCP parity G-5), itself on SP2's H-1 — was `fix/agent-review-hardening` directly |
+| — | Owner action 3.1; Phase 0 intro; Phase 3 heading and intro | gcp-0, after GCP parity Task 8.6 — was "the next aws-0 rebuild" |
+| — | Global Constraints (new bullet) | Every child O-1 adds to `clusters/aws-0-agent-platform/` gets its `clusters/gcp-0-agent-platform/` twin, `gke-gcp-0-vars` and a `*/gcp-0/*` overlay when it substitutes |

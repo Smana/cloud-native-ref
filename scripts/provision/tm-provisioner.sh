@@ -78,20 +78,6 @@ lane_from_path() {
     esac
 }
 
-# An unset TM_CLOUD means aws, a default that predates ADR-0052. With another
-# cloud primary, a bare `terramate script run deploy` would apply the shared
-# stacks, skip every stack of the primary cloud, and report success. Exit 3,
-# which `${global.cloud_gate}` passes through rather than reading as a skip.
-if [ -z "${TM_CLOUD:-}" ]; then
-    primary="$(sed -n 's/^[[:space:]]*primary_cloud[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-        "$(dirname "${BASH_SOURCE[0]}")/../../opentofu/config.tm.hcl" 2>/dev/null | head -1)"
-    if [ -n "$primary" ] && [ "$primary" != "aws" ]; then
-        echo "ERROR: TM_CLOUD is unset, which means aws, but primary_cloud = \"${primary}\" (ADR-0052)." >&2
-        echo "       Set it explicitly: TM_CLOUD=${primary} is the normal deploy." >&2
-        exit 3
-    fi
-fi
-
 if [ "${1:-}" = "--tm-check" ]; then
     [ $# -ge 2 ] || { echo "--tm-check needs a lane" >&2; exit 2; }
     selected "$2"

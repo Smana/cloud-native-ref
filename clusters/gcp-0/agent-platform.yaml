@@ -9,7 +9,7 @@ metadata:
   name: agent-platform
   namespace: flux-system
 spec:
-  suspend: false  # integration branch only: the gcp-0 live test (never merged)
+  suspend: true
   prune: true
   interval: 1m0s
   timeout: 5m0s

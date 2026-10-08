@@ -7,13 +7,9 @@ lastVerified: 2026-09-06
 
 ZITADEL is a **primary-cloud singleton**
 ([ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}})):
-one directory, hosted on AWS since
-[ADR-0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}}) reversed
-[ADR-0052]({{< relref "/docs/decisions/0052-gcp-primary-platform.md" >}})'s placement, that
-*relocates* rather than duplicates. GCP's directory is fresh on every build, so
-nothing migrates to it. You need this page in one situation — you want a cloud
-to host the identity provider *with* an existing directory's data. It is not
-part of a normal deploy.
+one directory, hosted on AWS by default, that *relocates* rather than duplicates.
+You need this page in one situation — you bootstrapped on one cloud and now want
+the other to host the identity provider. It is not part of a normal deploy.
 
 {{< callout type="warning" >}}
 **Designed, not yet proven end to end.** ADR-0027 says so plainly. Every step
@@ -97,17 +93,13 @@ do
 done
 ```
 
-**5. Flip the gates**, in the same commit. AWS-hosted is the committed state
-since [ADR-0055]({{< relref "/docs/decisions/0055-aws-primary-again.md" >}})
-reversed ADR-0052's placement (2026-10-04, commit `5d688376`); the gate itself
-is `primary_cloud`, so whichever cloud is not primary points its consumers at
-its own, suspended, instance.
+**5. Flip the two gates**, in the same commit. Both live on the GCP side — AWS
+has no gate: whenever an `aws-0` cluster exists, it hosts ZITADEL.
 
-| Gate | Where | AWS-hosted (committed) | GCP-hosted |
-|---|---|---|---|
-| `primary_cloud` | `opentofu/config.tm.hcl` | `"aws"` | `"gcp"` |
-| `spec.suspend` | `clusters/aws-0/security/zitadel.yaml` | `false` | `true` |
-| `spec.suspend` | `clusters/gcp-0/security/zitadel.yaml` | `true` | `false` |
+| Gate | Where | For GCP-hosted |
+|---|---|---|
+| `primary_cloud` | `opentofu/config.tm.hcl` | `"gcp"` |
+| `spec.suspend` | `clusters/gcp-0/security/zitadel.yaml` | `false` |
 
 **Do not set `deploy_identity_provider` in `variables.tfvars`.** It is derived
 from `primary_cloud` and passed as a `-var`, which wins over the file — adding

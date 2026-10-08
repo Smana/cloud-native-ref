@@ -217,31 +217,26 @@ GCP-only platform can authenticate without an AWS cluster running. The accepted
 cost is one user directory per cloud, with no federation between them. Only
 public DNS stays AWS-owned ([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
 
-AWS is the primary cloud again
-([ADR-0055](../../decisions/0055-aws-primary-again.md) reversed
-[ADR-0052](../../decisions/0052-gcp-primary-platform.md)'s placement on
-2026-10-04, commit `5d688376`), so `aws-0` hosts the one instance and
-`gcp-0`'s is suspended — an AWS-only platform has no `gcp-0` at all. Placement
-follows `primary_cloud`
-([ADR-0027](../../decisions/0027-primary-cloud-provider.md)): the singleton
-relocates rather than being duplicated — two clouds each running a directory is
-ruled out, since a grant means nothing without knowing which directory issued
-it.
+`gcp-0` does **not** take that opt-out: AWS is the primary cloud
+([ADR-0027](../../decisions/0027-primary-cloud-provider.md)), so `aws-0` hosts
+the one instance and `gcp-0` consumes it. The opt-out exists for a GCP-only
+platform, where the singleton relocates rather than being duplicated — two
+clouds each running a directory is ruled out, since a grant means nothing
+without knowing which directory issued it.
 
 Placement has two halves, and only one of them is typed:
 
 | Gate | Where | Value today |
 |---|---|---|
-| 1 · which URL consumers read | `deploy_identity_provider`, **derived** from `primary_cloud` in `opentofu/config.tm.hcl` | `true` on `aws-0` |
-| 2 · whether an instance runs | `spec.suspend` in `clusters/*/security/zitadel.yaml` | `false` on `aws-0`, `true` on `gcp-0` |
+| 1 · which URL consumers read | `deploy_identity_provider`, **derived** from `primary_cloud` in `opentofu/config.tm.hcl` | `false` on `gcp-0` |
+| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `true` |
 
 Gate 1 cannot disagree with the declaration, because it is the declaration.
 Gate 2 is committed Flux state — Flux never reads Terramate globals — so it is
 verified instead, by `./scripts/ci/validate-idp-topology.sh` in CI. Changing which
 cloud hosts is a [migration]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}),
 not a toggle: the database seed, admin credential and OIDC clients travel with
-it. GCP's directory is the exception: it is fresh on every build and the deploy
-re-registers every client, so nothing travels to it (ADR-0052).
+it.
 
 ## Adding a third cloud
 

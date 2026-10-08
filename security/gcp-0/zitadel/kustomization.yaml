@@ -1,49 +1,103 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# ZITADEL on gcp-0 -- the platform's only directory while GCP is primary
-# (ADR-0052, GCP parity GP-3).
+# ZITADEL on gcp-0 -- its OWN instance, not a route to the one on aws-0.
 #
-# It is FRESH on every build and never restored:
-#   - the masterkey and both passwords are generated in-cluster by ESO Password
-#     generators (password-generators.yaml), CreatedOnce, so no store holds a
-#     masterkey;
-#   - the database admin is read from CNPG's own superuser Secret, so ZITADEL
-#     and CNPG cannot disagree on it (helmrelease-env-patch.yaml). That one
-#     comes from Secret Manager: gke/init's seed step generates
-#     cnpg-xplane-zitadel-superuser when absent, before CNPG needs it;
-#   - the SQLInstance runs initdb: no objectStoreRecovery, backups kept.
-# The deploy then re-registers the Google IdP, the groups Action and every OIDC
-# client (gcp/gke/init stage 3). What is lost each build is users and IdP links;
-# the owner logs in once and re-grants.
+# ADR-0024 supersedes ADR-0022 here: the identity provider is now deployable on
+# either cloud, defaulting to AWS, so a GCP-only platform is self-sufficient.
+# Only PUBLIC DNS stays AWS-owned (Route53, ADR-0019) -- `auth.${public_domain_name}`
+# on this cluster resolves through the same cross-cloud federation every other
+# public hostname here uses.
 #
-# The Gateway, Certificate, TLSRoute, CiliumNetworkPolicy and HelmRelease come
-# from base; only the database claim, the secrets and the HelmRelease's env
-# differ.
+# Everything is shared with aws-0 except the database claim. The Gateway,
+# Certificate, TLSRoute, CiliumNetworkPolicy, HelmRelease and both
+# ExternalSecrets come straight from base -- the CNP in particular is already
+# cloud-neutral (DNS, world:443, postgres, 8080), and the Gateway became
+# cloud-neutral when its four AWS load-balancer annotations moved to
+# security/aws-0/zitadel/gateway-patch.yaml.
 resources:
   - ../../base/zitadel
-  - password-generators.yaml
-  - externalsecrets-generated.yaml
 
 patches:
-  # The database claim. Three differences from base:
+  # The database claim, and only the database claim. Four differences, the same
+  # ones tooling/gcp-0/harbor/sqlinstance.yaml documents:
   #
   #   1. compositionRef names the GCP Composition. aws-0 gets
   #      `xsqlinstances.cloud.ogenki.io` from crossplane-configuration-aws;
   #      gcp-0 gets `xsqlinstances-gcp...` from -gcp. A claim naming the AWS one
   #      here would find no Composition at all.
   #
-  #   2. objectStoreRecovery is removed, so CNPG runs initdb. A restored
-  #      directory would need its old masterkey, which is exactly what this
-  #      overlay no longer reads from a store.
+  #   2. objectStoreRecovery points at a GCS seed, not base's S3 one. This block
+  #      previously REMOVED the field entirely, on the grounds that "there is
+  #      nothing equivalent to restore from on GCS". That was true until
+  #      2026-08-28 and is not any more: gcp-0 now writes real backups, so a seed
+  #      is frozen the same way aws-0's is:
+  #
+  #        ./scripts/ops/k8s/cnpg-promote-seed.sh --cluster xplane-zitadel \
+  #          --namespace security --cloud gcp \
+  #          --bucket ${project_id}-ogenki-cnpg-backups --apply
+  #
+  #      Then set `path` below to the dated seed it prints. The hand-rolled
+  #      `gcloud storage cp --recursive .../xplane-zitadel-cnpg-cluster/*` that
+  #      used to live here is retired twice over: since #1963 the live prefix
+  #      carries a per-generation uid suffix, so that glob matches NOTHING and
+  #      would have frozen an empty seed in silence; and copying without first
+  #      forcing the backup's final WAL segment out is precisely what made
+  #      zitadel-20260829-2 unrestorable. The script discovers the live prefix
+  #      from the Cluster, issues pg_switch_wal, waits for THAT segment, and
+  #      then verifies the copy holds a restorable base backup instead of
+  #      counting objects. Full procedure:
+  #      website/content/docs/guides/restore-a-database.md.
+  #
+  #      It matters more here than the old comment allowed. A ZITADEL that
+  #      bootstraps EMPTY loses, on every rebuild, everything
+  #      scripts/zitadel-*.sh cannot recreate: the Google IdP's user links, and
+  #      any human user -- which exists only after a first interactive login.
+  #      Restoring is what makes "the platform comes back" true rather than "the
+  #      platform is rebuilt and you log in again to re-earn your grants".
+  #
+  #      VALIDATED end to end on 2026-08-28 by deleting the CNPG Cluster AND its
+  #      PVC and letting Crossplane rebuild: the restored instance came back with
+  #      the same 3 users, 5 OIDC apps, 4 roles, admin grant and Google IdP.
+  #
+  #      That run needed one manual step first, and no longer does. It failed
+  #      three times because CNPG refuses to start a restored cluster whose
+  #      DESTINATION WAL archive is non-empty -- a restore opens a new timeline
+  #      that would collide with the WALs already there:
+  #
+  #        barman-cloud-check-wal-archive: WAL archive check failed for server
+  #        xplane-zitadel-cnpg-cluster: Expected empty archive
+  #
+  #      The bucket is deliberately durable (infrastructure/gcp-0/cloudnative-pg/
+  #      gcs-bucket.yaml: "backups outlive any individual cluster"), so every
+  #      rebuild used to land on the previous cluster's archive under the same
+  #      name and had to be cleared by hand. Since #1963 each generation writes
+  #      to its own uid-suffixed prefix, so a new cluster's destination is empty
+  #      because it never existed: nothing to clear, on either cloud, and the
+  #      orphaned generation prefixes are reclaimed by the bucket's own
+  #      lifecycleRule rather than by a `gcloud storage rm`.
   #
   #   3. backup.bucketName points at a `${project_id}-` bucket rather than
-  #      base's `${region}-` one: GCS bucket names are globally unique. The
-  #      bucket is infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml.
+  #      base's `${region}-` one. GCS bucket names are globally unique, so the
+  #      region is not what makes one unique. The bucket itself is provisioned
+  #      by infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml, and the plugin
+  #      that turns this block into an ObjectStore now runs on this cluster
+  #      (infrastructure/gcp-0/cloudnative-pg-barman-plugin) with a GCS egress
+  #      allowlist in place of the base's AWS S3 one.
   #
-  # instances stays 2: this is THE directory, and every login depends on it.
-  # (The XRD's CEL rule -- `backup.schedule is required for multi-instance
-  # clusters` -- is satisfied by the kept backup block.)
+  #   4. instances matches aws-0 at 2. It was 1 for as long as gcp-0's ZITADEL
+  #      was a duplicate of the real one -- a second directory on a throwaway
+  #      cluster, where a standby bought availability nobody needed.
+  #
+  #      ADR-0027 removed that situation: this instance only ever runs when GCP
+  #      is PRIMARY, and GCP being primary means a GCP-only platform, where this
+  #      is not a spare directory but THE directory. Every login on the platform
+  #      depends on it, so it gets the same durability as aws-0's.
+  #
+  #      It costs nothing the rest of the time: with AWS primary this whole
+  #      Kustomization is suspended, so the claim is never applied.
+  #      (The XRD's CEL rule -- `backup.schedule is required for multi-instance
+  #      clusters` -- is satisfied, since gcp-0 writes real backups now.)
   - target:
       group: cloud.ogenki.io
       kind: SQLInstance
@@ -55,48 +109,12 @@ patches:
       - op: replace
         path: /spec/instances
         value: 2
-      - op: remove
-        path: /spec/objectStoreRecovery
+      - op: replace
+        path: /spec/objectStoreRecovery/bucketName
+        value: ${project_id}-ogenki-cnpg-backups
+      - op: replace
+        path: /spec/objectStoreRecovery/path
+        value: zitadel-20260828
       - op: replace
         path: /spec/backup/bucketName
         value: ${project_id}-ogenki-cnpg-backups
-  - target: {group: external-secrets.io, kind: ExternalSecret, name: zitadel-envvars}
-    patch: |-
-      $patch: delete
-      apiVersion: external-secrets.io/v1
-      kind: ExternalSecret
-      metadata:
-        name: zitadel-envvars
-  - target: {group: external-secrets.io, kind: ExternalSecret, name: zitadel-masterkey}
-    patch: |-
-      - op: remove
-        path: /spec/data
-      - op: remove
-        path: /spec/secretStoreRef
-      - op: add
-        path: /spec/refreshPolicy
-        value: CreatedOnce
-      - op: add
-        path: /spec/dataFrom
-        value:
-          - sourceRef:
-              generatorRef:
-                apiVersion: generators.external-secrets.io/v1alpha1
-                kind: Password
-                name: zitadel-masterkey
-      - op: replace
-        path: /spec/target/template/data/masterkey
-        value: "{{ .password }}"
-      # Why these three: externalsecrets-generated.yaml's header.
-      - op: replace
-        path: /spec/target/creationPolicy
-        value: Orphan
-      - op: add
-        path: /spec/target/immutable
-        value: true
-      - op: add
-        path: /metadata/annotations
-        value:
-          kustomize.toolkit.fluxcd.io/prune: disabled
-  - path: helmrelease-env-patch.yaml
-    target: {group: helm.toolkit.fluxcd.io, kind: HelmRelease, name: zitadel}

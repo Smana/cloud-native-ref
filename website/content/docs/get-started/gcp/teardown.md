@@ -10,8 +10,7 @@ of them cost a manual cleanup on the 2026-08-27 gcp-0 teardown and are now
 handled by the destroy workflow itself.
 
 {{< callout type="warning" >}}
-`TM_CLOUD` defaults to `aws` (and is refused with exit 3 while GCP is primary),
-and it gates the **destroy** jobs exactly as it
+`TM_CLOUD` defaults to `aws`, and it gates the **destroy** jobs exactly as it
 gates deploy: without `TM_CLOUD=gcp` each one prints `[skip]` and exits 0. A
 teardown that appears to succeed instantly did nothing at all — check for
 `[skip]` lines before believing the cluster is gone.

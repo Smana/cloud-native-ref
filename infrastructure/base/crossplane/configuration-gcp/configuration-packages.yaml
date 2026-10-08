@@ -13,7 +13,4 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-gcp
 spec:
-  # crossplane-configuration#35 at 43e6e38, the same tag as the AWS pin: #36's disruption read with the
-  # room-bridge v0.0.1-pr22.4a4abafc and agent-harness 3aea4800 builds, the AgentRun XRD on gcp-0 and SQLInstance
-  # generated credentials. It depends on -core at this exact tag. Phase 7 swaps in the release.
-  package: ghcr.io/smana/crossplane-configuration-gcp:v0.7.2-pr35.0069ea6
+  package: ghcr.io/smana/crossplane-configuration-gcp:v0.9.2

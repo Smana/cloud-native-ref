@@ -114,7 +114,7 @@ promotion/recovery cycle against the plugin and ships:
 ```yaml
 objectStoreRecovery:
   bucketName: "eu-west-3-ogenki-cnpg-backups"
-  path: "zitadel-20260904"          # frozen dated snapshot, not the live prefix
+  path: "zitadel-pre-destroy"       # the alias the destroy hook refreshes, not the live prefix
 backup:
   schedule: "0 0 0 * * *"           # SIX fields — CNPG parses seconds first
   bucketName: "eu-west-3-ogenki-cnpg-backups"
@@ -136,11 +136,13 @@ The recovery half is live; the per-cluster backup rendering is not: as of
 task closes that gap. Treat the section as shipped-code-plus-recovery until
 that task lands.
 
-Recovery deliberately reads from a **frozen, dated snapshot prefix**
-(`zitadel-20260904`), not the live cluster's own accruing backup prefix — a
-bad day on the live database (corruption, an accidental `DROP`) can't
-cascade into a poisoned recovery source, at the cost of manually promoting a
-new snapshot when the schema or data changes meaningfully. Credentials
+Recovery deliberately reads from the **`zitadel-pre-destroy` alias**, not the
+live cluster's own accruing backup prefix — a bad day on the live database
+(corruption, an accidental `DROP`) can't cascade into a poisoned recovery
+source. The destroy hook (`scripts/ops/k8s/cnpg-pre-destroy-seed.sh`, on both
+clouds' destroy lanes) promotes the database to a dated seed at teardown and
+refreshes the alias from it only once that seed verifies restorable; the
+dated seeds beside it (`zitadel-20260904` and older) stay as the fallback chain. Credentials
 default to EKS Pod Identity: per SPEC-010's refined credential-mechanism
 clarification (`docs/specs/done/2026-Q3/010-cnpg-barman-cloud-plugin/clarifications.md:125`),
 the rendered `ObjectStore` sets `s3Credentials.inheritFromIAMRole: true` — a

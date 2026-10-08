@@ -705,7 +705,7 @@ seed_body() {
             # claim reconciles.)
             printf '%s' "$(gen_password)" | jq -Rs '{username: "image-gallery-app", password: .}' ;;
         cnpg?xplane-zitadel?superuser)
-            # DERIVED on AWS, not generated -- the one arm here that reads rather than
+            # DERIVED, not generated -- the one arm here that reads rather than
             # rolls, and the reason is that this credential has two owners.
             #
             # ZITADEL authenticates as `postgres` using
@@ -728,16 +728,6 @@ seed_body() {
             # role afterwards. Seed before the SQLInstance claim reconciles, or
             # the database keeps whatever password it was born with and no amount
             # of fixing the secret afterwards reaches it.
-            #
-            # GCP GENERATES instead (ADR-0052): gcp-0's ZITADEL reads its admin
-            # from CNPG's own superuser Secret, so this is the only owner there,
-            # and zitadel-envvars no longer exists to derive from. cmd_seed only
-            # reaches this when the entry is absent, so a live one is never
-            # replaced.
-            if [ "$CLOUD" = "gcp" ]; then
-                printf '%s' "$(gen_password)" | jq -Rs '{username: "postgres", password: .}'
-                return
-            fi
             local _admin
             _admin=$(store_value "zitadel-envvars" 2>/dev/null \
                 | jq -r '.ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD // empty')
