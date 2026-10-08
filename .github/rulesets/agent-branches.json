@@ -5,7 +5,7 @@
   "conditions": {
     "ref_name": {
       "include": ["~ALL"],
-      "exclude": ["refs/heads/agent/**"]
+      "exclude": ["refs/heads/agent/**", "refs/heads/main", "refs/heads/revert-*", "refs/heads/revert-*/**"]
     }
   },
   "rules": [

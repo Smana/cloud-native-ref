@@ -1,0 +1,9 @@
+# policy-bot (SP3 §5, C1): holds the merge-gate App key, through its own store only.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: merge-gate
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

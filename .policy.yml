@@ -1,0 +1,157 @@
+# The merge policy (SP3 §5, ADR-0045). policy-bot reads it from main, never from the PR it
+# evaluates. A gate path itself: agents can never change it. When every rule skips, policy-bot
+# posts `error`, so an unknown author or a gate-path PR cannot merge (§5.2).
+#
+# The gate list is repeated in full in every agent rule (§5.2); scripts/ci/check-policy-gate-coverage.sh
+# fails when one drops a path or when an agent-platform child is not covered (SC-12).
+policy:
+  approval:
+    - or:
+        - human-authored
+        - renovate
+        - "low-risk: docs-links"
+        - "low-risk: factory revert"
+        - agent change approved by a maintainer
+
+approval_defaults:
+  options:
+    invalidate_on_push: true      # a push after approval re-opens the gate (T3)
+    ignore_edited_comments: true
+    methods:
+      comments: []
+      github_review: true         # only a GitHub review from a listed human approves
+
+approval_rules:
+  - name: human-authored
+    if:
+      has_author_in:
+        users: [Smana]
+
+  - name: renovate                # informative: Renovate bypasses the ruleset (OD-7)
+    if:
+      has_author_in:
+        users: ["renovate[bot]"]
+
+  - name: "low-risk: docs-links"  # live (OD-8)
+    if:
+      has_author_in:
+        users: ["ogenki-agents[bot]"]
+      only_has_contributors_in:
+        users: ["ogenki-agents[bot]"]
+      from_branch:
+        pattern: '^agent/[a-z2-7]{8}$'
+      only_changed_files:
+        paths: ['^(docs|website/content)/.+\.md$']
+      no_changed_files:
+        paths:
+          - '^\.policy\.yml$'
+          - '^\.github/'
+          - '(^|/)(AGENTS|CLAUDE)\.md$'
+          - '^\.(agents|claude)/'
+          - '^clusters/[^/]+-agent-platform/'
+          - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/aws-0/agent-model-routing/'
+          - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
+          - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'
+          - '^observability/base/agent-platform/'
+          - '^observability/(aws-0|gcp-0)/agent-platform/'
+          - '^tooling/base/(agent-factory|policy-bot)/'
+          - '^tooling/(aws-0|gcp-0)/agent-factory/'
+          - '^flux/sources/ocirepo-(agent-factory|kueue)\.yaml$'
+          - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
+          - '^opentofu/aws/eks/configure/openbao\.tf$'
+          - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
+          - '^container-images/agent-harness/'
+          - '^docs/platform-constitution\.md$'
+          - '^docs/(superpowers|specs)/'
+          - '^website/content/docs/decisions/'
+      file_not_added:
+        paths: ['.*']
+      file_not_deleted:
+        paths: ['.*']
+      modified_lines:
+        total: "< 21"
+      has_workflow_result:        # R42 (review G6): CI, TruffleHog included, is part of the rule
+        conclusions: ["success"]
+        workflows: [".github/workflows/ci.yaml"]
+
+  - name: "low-risk: factory revert"  # live: docs-links' paths, exclusions and caps (§5.2)
+    if:
+      has_author_in:
+        users: ["ogenki-agent-merger[bot]"]  # the merger opens reverts (R16)
+      title:
+        matches: ['^Revert "']
+      only_changed_files:
+        paths: ['^(docs|website/content)/.+\.md$']
+      no_changed_files:
+        paths:
+          - '^\.policy\.yml$'
+          - '^\.github/'
+          - '(^|/)(AGENTS|CLAUDE)\.md$'
+          - '^\.(agents|claude)/'
+          - '^clusters/[^/]+-agent-platform/'
+          - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/aws-0/agent-model-routing/'
+          - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
+          - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'
+          - '^observability/base/agent-platform/'
+          - '^observability/(aws-0|gcp-0)/agent-platform/'
+          - '^tooling/base/(agent-factory|policy-bot)/'
+          - '^tooling/(aws-0|gcp-0)/agent-factory/'
+          - '^flux/sources/ocirepo-(agent-factory|kueue)\.yaml$'
+          - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
+          - '^opentofu/aws/eks/configure/openbao\.tf$'
+          - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
+          - '^container-images/agent-harness/'
+          - '^docs/platform-constitution\.md$'
+          - '^docs/(superpowers|specs)/'
+          - '^website/content/docs/decisions/'
+      file_not_added:
+        paths: ['.*']
+      file_not_deleted:
+        paths: ['.*']
+      modified_lines:
+        total: "< 21"
+      has_workflow_result:        # R42 (review G6): CI, TruffleHog included, is part of the rule
+        conclusions: ["success"]
+        workflows: [".github/workflows/ci.yaml"]
+
+  - name: agent change approved by a maintainer  # every other agent PR, shadow classes included
+    if:
+      has_author_in:
+        users: ["ogenki-agents[bot]"]
+      no_changed_files:
+        paths:
+          - '^\.policy\.yml$'
+          - '^\.github/'
+          - '(^|/)(AGENTS|CLAUDE)\.md$'
+          - '^\.(agents|claude)/'
+          - '^clusters/[^/]+-agent-platform/'
+          - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/aws-0/agent-model-routing/'
+          - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
+          - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'
+          - '^observability/base/agent-platform/'
+          - '^observability/(aws-0|gcp-0)/agent-platform/'
+          - '^tooling/base/(agent-factory|policy-bot)/'
+          - '^tooling/(aws-0|gcp-0)/agent-factory/'
+          - '^flux/sources/ocirepo-(agent-factory|kueue)\.yaml$'
+          - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
+          - '^opentofu/aws/eks/configure/openbao\.tf$'
+          - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
+          - '^container-images/agent-harness/'
+          - '^docs/platform-constitution\.md$'
+    requires:
+      count: 1
+      users: [Smana]
+    options:
+      allow_non_author_contributor: true  # a maintainer who pushed during a takeover can still approve
+      request_review:
+        enabled: true
+        mode: all-users

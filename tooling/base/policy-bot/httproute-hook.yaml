@@ -1,0 +1,21 @@
+# The ONLY public policy-bot endpoint (§5.1): GitHub posts webhooks here, each HMAC-verified.
+# One exact path, one method; the rest of the hostname is the gateway's 404 (the RunLore
+# precedent). The UI is on the tailnet.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: policy-bot-hook
+  namespace: merge-gate
+spec:
+  parentRefs:
+    - name: platform-public
+      namespace: infrastructure
+      sectionName: policy-bot
+  hostnames:
+    - "policy-bot.${public_domain_name}"
+  rules:
+    - matches:
+        - path: {type: Exact, value: /api/github/hook}
+          method: POST
+      backendRefs:
+        - {name: policy-bot, port: 8080}
