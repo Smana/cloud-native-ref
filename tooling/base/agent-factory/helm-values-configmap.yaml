@@ -31,7 +31,8 @@ data:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
       poll: {issues: 60s, tasks: 30s, meter: 30s}
-      defaults: {template: solo, tier: standard, dataClass: public, predictedClass: review}
+      # pair until phase 4's triage picks templates: every task gets a reviewer (SP3 phase 3).
+      defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
       # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
       tiers:
         light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}
