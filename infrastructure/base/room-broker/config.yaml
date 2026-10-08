@@ -20,10 +20,10 @@ data:
     systemIssuer:
       issuer: ${oidc_issuer_url}
       jwksURL: ${oidc_jwks_uri}
-    # SP3's factory, commented until SP3 ships its ServiceAccount. Task 1.22 Step 8
-    # enables it for its probe only, then comments it again.
-    systemPrincipals: {}
-    #   system:serviceaccount:agent-system:agent-factory: system:factory
+    # SP3's factory (FR-1): system callers present audience rooms-system (ruling P3).
+    # The broker reads this file once: restart it after a change.
+    systemPrincipals:
+      system:serviceaccount:agent-system:agent-factory: system:factory
     # Humans, through oauth2-proxy (phase 2). Required by the broker. The ids are
     # files, never literals: gcp-0 mints a fresh ZITADEL every build (ruling AS-a).
     human:

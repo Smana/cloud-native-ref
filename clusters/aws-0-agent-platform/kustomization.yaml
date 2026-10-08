@@ -14,4 +14,5 @@ resources:
   - security-octo-sts.yaml
   - infrastructure-agent-mcp.yaml
   - infrastructure-room-broker.yaml
+  - tooling-agent-factory.yaml
   - observability-agent-platform.yaml

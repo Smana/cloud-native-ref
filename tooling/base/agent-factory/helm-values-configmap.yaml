@@ -1,0 +1,51 @@
+# The factory's values, config included (internal/factory/config, parsed strictly: a bad
+# config fails the rollout). Tier caps are the design's §6.2 defaults (OD-10).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-factory-helm-values
+  namespace: agent-system
+data:
+  values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
+    image:
+      repository: ghcr.io/smana/agent-factory
+      # agent-platform v0.7.0, the chart's appVersion.
+      # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
+      tag: "v0.7.0@sha256:83a9adc1c469636bd94bb64fe04356a2ea9606f3916ccfe41b73d85372a34833"
+    # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
+    githubSecret: agent-factory-github
+    brokerCASecret: openbao-ca
+    config:
+      repository: Smana/cloud-native-ref
+      maintainers: [Smana]
+      triggerLabel: factory/ready
+      factoryLogin: ogenki-agent-factory[bot]
+      agentsLogin: ogenki-agents[bot]
+      roomsURL: https://rooms.${private_domain_name}
+      # The broker's system API is TLS on both clouds (GP-18, ruling SC).
+      broker:
+        url: https://room-broker.agent-system.svc.cluster.local:8443
+        caFile: /etc/agent-factory/openbao-ca/ca.crt
+        tokenFile: /var/run/secrets/agents/rooms/token
+      github:
+        appIDFile: /etc/agent-factory-github/app_id
+        privateKeyFile: /etc/agent-factory-github/private_key
+      poll: {issues: 60s, tasks: 30s, meter: 30s}
+      defaults: {template: solo, tier: standard, dataClass: public, predictedClass: review}
+      # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
+      tiers:
+        light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}
+        standard: {model: agent-default, runTokens: 1500000, taskTokens: 3000000, runMinutes: 45}
+        frontier: {model: agent-default, runTokens: 4000000, taskTokens: 8000000, runMinutes: 90}
+      templates:
+        solo: {roles: [implementer]}
+        pair: {roles: [implementer, reviewer], maxReviewRounds: 2}
+        trio: {roles: [implementer, tester, reviewer], maxReviewRounds: 2}
+        investigate: {roles: [triager]}  # R38: proposes a public issue text, never writes
+      caps: {activeTasks: 3, concurrentRuns: 4, tasksPerDay: 20, maxTextBytes: 14336}
+      # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
+      meter:
+        url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
+        query: 'sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+      # Task spans (R46) to the trace collector's platform port (observability plan O20).
+      tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}

@@ -90,6 +90,7 @@ single-file fixes never need one.
 | 0045 | Reserved, not yet written: the merge policy gate (SP3) | Reserved | — |
 | [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Accepted | 2026-09-25 |
 | 0047 | Reserved, not yet written: how a request's complexity is classified for routing (SP4) | Reserved | — |
+| [0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}}) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
 | [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
