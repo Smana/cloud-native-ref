@@ -1352,7 +1352,7 @@ jaraco-classes==3.4.0 \
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
     #   keyring
-jaraco-context==6.1.0 \
+jaraco-context==6.1.2 \
     --hash=sha256:129a341b0a85a7db7879e22acd66902fda67882db771754574338898b2d5d86f \
     --hash=sha256:a43b5ed85815223d0d3cfdb6d7ca0d2bc8946f28f30b6f3216bda070f68badda
     # via
@@ -6073,3 +6073,6 @@ zipp==3.23.0 \
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
     #   importlib-metadata
+jaraco.context==6.1.2 \
+    --hash=sha256:bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535 \
+    --hash=sha256:f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3
