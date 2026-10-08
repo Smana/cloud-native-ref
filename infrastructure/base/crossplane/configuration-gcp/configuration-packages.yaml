@@ -13,7 +13,4 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-gcp
 spec:
-  # CC-S2's pre-release (crossplane-configuration#33), the same tag as the AWS pin: the AgentRun XRD
-  # on gcp-0, the harness v0.1.2, SQLInstance generated credentials and the room-bridge sidecar. Phase 7 swaps in
-  # the release.
-  package: ghcr.io/smana/crossplane-configuration-gcp:v0.7.2-pr33.00e6520
+  package: ghcr.io/smana/crossplane-configuration-gcp:v0.9.0

@@ -4,9 +4,15 @@
   "aliases": {
     "envoy": "envoy-ai-gateway",
     "victorialogs": "victoriametrics",
-    "victoriatraces": "victoriametrics"
+    "victoriatraces": "victoriametrics",
+    "z.ai": "zai"
   },
   "icons": {
+    "agentgateway": {
+      "file": "agentgateway.png",
+      "bytes": 3231,
+      "label": "agentgateway"
+    },
     "bottlerocket": {
       "file": "bottlerocket.png",
       "bytes": 4123,
@@ -21,6 +27,11 @@
       "file": "cilium.png",
       "bytes": 4240,
       "label": "Cilium"
+    },
+    "claude": {
+      "file": "claude.png",
+      "bytes": 3638,
+      "label": "Claude"
     },
     "cloudnativepg": {
       "file": "cloudnativepg.png",
@@ -72,6 +83,11 @@
       "bytes": 2676,
       "label": "Grafana \u2014 dashboards"
     },
+    "gvisor": {
+      "file": "gvisor.png",
+      "bytes": 3419,
+      "label": "gVisor"
+    },
     "harbor": {
       "file": "harbor.png",
       "bytes": 4856,
@@ -107,10 +123,25 @@
       "bytes": 3269,
       "label": "Kyverno"
     },
+    "mcp": {
+      "file": "mcp.png",
+      "bytes": 1776,
+      "label": "Model Context Protocol"
+    },
+    "octo-sts": {
+      "file": "octo-sts.png",
+      "bytes": 1303,
+      "label": "octo-sts"
+    },
     "openbao": {
       "file": "openbao.png",
       "bytes": 2026,
       "label": "OpenBao"
+    },
+    "openhands": {
+      "file": "openhands.png",
+      "bytes": 2770,
+      "label": "OpenHands"
     },
     "opentofu": {
       "file": "opentofu.png",
@@ -152,6 +183,11 @@
       "bytes": 3821,
       "label": "Amazon VPC"
     },
+    "zai": {
+      "file": "zai.png",
+      "bytes": 706,
+      "label": "Z.ai"
+    },
     "zitadel": {
       "file": "zitadel.png",
       "bytes": 3034,
@@ -161,5 +197,6 @@
   "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it.",
   "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md.",
   "_cncf_note": "cloudnativepg, opentofu and external-secrets come from github.com/cncf/artwork under projects/<slug>/icon/color/. Filenames are NOT derivable from the slug -- external-secrets-operator ships eso-icon-color.svg -- so list the directory rather than guessing. Prefer the plain colour icon over any stacked or horizontal lockup: these render at 24px beside text, where a wordmark is unreadable.",
-  "_brand_note": "zitadel comes from the project's own repo (console/src/assets/images/zitadel-logo-solo-dark.svg), huggingface and openwebui from lobe-icons, slack from simple-icons with the brand purple applied -- simple-icons ships an uncoloured path that rasterises to a solid black smudge otherwise. aiicons.py is AI-brand-scoped and CONFIDENTLY RETURNS THE WRONG PRODUCT outside that scope: it matched 'vector' to vectorizerai and 'gateway api' to cometapi. Verify every result by eye. Vector, Valkey, Karpenter and Alertmanager have no logo at any source probed (project repo, project site, simple-icons, lobe-icons) and stay plain. Gateway API's logo IS genuine -- the Kubernetes wheel with routing arrows -- but the arrows vanish at 24px, leaving a mark this library already uses for Kubernetes, so it is not shipped."
+  "_brand_note": "zitadel comes from the project's own repo (console/src/assets/images/zitadel-logo-solo-dark.svg), huggingface and openwebui from lobe-icons, slack from simple-icons with the brand purple applied -- simple-icons ships an uncoloured path that rasterises to a solid black smudge otherwise. aiicons.py is AI-brand-scoped and CONFIDENTLY RETURNS THE WRONG PRODUCT outside that scope: it matched 'vector' to vectorizerai and 'gateway api' to cometapi. Verify every result by eye. Vector, Valkey, Karpenter and Alertmanager have no logo at any source probed (project repo, project site, simple-icons, lobe-icons) and stay plain. Gateway API's logo IS genuine -- the Kubernetes wheel with routing arrows -- but the arrows vanish at 24px, leaving a mark this library already uses for Kubernetes, so it is not shipped.",
+  "_agent_factory_note": "gvisor, openhands, zai, mcp and octo-sts were embedded in agent-factory.drawio and are extracted here byte-for-byte now that agent-factory-overview.drawio uses them too. agentgateway is the project's own mark (ui/public/agw-mark-color.svg in agentgateway/agentgateway), trimmed of its padding so it reads at 24px. claude is lobe-icons claude-color via aiicons.py, checked by eye."
 }
