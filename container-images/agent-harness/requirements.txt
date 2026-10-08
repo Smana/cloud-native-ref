@@ -401,9 +401,9 @@ caio==0.9.25 \
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
     #   aiofile
-cdp-use==1.4.4 \
-    --hash=sha256:330a848b517006eb9ad1dc468aa6434d913cf0c6918610760c36c3fdfdba0fab \
-    --hash=sha256:e37e80e067db2653d6fdf953d4ff9e5d80d75daa27b7c6d48c0261cccbef73e1
+cdp-use==1.4.5 \
+    --hash=sha256:0da3a32df46336a03ff5a22bc6bc442cd7d2f2d50a118fd4856f29d37f6d26a0 \
+    --hash=sha256:8f8e2435e3a20e4009d2974144192cf3c132f6c2971338e156198814d9b91ecb
     # via
     #   -c container-images/agent-harness/upstream-constraints.txt
     #   browser-use
