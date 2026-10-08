@@ -94,5 +94,6 @@ single-file fixes never need one.
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
 | [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
+| [0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}}) | The factory is driven from the developer's local agent through a skill and roomctl, and a room is as visible as its repo on GitHub | Accepted | 2026-10-08 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).
