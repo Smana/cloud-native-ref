@@ -8,9 +8,9 @@ lastVerified: 2026-08-30
 ## VictoriaLogs
 
 `observability/base/victoria-logs/` follows the same single/cluster split as
-the metrics stack: `helmrelease-vlsingle.yaml` (chart `victoria-logs-single`
-0.13.9) is active; `helmrelease-vlcluster.yaml` (chart `victoria-logs-cluster`
-0.2.8 — 3 replicas, HPA 2→10 on `vlselect`/`vlinsert`) is present but
+the metrics stack: `helmrelease-vlsingle.yaml` (chart `victoria-logs-single`)
+is active; `helmrelease-vlcluster.yaml` (chart `victoria-logs-cluster`: 3
+replicas, HPA 2→10 on `vlselect`/`vlinsert`) is present but
 commented out of `kustomization.yaml`. Retention is explicit on both variants
 as of 2026-08-30: `retentionPeriod: 7d`, capped by `retentionDiskSpaceUsage`
 (`8GiB` on the active vlsingle, whose PVC is 10Gi; `9GiB` on the standby
