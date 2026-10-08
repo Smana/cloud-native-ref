@@ -83,10 +83,10 @@ patches:
       name: room-broker
     patch: |-
       - op: test
-        path: /spec/egress/4/toFQDNs/0/matchName
+        path: /spec/egress/5/toFQDNs/0/matchName
         value: auth.${public_domain_name}
       - op: replace
-        path: /spec/egress/4
+        path: /spec/egress/5
         value:
           toEntities:
             - all

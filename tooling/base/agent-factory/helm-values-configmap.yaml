@@ -30,6 +30,16 @@ data:
       github:
         appIDFile: /etc/agent-factory-github/app_id
         privateKeyFile: /etc/agent-factory-github/private_key
+      # The run-request API (FR-5): tailnet only via the HTTPRoute, tokens checked
+      # offline against ZITADEL's JWKS; the client ids ride the chart's oidcSecret mount.
+      api:
+        listen: ":8443"
+        repositories: [Smana/cloud-native-ref]  # OD-6
+        humanIssuer: ${identity_provider_url}
+        humanJWKS: ${identity_provider_url}/oauth/v2/keys
+        clientIDFiles:
+          - /etc/agent-factory-oidc/rooms-proxy-client-id
+          - /etc/agent-factory-oidc/roomctl-client-id
       poll: {issues: 60s, tasks: 30s, meter: 30s}
       # pair until a class goes live (FR-11): every task gets a reviewer (SP3 phase 3).
       defaults: {template: pair, tier: standard, dataClass: public, predictedClass: review}
@@ -67,5 +77,8 @@ data:
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
         query: 'sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+        # The 429 lookup (R13): throttle hits per agent over the gateway's access logs.
+        logsURL: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+        throttleQuery: '_time:2m kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:429 AND log.response_flags:~"RL" | stats by (log.x_ar_agent) count() hits'
       # Task spans (R46) to the trace collector's platform port (observability plan O20).
       tracing: {otlpEndpoint: agent-traces-collector.observability.svc.cluster.local:4317}

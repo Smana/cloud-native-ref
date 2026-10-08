@@ -96,6 +96,12 @@ spec:
         - ports:
             - port: "5432"
               protocol: TCP
+    - toEndpoints:  # the factory's run-request API (SP2 §9)
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: agent-factory
+      toPorts:
+        - ports: [{port: "8443", protocol: TCP}]
     # The run issuer's JWKS, fetched at start (an unreachable issuer fails the
     # rollout) and hourly after (ruling P11). The host is per cloud (GCP parity GP-12).
     - toFQDNs:
