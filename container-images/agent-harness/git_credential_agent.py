@@ -3,8 +3,9 @@
 
 `get` exchanges through identity-proxy :4001 for a <= 1 h installation token
 scoped to $REPOSITORY and $ROLE (octo-sts, C6), and caches it in memory
-(/run/agent/git is a Memory emptyDir, T3). `token` prints it for gh. `revoke`
-deletes it at GitHub; preStop and agent-run both call it.
+(/run/agent/git is a Memory emptyDir, T3). `token` prints it for gh.
+`revoke` deletes it at GitHub; agent-run calls it on its way out, after the
+checkpoint push (disruption design §2).
 """
 import fcntl
 import json
@@ -36,7 +37,7 @@ def _cached() -> str | None:
 
 
 def _revoke_value(value: str) -> None:
-    """Best-effort revoke: a preStop must not traceback over a token GitHub
+    """Best-effort revoke: the exit path must not traceback over a token GitHub
     already considers gone (expired, or revoked by an earlier attempt)."""
     req = urllib.request.Request(GITHUB_API + "/installation/token", method="DELETE", headers={"Authorization": "Bearer " + value})
     try:
