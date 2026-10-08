@@ -1,5 +1,4 @@
-# The factory's signed chart (SP3 §4). Signatures: ci.yaml pre-releases until the programme's
-# merge wave, then release.yaml tags only; the wave narrows `subject` (R20).
+# The factory's signed chart (SP3 §4). Signatures: release.yaml tags only (R20).
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -8,11 +7,11 @@ metadata:
 spec:
   interval: 12h
   url: oci://ghcr.io/smana/charts/agent-factory
-  # Flux pulls the digest (it wins over the tag): any same-repo agent-platform PR's CI can
-  # re-push a tag with a valid signature. The tag stays for Renovate and for readers.
+  # Flux pulls the digest (it wins over the tag), so a re-pushed tag changes nothing. The tag
+  # stays for Renovate and for readers.
   ref:
-    tag: "0.0.1-pr10.g800fcd8f"  # agent-platform#10 at 800fcd8
-    digest: sha256:ed1e4e9b9badd55e8054969b657d5d4cd5d3a4f7fa87c635ea0477a1b8aa5a8d
+    tag: "0.7.0"  # agent-platform v0.7.0
+    digest: sha256:977928e17e25a8e61b3822644671dda07d4cad1913370cad863e765d9606d124
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
@@ -20,4 +19,4 @@ spec:
     provider: cosign
     matchOIDCIdentity:
       - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
-        subject: "^https://github\\.com/Smana/agent-platform/\\.github/workflows/(ci|release)\\.yaml@refs/(tags/v.*|pull/[0-9]+/merge)$"
+        subject: "^https://github\\.com/Smana/agent-platform/\\.github/workflows/release\\.yaml@refs/tags/v.*$"
