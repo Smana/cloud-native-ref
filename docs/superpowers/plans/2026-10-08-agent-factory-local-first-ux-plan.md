@@ -15,8 +15,19 @@ access through a cached permission check on the GitHub login linked to their ZIT
 open-format Agent Skill, shipped inside `roomctl`, teaches local agents the hand-off procedure.
 
 **Tech Stack:** Go 1.27 (broker, factory, `roomctl`), PostgreSQL via pgx, controller-runtime,
-TypeScript + esbuild + vitest (web UI), ZITADEL Actions (JavaScript) applied by
-`scripts/provision/zitadel-idp.sh`, Hugo + Hextra v0.12.3 (docs site).
+TypeScript + esbuild + vitest (web UI), a link-only GitHub IdP and a read-only link reader
+provisioned by `scripts/provision/zitadel-idp.sh`, Hugo + Hextra v0.12.3 (docs site).
+
+**Amendments (rulings made while executing; they override the task text below):**
+
+- R2: the broker settings are `human.access.readerFile` and `human.access.ttl`.
+- R10: the ADR is 0056, weight 560.
+- R14: no ZITADEL Actions and no token claim; identity comes from the IdP link, read by the broker.
+- R16: the ZITADEL IdP id field is `IDPID`.
+- R20: the reader secret reaches OpenBao by mirror (`zitadel-idp.sh --mirror-openbao`, `bao-map.sh`).
+- R25: the access config lands with the v0.8.0 pins (Task 21); v0.7.x's strict decoder refuses it.
+- R26: GitHub sign-in by linked users is accepted and documented (ADR-0056, spec Security).
+- The reader secret holds `{pat, tokenId, githubIdpId}` and is granted on the PAT's own org.
 
 **Spec:** [`docs/superpowers/specs/2026-10-08-agent-factory-local-first-ux-design.md`](../specs/2026-10-08-agent-factory-local-first-ux-design.md)
 
@@ -1736,6 +1747,7 @@ pre.mermaid { cursor: zoom-in; }
   3. the room page shows its five blocks, and a watcher sees no actions;
   4. a diagram on the docs site zooms;
   5. a second, non-admin identity cannot list or open a private test repo's room (404), and can within 5 minutes of being granted read;
+     - also confirm a linked user can sign in via GitHub, and that deactivating the ZITADEL user cuts access (ADR-0056, accepted risk);
   6. observability:
      - VictoriaLogs: `kubernetes.pod_name:"xplane-run-<run>" AND kubernetes.container_name:"harness"` returns the run's lines;
      - the `agent-run` and `agent-fleet` dashboards are populated for that run;
