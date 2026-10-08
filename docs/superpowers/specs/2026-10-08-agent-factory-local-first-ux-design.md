@@ -79,9 +79,9 @@ register the repo with the factory. Each repo opts in explicitly; the factory is
 
 | # | Component | Where | What |
 |---|---|---|---|
-| 1 | Room summary | room-broker | Deterministic fold of the room log into the summary below. `GET /v1/rooms/{id}/summary`, authorised like reading the room. |
-| 2 | Factory facts into the room | agent-factory | The factory writes the task phase, current run, budget and PR as `state_changed{task: …}` events through its existing system API, so the summary depends on the room log alone. |
-| 3 | Progress notes | broker + harness | Agent tool `room_progress(text)`, stored as a `message` with `intent: progress` (the 10 event types are unchanged). One line, 280 characters max, about one per minute per run. The harness asks the implementer to post at milestones: plan, edit done, checks run, handoff. |
+| 1 | Room summary | room-broker | Deterministic fold of the room log into the summary below. `GET /api/rooms/{id}/summary` on the human API, authorised like reading the room. |
+| 2 | Factory facts into the room | agent-factory + broker system API | The factory writes the task phase, current run, budget, issue and PR as `state_changed{kind: task, …}` events through a new system route `POST /v1/rooms/{id}/task` (system principals only, idempotent on `clientSeq`, like `/messages`), so the summary depends on the room log alone. |
+| 3 | Progress notes | broker MCP + factory briefs | Agent tool `room_progress(text)`, stored as a `message` with `kind: progress` (a new `MessageKind`; the 10 event types are unchanged). One line, 280 characters max, one per minute per run on top of the tools' one call a second. The factory's briefs (`FirstBrief`, `ReviseBrief`, `brief.Build`) ask the implementer to post at milestones: plan, edit done, checks run, handoff. |
 | 4 | Room page | web | Blocks 1–5 below, live over the existing socket; raw stream folded. |
 | 5 | `roomctl status` | roomctl | `roomctl status <room>` (text) and `--json` (the summary, plus a cursor so the next call returns only what is new). |
 | 6 | `factory-handoff` skill | agent-platform, released with `roomctl` | `SKILL.md` + issue template; `roomctl skill install` writes the release-matched copy into `.agents/skills/factory-handoff/`. |
@@ -164,8 +164,9 @@ permissions. D7 closes that.
 
 **Access (D7).**
 
-- Every room carries its repo (`owner/name`), set by whoever creates it: the factory for a task,
-  `POST /v1/runs` for a hand-started run, the parent room for a fork.
+- Every room carries its repo in the existing `RoomSpec.Repository` (`owner/name`), set by whoever
+  creates it: the factory for a task (`rooms.Ensure`), the human for `POST /api/rooms`, the parent
+  room for a fork. `POST /v1/runs` creates no room; it runs in an existing one.
 - The developer's token carries their GitHub login. ZITADEL links the identity through GitHub as an
   external identity provider; a ZITADEL Action adds a `github_login` claim, the same mechanism as
   today's `groupsFromRoles`.
@@ -204,7 +205,7 @@ flowchart LR
 | No factory facts yet | Those fields read `null`. |
 | Approval expired, superseded or decided | Never in `needsYou`. |
 | Sealed room | Summary read-only, `actions` empty. |
-| Progress note too long or too fast | Refused with the existing `room_badargs` / `room_busy`; the run continues. |
+| Progress note too long or too fast | Refused with the room tools' existing `invalid_arguments` / `rate_limited`; the run continues. |
 | `roomctl` missing or unauthenticated | The skill says so and gives the install or `roomctl login` step; it never falls back to the browser silently. |
 | GitHub permission API failing | A cached answer younger than 5 minutes stands; past that, **fail closed** for non-admins with "cannot verify your access to <repo> right now". |
 | Token has no `github_login` (identity not linked) | Non-admins see no rooms; `roomctl rooms` explains how to link GitHub in ZITADEL. |
@@ -220,7 +221,9 @@ flowchart LR
   maintainer's label starts work. An MCP server would not change this.
 - **The summary uses the room's read permission**; `actions` are filtered by standing.
 - **A room is never more visible than its repo (D7).** Revocation lags by at most the 5-minute
-  cache; an unreadable room answers 404, not 403, so its existence does not leak.
+  cache; an unreadable room answers 404, not 403, so its existence does not leak. Today the
+  WebSocket answers 403 `not_permitted` for a known room you may not read; D7 changes it to the
+  same 404 `no such room` as a missing one.
 - **The JSON is a versioned contract** (`summary/v1`), so `roomctl` and the skill do not break when
   the room evolves.
 
