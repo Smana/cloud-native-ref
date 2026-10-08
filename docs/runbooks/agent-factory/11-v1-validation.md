@@ -10,17 +10,23 @@ See [README.md](README.md) for `CLOUD`; run [00](README.md#runbook-00-one-time-c
 - aws-0 runs `agent-platform` `v0.8.0` (factory, room-broker, `roomctl`) with `human.access` set in
   [`infrastructure/base/room-broker/config.yaml`](../../../infrastructure/base/room-broker/config.yaml), and
   the link-only GitHub IdP from `scripts/provision/zitadel-idp.sh` is provisioned.
-- `roomctl` `v0.8.0`, verified: `sha256sum -c --ignore-missing roomctl.sha256`, then `roomctl configure` and `roomctl login`
-  as an `agents-admin` (the room list's *CLI setup* view prints the values).
-- A second identity, a ZITADEL user who is **not** `agents-admin`, with `roomctl` logged in on its own config. Call it `dev2`.
-- A **private** test repo `dev2` cannot read, with a factory task in it. Call it `<private-repo>`.
-- A test issue on `Smana/cloud-native-ref` that a maintainer may label `factory/ready`.
-- The platform CA, used by every private endpoint in Step 6:
+- The platform CA, needed up front: `roomctl` talks to the room broker and the room page is served at
+  `https://rooms.priv.aws.ogenki.io`, both private endpoints signed by that CA, and the same CA signs every
+  private endpoint in Step 6. `roomctl` has no `--cacert` flag, so fetch the chain below, then trust the root
+  certificate (CN=Ogenki Root CA, the last certificate in `ca.pem`) in the OS trust store — for example
+  `sudo trust anchor --store <root>.pem` on Linux (p11-kit). Without it, `roomctl rooms` fails with
+  `tls: failed to verify certificate: x509: certificate signed by unknown authority` before Step 1:
 
   ```bash
   scripts/provision/openbao-config.sh ca --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain \
     --ca-output-file ca.pem --region eu-west-3 --profile ""
   ```
+
+- `roomctl` `v0.8.0`, verified: `sha256sum -c --ignore-missing roomctl.sha256`, then `roomctl configure` and `roomctl login`
+  as an `agents-admin` (the room list's *CLI setup* view prints the values).
+- A second identity, a ZITADEL user who is **not** `agents-admin`, with `roomctl` logged in on its own config. Call it `dev2`.
+- A **private** test repo `dev2` cannot read, with a factory task in it. Call it `<private-repo>`.
+- A test issue on `Smana/cloud-native-ref` that a maintainer may label `factory/ready`.
 
 ## Steps
 
