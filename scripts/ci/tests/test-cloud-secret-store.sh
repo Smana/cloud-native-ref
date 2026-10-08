@@ -23,8 +23,9 @@ check_log_absent() {
 # real AWS call). describe-secret reports "not found" only for a secret
 # named notfound-secret, so store_write's create-vs-put branch is exercised
 # both ways while the pre-existing checks (which use "any") keep seeing
-# "exists". denied-secret fails the way a missing grant or a throttle does:
-# a non-zero exit that says nothing about whether the secret exists.
+# "exists". denied-secret and throttled-secret fail the way a missing grant
+# or a throttle does: a non-zero exit that says nothing about whether the
+# secret exists.
 cat > "$STUB/aws" <<'EOF'
 #!/usr/bin/env bash
 {
@@ -51,6 +52,9 @@ for a in "$@"; do
             *" denied-secret "*)
                 echo "An error occurred (AccessDeniedException) when calling the DescribeSecret operation: not authorized" >&2
                 exit 254 ;;
+            *" throttled-secret "*)
+                echo "An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded" >&2
+                exit 254 ;;
             *) exit 0 ;;
         esac
     fi
@@ -75,6 +79,9 @@ for a in "$@"; do
                 exit 1 ;;
             *" denied-secret "*)
                 echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission 'secretmanager.secrets.get' denied" >&2
+                exit 1 ;;
+            *" throttled-secret "*)
+                echo "ERROR: (gcloud.secrets.describe) RESOURCE_EXHAUSTED: Quota exceeded for quota metric 'Access requests'" >&2
                 exit 1 ;;
             *) exit 0 ;;
         esac
@@ -107,6 +114,8 @@ for c in aws gcp; do
     check "$c probe: present -> 0"   0 "$(probe any)"
     check "$c probe: not found -> 1" 1 "$(probe notfound-secret)"
     check "$c probe: denied -> 2"    2 "$(probe denied-secret)"
+    # #2086: callers that write on "absent" depend on a throttle never reading as one.
+    check "$c probe: throttled -> 2" 2 "$(probe throttled-secret)"
     STORE_PROBE_ERR=""; store_probe denied-secret || true
     case "$STORE_PROBE_ERR" in *DENIED*|*AccessDenied*) r=yes ;; *) r=no ;; esac
     check "$c probe: denied leaves the CLI's error in STORE_PROBE_ERR" yes "$r"

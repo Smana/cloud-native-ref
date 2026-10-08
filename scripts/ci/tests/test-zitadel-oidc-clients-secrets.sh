@@ -1,61 +1,43 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
+# (STORE_PROBE_ERR and HEADLAMP_OIDC_SCOPES are read by merge_secret's eval'd body.)
+#
 # Unit-tests zitadel-oidc-clients.sh's merge_secret -- specifically the round-2
 # fix that took client_secret, the existing secret blob (--argjson base) and
 # the headlamp-proxy cookie secret off jq's argv. $existing matters as much as
 # the client secret here: for grafana it also carries the generated Grafana
 # admin credentials, so leaking it the same way leaked those too.
 #
-# zitadel-oidc-clients.sh is not sourceable -- it parses argv and requires
-# --cluster/--cloud unconditionally at the top of the file -- so this restates
-# merge_secret rather than importing it. Same trade-off test-zitadel-idp-
-# convergence.sh documents for its own script.
+# merge_secret is lifted verbatim with sed, like the sibling suites: an earlier
+# restatement here had drifted from the script it claimed to test.
 set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/../../provision/zitadel-oidc-clients.sh}"
 fail=0
 check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
           else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
 
-# ── store_exists/store_read stubs -- no cloud call, canned "existing" blob ──
+body="$(sed -n '/^merge_secret() {/,/^}/p' "$SRC")"
+[ -n "$body" ] || { echo "could not extract merge_secret() from $SRC" >&2; exit 1; }
+eval "$body"
+
+# ── store stubs -- no cloud call, canned "existing" blob ───────────────────
+# __NONE__ is absent, __THROTTLED__ a describe that failed, __UNREADABLE__ a
+# describe that worked and a read that did not.
 EXISTING_BLOB='{}'
-store_exists() { [ "$EXISTING_BLOB" != "__NONE__" ]; }
-store_read()   { printf '%s' "$EXISTING_BLOB"; }
+store_probe() {
+    STORE_PROBE_ERR=""
+    case "$EXISTING_BLOB" in
+        __NONE__) return 1 ;;
+        __THROTTLED__) STORE_PROBE_ERR="An error occurred (ThrottlingException) when calling the DescribeSecret operation: Rate exceeded"; return 2 ;;
+    esac
+}
+# Like the real one, false for "absent" and "cannot tell" alike.
+store_exists() { store_probe "$1"; }
+store_read() { [ "$EXISTING_BLOB" = __UNREADABLE__ ] && return 254; printf '%s' "$EXISTING_BLOB"; }
 
 IDP_URL="https://auth.priv.aws.ogenki.io"
-
-# Restated verbatim from zitadel-oidc-clients.sh.
-merge_secret() {
-    local key="$1" name="$2" client_id="$3" client_secret="$4"
-    local existing='{}' cookie_secret=''
-    store_exists "$key" && existing="$(store_read "$key")"
-    [ -z "$existing" ] && existing='{}'
-
-    if [ "$name" = headlamp-proxy ]; then
-        cookie_secret="$(jq -r '."cookie-secret" // empty' <<< "$existing")"
-        [ -n "$cookie_secret" ] || cookie_secret="$(openssl rand -base64 32 | head -c 32)"
-    fi
-
-    {
-        printf '%s\n' "$existing"
-        printf '%s' "$client_secret" | jq -Rs .
-        printf '%s' "$cookie_secret" | jq -Rs .
-    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" '
-        input as $base | input as $sec | input as $ck |
-        if $name == "grafana" then
-            $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
-        elif $name == "headlamp" then
-            $base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
-                     OIDC_SCOPES: "openid,profile,email",
-                     OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
-        elif $name == "flux-ui" then
-            $base + {clientID: $id, clientSecret: $sec}
-        elif $name == "harbor" then
-            $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
-        elif $name == "headlamp-proxy" then
-            $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
-        else
-            empty
-        end
-    '
-}
+HEADLAMP_OIDC_SCOPES="openid,profile,email"
 
 tricky_secret='we!rd"secret\1`with`backtick\and\\backslash'
 
@@ -94,6 +76,21 @@ EXISTING_BLOB="$out"   # simulate a second run reading back what the first wrote
 out2="$(merge_secret headlamp-proxy-oidc headlamp-proxy client-mno "$tricky_secret")"
 check "headlamp-proxy: cookie secret preserved across runs" "$first_cookie" "$(jq -r '."cookie-secret"' <<< "$out2")"
 
+# ── a failed read is not an absent secret (#2086) ──────────────────────────
+# Merged into {}, a throttled describe dropped every field this script does not
+# own -- grafana's admin credentials -- and the caller stored the result.
+ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT
+for blob in __THROTTLED__ __UNREADABLE__; do
+    EXISTING_BLOB="$blob" rc=0
+    out="$(merge_secret grafana-envvars grafana client-abc "$tricky_secret" 2>"$ERR")" || rc=$?
+    check "${blob}: merge_secret fails" "1" "$rc"
+    check "${blob}: no payload for the caller to store" "" "$out"
+    check "${blob}: names the unreadable key" yes "$(grep -qF "cannot read grafana-envvars" "$ERR" && echo yes || echo no)"
+done
+EXISTING_BLOB=__THROTTLED__
+merge_secret grafana-envvars grafana client-abc x >/dev/null 2>"$ERR"
+check "__THROTTLED__: shows the store error" yes "$(grep -q ThrottlingException "$ERR" && echo yes || echo no)"
+
 # ── the client secret, the existing blob and the cookie secret must not ────
 # ── reach jq's argv (three separate leak sites, one fix each) ──────────────
 #
@@ -102,8 +99,7 @@ check "headlamp-proxy: cookie secret preserved across runs" "$first_cookie" "$(j
 # constructions produce byte-identical JSON for a normal secret. Only reading
 # the source distinguishes them, so that's what this checks, against the real
 # file rather than a restatement of it.
-HERE="$(cd "$(dirname "$0")" && pwd)"
-code_grep() { grep -n -- "$1" "$HERE/../../provision/zitadel-oidc-clients.sh" | grep -v '^[0-9]\+:[[:space:]]*#' || true; }
+code_grep() { grep -n -- "$1" "$SRC" | grep -v '^[0-9]\+:[[:space:]]*#' || true; }
 
 check "no existing-blob passed as jq --argjson"    "" "$(code_grep '--argjson[[:space:]]\+base\b')"
 check "no client secret passed as a jq --arg"      "" "$(code_grep '--arg[[:space:]]\+sec\b')"

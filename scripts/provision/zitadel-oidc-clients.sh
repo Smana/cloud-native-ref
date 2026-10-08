@@ -648,8 +648,14 @@ app_set_redirect() {
 # than one value without `--slurp` swallowing the whole stream into an array.
 merge_secret() {
     local key="$1" name="$2" client_id="$3" client_secret="$4" project_id="${5:-}"
-    local existing='{}' cookie_secret=''
-    store_exists "$key" && existing="$(store_read "$key")"
+    local existing='{}' cookie_secret='' probe=0
+    # A failed read is not "absent" (#2086): merged into {}, it drops every
+    # field this script does not own, grafana's admin credentials among them.
+    store_probe "$key" || probe=$?
+    if [ "$probe" -ge 2 ] || { [ "$probe" -eq 0 ] && ! existing="$(store_read "$key")"; }; then
+        echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR:-the read failed}" >&2
+        return 1
+    fi
     [ -z "$existing" ] && existing='{}'
 
     if [ "$name" = headlamp-proxy ] || [ "$name" = rooms-proxy ]; then
@@ -1485,6 +1491,15 @@ cmd_sync() {
             echo "           would write client id/secret into ${key}"
             created=$((created + 1))
             continue
+        fi
+
+        # ZITADEL returns the client secret once: fail on an unreadable store
+        # before asking for one that merge_secret below could not keep (#2086).
+        local probe=0
+        store_probe "$key" || probe=$?
+        if [ "$probe" -ge 2 ]; then
+            echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
+            exit 1
         fi
 
         local resp client_id client_secret

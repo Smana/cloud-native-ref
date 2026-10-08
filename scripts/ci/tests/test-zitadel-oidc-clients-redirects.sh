@@ -104,7 +104,8 @@ set_payload() { cat "$SET_FILE" 2>/dev/null; }
 clear_payload() { : > "$SET_FILE"; }
 
 STORE_DIR="$(mktemp -d)"
-store_exists() { [ -f "$STORE_DIR/$1" ]; }
+store_probe() { [ -f "$STORE_DIR/$1" ]; }
+store_exists() { store_probe "$1"; }
 store_read()   { cat "$STORE_DIR/$1" 2>/dev/null || true; }
 store_write()  { cat > "$STORE_DIR/$1"; }
 
