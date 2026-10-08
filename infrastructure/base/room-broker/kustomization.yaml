@@ -20,3 +20,4 @@ resources:
   - httproute.yaml
   - externalsecret-mcp-key.yaml
   - externalsecret-factory-app.yaml
+  - externalsecret-zitadel-reader.yaml

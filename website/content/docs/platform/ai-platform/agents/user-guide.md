@@ -115,9 +115,11 @@ task at most and within its budget:
 - `Disrupted`: its node was reclaimed or drained (a Spot or preemptible reclaim, an eviction, an upgrade);
 - `PodLost`: its pod was deleted, or vanished with its node, before a final state was read.
 
-A run that fails on its own reads `PodFailed` and is not resumed. On the way out, within 15 s, an
-implementer commits its uncommitted changes to its branch with the trailer
-`Agent-Checkpoint: disruption` and pushes them, so the resumed run starts from that commit.
+The two resumes count per task: a `/factory retry` does not give them back. A lost review run
+starts again without using a review round. A run that fails on its own reads `PodFailed` and is
+not resumed. On the way out, within 15 s, an implementer commits its uncommitted changes to its
+branch with the trailer `Agent-Checkpoint: disruption` and pushes them, so the resumed run starts
+from that commit.
 
 ### What the factory wrote on the issue
 

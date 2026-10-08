@@ -274,7 +274,13 @@ script "deploy" {
         # One flag list per sync, expanded by the real call AND the recovery
         # printed when ZITADEL is late: a hand re-run missing the OpenBao flags
         # leaves every ExternalSecret on the dead directory's clients.
-        IDP_SYNC_ARGS=(--cluster "$${NAME}" --cloud gcp --project "$${PROJECT}")
+        IDP_SYNC_ARGS=(
+          --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
+          --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200"
+          --openbao-root-token-secret openbao-priv-gcp-root-token
+          --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem"
+          --mirror-openbao
+        )
         CLIENT_SYNC_ARGS=(
           --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
           --workforce-pool "$${WORKFORCE_POOL}"

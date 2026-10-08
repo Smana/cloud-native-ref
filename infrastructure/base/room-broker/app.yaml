@@ -102,6 +102,14 @@ spec:
       secret:
         secretName: room-broker-roomctl  # pragma: allowlist secret
         optional: true
+    # The ZITADEL link reader's PAT. Whole-Secret mount (no subPath) so a rotation
+    # reaches the file. optional: until it syncs, non-admins see no rooms (fail closed).
+    # 0440 like the App key: readable through the pod's fsGroup only.
+    - name: zitadel-reader
+      secret:
+        secretName: room-broker-zitadel-reader  # pragma: allowlist secret
+        optional: true
+        defaultMode: 0440
   extraVolumeMounts:
     - name: config
       mountPath: /etc/room-broker/config
@@ -117,6 +125,9 @@ spec:
       readOnly: true
     - name: roomctl
       mountPath: /etc/room-broker/roomctl
+      readOnly: true
+    - name: zitadel-reader
+      mountPath: /etc/room-broker/zitadel-reader
       readOnly: true
   networkPolicies:
     enabled: false
