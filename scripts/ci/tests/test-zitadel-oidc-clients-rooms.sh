@@ -238,5 +238,49 @@ for bad in agents-admin agents-owner=dev@x =dev@x agents-admin=; do
     grep -qF -- '--grant takes' <<<"$o" || { printf '  FAIL --grant %s: no usage message: %s\n' "$bad" "$(head -2 <<<"$o")"; fail=1; }
 done
 
+echo "== 9. roomctl: a native app, no secret, the device flow, JWT access tokens (SP2 phase 6) =="
+n="$(oidc_config_payload http://localhost:8765/callback roomctl native)"
+check "native: app type" OIDC_APP_TYPE_NATIVE "$(jq -r .appType <<<"$n")"
+check "native: no secret" OIDC_AUTH_METHOD_TYPE_NONE "$(jq -r .authMethodType <<<"$n")"
+check "native: device code" true "$(jq '.grantTypes | index("OIDC_GRANT_TYPE_DEVICE_CODE") != null' <<<"$n")"
+check "native: refresh token" true "$(jq '.grantTypes | index("OIDC_GRANT_TYPE_REFRESH_TOKEN") != null' <<<"$n")"
+check "native: no authorization code" false "$(jq '.grantTypes | index("OIDC_GRANT_TYPE_AUTHORIZATION_CODE") != null' <<<"$n")"
+check "native: JWT" OIDC_TOKEN_TYPE_JWT "$(jq -r .accessTokenType <<<"$n")"
+check "a web app stays web" OIDC_APP_TYPE_WEB "$(oidc_config_payload https://rooms.x/oauth2/callback rooms-proxy jwt | jq -r .appType)"
+api() { printf '%s' "$4" > "$T/put"; }
+app_set_redirect p1 a1 http://localhost:8765/callback native
+check "repair PUT: native kept" "OIDC_APP_TYPE_NATIVE OIDC_AUTH_METHOD_TYPE_NONE" "$(jq -r '"\(.appType) \(.authMethodType)"' "$T/put")"
+# Its id is not a credential, but the broker, oauth2-proxy and SP3's factory all need it (ruling P12).
+store_exists() { return 1; }
+check "payload: the client id alone" '{"client-id":"RID"}' "$(merge_secret agents-roomctl roomctl RID '' | jq -c .)"
+check "converge: the client id follows ZITADEL" '{"client-id":"RID2"}' "$(converge_secret roomctl RID2 '{"client-id":"RID"}' | jq -c .)"
+check "bao-map: agents-roomctl" agents/roomctl "$(bao_target_for agents-roomctl 2>/dev/null)"
+entry="$(grep -E '^[[:space:]]*"roomctl\|' "$SRC" | head -1)"
+eval "CONSUMERS=(${entry})"
+check "entry: redirect|key|type" "http://localhost:8765/callback|agents-roomctl|native" "$(cut -d'|' -f2- <<<"${CONSUMERS[0]:-}")"
+app_id_by_name() { echo ""; }
+api_or_fail() { printf '%s' "$4" > "$T/create"; printf '{"clientId":"RID"}'; }
+rm -f "$T/written-agents-roomctl"
+run_cmd_sync
+check "create: no secret comes back, and none is needed" 0 "$rc"
+check "create: a native app" OIDC_APP_TYPE_NATIVE "$(jq -r .appType "$T/create" 2>/dev/null)"
+check "create: written to agents-roomctl" '{"client-id":"RID"}' "$(jq -c . "$T/written-agents-roomctl" 2>/dev/null)"
+# A native app whose key is missing lost nothing ZITADEL keeps: write its id again.
+app_id_by_name() { echo app-9; }
+app_get() { jq -n '{app: {oidcConfig: {redirectUris: ["http://localhost:8765/callback"], clientId: "RID", accessTokenType: "OIDC_TOKEN_TYPE_JWT"}}}'; }
+store_probe() { return 1; }
+rm -f "$T/written-agents-roomctl" "$T/put"
+run_cmd_sync
+check "existing, no stored key: converged, not refused" 0 "$rc"
+check "existing, no stored key: the id written" '{"client-id":"RID"}' "$(jq -c . "$T/written-agents-roomctl" 2>/dev/null)"
+check "existing, JWT and redirect right: no PUT" absent "$([ -e "$T/put" ] && echo sent || echo absent)"
+# A web app with its key missing still fails: its secret cannot be recovered.
+entry="$(grep -E '^[[:space:]]*"rooms-proxy\|' "$SRC" | head -1)"
+eval "CONSUMERS=(${entry})"
+app_get() { jq -n '{app: {oidcConfig: {redirectUris: ["https://rooms.priv.example/oauth2/callback"], clientId: "CID", accessTokenType: "OIDC_TOKEN_TYPE_JWT"}}}'; }
+run_cmd_sync
+check "a web app with no stored secret still fails" 1 "$rc"
+unset -f api
+
 [ "$fail" -eq 0 ] && echo "all checks passed"
 exit "$fail"

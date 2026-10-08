@@ -344,7 +344,9 @@ api_or_fail() {
 
 # ── the consumers ─────────────────────────────────────────────────────────────
 #
-# name | redirect URI | secret key it lands in | [token type: jwt, else bearer]
+# name | redirect URI | secret key it lands in | [type: jwt, native, else bearer]
+#
+# native: a public client (no secret) on the device flow, with JWT access tokens.
 #
 # Redirect paths are each framework's own callback and are not interchangeable:
 #   Grafana   /login/generic_oauth   (grafana.ini auth.generic_oauth)
@@ -387,6 +389,11 @@ CONSUMERS=(
   # agents mount (C1, P38): --mirror-openbao copies the key there through
   # bao-map.sh (ruling AU). No ExternalSecret reads the store's copy.
   "rooms-proxy|https://rooms.${PRIVATE_DOMAIN}/oauth2/callback|agents-rooms-proxy|jwt"
+  # SP2 phase 6: roomctl, a developer's CLI. Device flow, so no secret exists to
+  # leak and no redirect reaches the laptop (the loopback URI is ZITADEL's
+  # required one, never used). Its id is not a credential, but the broker,
+  # oauth2-proxy and SP3's factory all need it (ruling P12).
+  "roomctl|http://localhost:8765/callback|agents-roomctl|native"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
@@ -594,17 +601,19 @@ app_get() {
 # array indexed by consumer name.
 #
 # $2 is the app NAME, and only the create call passes it -- the oidc_config
-# endpoint the update uses has no such field. $3 is the token type, `jwt` or
-# empty (bearer); both calls pass it, since the update replaces it too.
+# endpoint the update uses has no such field. $3 is the type: `jwt`, `native`
+# (a public device-flow client, also JWT) or empty (bearer); both calls pass it,
+# since the update replaces it too.
 oidc_config_payload() {
     jq -n --arg r "$1" --arg n "${2:-}" --arg t "${3:-}" '
         (if $n == "" then {} else {name: $n} end) + {
           redirectUris: ($r | split(",")),
           responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-          grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-          appType: "OIDC_APP_TYPE_WEB",
-          authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-          accessTokenType: (if $t == "jwt" then "OIDC_TOKEN_TYPE_JWT" else "OIDC_TOKEN_TYPE_BEARER" end),
+          grantTypes: (if $t == "native" then ["OIDC_GRANT_TYPE_DEVICE_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"]
+                       else ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"] end),
+          appType: (if $t == "native" then "OIDC_APP_TYPE_NATIVE" else "OIDC_APP_TYPE_WEB" end),
+          authMethodType: (if $t == "native" then "OIDC_AUTH_METHOD_TYPE_NONE" else "OIDC_AUTH_METHOD_TYPE_BASIC" end),
+          accessTokenType: (if $t == "jwt" or $t == "native" then "OIDC_TOKEN_TYPE_JWT" else "OIDC_TOKEN_TYPE_BEARER" end),
           accessTokenRoleAssertion: true,
           idTokenRoleAssertion: true,
           idTokenUserinfoAssertion: true,
@@ -685,6 +694,8 @@ merge_secret() {
             $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
         elif $name == "rooms-proxy" then
             $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck, "project-id": $proj}
+        elif $name == "roomctl" then
+            $base + {"client-id": $id}
         else
             empty
         end
@@ -739,6 +750,8 @@ converge_secret() {
             $base + {"client-id": $id}
         elif $name == "rooms-proxy" then
             $base + {"client-id": $id, "project-id": $proj}
+        elif $name == "roomctl" then
+            $base + {"client-id": $id}
         else
             empty
         end
@@ -1497,7 +1510,7 @@ cmd_sync() {
             # the enum's zero value, bearer.
             local want_type have_type
             want_type=OIDC_TOKEN_TYPE_BEARER
-            [ "$token" = jwt ] && want_type=OIDC_TOKEN_TYPE_JWT
+            case "$token" in jwt | native) want_type=OIDC_TOKEN_TYPE_JWT ;; esac
             have_type="$(jq -r '.app.oidcConfig.accessTokenType // "OIDC_TOKEN_TYPE_BEARER"' <<< "$app_json")"
             if [ -z "$missing" ] && [ -z "$extra" ] && [ "$have_type" = "$want_type" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
@@ -1537,7 +1550,8 @@ cmd_sync() {
                 echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
                 exit 1
             fi
-            if [ "$probe" -eq 1 ]; then
+            # A native app has no secret to lose: its id alone is the payload.
+            if [ "$probe" -eq 1 ] && [ "$token" != native ]; then
                 echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
                 echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
                 echo "           creation -- it cannot be recovered from here, so writing the" >&2
@@ -1548,8 +1562,8 @@ cmd_sync() {
                 exit 1
             fi
 
-            local existing_secret desired
-            existing_secret="$(store_read "$key")"
+            local existing_secret='{}' desired
+            [ "$probe" -eq 1 ] || existing_secret="$(store_read "$key")"
             desired="$(converge_secret "$consumer" "$client_id" "$existing_secret" "$project_id")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
@@ -1595,7 +1609,8 @@ cmd_sync() {
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")
-        if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+        # A native app is public: ZITADEL returns no secret, and none is needed.
+        if [ -z "$client_id" ] || { [ -z "$client_secret" ] && [ "$token" != native ]; }; then
             echo "[FAILED ] ${name}: ZITADEL returned no clientId/clientSecret" >&2
             echo "$resp" | jq -r '.message // .' | head -3 >&2
             exit 1
