@@ -14,7 +14,7 @@ FROM ghcr.io/openhands/agent-server:1.49.6-python@sha256:02ef66fdf0b22a40b0b55c5
 # merges, so it never republishes H-S3's v0.2.0.
 ARG AGENT_HARNESS_VERSION=v0.3.0
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.101.0
+ARG GH_VERSION=2.102.0
 ARG GH_SHA256_AMD64=9bca2d1c16825f109907a23307628a2f0698fbf99662b73a5cf0b020293072b8
 ARG GH_SHA256_ARM64=b57e8063f18862647c9d22727c32e9da1b963f8bf9db648fe123a6975695640f
 ARG TARGETARCH
