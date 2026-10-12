@@ -46,17 +46,20 @@ Both run inside `task ci:test`, alongside the other suites, because they test th
 the rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
 manifest validation. Run them directly: `python3 scripts/ci/tests/flux-schema/<file>`.
 
-**`flux-schema/check-ai-boundary.py`** fails on a reference across the host/AI boundary that the
-host contract does not list (ADR-0057; design §1 and §2): kustomize file references, Flux
-`spec.path`, `dependsOn`, `sourceRef` and `substituteFrom`, HelmRelease `valuesFrom`, and `${var}`
-in AI files. Its data, `flux-schema/ai-boundary.yaml`, is the move list S2 hands to
-`git filter-repo`: a path added there is a path that moves. A move-list entry matching no file
-fails too. It runs in step 1 of `validate-manifests.sh`; its suite,
-`tests/flux-schema/test-check-ai-boundary.py`, plants a crossing each way in a copy of the tree.
-**It reads source `*.yaml` under `clusters/`, `infrastructure/`, `security/`, `observability/`,
-`tooling/`, `apps/`, `flux/`, `namespaces/` and `crds/`, not the rendered bundle**, so a reference in
-a script, a doc, a CiliumNetworkPolicy selector, Helm values text, `.policy.yml`, `.github/`,
-`website/` or `container-images/` goes unseen.
+**`flux-schema/check-ai-boundary.py`** **reads source `*.yaml` under `clusters/`, `infrastructure/`,
+`security/`, `observability/`, `tooling/`, `apps/`, `flux/`, `namespaces/` and `crds/`, not the
+rendered bundle**, and fails on a reference across the host/AI boundary that the host contract does
+not list (ADR-0057; design §1 and §2): kustomize file references, Flux `spec.path`, `dependsOn`,
+`sourceRef` and `substituteFrom`, HelmRelease `valuesFrom` (H8's ConfigMap must carry `optional:
+true`), and `${var}` in AI files. Its data, `flux-schema/ai-boundary.yaml`, is the move list S2
+hands to `git filter-repo`: a path added there is a path that moves, and a change there is a
+host-contract change. A move-list entry matching no file fails too. It runs in step 1 of
+`validate-manifests.sh`; its suite, `tests/flux-schema/test-check-ai-boundary.py`, plants a crossing
+each way in a copy of the tree.
+Blind spots: a reference in a script, a doc, a CiliumNetworkPolicy selector, Helm values text,
+`.policy.yml`, `.github/`, `website/` or `container-images/` goes unseen. So does a host Flux
+Kustomization whose path has no `kustomization.yaml` and therefore applies every YAML under it
+(today `flux-sources` → `flux/sources/`, known, design §1); a new case is not flagged.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream

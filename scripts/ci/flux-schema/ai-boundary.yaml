@@ -1,3 +1,4 @@
+# A change here is a host-contract change: edit the matching table in design §2 in the same PR.
 # The host/AI boundary (AI platform split design §1 and §2, ADR-0057), read by
 # check-ai-boundary.py. `ai_paths` is §1's move list: S2's `git filter-repo` takes the same
 # list, so a path added here is a path that moves.
@@ -28,7 +29,8 @@ host_kustomizations:
   - apps
   - infrastructure
 
-# H3: the keys a child may substitute, from `<eks|gke>-<cluster>-vars`.
+# H3: the keys a child may substitute, from the ConfigMap named by this pattern.
+substitution_configmap: '^(eks|gke)-[a-z0-9-]+-vars$'
 substitution_keys:
   - cluster_name
   - environment

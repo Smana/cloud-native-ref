@@ -28,7 +28,6 @@ AREAS = ["clusters", "infrastructure", "security", "observability", "tooling", "
 FLUX_KS = "kustomize.toolkit.fluxcd.io/"
 SOURCE_KINDS = ("GitRepository", "OCIRepository", "HelmRepository", "Bucket")
 VAR_RE = re.compile(r"(?<!\$)\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
-VARS_CM = re.compile(r"^(eks|gke)-[a-z0-9-]+-vars$")
 
 
 def load_docs(path):
@@ -42,6 +41,7 @@ class Boundary:
     def __init__(self, root, contract):
         self.root, self.c = pathlib.Path(root), contract
         self.ai_res = [re.compile(p) for p in contract["ai_paths"]]
+        self.vars_cm = re.compile(contract["substitution_configmap"])
         self.errors = []
         self.files = [
             (p.relative_to(self.root).as_posix(), load_docs(p))
@@ -127,7 +127,7 @@ class Boundary:
         self.check_source(rel, owner, spec.get("sourceRef"))
         if s == "ai":
             for ref in (spec.get("postBuild") or {}).get("substituteFrom") or []:
-                if not (ref.get("kind") == "ConfigMap" and VARS_CM.match(ref.get("name", ""))):
+                if not (ref.get("kind") == "ConfigMap" and self.vars_cm.match(ref.get("name", ""))):
                     self.fail(rel, f"{owner} substitutes from {ref.get('kind')}/{ref.get('name')}, outside the contract (H3)")
 
     def check_helmrelease(self, rel, doc):
