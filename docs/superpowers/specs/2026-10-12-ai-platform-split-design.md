@@ -71,7 +71,7 @@ both repositories: it lands with a version bump of the pin and a note in both.
 
 | Item | Contract |
 |---|---|
-| Namespace | Every Flux `Kustomization` lives in `flux-system`; sources and HelmReleases live in their consumer's namespace (`agent-system`, `llm`, `envoy-*-system`, `observability`, `tooling`, …) |
+| Namespace | Every Flux `Kustomization` lives in `flux-system`; most sources and every HelmRelease live in their consumer's namespace (`agent-system`, `llm`, `envoy-*-system`, …); a few sources stay in `flux-system` |
 | Shared sources | `HelmRepository/oauth2-proxy` (namespace `tooling`) |
 | Source | `cloud-native-ref` defines one `OCIRepository` `ai-native-ref` in `flux-system`, `suspend: true` by default, pinned by digest with a tag for Renovate, verified with cosign against `ai-native-ref`'s release workflow identity (the `ocirepo-agent-factory` pattern) |
 | Umbrellas | `ai-gateway`, `llm-platform`, `agent-platform`: names unchanged, `suspend: true` by default, `sourceRef` the `ai-native-ref` source, `path: ./clusters/<cluster>-<umbrella>`. `llm-platform` and `agent-platform` depend on `ai-gateway` |

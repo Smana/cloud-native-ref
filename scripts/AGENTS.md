@@ -53,6 +53,10 @@ in AI files. Its data, `flux-schema/ai-boundary.yaml`, is the move list S2 hands
 `git filter-repo`: a path added there is a path that moves. A move-list entry matching no file
 fails too. It runs in step 1 of `validate-manifests.sh`; its suite,
 `tests/flux-schema/test-check-ai-boundary.py`, plants a crossing each way in a copy of the tree.
+**It reads source `*.yaml` under `clusters/`, `infrastructure/`, `security/`, `observability/`,
+`tooling/`, `apps/`, `flux/`, `namespaces/` and `crds/`, not the rendered bundle**, so a reference in
+a script, a doc, a CiliumNetworkPolicy selector, Helm values text, `.policy.yml`, `.github/`,
+`website/` or `container-images/` goes unseen.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream
