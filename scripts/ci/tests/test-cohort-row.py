@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # requires: python3
-"""cohort-row.py: the v2 cohort's sheet rows (spec §5). Pure functions only; no network."""
+"""cohort-row.py: the v2 cohort's sheet rows (spec §5). Functions, then main() with gh and the network stubbed."""
 import importlib.util
 import contextlib
 import csv
@@ -34,6 +34,15 @@ array = json.dumps([{"type": "system"}, {"type": "assistant"}, result])
 check("exec log array", cr.exec_log_usage(array), (54200, 50000, 800, 0.4211))
 check("exec log jsonl", cr.exec_log_usage("\n".join(json.dumps(m) for m in [{"type": "system"}, result])),
       (54200, 50000, 800, 0.4211))
+# Subagents on other model slots: modelUsage sums every model; usage alone covers the main loop.
+multi = {**result, "modelUsage": {
+    "glm-5.3": {"inputTokens": 1000, "outputTokens": 700, "cacheReadInputTokens": 40000,
+                "cacheCreationInputTokens": 2000, "costUSD": 0.3},
+    "glm-4.7-air": {"inputTokens": 500, "outputTokens": 300, "cacheReadInputTokens": 10000,
+                    "cacheCreationInputTokens": 1000, "costUSD": 0.1}}}
+check("exec log modelUsage", cr.exec_log_usage(json.dumps([multi])), (54500, 50000, 1000, 0.4211))
+check("exec log empty modelUsage", cr.exec_log_usage(json.dumps([{**result, "modelUsage": {}}])),
+      (54200, 50000, 800, 0.4211))
 try:
     cr.exec_log_usage(json.dumps([{"type": "system"}]))
     fails.append("exec log without result: no ValueError")
@@ -59,8 +68,14 @@ events = [{"event": "labeled", "label": {"name": "class:tests"}, "created_at": "
           {"event": "labeled", "label": {"name": "cohort/arm-b"}, "created_at": "2026-10-13T10:00:00Z"}]
 check("label_time first", cr.label_time(events, "cohort/arm-b"), "2026-10-13T08:01:00Z")
 check("minutes", cr.minutes("2026-10-13T08:01:00Z", "2026-10-13T09:31:30Z"), 90)
-commits = [{"committedDate": "2026-10-13T08:20:00Z"}, {"committedDate": "2026-10-13T08:40:00Z"},
-           {"committedDate": "2026-10-13T09:10:00Z"}]
+def commit(date, login="github-actions[bot]", headline="fix: x"):
+    return {"committedDate": date, "authors": [{"login": login}], "messageHeadline": headline}
+
+
+commits = [commit("2026-10-13T08:20:00Z"), commit("2026-10-13T08:40:00Z"), commit("2026-10-13T09:10:00Z"),
+           commit("2026-10-13T09:20:00Z", login="Smana"),
+           commit("2026-10-13T09:25:00Z", headline="Merge branch 'main' into cohort/arm-b/7"),
+           {**commit("2026-10-13T09:26:00Z", headline="sync"), "parents": [{"oid": "a"}, {"oid": "b"}]}]
 check("commits_after", cr.commits_after(commits, "2026-10-13T08:30:00Z"), 2)
 
 row = cr.build_row(issue=7, arm="B", pr=2400, tokens_in=54200, tokens_cached=50000, tokens_out=800,
@@ -83,8 +98,8 @@ check("concat empty", cr.concat_json_arrays(""), [])
 EVENTS = [{"event": "labeled", "label": {"name": "factory/ready"}, "created_at": "2026-10-13T08:00:00Z"},
           {"event": "labeled", "label": {"name": "cohort/arm-b"}, "created_at": "2026-10-13T08:00:00Z"}]
 PR = {"createdAt": "2026-10-13T08:20:00Z", "closedAt": None, "mergedAt": "2026-10-13T09:30:00Z",
-      "commits": [{"committedDate": "2026-10-13T08:10:00Z"}, {"committedDate": "2026-10-13T08:40:00Z"},
-                  {"committedDate": "2026-10-13T09:00:00Z"}]}
+      "commits": [commit("2026-10-13T08:10:00Z"), commit("2026-10-13T08:40:00Z"), commit("2026-10-13T09:00:00Z"),
+                  commit("2026-10-13T09:05:00Z", login="Smana")]}
 queries = []
 
 
@@ -130,12 +145,14 @@ with tempfile.TemporaryDirectory() as d:
     run_main(["--issue", "7", "--arm", "A", "--pr", "2400", "--task-json", task, "--vm-url", "http://vm:8428/",
               "--ended", "pr", "--verdict", "merged-as-is", "--review-min", "12", "--out", out])
     run_main(["--issue", "8", "--arm", "B", "--pr", "2400", "--exec-log", log, "--ended", "pr", "--out", out])
+    # A timed-out run uploads no execution file: the row is still written, cost cells left for backfill.
+    run_main(["--issue", "8", "--arm", "B", "--pr", "2400", "--ended", "timeout", "--out", out])
     with open(out) as fh:
         text = fh.read()
     check("header once", text.count("issue,arm,pr"), 1)
     rows = list(csv.DictReader(io.StringIO(text)))
-    check("row count", len(rows), 2)
-    a_row, b_row = rows
+    check("row count", len(rows), 3)
+    a_row, b_row, t_row = rows
     check("A tokens", (a_row["tokens_in"], a_row["tokens_cached"], a_row["tokens_out"]), ("600000", "500000", "20000"))
     check("A usd", a_row["usd"], str(cr.glm_usd(600000, 500000, 20000)))
     check("A minutes", (a_row["label_to_pr_min"], a_row["label_to_verdict_min"]), ("20", "90"))
@@ -143,6 +160,9 @@ with tempfile.TemporaryDirectory() as d:
     check("A verdict", (a_row["verdict"], a_row["review_min"]), ("merged-as-is", "12"))
     check("B tokens/usd", (b_row["tokens_in"], b_row["tokens_out"], b_row["usd"]), ("54200", "800", "0.4211"))
     check("B rounds/fixes", (b_row["review_rounds"], b_row["fix_runs"]), ("0", "2"))
+    check("timeout cost cells", tuple(t_row[c] for c in ("tokens_in", "tokens_cached", "tokens_out", "usd")),
+          ("", "", "", ""))
+    check("timeout ended/fixes", (t_row["ended"], t_row["fix_runs"]), ("timeout", "2"))
     qs = urllib.parse.unquote_plus(queries[0]) if queries else ""
     if "xplane-run-(impl-1|rev-1)" not in qs:
         fails.append(f"VM query lacks both run ids: {qs}")

@@ -20,8 +20,11 @@ COLUMNS = ["issue", "arm", "pr", "tokens_in", "tokens_cached", "tokens_out", "us
 VERDICTS = {"merged-as-is", "merged-after-edits", "rejected-fixable", "rejected-wrong", ""}
 ENDED = {"pr", "escalated", "timeout", "budget-exhausted", "no-pr"}
 ARM_LABEL = {"A": "factory/ready", "B": "cohort/arm-b", "C": "cohort/arm-c"}
-GLM = {"in": 1.40, "cached": 0.26, "out": 4.40}  # USD per 1M, glm-5.3 list (vmrule-llm-gateway.yaml)
+# USD per 1M. 1.40 in, 4.40 out: vmrule-llm-gateway.yaml. 0.26 cached: Z.ai list price; the gateway's
+# VMRule prices input and output only.
+GLM = {"in": 1.40, "cached": 0.26, "out": 4.40}
 REPO = "Smana/cloud-native-ref"
+MAINTAINER = "Smana"
 
 
 def glm_usd(tokens_in, cached, out):
@@ -36,11 +39,18 @@ def exec_log_usage(text):
     if not results:
         raise ValueError("no result message in the execution file")
     r = results[-1]
+    cost = float(r.get("total_cost_usd", 0.0))
+    # `usage` covers the main loop only; `modelUsage` adds subagents on other model slots.
+    models = [m for m in (r.get("modelUsage") or {}).values() if "inputTokens" in m or "outputTokens" in m]
+    if models:
+        cached = sum(m.get("cacheReadInputTokens", 0) for m in models)
+        tokens_in = sum(m.get("inputTokens", 0) + m.get("cacheCreationInputTokens", 0) for m in models) + cached
+        return tokens_in, cached, sum(m.get("outputTokens", 0) for m in models), cost
     u = r.get("usage", {})
     cached = u.get("cache_read_input_tokens", 0)
     # Anthropic's input_tokens excludes both cache counters.
     tokens_in = u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + cached
-    return tokens_in, cached, u.get("output_tokens", 0), float(r.get("total_cost_usd", 0.0))
+    return tokens_in, cached, u.get("output_tokens", 0), cost
 
 
 def vm_query(run_ids, window_min):
@@ -71,7 +81,11 @@ def minutes(start, end):
 
 
 def commits_after(commits, since):
-    return sum(1 for c in commits if _ts(c["committedDate"]) > _ts(since))
+    # Fix runs are the agent's own pushes: not the maintainer's edits, not merges of main.
+    def counts(c):
+        merge = len(c.get("parents") or []) > 1 or c.get("messageHeadline", "").startswith("Merge ")
+        return not merge and MAINTAINER not in {a.get("login") for a in c.get("authors", [])}
+    return sum(1 for c in commits if _ts(c["committedDate"]) > _ts(since) and counts(c))
 
 
 def build_row(**fields):
@@ -109,7 +123,7 @@ def main():
     p.add_argument("--pr", type=int)
     p.add_argument("--task-json", help="arm A: kubectl get tasks.agents.ogenki.io -o json, one Task")
     p.add_argument("--vm-url", help="arm A: VictoriaMetrics base URL")
-    p.add_argument("--exec-log", help="arms B, C: the action's execution file")
+    p.add_argument("--exec-log", help="arms B, C: the action's execution file; absent after a timeout")
     p.add_argument("--ended", required=True, choices=sorted(ENDED))
     p.add_argument("--verdict", default="", choices=sorted(VERDICTS - {""}))
     p.add_argument("--review-min", default="")
@@ -146,12 +160,13 @@ def main():
             tin, cached, out = vm_tokens(json.load(resp))
         f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out, usd=glm_usd(tin, cached, out))
     else:
-        with open(a.exec_log) as fh:
-            tin, cached, out, cost = exec_log_usage(fh.read())
-        # Arm C's log prices GLM tokens as Claude; recompute at GLM's list.
-        f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out,
-                 usd=round(cost, 4) if a.arm == "B" else glm_usd(tin, cached, out),
-                 review_rounds=0, fix_runs=commits_after(pr["commits"], pr["createdAt"]) if a.pr else "")
+        f.update(review_rounds=0, fix_runs=commits_after(pr["commits"], pr["createdAt"]) if a.pr else "")
+        if a.exec_log:  # else cost cells stay empty, backfilled from the provider console
+            with open(a.exec_log) as fh:
+                tin, cached, out, cost = exec_log_usage(fh.read())
+            # Arm C's log prices GLM tokens as Claude; recompute at GLM's list.
+            f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out,
+                     usd=round(cost, 4) if a.arm == "B" else glm_usd(tin, cached, out))
 
     row = build_row(**f)
     new = not os.path.exists(a.out) or os.path.getsize(a.out) == 0
