@@ -31,17 +31,20 @@ flowchart LR
 ## 1. What moves, what stays
 
 Paths are as of `main` `edeffe0e`. Most exist under both `aws-0` and `gcp-0`; a few are one cloud
-only (`llm-models-preload` and the compute classes are GCP's, `openwebui` is AWS's).
+only (`llm-models-preload` is GCP's, `openwebui` is AWS's). The GCP compute classes
+(`infrastructure/gcp-0/computeclass`) are applied by the host and stay. The enforced boundary is
+[`scripts/ci/flux-schema/ai-boundary.yaml`](../../../scripts/ci/flux-schema/ai-boundary.yaml): the
+move list below, checked in CI (S1).
 
 | Moves to `ai-native-ref` | Stays in `cloud-native-ref` |
 |---|---|
 | `clusters/<cluster>-{ai-gateway,llm-platform,agent-platform}/` (the children) | `clusters/<cluster>/{ai-gateway,llm-platform,agent-platform}.yaml` (the umbrellas, retargeted, still suspended) |
-| `infrastructure/{base,<cloud>}/`: `agent-sandbox`, `agent-runtime`, `agent-router`, `agent-mcp`, `room-broker`, `kueue`, `kueue-queues`, `envoy-gateway`, `envoy-ai-gateway`, `llm-gateway`, `vllm-semantic-router`, `karpenter-nodepools-agents` and `karpenter-nodepools-gpu` (with their `EC2NodeClass`es), `runtimeclass-gvisor`, `runtimeclass-nvidia` | Every other `infrastructure/` path, including Karpenter itself, the shared `EC2NodeClass`es, Cilium and the Gateways |
+| `infrastructure/{base,<cloud>}/`: `agent-sandbox`, `agent-runtime`, `agent-router`, `agent-mcp`, `room-broker`, `kueue`, `kueue-queues`, `envoy-gateway`, `envoy-gateway-ratelimit`, `envoy-ai-gateway`, `llm-gateway`, `vllm-semantic-router`, `karpenter-nodepools-agents` and `karpenter-nodepools-gpu` (with their `EC2NodeClass`es), `runtimeclass-gvisor`, `runtimeclass-nvidia` | Every other `infrastructure/` path, including Karpenter itself, the shared `EC2NodeClass`es, Cilium and the Gateways |
 | `security/{base,<cloud>}/`: `agent-policies`, `agent-secrets`, `octo-sts`, `merge-gate-secrets`, `epis-llm`, `llm-models-preload` | `security/` otherwise; OpenBao's mounts and policies and the JWT auth roles (OpenTofu) |
 | `tooling/{base,<cloud>}/`: `agent-factory`, `policy-bot`, `promptfoo` | — |
 | `observability/{base,<cloud>}/agent-platform`, `observability/base/runlore-factory` | `observability/base/runlore` (RunLore is the platform's SRE agent) |
 | `apps/llm` (what aws-0's `llm-platform-apps` applies), `apps/base/ai`, `apps/<cloud>/llm`, `apps/base/openwebui` (pulled in by `apps/llm`) | `apps/` otherwise |
-| `flux/sources/`: `gitrepo-agent-sandbox`, `ocirepo-agent-factory`, `ocirepo-envoy-ai-gateway{,-crds}`, `ocirepo-envoy-gateway`, `ocirepo-kueue`, `ocirepo-vllm-semantic-router`, `ocirepo-inferencepool` | Every other source, including `gitrepo-inference-extension` and the shared ones AI HelmReleases also use (`flux-operator-mcp`, `oauth2-proxy`, `open-telemetry`) |
+| `flux/sources/`: `gitrepo-agent-sandbox`, `ocirepo-agent-factory`, `ocirepo-envoy-ai-gateway{,-crds}`, `ocirepo-envoy-gateway`, `ocirepo-kueue`, `ocirepo-vllm-semantic-router`, `ocirepo-inferencepool`, `ocirepo-flux-operator-mcp`, `helmrepo-open-telemetry` | Every other source, including `gitrepo-inference-extension` and `helmrepo-oauth2-proxy`, which the rooms share with Headlamp. `flux/sources/` has no `kustomization.yaml`: the host's `flux-sources` Kustomization applies every file in it, so the AI sources stay applied from the host until S2 and S3 ship them in `ai-native-ref` |
 | — | `namespaces/base/{agents,agent-system,llm,llm-gateway,envoy-ai-gateway-system,envoy-gateway-system,merge-gate}.yaml`: namespaces and their PSA labels are the host's (H5) |
 | — | `crds/base/kustomization-inference-extension.yaml`: CRDs are the host's (H2) |
 | `website/content/docs/platform/ai-platform/`, its diagrams (`website/static/images/diagrams/{ai-platform,agent-factory,llm-platform}-*.svg`) and the AI ADRs (the serving ones 0003, 0004, 0021; 0041–0046, 0048–0051, 0056, 0057, and 0047, 0052–0054 when they merge), published on `ai-native-ref`'s own site (§5) | One overview page and an index row per moved ADR, linking out to that site |
@@ -68,7 +71,8 @@ both repositories: it lands with a version bump of the pin and a note in both.
 
 | Item | Contract |
 |---|---|
-| Namespace | Every Flux `Kustomization` and source lives in `flux-system`; HelmReleases live in their workload's namespace |
+| Namespace | Every Flux `Kustomization` lives in `flux-system`; most sources and every HelmRelease live in their consumer's namespace (`agent-system`, `llm`, `envoy-*-system`, …); a few sources stay in `flux-system` |
+| Shared sources | `HelmRepository/oauth2-proxy` (namespace `tooling`) |
 | Source | `cloud-native-ref` defines one `OCIRepository` `ai-native-ref` in `flux-system`, `suspend: true` by default, pinned by digest with a tag for Renovate, verified with cosign against `ai-native-ref`'s release workflow identity (the `ocirepo-agent-factory` pattern) |
 | Umbrellas | `ai-gateway`, `llm-platform`, `agent-platform`: names unchanged, `suspend: true` by default, `sourceRef` the `ai-native-ref` source, `path: ./clusters/<cluster>-<umbrella>`. `llm-platform` and `agent-platform` depend on `ai-gateway` |
 | Children | Use `sourceRef: {kind: OCIRepository, name: ai-native-ref}`, replacing today's `ExternalArtifact`s from the `monorepo-split` ArtifactGenerator |
@@ -89,6 +93,7 @@ Stable names in `flux-system`. Renaming one breaks a child's `dependsOn`.
 | `karpenter-nodepools` (aws) | Karpenter and the shared `EC2NodeClass`es |
 | `observability` | VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana with its datasources |
 | `apps` | The host apps layer, for children that must come after it |
+| `infrastructure` | KEDA, the Atlas operator and the cluster add-ons `llm-platform-apps` waits for |
 
 ### H3 · Substitution variables
 
@@ -254,10 +259,10 @@ flowchart LR
 
 | Step | Content | Gate |
 |---|---|---|
-| **S0** | `agent-harness` built and released by `agent-platform`; the composition and the gateway pin the new image name. ADR-0057 accepted | The next `agent-platform` release carries the image, signed; the composition pins it |
-| **S1** | A CI job in `cloud-native-ref` renders only the AI paths against a host profile (H2 names stubbed, H3 values from a fixture) and fails on any reference from a host path into an AI path, or the reverse, outside the contract (H8's ConfigMap is the one listed host-to-AI reference) | The job passes on `main` and fails on a planted cross-reference |
+| **S0** | `agent-harness` built and released by `agent-platform`; the `AgentRun` composition in `crossplane-configuration` (the only thing that pins the harness) repins it. The image name is unchanged (owner decision, 2026-10-12). ADR-0057 accepted | The next `agent-platform` release carries the image, signed; the composition pins it |
+| **S1** | A step of `validate-manifests.sh` (`scripts/ci/flux-schema/check-ai-boundary.py`, data `scripts/ci/flux-schema/ai-boundary.yaml`) reads the source tree and fails on any reference from a host path into an AI path, or the reverse, outside the contract (H8's ConfigMap is the one listed host-to-AI reference). Rendering against a host profile belongs to S2's CI | Passes on `main`; fails on a planted crossing in each direction (`scripts/ci/tests/flux-schema/test-check-ai-boundary.py`) |
 | **S2** | `ai-native-ref` created with `git filter-repo` over §1's paths; the children switched to the `OCIRepository` source; its CI (render against the host profile, `assert-ai-gateway.py`, the moved tests, links, doc claims, the site build); a release workflow pushing a signed OCI artifact | First tag released and verifiable with `cosign verify` |
-| **S3** | One `cloud-native-ref` PR: the suspended source, the umbrellas retargeted, the moved paths and tests deleted, the AI entries dropped from `monorepo-split`, `.policy.yml` gate paths updated | Rendered before and after, every object other than the new source, the umbrellas' and children's `sourceRef`s and the `monorepo-split` entries is identical; a rebuild of one cluster passes runbook 11 step 7 on release pins |
+| **S3** | One `cloud-native-ref` PR: the suspended source, the umbrellas retargeted, the moved paths and tests deleted, `monorepo-split` unchanged (it copies whole top-level directories, so there are no AI entries to drop), `.policy.yml` gate paths updated | Rendered before and after, every object other than the new source and the umbrellas' and children's `sourceRef`s is identical; a rebuild of one cluster passes runbook 11 step 7 on release pins |
 | **S4** | Docs: the AI section, ADRs, runbooks, specs and plans live in `ai-native-ref`, published on `ainref.ogenki.io`; `cnref.ogenki.io` is cleaned up and both sites link to each other (§5) | `hugo --gc --minify`, `validate-links.sh` and `verify-doc-paths.sh` pass in both repositories; every cross-site link answers 200 |
 
 S2 waits for the v1 hardening milestone, so no hardening PR has to be rebased across the move.
