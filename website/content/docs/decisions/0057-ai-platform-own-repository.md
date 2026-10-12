@@ -6,7 +6,7 @@ description: Serving and the agent factory move to Smana/ai-native-ref, pulled b
 lastVerified: 2026-10-12
 ---
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-10-12
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [AI platform split: `ai-native-ref` and its host contract](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-ai-platform-split-design.md)
@@ -100,7 +100,7 @@ The AI manifests, docs and their CI move to a new repository. The host defines o
 
 ## Decision Outcome
 
-**Chosen option**: "Option 3", proposed.
+**Chosen option**: "Option 3", accepted.
 
 **Rationale**: It solves the reader's problem, keeps a default deploy AI-free, and reuses a
 consumption pattern the platform already runs. The extra hop falls only on AI manifest changes; a
