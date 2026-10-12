@@ -1,0 +1,61 @@
+# The host/AI boundary (AI platform split design §1 and §2, ADR-0057), read by
+# check-ai-boundary.py. `ai_paths` is §1's move list: S2's `git filter-repo` takes the same
+# list, so a path added here is a path that moves.
+ai_paths:
+  - '^clusters/[^/]+-(ai-gateway|llm-platform|agent-platform)/'
+  - '^infrastructure/[^/]+/(agent-sandbox|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|envoy-gateway|envoy-gateway-ratelimit|envoy-ai-gateway|llm-gateway|vllm-semantic-router|karpenter-nodepools-agents|karpenter-nodepools-gpu|runtimeclass-gvisor|runtimeclass-nvidia)/'
+  - '^security/[^/]+/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets|epis-llm|llm-models-preload)/'
+  - '^tooling/[^/]+/(agent-factory|policy-bot|promptfoo)/'
+  - '^observability/[^/]+/agent-platform/'
+  - '^observability/base/runlore-factory/'
+  - '^apps/llm/'
+  - '^apps/base/(ai|openwebui)/'
+  - '^apps/[^/]+/llm/'
+  - '^flux/sources/(gitrepo-agent-sandbox|ocirepo-agent-factory|ocirepo-envoy-ai-gateway|ocirepo-envoy-ai-gateway-crds|ocirepo-envoy-gateway|ocirepo-kueue|ocirepo-vllm-semantic-router|ocirepo-inferencepool|ocirepo-flux-operator-mcp|helmrepo-open-telemetry)\.yaml$'
+
+# H1: the umbrellas are host objects whose spec.path is their cluster's child directory.
+umbrellas: [ai-gateway, llm-platform, agent-platform]
+
+# H2: host Kustomizations a child may name in dependsOn.
+host_kustomizations:
+  - crds
+  - crossplane-configuration
+  - security
+  - security-openbao
+  - eks-pod-identities
+  - karpenter-nodepools
+  - observability
+  - apps
+  - infrastructure
+
+# H3: the keys a child may substitute, from `<eks|gke>-<cluster>-vars`.
+substitution_keys:
+  - cluster_name
+  - environment
+  - project_id
+  - private_domain_name
+  - public_domain_name
+  - identity_provider_url
+  - oidc_issuer_url
+  - oidc_issuer_host
+  - oidc_jwks_uri
+  - oidc_jwks_host
+  - region
+  - storage_class
+  - llm_hf_token_secret
+  - ai_native_ref_tag
+
+# H1: host sources a child may name. The ExternalArtifacts and flux-system are today's
+# sources, until S3 retargets the children to the ai-native-ref OCIRepository.
+host_sources:
+  - GitRepository/flux-system
+  - ExternalArtifact/infra-artifact
+  - ExternalArtifact/security-artifact
+  - ExternalArtifact/observability-artifact
+  - ExternalArtifact/tooling-artifact
+  - ExternalArtifact/apps-artifact
+  - HelmRepository/oauth2-proxy
+
+# H8: the one object an AI path defines that a host path reads.
+ai_objects_host_reads:
+  - ConfigMap/runlore-factory-values
