@@ -98,6 +98,8 @@ git commit -m "🔧 chore(agent-factory): scripts class and no control group for
 
 ### Task 2: The row collector
 
+Superseded in review: the committed `cohort-row.py` and its test are the reference (no `--slurp`; argparse choices; runs guard; optional `--exec-log`; modelUsage).
+
 **Files:**
 - Create: `scripts/ops/github/cohort-row.py`
 - Test: `scripts/ci/tests/test-cohort-row.py`
@@ -664,18 +666,31 @@ gh secret set COHORT_ARM_C_API_KEY --repo Smana/cloud-native-ref
 - [ ] **Step 2: Fund the Z.ai API wallet** (the coding plan does not cover the API; error 1113 =
   empty wallet).
 
-- [ ] **Step 3: Pilot issue.** Create a throwaway issue, e.g. "docs: fix the typo 'recieve' in
-  runbook X" (pick a real typo with `grep -rn recieve docs/runbooks`), then apply
-  `factory/ready` + `class:docs`, `cohort/arm-b`, `cohort/arm-c` at once.
+- [ ] **Step 3: Pilot issue.** Create a throwaway issue fixing a typo in a comment of a file under
+  `scripts/` (a real one; a wording slip in a comment will do), so the
+  pilot exercises the `scripts` class. Then apply `factory/ready` + `class:scripts`, `cohort/arm-b`,
+  `cohort/arm-c` at once.
 
 - [ ] **Step 4: Check every arm.**
   - Arm A: `kubectl get tasks.agents.ogenki.io -A -o json | jq '.items[] | select(.spec.issue==<N>) | {phase: .status.phase, template: .spec.template, runs: [.status.runs[].id]}'`
     shows `pair`, and the meter answers for its runs:
     `curl -sG "$VM/api/v1/query" --data-urlencode 'query=count(gen_ai_client_token_usage_sum{ar_agent=~".*xplane-run-<first run id>"})'`
     is non-zero. If zero, find the run's ServiceAccount (`kubectl -n agents get sa | grep <id>`)
-    and fix `vm_query`'s pattern, with its test, before going on.
-  - Arms B and C: each opens a PR with `Cohort-Arm:` in its body; the artifact downloads with
-    `gh run download <run-id> -n cohort-arm-b-<N>`.
+    and fix `vm_query`'s pattern, with its test, before going on. Save that Task for step 5:
+    `kubectl -n <namespace> get tasks.agents.ogenki.io <name> -o json > taskA.json`, with the name
+    and namespace from the same `jq` projection (add `name: .metadata.name, ns: .metadata.namespace`).
+  - Arms B and C: each opens a PR with `Cohort-Arm:` in its body. A PR opened with `GITHUB_TOKEN`
+    starts no `pull_request` CI: close and reopen it to start CI (`createdAt` is unchanged, so the
+    timings hold). The artifact downloads with
+    `gh run download <run-id> -n cohort-arm-b-<N> -D cohort-arm-b-<N>` (and `cohort-arm-c-<N>`), so
+    step 5's `--exec-log cohort-arm-b-<N>/<file>` resolves.
+  - Both arms run with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`: the run log shows the agent's
+    `gh issue view` and `gh pr create` succeeding, i.e. `gh` still authenticates with it set. If it
+    does not, stop and fix the workflow before the cohort.
+  - On arm B's log, compare the two token sources the collector chooses between:
+    `jq 'if type == "array" then .[] else . end | select(.type == "result") | {usage, modelUsage}' cohort-arm-b-<N>/<file>`.
+    `modelUsage` summed (what `cohort-row.py` records when present) should be at least `usage`;
+    more means subagents ran, which `usage` alone would have missed.
 
 - [ ] **Step 5: Collect the three pilot rows into a scratch file and check every column fills**
 
@@ -694,13 +709,21 @@ Pilot rows are discarded.
 
 For each issue in spec §2's order:
 
+- [ ] Before labelling a backlog issue, check its label history for an earlier `factory/ready`:
+  `gh api repos/Smana/cloud-native-ref/issues/<n>/events --jq '.[] | select(.event == "labeled") | [.label.name, .created_at]'`.
+  If one is there, note it: `label_time` takes the first event, so arm A's minutes would start then.
 - [ ] Apply at once: `factory/ready` + `class:<class>`, `cohort/arm-b`, `cohort/arm-c`.
 - [ ] Wait for each arm to end: a PR, an escalation (`needsYou`), a timeout or a budget stop.
+- [ ] When a B or C PR opens, close and reopen it: a PR opened with `GITHUB_TOKEN` starts no
+  `pull_request` CI otherwise. `createdAt` is unchanged, so the timings hold.
 - [ ] Review every PR. **Record each verdict and your minutes before choosing which to merge.**
 - [ ] For an arm A escalation: note which counter ran out (`reviewRounds` 2, `fixRuns` 2,
   `resumes` 2) and whether the PR was still fixable.
 - [ ] Merge the best accepted PR; close the others with a comment naming their verdict.
 - [ ] Append three rows with `cohort-row.py` (Task 6, step 5 commands, `--out` the results CSV).
+  A B or C run that timed out uploads no execution file: run without `--exec-log`, then backfill the
+  empty `tokens_*` and `usd` cells by editing the CSV, from the provider console (Anthropic or Z.ai
+  usage for that arm's key, over that run's time window).
 - [ ] Commit the CSV: `git commit -m "📝 docs(agents): cohort rows for #<N>"`.
 
 ---

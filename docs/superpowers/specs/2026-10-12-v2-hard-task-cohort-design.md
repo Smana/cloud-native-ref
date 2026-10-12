@@ -1,6 +1,6 @@
 # v2 step 1: the hard-task cohort
 
-**Date:** 2026-10-12 · **Status:** design approved in brainstorming, spec review pending ·
+**Date:** 2026-10-12 · **Status:** approved by the maintainer 2026-10-12 ·
 **Part of:** the v2 roadmap on the
 [status page](../../../website/content/docs/platform/ai-platform/status.md#v2-roadmap), argued in the
 [v1 review](2026-10-12-agent-factory-v1-review.md#32-the-cohort-and-the-minimum-measurement)
@@ -95,19 +95,24 @@ gate path the maintainer changes before the first run:
 
 ### B and C · Claude Code Action
 
-Two workflows, `.github/workflows/cohort-arm-{b,c}.yaml`, on `issues: labeled` for their own label:
+One workflow, `.github/workflows/cohort-arms.yaml`, with one job per arm, each on `issues: labeled` for its own label:
 
 | Setting | Value |
 |---|---|
 | Action | `anthropics/claude-code-action`, pinned by digest |
 | Permissions | `contents: write`, `pull-requests: write`, `issues: write`; nothing else. `main` stays protected by its ruleset, so neither arm can merge |
 | Concurrency | One run per arm |
-| Prompt | The issue body, plus: open a PR from a `cohort/arm-<x>/<issue>` branch that closes the issue, and run `task check` before pushing |
+| Prompt | Names the issue; the agent reads the body with `gh issue view` (the body is never interpolated). Plus: open a PR from a `cohort/arm-<x>/<issue>` branch that closes the issue, and run `task check` before pushing |
 | Arm C | `ANTHROPIC_BASE_URL` set to Z.ai's Anthropic-compatible endpoint, with the model set to `glm-5.3` |
+| Arm C model slots | `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` all `glm-5.3`, so subagents run on A's model too |
+| Time limit | The agent step stops at 75 minutes, inside the job's 90, so the execution log still uploads |
 | Keys | One dedicated key per arm, with the provider's own spend limit set to the arm's share. Stored in OpenBao under the platform mount for the record; set by the maintainer as repository secrets. No literal in the workflow |
 
-The workflows sit under `.github/`, a gate path: the maintainer adds them. They are deleted when
-the cohort ends.
+The workflow sits under `.github/`, a gate path: the maintainer adds it. It is deleted when the
+cohort ends.
+
+A PR opened with `GITHUB_TOKEN` starts no `pull_request` CI, so the maintainer closes and reopens
+each B and C PR once it opens; `createdAt` is unchanged, so the timings hold.
 
 Arm C bills the Z.ai open-platform API wallet, not the GLM coding plan; an empty wallet answers
 error 1113. Fund it before the first run.
@@ -126,10 +131,10 @@ enforced by their keys' spend limits. An arm that runs dry ends its remaining ta
 | Column | Source |
 |---|---|
 | `issue`, `arm`, `pr` | `gh` |
-| `tokens_in`, `tokens_cached`, `tokens_out` | A: the gateway meter, which records `cached_input` apart. B and C: the action's execution log |
+| `tokens_in`, `tokens_cached`, `tokens_out` | A: the gateway meter, which records `cached_input` apart. B and C: the action's execution log (`modelUsage`, subagents included); after a timeout, the provider console |
 | `usd` | Tokens at list price: Claude for B, GLM-5.3 for A and C (C's log prices it as Claude, so it is recomputed) |
 | `label_to_pr_min`, `label_to_verdict_min` | `gh` timestamps |
-| `review_rounds`, `fix_runs` | A: the Task status. B, C: commits pushed after the PR opened |
+| `review_rounds`, `fix_runs` | A: the Task status. B, C: commits pushed after the PR opened, excluding the maintainer's and merges |
 | `ended` | `pr`, `escalated`, `timeout`, `budget-exhausted`, `no-pr` |
 | `counter_exhausted`, `still_fixable` | A only: which of the three counters ran out, and the maintainer's judgement whether the PR could still have been fixed |
 | `verdict`, `review_min` | The maintainer, by hand |
@@ -154,13 +159,13 @@ Fifteen issues tell apart only large differences; the results say so rather than
 | `scripts` class and label | The factory admits a `scripts` task (checked on the pilot) |
 | Arm B and C workflows, keys and spend limits | Each arm opens a PR on the pilot |
 | Z.ai API wallet funded | Arm C's pilot run answers |
-| A pilot on a throwaway issue (fix a typo in a runbook), all three arms | Three PRs, three rows that fill every column; the pilot rows are discarded |
+| A pilot on a throwaway issue (fix a typo in a comment of a file under `scripts/`, so the `scripts` class is exercised), all three arms | Three PRs, three rows that fill every column; the pilot rows are discarded |
 
 ## 8. Done
 
 All 15 issues have three rows; the decisions of §6 are written in a results section appended to
-this design; the status page's cohort row records the outcome and links it; the two workflows and
-their secrets are deleted; `controlPercent` is back at 10.
+this design; the status page's cohort row records the outcome and links it; the arms workflow and
+its secrets are deleted; `controlPercent` is back at 10.
 
 ## Risks
 
