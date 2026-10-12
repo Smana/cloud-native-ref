@@ -13,7 +13,7 @@ governance pay for operating it, and which v2 rows does the evidence open?
 
 | Arm | Harness | Model | Trigger |
 |---|---|---|---|
-| **A** | The factory, `pair` template, v1 as it is | GLM-5.3 through Agent Router | `factory/ready` + `factory/class:<class>` |
+| **A** | The factory, `pair` template, v1 as it is | GLM-5.3 through Agent Router | `factory/ready` + `class:<class>` |
 | **B** | Claude Code Action | Claude, the action's default | `cohort/arm-b` |
 | **C** | Claude Code Action | GLM-5.3, Z.ai's Anthropic-compatible endpoint | `cohort/arm-c` |
 
@@ -63,7 +63,7 @@ Order is fixed here, before the first run.
 | 7 | Tests for `sweep-lb-orphans.sh` | tests | new |
 | 8 | Tests for `reclaim-csi-volumes.sh` | tests | new |
 | 9 | Tests for `purge-dns-records.sh` | tests | new |
-| 10 | Tests for `cnpg-prepare-restore.sh` | tests | new |
+| 10 | Tests for `sweep-controller-orphans.sh` | tests | new |
 | 11 | Tests for `helm-release-present.sh` | tests | new |
 | 12 | A Crossplane dashboard | dashboards | new |
 | 13 | A cert-manager dashboard | dashboards | new |
@@ -83,11 +83,15 @@ the maintainer before the issue is labelled.
 
 ### A · the factory
 
-v1 unchanged, except a `scripts` class beside `tests` and `dashboards` in
-`tooling/base/agent-factory/helm-values-configmap.yaml` and its `factory/class:scripts` label. That
-file is a gate path, so the change lands by the maintainer before the first run. The plan checks
-first that agent-platform v0.8.0 accepts a class name from config alone (the review's N5 lists
-class names among the literals).
+v1 unchanged, except two settings in `tooling/base/agent-factory/helm-values-configmap.yaml`, a
+gate path the maintainer changes before the first run:
+
+- A `scripts` class beside `tests` and `dashboards`, and its `class:scripts` issue label. v0.8.0
+  takes class names from config: triage predicts the class from a `class:<name>` label naming a
+  configured class (`internal/factory/triage/classify.go:84-110`); only `docs-links` and `revert`
+  are literals.
+- `triage.controlPercent: 0` for the cohort's duration, restored to 10 at the end. The control
+  group runs on the frontier tier, whose template is `trio`, not `pair` (`classify.go:24-35`).
 
 ### B and C · Claude Code Action
 
@@ -156,7 +160,7 @@ Fifteen issues tell apart only large differences; the results say so rather than
 
 All 15 issues have three rows; the decisions of §6 are written in a results section appended to
 this design; the status page's cohort row records the outcome and links it; the two workflows and
-their secrets are deleted.
+their secrets are deleted; `controlPercent` is back at 10.
 
 ## Risks
 
