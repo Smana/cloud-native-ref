@@ -196,7 +196,7 @@ rules multiply, a workflow engine becomes worth its weight.
 
 **What it is.** An Apache-2.0 *specification* for an orchestrator that polls an issue tracker,
 claims ready issues, gives each one an isolated workspace and runs a coding agent in it, with
-bounded concurrency, stall and turn timeouts, exponential backoff and restart reconciliation
+bounded concurrency, stall and turn-silence timeouts, exponential backoff and restart reconciliation
 without a database. An Elixir reference implementation exists; OpenAI calls it a "low-key
 engineering preview". The agent is Codex only (its app-server protocol); the tracker is pluggable,
 with Linear, GitHub Issues, Jira Cloud, Asana and GitLab adapters in the reference.

@@ -16,9 +16,9 @@ the gates:
 
 | Change | Why |
 |---|---|
-| **First, a hard-task cohort on v1 as it is** | Every merged outcome is a docs fix of 1 to 12 lines because the pilot fed it docs issues, not because of what it can do. 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template, measured per task and run through a hosted agent too, answer the question the roadmap cannot answer without it |
-| **Fix the one-way merge path on the hardening milestone** ([N1](#n1)) | No PR the merge gate hands to a human ever returns to it. A CI-fixed PR on a reviewed template always lands there. Live auto-merge cannot pass as coded |
-| **Fence `internal` runs now** ([N4](#n4)) | RunLore investigations already run as `internal` triagers with GitHub egress and a GitHub token. The design marks those threats closed |
+| **First, a hard-task cohort on v1 as it is** | Every merged outcome is a docs fix adding at most 12 lines because the pilot fed it docs issues, not because of what it can do. 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template, measured per task and run through a hosted agent too, answer the question the roadmap cannot answer without it |
+| **Fix the one-way merge path, as a gate for live auto-merge** ([N1](#n1)) | No PR the merge gate hands to a human ever returns to it. A CI-fixed PR on a reviewed template always lands there. Live auto-merge cannot pass as coded. The fix does not wait for any loop |
+| **Fence `internal` runs now, with the hardening** ([N4](#n4)) | RunLore investigations already run as `internal` triagers with GitHub egress and a GitHub token. The design marks those threats closed |
 | **A continuation loop, with its bounds kept** | Step from the PR's state instead of fixed per-trigger paths, but keep per-trigger sub-caps, a small step limit and fast escalation |
 | **Warm and suspended sandboxes** | The chosen runtime ships warm pools and suspend; a run starts in about 90 s on a fresh node and holds or ends its pod while it waits |
 | **Teams: research, not a roadmap line** | The evidence does not support them yet, and the cheapest version reverses a recorded design decision |
@@ -41,7 +41,7 @@ All agent-authored PRs on `Smana/cloud-native-ref`, 2026-09-27 to 2026-10-08
 | Closed | #2199, a wrong fix the maintainer rejected (the only quality failure on record); #2207, a live-gate probe; #2239, the walkthrough PR, closed by design before the merge wave |
 | Change size, merged | 9 one-line; largest `+12/-6` (#2267) |
 | Kind | 13 of 13 docs: version pins, a header, a CA prerequisite |
-| Tokens | 667,878 for #2267 (implementer 505,528, reviewer 162,350); 1,078k for #2238 over five runs, whose PR was closed |
+| Tokens | 667,878 for PR #2267 (implementer 505,528, reviewer 162,350); 1,078k for issue #2238 → PR #2239 over five runs, closed |
 
 What it shows is the pilot's scope: the classes the design defines are docs-only (SP3 S8), and the
 issues labelled were docs pins a script could also have caught. It does not show what the factory
@@ -54,15 +54,16 @@ The gateway prices each run (`llm_gateway:price_usd_per_mtoken`,
 (USD)" panel. Nothing aggregates money per task or per accepted outcome.
 
 Re-priced at GLM-5.3 list (the same price as GLM-5.2: $1.40 input, $0.26 cached, $4.40 output per
-million), as a range because the meter does not record cache hits:
+million). Both columns assume an input/output split, and the meter does not record cache hits, so
+these are estimates, not bounds:
 
-| Task | Upper bound: 90/10 split, no cache | 97/3 split, 90 % of input cached |
+| Task | 90/10 split assumed, no cache | 97/3 split assumed, 90 % of input cached |
 |---|---|---|
-| #2267 | ≈ $1.14 | ≈ $0.33 |
-| #2238 | ≈ $1.83 | ≈ $0.53 |
+| PR #2267 | ≈ $1.14 | ≈ $0.33 |
+| Issue #2238 | ≈ $1.83 | ≈ $0.53 |
 
-The split is assumed. The gateway records input and output tokens apart, so the real ratio can be
-read. For scale, a published comparison of 23 model-and-harness arms puts a merged *feature* at
+The gateway records input and output tokens apart, so the real split can be read; the cohort should
+read it. For scale, a published comparison of 23 model-and-harness arms puts a merged *feature* at
 $2.59 to $33.38 ([Insight, 2026-07-06](https://blog.apac.insight.com/2026/07/06/cost-to-a-merged-feature)).
 
 ### 1.3 Code and tests
@@ -88,17 +89,21 @@ $2.59 to $33.38 ([Insight, 2026-07-06](https://blog.apac.insight.com/2026/07/06/
 ## 2. New findings
 
 Not on the hardening milestone as of 2026-10-12. `K` is `apis/agentrun/kcl/main.k` in
-crossplane-configuration. Bare file names are in agent-platform's `internal/factory/reconciler/`; other paths are from agent-platform's root, except `vmrule-agent-factory.yaml` (cloud-native-ref, `observability/base/agent-platform/`).
+crossplane-configuration and `X` its `apis/agentrun/definition.yaml`. Bare file names are in
+agent-platform's `internal/factory/reconciler/`; other paths are from agent-platform's root,
+except `vmrule-agent-factory.yaml` (cloud-native-ref, `observability/base/agent-platform/`).
 
 <a id="n1"></a>
 **N1 · A PR handed to a human never returns to the merge gate.** `AwaitingCI` is entered only from
-`ready` (`team.go:92`) and `head_moved` (`merge.go:117,245`). Every other `DecideArm` verdict moves
-the task to `AwaitingHuman` (`merge.go:98-105`), and nothing from there re-enters `AwaitingCI`:
-`awaitingHuman` only revises or reminds and closes (`implement.go:478-480,515-528`). The sharpest
+`ready` (`team.go:92`) and `head_moved` (`merge.go:117,245`). Every non-arm, non-escalate
+`DecideArm` verdict moves the task to `AwaitingHuman` (`merge.go:98-109`), and nothing from there
+re-enters `AwaitingCI`: `awaitingHuman` only revises or reminds and closes
+(`implement.go:515-528`), and a revision returns to `AwaitingHuman` (`implement.go:478-480`). The sharpest
 case: a `ci` fix run skips review (`implement.go:482-484`), moves the head, and the next decision is
 `verdict_stale` (`arm.go:112-121`). The same holds for a transient `policy_pending`, `policy_absent`
 or `head_unreported`. Reach today: about 10 % of `docs-links` tasks (`solo` except at the frontier
-tier, which only the control group gets: `internal/factory/triage/classify.go:24-35,78-80`) and every `revert` and
+tier, which, while the classifier is not deployed and triage falls back to `standard`, only the
+control group gets: `internal/factory/triage/classify.go:24-35,77-80`) and every `revert` and
 review-class task. It also skews the shadow log: a CI-fixed PR records `verdict_stale`, not
 `shadow_would_arm` (`arm.go:118`, before `:139-141`). **Fix**, independent of any loop: re-review
 after a fix run, and a path from `AwaitingHuman` back to `AwaitingCI` when the head or the policy
@@ -113,15 +118,16 @@ path only. **Fix:** read the ledger in `Queued` before the cap is enforced.
 <a id="n3"></a>
 **N3 · A task waits silently while a human holds its room.** `waiting_room_busy` and
 `waiting_human_driver` are status reasons only (`implement.go:66-80`); the stuck alert excludes
-`Queued` (`vmrule-agent-factory.yaml:46-48`). The hold ends when the driver lease lapses (2 or
-15 minutes, `internal/app/rooms.go:30-31`) or a human run ends (120 minutes, `internal/factory/api/server.go:233`).
+`Queued` (`vmrule-agent-factory.yaml:44-45`). The hold ends when the driver lease lapses (2 or
+15 minutes, `internal/app/rooms.go:30-31`) or a human run ends (120 minutes,
+`internal/factory/api/server.go:234`).
 **Fix:** narrate the wait once, and list it under `needsYou`.
 
 <a id="n4"></a>
 **N4 · `internal` runs keep GitHub egress, today.** The SP1 design says internal runs get no direct
-GitHub egress and the XRD refuses profiles for them, and marks T4 and T5 closed (design :191,
-:480-481). At v0.9.3 the `github` profile is unconditional (`K:296`); neither the XRD
-(`definition.yaml:184-198`), the Kyverno policies nor the run API (`internal/factory/api/server.go:205-208`) fence
+GitHub egress and the XRD refuses profiles for them, and marks T4 and T5 closed
+(`docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md:191,480-481`). At v0.9.3 the
+`github` profile is unconditional (`K:296`); neither the XRD (`X:184-198`), the Kyverno policies nor the run API (`internal/factory/api/server.go:205-208`) fence
 it. RunLore findings already create `internal` triager runs (`internal/factory/intake/runlore.go:191`,
 `internal/factory/triage/classify.go:63-64`) holding a read token. **Fix:** the composition change; until then,
 reopen T4 and T5 in the design.
@@ -129,7 +135,8 @@ reopen T4 and T5 in the design.
 <a id="n5"></a>
 **N5 · Single-repository literals are wider than the second-repository gate suggests.** Both GitHub
 connections bind to one repository (`internal/app/factory.go:116-127`, `internal/factory/forge/github.go:50-78`),
-intake stamps every Task with it (`internal/factory/intake/issues.go:242`, `schedule.go:141`, `runlore.go:191`), the
+intake stamps every Task with it (`internal/factory/intake/issues.go:242`,
+`internal/factory/intake/schedule.go:141`, `internal/factory/intake/runlore.go:191`), the
 Room CRD defaults to it (`api/v1alpha1/room_types.go:69`), and `github.com`, `main`, `factory/*`
 labels, `renovate[bot]` and the two live class names are literals elsewhere. **Fix:** name this
 inventory as the scope of that gate.
@@ -146,10 +153,10 @@ opens nothing else". This amendment keeps that shape and adds to it.
 
 ```mermaid
 flowchart LR
-  hard["v1 hardening<br/>+ N1, N4"] --> cohort["Hard-task cohort<br/>measured, vs a hosted agent"]
+  hard["v1 hardening<br/>+ N4 fence"] --> cohort["Hard-task cohort<br/>measured, vs a hosted agent"]
   cohort --> loop["Continuation loop"]
   cohort --> rev["Reviewer on another model"]
-  hard --> merge["Live auto-merge"]
+  hard --> merge["Live auto-merge<br/>+ N1 fix"]
   hard --> warm["Warm and suspended sandboxes"]
   hard --> repo["A second repository"]
   repo --> priv["Private repositories"]
@@ -160,11 +167,10 @@ flowchart LR
 
 ### 3.2 The cohort, and the minimum measurement
 
-The five measures the status page lists are mostly not collected. The minimum that lets a decision
-be made is **one row per task**, from counters that exist plus `gh`: tokens; money at list price,
-labelled an upper bound; label to PR and label to merge; review rounds, fix runs and reverts;
-accepted or not; and the maintainer's own logged minutes for the cohort. Timestamps measure latency,
-not effort, so minutes are logged by hand.
+The five measures the status page lists are mostly not collected, and a dashboard is not needed to
+decide: one row per task from counters that exist plus `gh` is enough (the cohort row on the
+status page lists the fields). Human minutes are logged by hand because timestamps measure latency,
+not effort.
 
 The same issues run through a hosted agent under the same checks give the comparison the status
 page already calls for, and the one number this review cannot supply: whether the factory's
@@ -180,19 +186,18 @@ to `max_turns` per worker session ([SPEC §7.1](https://github.com/openai/sympho
 it has no total per-issue budget.
 
 The proposal: choose the next step from the PR's state (CI red, a `changes` verdict, a maintainer's
-review, a head moved since the last verdict) under the task budget that exists. What the counters
-give must survive, so it is not "one budget":
+review, a head moved since the last verdict) under the task budget that exists. A budget alone would
+lose what the counters give, which is why the status page's loop row keeps bounds:
 
-| Property today | How the loop keeps it |
+| Property today | Why a budget alone loses it |
 |---|---|
-| A human sees the PR after two failed rounds | At most two consecutive steps of the same trigger, and `maxSteps` of 6 or fewer |
-| A crash loop is bounded apart from agent progress | Resumes keep their own count; they spend few tokens, so a budget alone does not bound them |
-| Only a maintainer steers (T1) | Only a maintainer's review is a trigger; issue state alone never re-opens a task |
-| Rework is countable | Steps are recorded by trigger |
+| A human sees the PR after two failed rounds | At about 670k tokens a cycle, a 3 M to 8 M task budget allows 4 to 12 cycles first |
+| A crash loop is bounded apart from agent progress | Resumes spend few tokens, so the budget barely bounds them |
+| Only a maintainer steers (T1) | A loop keyed on issue state would let an issue author keep a task alive |
+| Rework is countable | One budget hides which trigger spent it |
 
-Gate: on the cohort, the escalation rate, accepted-outcome rate and human minutes are no worse than
-the counters gave. "No task over budget" is not a gate: the meter already enforces it. The loop
-changes SP3 §3 and §6.3, which record the change before it is built.
+"No task over budget" cannot be the gate: the meter already enforces it. The loop changes SP3 §3
+and §6.3, which record the change before it is built.
 
 ### 3.4 Warm and suspended sandboxes
 
@@ -203,8 +208,9 @@ in about 90 s on a fresh node (SP1 spike) and a run waiting on a human holds its
 
 Costs to price before the gate: the extensions controller (`extensions: true`, its RBAC and network
 policy); a `SandboxTemplate` rendering the run pod minus its per-run parts; and the catch that a
-claim setting `env` or `volumeClaimTemplates` bypasses the pool and cold-starts, which the
-composition sets today. The OpenHands SDK's `AgentSandboxWorkspace` wraps the same features, but its
+claim setting `env` or `volumeClaimTemplates` bypasses the pool and cold-starts. The composition
+renders a `Sandbox` directly today, with per-run `env` in its pod template (`K:307,592`), so the
+per-run values must move out of the claim before a pool pays off. The OpenHands SDK's `AgentSandboxWorkspace` wraps the same features, but its
 client calls the agent-server inside the pod, and contract C4 allows no ingress into `agents`; the
 mechanics belong in the composition.
 

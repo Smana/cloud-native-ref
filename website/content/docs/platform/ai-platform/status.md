@@ -14,7 +14,7 @@ role page links to its row here instead of repeating it.
 | Area | State | Detail |
 |---|---|---|
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
-| Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
+| Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end (implementer, reviewer, human merge), of 11 merged through label intake. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
 | Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud. Proposed on 2026-10-12, pending the owner: a hard-task cohort first, a continuation loop, a reviewer on another model, warm and suspended sandboxes | [v2 roadmap](#v2-roadmap) |
 
 ## Serving
@@ -172,7 +172,8 @@ multiple addressable consumers, including using LoRA adapter names as proxy
 **v1 shipped on 2026-10-08, pilot scope.** It is on `main` (agent-platform `v0.8.0`,
 crossplane-configuration `v0.9.3`) and runs on `aws-0`; a cluster opts in, because the umbrellas
 ship suspended. A labelled issue becomes a reviewed pull request that a human merges: three factory
-PRs have merged that way. v1 is **viable for governed side tasks on one public repository. It is
+PRs have merged that way, implementer then reviewer then a human merge, of 11 agent PRs merged
+through label intake. v1 is **viable for governed side tasks on one public repository. It is
 not production-ready**: the [hardening](#v1-hardening) comes before anything is called dependable,
 and each [v2](#v2-roadmap) expansion passes its own gate.
 
@@ -198,7 +199,7 @@ and each [v2](#v2-roadmap) expansion passes its own gate.
 | Local-first: `roomctl status`, the room page, the `factory-handoff` skill, room access that follows GitHub (D7) | **Partly proven** | [Runbook 11](https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/11-v1-validation.md#results), 2026-10-08: 5 pass, 3 partial, 4 open (the checks that need a second GitHub account) |
 | Per-run logs, metrics, traces, dashboards and the stuck-sandbox alert | **Proven live** | Runbook 11, Step 6, 2026-10-08. MCP calls are not yet in the trace ([F16](#live-findings)) |
 | Merge gate for `docs-links` and `revert` | Shadow | Records what it would merge; a maintainer merges |
-| RunLore findings as a trigger (`investigate`) | Configured, not proven | It creates `internal` tasks, which have no model route |
+| RunLore findings as a trigger (`investigate`) | Configured, not proven | It creates `internal` tasks, which have no model route. Their triager runs still get GitHub egress ([review, N4](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md#n4)) |
 | Per-person spend caps | Shadow | `enforcePrincipal: false` |
 | Routing by tier | Not available | Every tier uses `agent-default` |
 
@@ -208,8 +209,8 @@ point for v2's measurements, not a target.
 
 ### v1 hardening
 
-What must hold before v1 is called dependable. Every item is an issue on the **v1 hardening**
-milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone/1) and
+What must hold before v1 is called dependable. Every item but the one marked *proposed* is an issue
+on the **v1 hardening** milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone/1) and
 [cloud-native-ref](https://github.com/Smana/cloud-native-ref/milestone/1).
 
 | Theme | What must hold | Issues |
@@ -219,6 +220,7 @@ milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone
 | Task lifecycle | Finished rooms close and age out; a run's reason and trigger are reported as they happened; agents post progress | agent-platform [#56](https://github.com/Smana/agent-platform/issues/56), [#33](https://github.com/Smana/agent-platform/issues/33), [#40](https://github.com/Smana/agent-platform/issues/40), [#41](https://github.com/Smana/agent-platform/issues/41), [#60](https://github.com/Smana/agent-platform/issues/60) |
 | People | "Needs you" includes a PR waiting for its merge; a waiting phase says why and what next; onboarding in two commands, from the skill too; a room list that names the issue; generated commands carry `--repo`; human acts are logged; a GitHub link for Google-only users | agent-platform [#51](https://github.com/Smana/agent-platform/issues/51), [#59](https://github.com/Smana/agent-platform/issues/59), [#48](https://github.com/Smana/agent-platform/issues/48), [#49](https://github.com/Smana/agent-platform/issues/49), [#50](https://github.com/Smana/agent-platform/issues/50), [#44](https://github.com/Smana/agent-platform/issues/44), [#61](https://github.com/Smana/agent-platform/issues/61); cloud-native-ref [#2269](https://github.com/Smana/cloud-native-ref/issues/2269) |
 | Operations | A fresh install from documented inputs; drains during a GitHub outage; broker config changes roll out; the core composition owned as code; the factory upgrade takes its new tag; a teardown that leaves nothing; IdP secret rotation; the ZITADEL floor checked in CI; a rooms restore drill | agent-platform [#57](https://github.com/Smana/agent-platform/issues/57), [#58](https://github.com/Smana/agent-platform/issues/58); cloud-native-ref [#2280](https://github.com/Smana/cloud-native-ref/issues/2280), [#2274](https://github.com/Smana/cloud-native-ref/issues/2274), [#2275](https://github.com/Smana/cloud-native-ref/issues/2275), [#2276](https://github.com/Smana/cloud-native-ref/issues/2276), [#2277](https://github.com/Smana/cloud-native-ref/issues/2277), [#2278](https://github.com/Smana/cloud-native-ref/issues/2278), [#2279](https://github.com/Smana/cloud-native-ref/issues/2279), [#2273](https://github.com/Smana/cloud-native-ref/issues/2273) |
+| Data class (*proposed*, not yet filed) | `internal` runs get no direct GitHub egress, proven by a refused write with a supplied token ([review, N4](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md#n4)) | — |
 | Evidence | D7 on a private repository (runbook 11, 5b–5e); F10, F12 and F15 re-checked live; MCP calls in the trace; docs and the walkthrough script that match what runs | cloud-native-ref [#2281](https://github.com/Smana/cloud-native-ref/issues/2281), [#2282](https://github.com/Smana/cloud-native-ref/issues/2282), [#2283](https://github.com/Smana/cloud-native-ref/issues/2283), [#2268](https://github.com/Smana/cloud-native-ref/issues/2268), [#2251](https://github.com/Smana/cloud-native-ref/issues/2251), [#2252](https://github.com/Smana/cloud-native-ref/issues/2252) |
 
 ### v2 roadmap
@@ -229,7 +231,7 @@ must exist before it is turned on. Passing one gate opens nothing else, and none
 {{< callout type="info" >}}
 **Proposed amendment, owner review pending.** The rows marked *proposed* come from the
 [v1 review of 2026-10-12](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md),
-which argues them. Every merged outcome so far is a docs fix of 1 to 12 lines because the pilot was
+which argues them. Every merged outcome so far is a docs fix adding at most 12 lines because the pilot was
 fed docs issues, so the first proposal is a cohort of harder issues on v1 as it is. Nothing below
 is removed or reordered.
 {{< /callout >}}
@@ -237,17 +239,17 @@ is removed or reordered.
 ```mermaid
 flowchart LR
   v1["v1, pilot scope<br/>2026-10-08"] -->|then| hard["v1 hardening"]
+  hard -->|gate| repo["A second repository"]
+  repo -->|gate| priv["Private repositories"]
+  hard -->|gate| gw["agentgateway, tiers,<br/>gateway budgets"]
+  gw -->|model route| internal["internal work"]
+  hard -->|gate| merge["Live auto-merge"]
+  hard -->|gate| caps["Per-person caps"]
+  repo -->|one owner per repo| cloud["A second active cloud"]
   hard -->|proposed| cohort["Hard-task cohort"]
   cohort -->|proposed| loop["Continuation loop"]
   cohort -->|proposed| rev["Reviewer on another model"]
   hard -->|proposed| warm["Warm and suspended<br/>sandboxes"]
-  hard -->|gate| merge["Live auto-merge"]
-  hard -->|gate| repo["A second repository"]
-  repo -->|gate| priv["Private repositories"]
-  repo -->|one owner per repo| cloud["A second active cloud"]
-  hard -->|gate| gw["agentgateway, tiers,<br/>gateway budgets"]
-  gw -->|model route| internal["internal work"]
-  hard -->|gate| caps["Per-person caps"]
 ```
 
 | Capability | Gate: what must be proven first |
