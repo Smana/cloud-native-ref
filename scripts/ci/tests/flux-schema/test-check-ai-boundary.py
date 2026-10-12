@@ -181,6 +181,24 @@ check(has(errs, KUEUE_KS, "applies the host path infrastructure/base/keda"),
 errs = errors_after(lambda r: edit(r, KUEUE_KS, ks("kueue-queues", lambda s: s["dependsOn"].append({"name": "crds"}))))
 check(errs == [], f"an AI Kustomization may depend on an H2 name (got {errs[:2]})")
 
+# The check fails on what it cannot read or reads loosely.
+errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s.update(
+    valuesFrom=[{"kind": "ConfigMap", "name": "runlore-factory-values", "optional": "true"}]))))
+check(has(errs, KEDA, "H8", "optional: true"), 'a host read of H8 with optional: "true" (a string) fails')
+
+errs = errors_after(lambda r: (r / "infrastructure/aws-0/broken.yaml").write_text("a: [unclosed\n"))
+check(has(errs, "infrastructure/aws-0/broken.yaml", "cannot parse"), "a malformed YAML file under an area fails")
+
+
+def drop_kind(d):
+    d.pop("kind", None)
+    d["resources"].append("../base/kueue")
+
+
+errs = errors_after(lambda r: edit(r, "infrastructure/aws-0/kustomization.yaml", drop_kind))
+check(has(errs, "infrastructure/aws-0/kustomization.yaml", "../base/kueue", "host -> ai"),
+      "a host kustomization.yaml without a kind that lists an AI directory fails")
+
 if FAILURES:
     sys.exit(f"{len(FAILURES)} failure(s)")
 print("all passed")

@@ -31,10 +31,7 @@ VAR_RE = re.compile(r"(?<!\$)\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 def load_docs(path):
-    try:
-        return [d for d in yaml.load_all(path.read_text(), Loader=YAML_LOADER) if isinstance(d, dict)]
-    except yaml.YAMLError:
-        return []
+    return [d for d in yaml.load_all(path.read_text(), Loader=YAML_LOADER) if isinstance(d, dict)]
 
 
 class Boundary:
@@ -43,11 +40,16 @@ class Boundary:
         self.ai_res = [re.compile(p) for p in contract["ai_paths"]]
         self.vars_cm = re.compile(contract["substitution_configmap"])
         self.errors = []
-        self.files = [
-            (p.relative_to(self.root).as_posix(), load_docs(p))
-            for area in AREAS if (self.root / area).is_dir()
-            for p in sorted((self.root / area).rglob("*.yaml"))
-        ]
+        self.files = []
+        for area in AREAS:
+            for p in sorted((self.root / area).rglob("*.yaml")) if (self.root / area).is_dir() else []:
+                rel = p.relative_to(self.root).as_posix()
+                try:
+                    self.files.append((rel, load_docs(p)))
+                except yaml.YAMLError as e:
+                    # A file the check cannot read is a file it cannot vouch for.
+                    self.fail(rel, f"cannot parse: {str(e).splitlines()[0]}")
+                    self.files.append((rel, []))
 
     def side(self, rel, is_dir=False):
         rel = rel.rstrip("/") + ("/" if is_dir else "")
@@ -141,7 +143,7 @@ class Boundary:
             if s == "host" and sides == {"ai"}:
                 if key not in self.c["ai_objects_host_reads"]:
                     self.fail(rel, f"{owner} reads {key}, which an AI path defines (H8 lists the only one allowed)")
-                elif not ref.get("optional"):
+                elif ref.get("optional") is not True:
                     self.fail(rel, f"{owner} reads {key} (H8) without optional: true; the host must deploy without the AI paths")
             if s == "ai" and sides == {"host"}:
                 self.fail(rel, f"{owner} reads {key}, which a host path defines")
@@ -162,7 +164,7 @@ class Boundary:
                 kind, api = d.get("kind"), str(d.get("apiVersion", ""))
                 if kind == "Kustomization" and api.startswith(FLUX_KS):
                     self.check_flux_kustomization(rel, d)
-                elif kind == "Kustomization" and rel.endswith("/kustomization.yaml"):
+                elif rel.endswith("/kustomization.yaml"):  # by filename: kind may be absent or Component
                     self.check_kustomize_files(rel, d)
                 elif kind == "HelmRelease":
                     self.check_helmrelease(rel, d)
