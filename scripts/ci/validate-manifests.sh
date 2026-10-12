@@ -3,7 +3,8 @@
 #
 # Runs the same steps locally and in CI, so "it validates" is a claim
 # backed by a command anyone — human or agent — can reproduce:
-#   1. check every Flux Kustomization that applies ${vars} declares postBuild
+#   1. check every Flux Kustomization that applies ${vars} declares postBuild, and
+#      that no reference crosses the host/AI boundary outside the host contract
 #   2. parse the PromQL inside every repo-authored VMRule
 #   3. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
 #   4. render the repo into a bundle (kustomize + envsubst + helm template)
@@ -39,6 +40,11 @@ BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"
 # `${var}` text on the cluster. Measured 2026-08-25; see the script's docstring.
 echo "==> [1/6] Checking Flux variable substitution wiring"
 python3 scripts/ci/flux-schema/check-substitution.py
+
+# Source-tree check, like the one above: a dependsOn name or a sourceRef never reaches the
+# bundle as something a schema could reject. ADR-0057 (AI split S1).
+echo "==> [1/6] Checking the host/AI boundary"
+python3 scripts/ci/flux-schema/check-ai-boundary.py
 
 # Also runs before the render, and on source files rather than the bundle: a
 # VMRule expression is opaque to both gates below — `flux schema validate`
