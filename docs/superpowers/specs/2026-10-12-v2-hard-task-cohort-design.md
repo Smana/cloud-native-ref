@@ -60,15 +60,15 @@ Order is fixed here, before the first run.
 | 4 | #2269: an admin `link-github` subcommand for Google-only users | scripts | backlog |
 | 5 | #2291: CNPG seed: a second teardown on the same day keeps the old lineage | scripts | backlog |
 | 6 | #2292: CNPG seed: an idle database never archives its end WAL | scripts | backlog |
-| 7 | Tests for `sweep-lb-orphans.sh` | tests | new |
-| 8 | Tests for `reclaim-csi-volumes.sh` | tests | new |
-| 9 | Tests for `purge-dns-records.sh` | tests | new |
-| 10 | Tests for `sweep-controller-orphans.sh` | tests | new |
-| 11 | Tests for `helm-release-present.sh` | tests | new |
-| 12 | A Crossplane dashboard | dashboards | new |
-| 13 | A cert-manager dashboard | dashboards | new |
-| 14 | An OpenBao dashboard | dashboards | new |
-| 15 | An External Secrets dashboard | dashboards | new |
+| 7 | #2314: Tests for `sweep-lb-orphans.sh` | tests | new |
+| 8 | #2315: Tests for `reclaim-csi-volumes.sh` | tests | new |
+| 9 | #2316: Tests for `purge-dns-records.sh` | tests | new |
+| 10 | #2317: Tests for `sweep-controller-orphans.sh` | tests | new |
+| 11 | #2318: Tests for `helm-release-present.sh` | tests | new |
+| 12 | #2319: A Crossplane dashboard | dashboards | new |
+| 13 | #2320: A cert-manager dashboard | dashboards | new |
+| 14 | #2321: An OpenBao dashboard | dashboards | new |
+| 15 | #2322: An External Secrets dashboard | dashboards | new |
 
 Reserves, used in order only if an issue is closed by other work before its turn: #1589 (RunLore
 CiliumNetworkPolicy), #2275 (Crossplane core Configuration pin).
