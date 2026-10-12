@@ -57,7 +57,9 @@ data:
         # SP4 PR 5's complexity-classifier (C7, R24). Until it exists every task falls back to
         # standard with fallback: static, which status.classification records.
         classifierURL: http://complexity-classifier.agent-system.svc.cluster.local:8080/v1/classify
-        controlPercent: 10  # OD-14
+        # 0 while the v2 cohort runs: the control group's frontier tier runs `trio`, not the `pair`
+        # the cohort measures. Back to 10 when it ends (docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md).
+        controlPercent: 0  # OD-14
       classes:
         # Shadow until the wave (owner, 2026-09-27; R32): decided like a live class, never armed.
         docs-links: {shadow: true}
@@ -65,6 +67,7 @@ data:
         docs: {}
         tests: {}
         dashboards: {}
+        scripts: {}
       merge:
         # Classic protection's 8 contexts (app 15368), read with `gh api repos/Smana/cloud-native-ref/branches/main/protection`.
         requiredChecks:
