@@ -15,7 +15,7 @@ role page links to its row here instead of repeating it.
 |---|---|---|
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
 | Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end (implementer, reviewer, human merge), of 11 merged through label intake. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
-| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud. Proposed on 2026-10-12, pending the owner: a hard-task cohort first, a continuation loop, a reviewer on another model, warm and suspended sandboxes | [v2 roadmap](#v2-roadmap) |
+| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud. Proposed on 2026-10-12, pending the owner: a hard-task cohort first, a continuation loop, a reviewer on another model, warm and suspended sandboxes, and the AI platform in its own repository | [v2 roadmap](#v2-roadmap) |
 
 ## Serving
 
@@ -250,10 +250,14 @@ flowchart LR
   cohort -->|proposed| loop["Continuation loop"]
   cohort -->|proposed| rev["Reviewer on another model"]
   hard -->|proposed| warm["Warm and suspended<br/>sandboxes"]
+  hard -->|proposed| split["Own repository<br/>ai-platform-ref"]
+  split -.->|new code lands there| loop
+  split -.-> warm
 ```
 
 | Capability | Gate: what must be proven first |
 |---|---|
+| **Its own repository, `ai-platform-ref`** (proposed, [ADR-0057]({{< relref "/docs/decisions/0057-ai-platform-own-repository.md" >}})) | The harness and token-exchange images built by `agent-platform`; a CI check in this repository that renders the AI paths against a host profile and refuses cross-references outside the [host contract](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-ai-platform-split-design.md#2-host-contract); the v1 hardening closed. Then the switch: the rendered cluster bundle differs only in `sourceRef` and `path`, and a rebuilt cluster passes runbook 11 step 7 on release pins. New v2 code is built after it, in the new repository |
 | **A hard-task cohort** (proposed, first) | 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template. One row per task from the counters that exist plus `gh`: tokens, money at list price (an upper bound), label to PR and to merge, review rounds, fix runs and reverts, accepted or not, and the maintainer's logged minutes. The same issues through a hosted agent under the same checks |
 | **A continuation loop** (proposed) | The next step is chosen from the PR's state (CI red, a `changes` verdict, a maintainer's review, a head moved since the last verdict) within the task budget, keeping: at most two consecutive steps of one trigger, at most 6 steps, resumes counted apart, and only a maintainer's review as a human trigger. On the cohort, escalation rate, accepted outcomes and human minutes no worse than today's counters. Recorded in the factory design first |
 | **A reviewer on another model** (proposed) | The reviewer already runs on another tier; a `tier-*` route and a model per tier remain. An ADR, then measured on the cohort: agreement with the human's verdict, tokens |
