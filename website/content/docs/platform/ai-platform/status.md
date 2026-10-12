@@ -2,7 +2,7 @@
 title: Status and roadmap
 weight: 60
 description: "The one place the AI platform's state lives: what serves, what the agent factory's v1 proves live, the hardening before it is dependable, the v2 roadmap, and the serving roadmap."
-lastVerified: 2026-10-08
+lastVerified: 2026-10-12
 aliases:
   - /docs/platform/agent-factory/status/
   - /docs/platform/ai-platform/roadmap/
@@ -15,7 +15,7 @@ role page links to its row here instead of repeating it.
 |---|---|---|
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
 | Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
-| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud | [v2 roadmap](#v2-roadmap) |
+| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud. Proposed on 2026-10-12, pending the owner: a hard-task cohort first, a continuation loop, a reviewer on another model, warm and suspended sandboxes | [v2 roadmap](#v2-roadmap) |
 
 ## Serving
 
@@ -226,42 +226,58 @@ milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone
 v2 widens what v1 covers, one capability at a time. Each capability has a gate: the evidence that
 must exist before it is turned on. Passing one gate opens nothing else, and none has a date.
 
+{{< callout type="info" >}}
+**Proposed amendment, owner review pending.** The rows marked *proposed* come from the
+[v1 review of 2026-10-12](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md),
+which argues them. Every merged outcome so far is a docs fix of 1 to 12 lines because the pilot was
+fed docs issues, so the first proposal is a cohort of harder issues on v1 as it is. Nothing below
+is removed or reordered.
+{{< /callout >}}
+
 ```mermaid
 flowchart LR
   v1["v1, pilot scope<br/>2026-10-08"] -->|then| hard["v1 hardening"]
+  hard -->|proposed| cohort["Hard-task cohort"]
+  cohort -->|proposed| loop["Continuation loop"]
+  cohort -->|proposed| rev["Reviewer on another model"]
+  hard -->|proposed| warm["Warm and suspended<br/>sandboxes"]
+  hard -->|gate| merge["Live auto-merge"]
   hard -->|gate| repo["A second repository"]
   repo -->|gate| priv["Private repositories"]
+  repo -->|one owner per repo| cloud["A second active cloud"]
   hard -->|gate| gw["agentgateway, tiers,<br/>gateway budgets"]
   gw -->|model route| internal["internal work"]
-  hard -->|gate| merge["Live auto-merge"]
   hard -->|gate| caps["Per-person caps"]
-  repo -->|one owner per repo| cloud["A second active cloud"]
 ```
 
 | Capability | Gate: what must be proven first |
 |---|---|
-| A second repository | The factory takes issues from several repositories ([the steps]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}})). Every admission path binds the request's repository to its room and checks the caller's GitHub permission on it, roomless and resumed runs included. One fenced factory owns each repository, so two clusters never take the same issue |
+| **A hard-task cohort** (proposed, first) | 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template. One row per task from the counters that exist plus `gh`: tokens, money at list price (an upper bound), label to PR and to merge, review rounds, fix runs and reverts, accepted or not, and the maintainer's logged minutes. The same issues through a hosted agent under the same checks |
+| **A continuation loop** (proposed) | The next step is chosen from the PR's state (CI red, a `changes` verdict, a maintainer's review, a head moved since the last verdict) within the task budget, keeping: at most two consecutive steps of one trigger, at most 6 steps, resumes counted apart, and only a maintainer's review as a human trigger. On the cohort, escalation rate, accepted outcomes and human minutes no worse than today's counters. Recorded in the factory design first |
+| **A reviewer on another model** (proposed) | The reviewer already runs on another tier; a `tier-*` route and a model per tier remain. An ADR, then measured on the cohort: agreement with the human's verdict, tokens |
+| **Warm and suspended sandboxes** (proposed) | The extensions controller enabled; a `SandboxTemplate` rendering the run pod minus its per-run parts, claimed without `env` or volume templates (which bypass the pool); a run waiting on a human suspended rather than ended; start time measured against today's 90 s on a fresh node |
+| A second repository | The factory takes issues from several repositories ([the steps]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}})). Every admission path binds the request's repository to its room and checks the caller's GitHub permission on it, roomless and resumed runs included. One fenced factory owns each repository, so two clusters never take the same issue. *Proposed:* scope the change by the review's inventory of single-repository literals (both GitHub connections, intake, the Room default, labels, class names) |
 | Private repositories | All of the above, plus runbook 11's private-repository checks (5b–5e) passing live. Rooms already follow GitHub's permissions |
 | Model routing by tier, budgets at the gateway | The agent router moves to agentgateway (selected 2026-10-01 after a PoC on `gcp-0`: [gap matrix](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agentgateway-gap-matrix-research.md#poc-result-2026-10-01-gcp-0)); then per-run and fleet budgets and the tier routes on it |
-| `internal` work: RunLore investigations, cluster and log reads | A model route for `internal` runs, through the Anthropic API (its ADR lands with the agentgateway migration). A composition that gives `internal` runs no direct GitHub egress, proven by a refused write with a supplied token. RunLore intake that recovers a half-created issue |
-| Live auto-merge of `docs-links` and `revert` | The merge breaker's state survives a rebuild; a head-pinned merge and its revert drilled on a live cluster |
+| `internal` work: RunLore investigations, cluster and log reads | A model route for `internal` runs, through the Anthropic API (its ADR lands with the agentgateway migration). A composition that gives `internal` runs no direct GitHub egress, proven by a refused write with a supplied token. RunLore intake that recovers a half-created issue. *Proposed:* the egress fence lands with the hardening, because RunLore findings already start `internal` triager runs with GitHub egress |
+| Live auto-merge of `docs-links` and `revert` | The merge breaker's state survives a rebuild; a head-pinned merge and its revert drilled on a live cluster. *Proposed:* a PR handed to a human can return to the gate (today none does, so every CI-fixed PR on a reviewed template stays with a human); and, for `docs-links` only, 20 shadow "would merge" decisions that a human then merged unchanged. `revert` keeps the drill: reverts exist only after a real auto-merge |
 | Per-person spend caps | Label-triggered and API admission share one reservation; an exhausted ledger refuses both |
 | A second active cloud (`gcp-0`) | The factory reaches the identity provider over GKE's datapath, proven with Hubble; the single-owner fence above; the CPU quota ([F3](#live-findings)) |
 | Attended rooms at scale | An approval's deadline enforced inside the decision, not by a later sweep |
-| A different sandbox runtime | A two-day Substrate spike at the next `gcp-0` rebuild ([alternatives]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}})) |
+| A different sandbox runtime | A two-day Substrate spike at the next `gcp-0` rebuild ([alternatives]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}})), *proposed* as a comparison: agent-sandbox itself ships warm pools and disk-backed suspend, so the spike shows what Substrate adds over them |
 
 ### How v2 is judged
 
 A gate is a go/no-go on evidence. Beside the gates, each v2 decision is weighed against what v1
 delivers, counted the same way for every task, failures included:
 
-| Measure | Definition |
-|---|---|
-| Accepted outcomes | Factory PRs merged under the same checks and approvals as a human's; approved but unmerged counted apart |
-| Cost per accepted outcome | Tokens, then money, of every run of the cohort, failed ones included, divided by its accepted outcomes |
-| Human time | Minutes of review, operation and repair per accepted outcome |
-| Elapsed time | Label to PR, label to merge, and "needs you" to the human's action |
-| Rework | Review rounds, CI-fix runs and reverts |
+| Measure | Definition | Collected today |
+|---|---|---|
+| Accepted outcomes | Factory PRs merged under the same checks and approvals as a human's; approved but unmerged counted apart | Merged, closed and reverted are counted (`agent_factory_pr_outcomes_total`); approved-but-unmerged is not |
+| Cost per accepted outcome | Tokens, then money, of every run of the cohort, failed ones included, divided by its accepted outcomes | Tokens per task, under-reported in the closing comment; money per run on the run dashboard, not per task |
+| Human time | Minutes of review, operation and repair per accepted outcome | Interventions are counted by kind; minutes are not |
+| Elapsed time | Label to PR, label to merge, and "needs you" to the human's action | Label to PR; label to merge is derivable; "needs you" to action is not recorded |
+| Rework | Review rounds, CI-fix runs and reverts | Rounds and fix runs on the Task; reverts in the outcomes |
 
 The same tasks run through a simpler hosted agent, under the same checks, give the comparison that
 says whether the factory's governance pays for operating it.
