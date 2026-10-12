@@ -136,6 +136,8 @@ it. RunLore findings already create `internal` triager runs (`internal/factory/i
 `internal/factory/triage/classify.go:63-64`) holding a read token. **Fix:** the composition change; until then,
 reopen T4 and T5 in the design.
 
+Fixed: crossplane-configuration v0.9.5, agent-platform#72; live proof pending.
+
 <a id="n5"></a>
 **N5 · Single-repository literals are wider than the second-repository gate suggests.** Both GitHub
 connections bind to one repository (`internal/app/factory.go:116-127`, `internal/factory/forge/github.go:50-78`),
