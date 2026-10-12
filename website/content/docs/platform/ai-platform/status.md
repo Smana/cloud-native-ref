@@ -2,7 +2,7 @@
 title: Status and roadmap
 weight: 60
 description: "The one place the AI platform's state lives: what serves, what the agent factory's v1 proves live, the hardening before it is dependable, the v2 roadmap, and the serving roadmap."
-lastVerified: 2026-10-08
+lastVerified: 2026-10-12
 aliases:
   - /docs/platform/agent-factory/status/
   - /docs/platform/ai-platform/roadmap/
@@ -14,8 +14,8 @@ role page links to its row here instead of repeating it.
 | Area | State | Detail |
 |---|---|---|
 | Serving | Off by default on both clouds; four known gaps; one roadmap path shipped, six open | [Serving](#serving) |
-| Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
-| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud | [v2 roadmap](#v2-roadmap) |
+| Agent factory | **v1 shipped 2026-10-08, pilot scope**: on `main`, running on `aws-0`, three factory PRs merged end to end (implementer, reviewer, human merge), of 11 merged through label intake. Not production-ready: hardening comes first | [v1](#v1-what-shipped), [hardening](#v1-hardening) |
+| Agent factory v2 | One go/no-go gate per expansion: a second repository, private repositories, `internal` work, live auto-merge, per-person caps, model routing, a second active cloud. Proposed on 2026-10-12, pending the owner: a hard-task cohort first, a continuation loop, a reviewer on another model, warm and suspended sandboxes, and the AI platform in its own repository | [v2 roadmap](#v2-roadmap) |
 
 ## Serving
 
@@ -172,7 +172,8 @@ multiple addressable consumers, including using LoRA adapter names as proxy
 **v1 shipped on 2026-10-08, pilot scope.** It is on `main` (agent-platform `v0.8.0`,
 crossplane-configuration `v0.9.3`) and runs on `aws-0`; a cluster opts in, because the umbrellas
 ship suspended. A labelled issue becomes a reviewed pull request that a human merges: three factory
-PRs have merged that way. v1 is **viable for governed side tasks on one public repository. It is
+PRs have merged that way, implementer then reviewer then a human merge, of 11 agent PRs merged
+through label intake. v1 is **viable for governed side tasks on one public repository. It is
 not production-ready**: the [hardening](#v1-hardening) comes before anything is called dependable,
 and each [v2](#v2-roadmap) expansion passes its own gate.
 
@@ -198,7 +199,7 @@ and each [v2](#v2-roadmap) expansion passes its own gate.
 | Local-first: `roomctl status`, the room page, the `factory-handoff` skill, room access that follows GitHub (D7) | **Partly proven** | [Runbook 11](https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/11-v1-validation.md#results), 2026-10-08: 5 pass, 3 partial, 4 open (the checks that need a second GitHub account) |
 | Per-run logs, metrics, traces, dashboards and the stuck-sandbox alert | **Proven live** | Runbook 11, Step 6, 2026-10-08. MCP calls are not yet in the trace ([F16](#live-findings)) |
 | Merge gate for `docs-links` and `revert` | Shadow | Records what it would merge; a maintainer merges |
-| RunLore findings as a trigger (`investigate`) | Configured, not proven | It creates `internal` tasks, which have no model route |
+| RunLore findings as a trigger (`investigate`) | Configured, not proven | It creates `internal` tasks, which have no model route. Their triager runs still get GitHub egress ([review, N4](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md#n4)) |
 | Per-person spend caps | Shadow | `enforcePrincipal: false` |
 | Routing by tier | Not available | Every tier uses `agent-default` |
 
@@ -208,8 +209,8 @@ point for v2's measurements, not a target.
 
 ### v1 hardening
 
-What must hold before v1 is called dependable. Every item is an issue on the **v1 hardening**
-milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone/1) and
+What must hold before v1 is called dependable. Every item but the one marked *proposed* is an issue
+on the **v1 hardening** milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone/1) and
 [cloud-native-ref](https://github.com/Smana/cloud-native-ref/milestone/1).
 
 | Theme | What must hold | Issues |
@@ -219,12 +220,21 @@ milestone, in [agent-platform](https://github.com/Smana/agent-platform/milestone
 | Task lifecycle | Finished rooms close and age out; a run's reason and trigger are reported as they happened; agents post progress | agent-platform [#56](https://github.com/Smana/agent-platform/issues/56), [#33](https://github.com/Smana/agent-platform/issues/33), [#40](https://github.com/Smana/agent-platform/issues/40), [#41](https://github.com/Smana/agent-platform/issues/41), [#60](https://github.com/Smana/agent-platform/issues/60) |
 | People | "Needs you" includes a PR waiting for its merge; a waiting phase says why and what next; onboarding in two commands, from the skill too; a room list that names the issue; generated commands carry `--repo`; human acts are logged; a GitHub link for Google-only users | agent-platform [#51](https://github.com/Smana/agent-platform/issues/51), [#59](https://github.com/Smana/agent-platform/issues/59), [#48](https://github.com/Smana/agent-platform/issues/48), [#49](https://github.com/Smana/agent-platform/issues/49), [#50](https://github.com/Smana/agent-platform/issues/50), [#44](https://github.com/Smana/agent-platform/issues/44), [#61](https://github.com/Smana/agent-platform/issues/61); cloud-native-ref [#2269](https://github.com/Smana/cloud-native-ref/issues/2269) |
 | Operations | A fresh install from documented inputs; drains during a GitHub outage; broker config changes roll out; the core composition owned as code; the factory upgrade takes its new tag; a teardown that leaves nothing; IdP secret rotation; the ZITADEL floor checked in CI; a rooms restore drill | agent-platform [#57](https://github.com/Smana/agent-platform/issues/57), [#58](https://github.com/Smana/agent-platform/issues/58); cloud-native-ref [#2280](https://github.com/Smana/cloud-native-ref/issues/2280), [#2274](https://github.com/Smana/cloud-native-ref/issues/2274), [#2275](https://github.com/Smana/cloud-native-ref/issues/2275), [#2276](https://github.com/Smana/cloud-native-ref/issues/2276), [#2277](https://github.com/Smana/cloud-native-ref/issues/2277), [#2278](https://github.com/Smana/cloud-native-ref/issues/2278), [#2279](https://github.com/Smana/cloud-native-ref/issues/2279), [#2273](https://github.com/Smana/cloud-native-ref/issues/2273) |
+| Data class (*proposed*, not yet filed) | `internal` runs get no direct GitHub egress, proven by a refused write with a supplied token ([review, N4](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md#n4)) | — |
 | Evidence | D7 on a private repository (runbook 11, 5b–5e); F10, F12 and F15 re-checked live; MCP calls in the trace; docs and the walkthrough script that match what runs | cloud-native-ref [#2281](https://github.com/Smana/cloud-native-ref/issues/2281), [#2282](https://github.com/Smana/cloud-native-ref/issues/2282), [#2283](https://github.com/Smana/cloud-native-ref/issues/2283), [#2268](https://github.com/Smana/cloud-native-ref/issues/2268), [#2251](https://github.com/Smana/cloud-native-ref/issues/2251), [#2252](https://github.com/Smana/cloud-native-ref/issues/2252) |
 
 ### v2 roadmap
 
 v2 widens what v1 covers, one capability at a time. Each capability has a gate: the evidence that
 must exist before it is turned on. Passing one gate opens nothing else, and none has a date.
+
+{{< callout type="info" >}}
+**Proposed amendment, owner review pending.** The rows marked *proposed* come from the
+[v1 review of 2026-10-12](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md),
+which argues them. Every merged outcome so far is a docs fix adding at most 12 lines because the pilot was
+fed docs issues, so the first proposal is a cohort of harder issues on v1 as it is. Nothing below
+is removed or reordered.
+{{< /callout >}}
 
 ```mermaid
 flowchart LR
@@ -236,32 +246,43 @@ flowchart LR
   hard -->|gate| merge["Live auto-merge"]
   hard -->|gate| caps["Per-person caps"]
   repo -->|one owner per repo| cloud["A second active cloud"]
+  v1 -->|proposed, now| cohort["Hard-task cohort"]
+  cohort -->|proposed| loop["Continuation loop"]
+  cohort -->|proposed| rev["Reviewer on another model"]
+  gw -->|tier route| rev
+  hard -->|proposed| warm["Warm and suspended<br/>sandboxes"]
+  hard -->|proposed| split["Own repository<br/>ai-native-ref"]
 ```
 
 | Capability | Gate: what must be proven first |
 |---|---|
-| A second repository | The factory takes issues from several repositories ([the steps]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}})). Every admission path binds the request's repository to its room and checks the caller's GitHub permission on it, roomless and resumed runs included. One fenced factory owns each repository, so two clusters never take the same issue |
+| **Its own repository, `ai-native-ref`** (proposed, [ADR-0057]({{< relref "/docs/decisions/0057-ai-platform-own-repository.md" >}})) | The harness image built by `agent-platform`; a CI check in this repository that renders the AI paths against a host profile and refuses cross-references outside the [host contract](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-ai-platform-split-design.md#2-host-contract); the v1 hardening closed. Then the switch: the rendered cluster bundle changes only in the new suspended source and the `sourceRef`s, and a rebuilt cluster passes runbook 11 step 7 on release pins. Last, the AI docs publish on their own site, `ainref.ogenki.io`, linked both ways with this one. No other v2 row waits for it: their code lives in `agent-platform` and `crossplane-configuration` |
+| **A hard-task cohort** (proposed, first; runs on v1 now, since a human merges every PR) | 10 to 20 real `tests`, `dashboards` and `scripts` issues, listed before the first run, through today's `pair` template (`scripts` needs a class beside `tests` and `dashboards`). One row per task from the counters that exist plus `gh`: tokens, money at list price (an upper bound), label to PR and to merge, review rounds, fix runs and reverts, accepted or not, and the maintainer's logged minutes. The same issues through a hosted agent under the same checks, and once more through the factory on the hosted agent's model, so the comparison separates the model from the harness and governance. Each escalation records which counter ran out, and whether the PR could still have been fixed |
+| **A continuation loop** (proposed) | The next step is chosen from the PR's state (CI red, a `changes` verdict, a maintainer's review, a head moved since the last verdict) within the task budget, keeping: at most two consecutive steps of one trigger, at most 6 steps, resumes counted apart, and only a maintainer's review as a human trigger. Built only if the cohort shows escalations where a counter ran out on a PR that could still have been fixed; then, on the cohort, fewer such escalations, with accepted outcomes and human minutes no worse. Recorded in the factory design first |
+| **A reviewer on another model** (proposed) | The reviewer already runs on another tier; a `tier-*` route and a model per tier remain, so it follows the tier-routing gate below. An ADR, then measured on the cohort: agreement with the human's verdict, tokens |
+| **Warm and suspended sandboxes** (proposed) | The extensions controller enabled; a `SandboxTemplate` rendering the run pod minus its per-run parts, claimed without `env` or volume templates (which bypass the pool); a run waiting on a human suspended rather than ended, its OpenHands conversation and room bridge restored on resume (suspend keeps volumes, not memory); a start-time target and an idle-cost cap set before the pool is turned on, measured against today's 90 s on a fresh node |
+| A second repository | The factory takes issues from several repositories ([the steps]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}})). Every admission path binds the request's repository to its room and checks the caller's GitHub permission on it, roomless and resumed runs included. One fenced factory owns each repository, so two clusters never take the same issue. *Proposed:* scope the change by the review's inventory of single-repository literals (both GitHub connections, intake, the Room default, labels, class names) |
 | Private repositories | All of the above, plus runbook 11's private-repository checks (5b–5e) passing live. Rooms already follow GitHub's permissions |
 | Model routing by tier, budgets at the gateway | The agent router moves to agentgateway (selected 2026-10-01 after a PoC on `gcp-0`: [gap matrix](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agentgateway-gap-matrix-research.md#poc-result-2026-10-01-gcp-0)); then per-run and fleet budgets and the tier routes on it |
-| `internal` work: RunLore investigations, cluster and log reads | A model route for `internal` runs, through the Anthropic API (its ADR lands with the agentgateway migration). A composition that gives `internal` runs no direct GitHub egress, proven by a refused write with a supplied token. RunLore intake that recovers a half-created issue |
-| Live auto-merge of `docs-links` and `revert` | The merge breaker's state survives a rebuild; a head-pinned merge and its revert drilled on a live cluster |
+| `internal` work: RunLore investigations, cluster and log reads | A model route for `internal` runs, through the Anthropic API (its ADR lands with the agentgateway migration). A composition that gives `internal` runs no direct GitHub egress, proven by a refused write with a supplied token. RunLore intake that recovers a half-created issue. *Proposed:* the egress fence lands with the hardening, because RunLore findings already start `internal` triager runs with GitHub egress |
+| Live auto-merge of `docs-links` and `revert` | The merge breaker's state survives a rebuild; a head-pinned merge and its revert drilled on a live cluster. *Proposed:* a PR handed to a human can return to the gate (today none does, so every CI-fixed PR on a reviewed template stays with a human), but only after a transient verdict (`verdict_stale`, `policy_*`, `head_unreported`) and a head the factory moved, never one a human was asked to judge; the 20 shadow decisions are counted after that fix, since today a CI-fixed PR logs `verdict_stale`; and, for `docs-links` only, 20 shadow "would merge" decisions that a human then merged unchanged. `revert` keeps the drill: reverts exist only after a real auto-merge |
 | Per-person spend caps | Label-triggered and API admission share one reservation; an exhausted ledger refuses both |
 | A second active cloud (`gcp-0`) | The factory reaches the identity provider over GKE's datapath, proven with Hubble; the single-owner fence above; the CPU quota ([F3](#live-findings)) |
 | Attended rooms at scale | An approval's deadline enforced inside the decision, not by a later sweep |
-| A different sandbox runtime | A two-day Substrate spike at the next `gcp-0` rebuild ([alternatives]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}})) |
+| A different sandbox runtime | A two-day Substrate spike at the next `gcp-0` rebuild ([alternatives]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}})), *proposed* as a comparison: agent-sandbox itself ships warm pools and disk-backed suspend, so the spike shows what Substrate adds over them |
 
 ### How v2 is judged
 
 A gate is a go/no-go on evidence. Beside the gates, each v2 decision is weighed against what v1
 delivers, counted the same way for every task, failures included:
 
-| Measure | Definition |
-|---|---|
-| Accepted outcomes | Factory PRs merged under the same checks and approvals as a human's; approved but unmerged counted apart |
-| Cost per accepted outcome | Tokens, then money, of every run of the cohort, failed ones included, divided by its accepted outcomes |
-| Human time | Minutes of review, operation and repair per accepted outcome |
-| Elapsed time | Label to PR, label to merge, and "needs you" to the human's action |
-| Rework | Review rounds, CI-fix runs and reverts |
+| Measure | Definition | Collected today |
+|---|---|---|
+| Accepted outcomes | Factory PRs merged under the same checks and approvals as a human's; approved but unmerged counted apart | Merged, closed and reverted are counted (`agent_factory_pr_outcomes_total`); approved-but-unmerged is not |
+| Cost per accepted outcome | Tokens, then money, of every run of the cohort, failed ones included, divided by its accepted outcomes | Tokens per task, under-reported in the closing comment; money per run on the run dashboard, not per task |
+| Human time | Minutes of review, operation and repair per accepted outcome | Interventions are counted by kind; minutes are not |
+| Elapsed time | Label to PR, label to merge, and "needs you" to the human's action | Label to PR; label to merge is derivable; "needs you" to action is not recorded |
+| Rework | Review rounds, CI-fix runs and reverts | Rounds and fix runs on the Task; reverts in the outcomes |
 
 The same tasks run through a simpler hosted agent, under the same checks, give the comparison that
 says whether the factory's governance pays for operating it.

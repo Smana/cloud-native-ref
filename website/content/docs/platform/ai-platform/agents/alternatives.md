@@ -2,7 +2,7 @@
 title: Alternatives considered
 weight: 50
 description: "Work in progress. The alternatives considered for each layer of the agent factory, why the current choices won, the projects evaluated in detail, and what would make us reconsider."
-lastVerified: 2026-10-04
+lastVerified: 2026-10-12
 ---
 
 {{< callout type="warning" >}}
@@ -70,7 +70,7 @@ flowchart TB
 | **Harness** | [OpenHands](https://github.com/OpenHands/software-agent-sdk) agent-server | Headless Claude Code, kagent's harnesses, ax's Antigravity agent | Open source, headless (an HTTP API), works with any OpenAI-compatible model, supports MCP. Claude Code is proprietary; Antigravity is Gemini-only |
 | **Gateway** | [agentgateway](https://agentgateway.dev) (decided 2026-10-01; [Agent Router](https://theagentrouter.ai) runs today) | Agent Router 1.1 on Envoy Gateway | See [gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}}) |
 | **Rooms** | A log we own: room-broker on PostgreSQL | OpenHands shared conversations, ACP, A2A through a gateway, Valkey Streams, NATS JetStream, ax or Substrate as the session layer, kagent sessions | Two different questions. **Protocols** (OpenHands shared conversations, ACP, A2A, ax or Substrate, kagent sessions): none records who said what among several people and agents, or who may approve. **Brokers** (Valkey Streams, NATS JetStream): an event is written to Postgres first, which fixes its place in the log, then announced with `LISTEN/NOTIFY`. At a few events per second a second stateful system adds nothing, and delivering live before the write would let watchers see events the audit log never records |
-| **Factory** | A small custom controller + [Kueue](https://kueue.sigs.k8s.io) | Argo Workflows, Tekton, Temporal, a Crossplane `Task` composition, gh-aw | The factory's state lives in Kubernetes objects and GitHub. Waiting hours on CI or a review is a periodic re-check of that state, so a restart loses nothing. Budgets and the kill switch are domain logic any engine would still need. Argo has no budget concept and a Crossplane composition has no timers. Temporal suits workflows whose state lives in code, and is the one to watch ([below](#temporal)) |
+| **Factory** | A small custom controller + [Kueue](https://kueue.sigs.k8s.io) | Argo Workflows, Tekton, Temporal, a Crossplane `Task` composition, gh-aw, OpenAI's Symphony specification ([below](#openai-symphony)) | The factory's state lives in Kubernetes objects and GitHub. Waiting hours on CI or a review is a periodic re-check of that state, so a restart loses nothing. Budgets and the kill switch are domain logic any engine would still need. Argo has no budget concept and a Crossplane composition has no timers. Temporal suits workflows whose state lives in code, and is the one to watch ([below](#temporal)) |
 | **Merge gate** | [policy-bot](https://github.com/palantir/policy-bot) behind a repository ruleset | Required reviews, rulesets alone, a custom check, Prow/tide, Mergify, Kodiak | The policy lives in the repository and is reviewable, and the right to merge sits with one dedicated App |
 
 The full records are in the programme's design documents, listed under [Sources](#sources).
@@ -83,6 +83,7 @@ The full records are in the programme's design documents, listed under [Sources]
 | Postgres `LISTEN/NOTIFY` for room fan-out | NATS JetStream, for fan-out only: the log stays in Postgres and is written first | Notification latency or database load shows on the room dashboards, or rooms need many broker replicas |
 | gVisor | Kata or Firecracker microVMs | Concurrency reaches about 20 sandboxes, enough to fill a metal host; a gVisor incompatibility blocks a class of task; or nested virtualisation becomes available on our node types |
 | agent-sandbox, one pod per run | [Agent Substrate](#agent-substrate) | See [Reconsidering Substrate](#reconsidering-substrate-not-now-deliberately-open) |
+| One cold pod per run, held or ended while it waits | agent-sandbox's own `SandboxWarmPool` and `operatingMode: Suspended`, in the pinned v1.0.5; the composition suspends only finished runs | Now: a run starts in about 90 s on a fresh node ([v1 review, 2026-10-12](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md)). A claim that sets `env` or volume templates bypasses the warm pool |
 
 ## Projects evaluated in detail
 
@@ -122,8 +123,10 @@ the sandbox, on top of the [Substrate triggers](#reconsidering-substrate-not-now
 **What it is.** A runtime that packs many gVisor-isolated agents into shared worker pods and can
 **suspend and resume** an agent, memory included, from snapshots.
 
-**What it would bring.** Suspend and resume is the one capability we lack and cannot build cheaply
-(see [below](#would-rebuilding-on-kagent--substrate-be-simpler)).
+**What it would bring.** Fork from a running snapshot, and memory snapshots on any cluster (see
+[below](#would-rebuilding-on-kagent--substrate-be-simpler)). agent-sandbox has disk-backed
+suspend since v0.5.0 (`operatingMode: Suspended`, which deletes the pod and keeps its volumes) and
+GKE-only memory snapshots driven from its Python SDK; the composition suspends only finished runs.
 
 **Why not yet.**
 
@@ -187,6 +190,32 @@ and workflows that are versioned as code, which is heavy at today's 20 tasks a d
 candidate is the automatic resume of runs lost to spot reclamation, now being designed: if resume
 rules multiply, a workflow engine becomes worth its weight.
 
+### OpenAI Symphony
+
+*Checked on 2026-10-12 at the repository's `SPEC.md`; last push 2026-09-15.*
+
+**What it is.** An Apache-2.0 *specification* for an orchestrator that polls an issue tracker,
+claims ready issues, gives each one an isolated workspace and runs a coding agent in it, with
+bounded concurrency, stall and turn-silence timeouts, exponential backoff and restart reconciliation
+without a database. An Elixir reference implementation exists; OpenAI calls it a "low-key
+engineering preview". The agent is Codex only (its app-server protocol); the tracker is pluggable,
+with Linear, GitHub Issues, Jira Cloud, Asana and GitLab adapters in the reference.
+
+**Why not.** It leaves our layers to each implementation: its non-goals include *"Mandating strong
+sandbox controls beyond what the coding agent and host OS provide"* and *"Mandating a single
+default approval, sandbox, or operator-confirmation posture for all implementations"* (SPEC §2.2).
+Workspaces are directories, locally or on SSH workers; tokens are tracked but not enforced; the
+merge is whatever the agent does from a hook.
+
+**Worth learning from:** its continuation rule (SPEC §7.1): after each turn the worker re-checks
+the issue's state and starts another turn while it stays active, up to `max_turns` per worker
+session, rather than spending fixed counters per trigger. It has no total per-issue budget. Its
+defaults are a baseline: stall 300 s, `max_turns` 20, backoff capped at 5 min, and a 1 h limit on a
+turn's silence (not its length).
+
+**Reconsider if** the spec gains a non-Codex agent adapter and a sandbox hook; even then it would
+replace polling and slot logic only.
+
 ## Would rebuilding on kagent + Substrate be simpler?
 
 It is the strongest challenge to this design, so it is judged on the work still ahead, not on what
@@ -201,6 +230,9 @@ is already built.
 | A fork copies the log and starts a fresh run | A fork carries a snapshot of the running agent |
 | We maintain an identity sidecar to keep provider keys out of the sandbox | Substrate's egress gateway injects them (static keys only) |
 | Every run starts cold and pulls its image | Agents start from a pre-warmed snapshot |
+
+Warm pools, disk-backed suspend and GKE memory snapshots are already in agent-sandbox; the spike
+compares Substrate against them.
 
 **What we would still build:**
 - **The factory**, whole.
@@ -245,6 +277,8 @@ time with our sandbox pod.
 
 ## Sources
 
+- [Agent factory v1 review, 2026-10-12](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-12-agent-factory-v1-review.md):
+  build-or-adopt per layer, Symphony, agent-sandbox's suspend and warm pools
 - [kagent evaluation, 2026-10-04](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-04-kagent-evaluation-research.md)
 - [ax and Substrate re-check, 2026-10-04](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-10-01-agent-ecosystem-recheck-research.md#2026-10-04-re-check-ax-and-substrate-claims-against-code)
 - [Runtime research, with the first ax and Substrate evaluation](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-research.md)
