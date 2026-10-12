@@ -179,8 +179,8 @@ flux get kustomizations -n flux-system | grep -E '^(agent-router|agent-mcp|octo-
 
 Expected: all four `Ready=True`.
 
-Runs use the repo-built harness, pinned by the composition as a pre-release
-(`agent-harness:v0.2.0-pr2142.10c062c2`) until its plain tag ships.
+Runs use the harness released by `agent-platform`, pinned by digest in the composition
+(`agent-harness:v0.9.0` at crossplane-configuration `v0.9.4`).
 
 ### Cleanup and teardown
 

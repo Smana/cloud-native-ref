@@ -1,6 +1,6 @@
 # AI platform split: `ai-native-ref` and its host contract
 
-**Date:** 2026-10-12 · **Status:** proposed, owner review pending ·
+**Date:** 2026-10-12 · **Status:** accepted (ADR-0057) ·
 **ADR:** [0057](../../../website/content/docs/decisions/0057-ai-platform-own-repository.md) ·
 **Part of:** the v2 roadmap on the
 [status page](../../../website/content/docs/platform/ai-platform/status.md#v2-roadmap)

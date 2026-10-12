@@ -260,14 +260,6 @@
       "automerge": false
     },
     {
-      "description": "The agent harness installs a lock compiled by `uv pip compile` from requirements.in against upstream-constraints.txt, the third-party set OpenHands locked for its release. Renovate bumping one pin of either file breaks the resolution (#2253, #2260, #2261: lmnr 0.7.64 needs a newer opentelemetry-semantic-conventions than the constraints allow) and departs from the tested set. Both are regenerated together when the openhands-* pins in requirements.in move.",
-      "matchFileNames": [
-        "container-images/agent-harness/requirements.txt",
-        "container-images/agent-harness/upstream-constraints.txt"
-      ],
-      "enabled": false
-    },
-    {
       "description": "Hold TypeScript below 6 for the Headlamp plugin. @kinvolk/headlamp-plugin 0.14's base tsconfig sets `baseUrl` and `moduleResolution: node10`, which TypeScript 6 rejects (TS5101, TS5107), so the build fails (#2074). Lift once the plugin toolchain ships a TypeScript 6 config; silencing with `ignoreDeprecations` only defers the break to TypeScript 7.",
       "matchFileNames": [
         "container-images/headlamp-plugin-app/package.json"

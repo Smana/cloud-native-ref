@@ -5,7 +5,7 @@
 set -euo pipefail
 ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # Files that must always be gate paths, whatever the children say.
-SENTINELS="${SENTINELS:-.policy.yml .github/rulesets/agent-merge-gate.json clusters/aws-0/agent-platform.yaml AGENTS.md security/AGENTS.md .claude/settings.json .agents/skills/x docs/platform-constitution.md scripts/ci/check-policy-gate-coverage.sh scripts/ci/check-workflow-secrets.sh container-images/agent-harness/commit-msg opentofu/aws/openbao/management/policies/external-secrets.hcl}"
+SENTINELS="${SENTINELS:-.policy.yml .github/rulesets/agent-merge-gate.json clusters/aws-0/agent-platform.yaml AGENTS.md security/AGENTS.md .claude/settings.json .agents/skills/x docs/platform-constitution.md scripts/ci/check-policy-gate-coverage.sh scripts/ci/check-workflow-secrets.sh infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml opentofu/aws/openbao/management/policies/external-secrets.hcl}"
 ROOT="$ROOT" SENTINELS="$SENTINELS" python3 - <<'PY'
 import glob, os, re, sys, yaml
 
