@@ -138,8 +138,11 @@ class Boundary:
         for ref in spec.get("valuesFrom") or []:
             key = f"{ref.get('kind')}/{ref.get('name')}"
             sides = self.objects.get(key, set())
-            if s == "host" and sides == {"ai"} and key not in self.c["ai_objects_host_reads"]:
-                self.fail(rel, f"{owner} reads {key}, which an AI path defines (H8 lists the only one allowed)")
+            if s == "host" and sides == {"ai"}:
+                if key not in self.c["ai_objects_host_reads"]:
+                    self.fail(rel, f"{owner} reads {key}, which an AI path defines (H8 lists the only one allowed)")
+                elif not ref.get("optional"):
+                    self.fail(rel, f"{owner} reads {key} (H8) without optional: true; the host must deploy without the AI paths")
             if s == "ai" and sides == {"host"}:
                 self.fail(rel, f"{owner} reads {key}, which a host path defines")
 

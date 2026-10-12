@@ -129,8 +129,12 @@ check(has(errs, KEDA, "reads ConfigMap/kueue-helm-values", "H8"),
       "a host HelmRelease that reads an AI ConfigMap outside H8 fails")
 
 errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s.update(
+    valuesFrom=[{"kind": "ConfigMap", "name": "runlore-factory-values", "optional": True}]))))
+check(errs == [], f"a host HelmRelease may read H8's runlore-factory-values with optional: true (got {errs[:2]})")
+
+errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s.update(
     valuesFrom=[{"kind": "ConfigMap", "name": "runlore-factory-values"}]))))
-check(errs == [], f"a host HelmRelease may read H8's runlore-factory-values (got {errs[:2]})")
+check(has(errs, KEDA, "H8", "optional: true"), "a host read of H8's ConfigMap without optional: true fails")
 
 errs = errors_after(lambda r: edit(r, "clusters/aws-0/agent-platform.yaml",
                                    ks("agent-platform", lambda s: s.update(path="./clusters/gcp-0-agent-platform"))))
