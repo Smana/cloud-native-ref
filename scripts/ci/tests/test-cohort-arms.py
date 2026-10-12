@@ -34,6 +34,19 @@ for name, job in jobs.items():
         uses = step.get("uses")
         if uses and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", uses):
             fails.append(f"{name}: {uses} is not pinned by SHA")
+    claude = next((s for s in job["steps"] if s.get("id") == "claude"), {})
+    env = claude.get("env") or {}
+    if str(env.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB")) != "1":
+        fails.append(f"{name}: the claude step must set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: \"1\"")
+    if not claude.get("timeout-minutes", 0) or claude["timeout-minutes"] >= job.get("timeout-minutes", 0):
+        fails.append(f"{name}: the claude step needs a timeout below the job's, so the upload still runs")
+    upload = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+    if not upload or " ".join(upload[0].get("if", "").split()) != "always() && steps.claude.outputs.execution_file != ''":
+        fails.append(f"{name}: upload must run always() and only with an execution file")
+    if name == "arm-c":
+        for slot in ("HAIKU", "SONNET", "OPUS"):
+            if env.get(f"ANTHROPIC_DEFAULT_{slot}_MODEL") != "glm-5.3":
+                fails.append(f"arm-c: ANTHROPIC_DEFAULT_{slot}_MODEL must be glm-5.3")
 text = f.read_text()
 if re.search(r"(sk-ant-|api_key:\s*['\"]?[A-Za-z0-9])", text):
     fails.append("a key literal is in the workflow")

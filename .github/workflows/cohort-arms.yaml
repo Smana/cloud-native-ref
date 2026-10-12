@@ -29,7 +29,12 @@ jobs:
           fetch-depth: 0
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
       - id: claude
+        # Below the job's 90, so the execution file still uploads after a timeout.
+        timeout-minutes: 75
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1
+        env:
+          # Strips the provider key from the agent's Bash subprocesses; the pilot checks gh still authenticates.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           anthropic_api_key: ${{ secrets.COHORT_ARM_B_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +47,7 @@ jobs:
             `Closes #${{ github.event.issue.number }}` and a line `Cohort-Arm: B`. Never merge.
           claude_args: |
             --allowedTools "Bash(gh:*),Bash(git:*),Bash(task:*),Bash(mise:*),Edit,Write,Read,Glob,Grep"
-      - if: always()
+      - if: always() && steps.claude.outputs.execution_file != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cohort-arm-b-${{ github.event.issue.number }}
@@ -67,10 +72,18 @@ jobs:
           fetch-depth: 0
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
       - id: claude
+        # Below the job's 90, so the execution file still uploads after a timeout.
+        timeout-minutes: 75
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1
         env:
           # Z.ai's Anthropic-compatible endpoint: same harness as arm B, arm A's model.
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          # Every Claude Code model slot (subagents included) on arm A's model.
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-5.3
+          ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5.3
+          ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5.3
+          # Strips the provider key from the agent's Bash subprocesses; the pilot checks gh still authenticates.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           anthropic_api_key: ${{ secrets.COHORT_ARM_C_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +97,7 @@ jobs:
           claude_args: |
             --model glm-5.3
             --allowedTools "Bash(gh:*),Bash(git:*),Bash(task:*),Bash(mise:*),Edit,Write,Read,Glob,Grep"
-      - if: always()
+      - if: always() && steps.claude.outputs.execution_file != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cohort-arm-c-${{ github.event.issue.number }}
