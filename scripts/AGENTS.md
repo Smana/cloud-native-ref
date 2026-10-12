@@ -46,6 +46,14 @@ Both run inside `task ci:test`, alongside the other suites, because they test th
 the rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
 manifest validation. Run them directly: `python3 scripts/ci/tests/flux-schema/<file>`.
 
+**`flux-schema/check-ai-boundary.py`** fails on a reference across the host/AI boundary that the
+host contract does not list (ADR-0057; design §1 and §2): kustomize file references, Flux
+`spec.path`, `dependsOn`, `sourceRef` and `substituteFrom`, HelmRelease `valuesFrom`, and `${var}`
+in AI files. Its data, `flux-schema/ai-boundary.yaml`, is the move list S2 hands to
+`git filter-repo`: a path added there is a path that moves. A move-list entry matching no file
+fails too. It runs in step 1 of `validate-manifests.sh`; its suite,
+`tests/flux-schema/test-check-ai-boundary.py`, plants a crossing each way in a copy of the tree.
+
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream
 charts that we neither author nor can fix, and which are entitled to MetricsQL that promtool
