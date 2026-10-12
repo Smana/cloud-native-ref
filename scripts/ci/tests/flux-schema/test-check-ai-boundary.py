@@ -99,6 +99,84 @@ stale = dict(CONTRACT, ai_paths=CONTRACT["ai_paths"] + ["^infrastructure/[^/]+/n
 errs = errors_after(None, stale)
 check(has(errs, "no-such-component", "matches no file"), "a move-list entry that matches nothing fails")
 
+# Every other reference kind the check covers, one plant each.
+KEDA = "infrastructure/base/keda/helmrelease.yaml"
+KUEUE_HR = "infrastructure/base/kueue/helmrelease.yaml"
+KUEUE_KS = "clusters/aws-0-agent-platform/infrastructure-kueue.yaml"  # holds kueue and kueue-queues
+
+
+def hr(mutate):
+    return lambda d: mutate(d["spec"]) if d.get("kind") == "HelmRelease" else None
+
+
+def ks(name, mutate):
+    return lambda d: mutate(d["spec"]) if d.get("metadata", {}).get("name") == name else None
+
+
+# host -> AI
+errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s["chart"]["spec"].update(
+    sourceRef={"kind": "OCIRepository", "name": "kueue"}))))
+check(has(errs, KEDA, "uses the AI source OCIRepository/kueue"), "a host HelmRelease that uses an AI source fails")
+
+errs = errors_after(lambda r: edit(r, "clusters/aws-0/apps.yaml",
+                                   ks("apps", lambda s: s.update(path="./infrastructure/base/kueue"))))
+check(has(errs, "clusters/aws-0/apps.yaml", "applies the AI path infrastructure/base/kueue"),
+      "a host Kustomization that applies an AI path fails")
+
+errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s.update(
+    valuesFrom=[{"kind": "ConfigMap", "name": "kueue-helm-values"}]))))
+check(has(errs, KEDA, "reads ConfigMap/kueue-helm-values", "H8"),
+      "a host HelmRelease that reads an AI ConfigMap outside H8 fails")
+
+errs = errors_after(lambda r: edit(r, KEDA, hr(lambda s: s.update(
+    valuesFrom=[{"kind": "ConfigMap", "name": "runlore-factory-values"}]))))
+check(errs == [], f"a host HelmRelease may read H8's runlore-factory-values (got {errs[:2]})")
+
+errs = errors_after(lambda r: edit(r, "clusters/aws-0/agent-platform.yaml",
+                                   ks("agent-platform", lambda s: s.update(path="./clusters/gcp-0-agent-platform"))))
+check(has(errs, "clusters/aws-0/agent-platform.yaml", "applies the AI path clusters/gcp-0-agent-platform"),
+      "an umbrella that points at another cluster's child directory fails")
+
+
+# AI -> host
+def to_host_chart(s):
+    s.pop("chartRef")
+    s["chart"] = {"spec": {"chart": "keda", "sourceRef": {"kind": "HelmRepository", "name": "kedacore"}}}
+
+
+errs = errors_after(lambda r: edit(r, KUEUE_HR, hr(to_host_chart)))
+check(has(errs, KUEUE_HR, "uses the host source HelmRepository/kedacore", "H1"),
+      "an AI HelmRelease that uses a host source outside H1 fails")
+
+errs = errors_after(lambda r: edit(r, KUEUE_HR, hr(lambda s: s.update(
+    chartRef={"kind": "OCIRepository", "name": "atlas-operator"}))))
+check(has(errs, KUEUE_HR, "uses the host source OCIRepository/atlas-operator", "H1"),
+      "an AI HelmRelease whose chartRef is a host source outside H1 fails")
+
+errs = errors_after(lambda r: edit(r, KUEUE_HR, hr(lambda s: s["valuesFrom"].append(
+    {"kind": "ConfigMap", "name": "runlore-base-values"}))))
+check(has(errs, KUEUE_HR, "reads ConfigMap/runlore-base-values, which a host path defines"),
+      "an AI HelmRelease that reads a host ConfigMap fails")
+
+errs = errors_after(lambda r: edit(r, KUEUE_KS, ks("kueue", lambda s: s["postBuild"]["substituteFrom"].append(
+    {"kind": "ConfigMap", "name": "cluster-settings"}))))
+check(has(errs, KUEUE_KS, "substitutes from ConfigMap/cluster-settings", "H3"),
+      "an AI Kustomization that substitutes from a ConfigMap outside H3 fails")
+
+errs = errors_after(lambda r: edit(r, KUEUE_KS, ks("kueue-queues", lambda s: s.update(
+    sourceRef={"kind": "OCIRepository", "name": "atlas-operator"}))))
+check(has(errs, KUEUE_KS, "uses the host source OCIRepository/atlas-operator", "H1"),
+      "an AI Kustomization whose sourceRef is a host OCIRepository fails")
+
+errs = errors_after(lambda r: edit(r, KUEUE_KS, ks("kueue-queues", lambda s: s.update(
+    path="./infrastructure/base/keda"))))
+check(has(errs, KUEUE_KS, "applies the host path infrastructure/base/keda"),
+      "an AI Kustomization that applies a host path fails")
+
+# What H2 allows stays allowed.
+errs = errors_after(lambda r: edit(r, KUEUE_KS, ks("kueue-queues", lambda s: s["dependsOn"].append({"name": "crds"}))))
+check(errs == [], f"an AI Kustomization may depend on an H2 name (got {errs[:2]})")
+
 if FAILURES:
     sys.exit(f"{len(FAILURES)} failure(s)")
 print("all passed")
