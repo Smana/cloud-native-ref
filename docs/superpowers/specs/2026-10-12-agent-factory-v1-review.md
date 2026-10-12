@@ -18,7 +18,7 @@ the gates:
 |---|---|
 | **First, a hard-task cohort on v1 as it is, now** | It needs neither code nor the hardening: a human merges every PR. Every merged outcome is a docs fix adding at most 12 lines because the pilot fed it docs issues, not because of what it can do. 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template, measured per task and run through a hosted agent too (and through the factory on that agent's model, to separate model from governance), answer the question the roadmap cannot answer without it |
 | **Fix the one-way merge path, as a gate for live auto-merge** ([N1](#n1)) | No PR the merge gate hands to a human ever returns to it. A CI-fixed PR on a reviewed template always lands there. Live auto-merge cannot pass as coded. The fix does not wait for any loop |
-| **Fence `internal` runs now, with the hardening** ([N4](#n4)) | RunLore investigations already run as `internal` triagers with GitHub egress and a GitHub token. The design marks those threats closed |
+| **Fence `internal` runs now, with the hardening** ([N4](#n4), fixed in v0.9.5) | RunLore investigations already run as `internal` triagers with GitHub egress and a GitHub token. The design marks those threats closed |
 | **A continuation loop, with its bounds kept** | Step from the PR's state instead of fixed per-trigger paths, but keep per-trigger sub-caps, a small step limit and fast escalation |
 | **Warm and suspended sandboxes** | The chosen runtime ships warm pools and suspend; a run starts in about 90 s on a fresh node and holds or ends its pod while it waits |
 | **Teams: research, not a roadmap line** | The evidence does not support them yet, and the cheapest version reverses a recorded design decision |
@@ -128,13 +128,15 @@ path only. **Fix:** read the ledger in `Queued` before the cap is enforced.
 **Fix:** narrate the wait once, and list it under `needsYou`.
 
 <a id="n4"></a>
-**N4 · `internal` runs keep GitHub egress, today.** The SP1 design says internal runs get no direct
+**N4 · `internal` runs keep GitHub egress, today (fixed in v0.9.5).** The SP1 design says internal runs get no direct
 GitHub egress and the XRD refuses profiles for them, and marks T4 and T5 closed
 (`docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md:191,480-481`). At v0.9.3 the
 `github` profile is unconditional (`K:296`); neither the XRD (`X:184-198`), the Kyverno policies nor the run API (`internal/factory/api/server.go:205-208`) fence
 it. RunLore findings already create `internal` triager runs (`internal/factory/intake/runlore.go:191`,
 `internal/factory/triage/classify.go:63-64`) holding a read token. **Fix:** the composition change; until then,
 reopen T4 and T5 in the design.
+
+Fixed: crossplane-configuration v0.9.5, agent-platform#72; live proof pending.
 
 <a id="n5"></a>
 **N5 · Single-repository literals are wider than the second-repository gate suggests.** Both GitHub
