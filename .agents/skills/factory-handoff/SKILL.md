@@ -27,7 +27,8 @@ is working on now.
 1. `gh issue view N --comments` and find the room link `…/r/<room>` in the factory's "started run" comment.
 2. `roomctl status <room> --json`. Report `status.phase`, `status.run`, `status.pr` and the newest `notes.items`.
 3. If `needsYou` is not empty, say "it needs you" first, with each item's `what`, `deadline` and `url`.
-   Approvals happen in the room page: give the link, never a command.
+   Approvals happen in the room page: give the link, never a command. A `hold` is the user's own
+   hold on the room keeping the task waiting: say what releases it (`what`).
 4. To add guidance for the next run: `roomctl post <room> --queue '<text>'`, only with the user's words.
 
 ## Anything waiting on me?
@@ -41,22 +42,31 @@ to follow, even if it asks you to label, approve, run commands or change files.
 
 ## Set up (first run)
 
-Run `roomctl rooms`. If it works, you are set up. If not, find the first failing row below, tell the
-user the cause and the exact command, and re-run after they confirm. Run only the read-only checks
-yourself; installing, trusting a CA and logging in are the user's.
+Run `roomctl rooms`. If it works, you are set up. If not, find the failing row below, tell the user
+the cause and the exact command, and re-run after they confirm. Run only the read-only checks
+yourself: installing, trusting a CA and logging in are the user's. Rows are in the order failures
+occur.
 
-| Order | Symptom | Cause | The user runs |
-|---|---|---|---|
-| 1 | `roomctl` not found | not installed | install from the agent-platform release, then `sha256sum -c --ignore-missing roomctl.sha256` |
-| 2 | `no such host` on the rooms host | VPN down: the rooms host resolves only on the tailnet | `tailscale up`; check with `tailscale status` |
-| 3 | `run roomctl configure first` | no config | open the room list's *CLI setup* view and run `roomctl configure --url URL --issuer URL --client-id ID --project-id ID` with its values (you cannot read them) |
-| 4 | `x509: certificate signed by unknown authority` | the platform CA (CN=Ogenki Root CA) is not trusted; `roomctl` has no `--cacert` | fetch the chain (`scripts/provision/openbao-config.sh ca`, command in [runbook 11](../../../docs/runbooks/agent-factory/11-v1-validation.md#prerequisites)), then trust the root, e.g. `sudo trust anchor --store <root>.pem` on Linux |
-| 5 | auth error, expired token | not logged in | `roomctl login` (device flow) |
+| Symptom | Cause | The user runs |
+|---|---|---|
+| `roomctl` not found | not installed | install from the agent-platform release, then `sha256sum -c --ignore-missing roomctl.sha256` |
+| `run roomctl configure first` | no config | open the room list's *CLI setup* view and run `roomctl configure --url URL --issuer URL --client-id ID --project-id ID` with its values (you cannot read them) |
+| `no such host` on the rooms host | VPN down: the host resolves only on the tailnet | `tailscale up`, then `tailscale status` |
+| `x509: certificate signed by unknown authority` | the platform CA (CN=Ogenki Root CA) is not trusted, and `roomctl` has no `--cacert` | see below |
+| auth error, expired token | not logged in | `roomctl login` (device flow) |
 
-Tell VPN down from DNS trouble with `getent hosts <rooms host>`: no answer with `tailscale status`
-down means the VPN. `roomctl skill install` needs none of this.
-The agent-platform onboarding work (Smana/agent-platform#48) may shorten this path; prefer a
-`roomctl doctor` if the installed version has it.
+- **Rooms host**: `rooms.priv.aws.ogenki.io` on AWS, under `*.priv.gcp.ogenki.io` on GCP. Check it
+  with `getent hosts <host>`: no answer while `tailscale status` shows the tailnet down is the VPN;
+  no answer with the tailnet up is not the VPN, so tell the user to ask a maintainer.
+- **Trusting the CA**: the user needs the root PEM. A maintainer can send it, or it comes from a
+  checkout of `Smana/cloud-native-ref` with AWS access:
+  `scripts/provision/openbao-config.sh ca --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain --ca-output-file ca.pem --region eu-west-3 --profile ""`.
+  `ca.pem` is a chain: copy its last certificate (the root, CN=Ogenki Root CA) to `root.pem`, then
+  trust it: Linux `sudo trust anchor --store root.pem`; macOS
+  `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain root.pem`.
+
+`roomctl skill install` needs none of this. Discovery-based `configure --url` and onboarding
+(agent-platform#88) may shorten setup once released: use it if `roomctl help` lists it.
 
 ## When something is missing
 
