@@ -16,7 +16,7 @@ the gates:
 
 | Change | Why |
 |---|---|
-| **First, a hard-task cohort on v1 as it is** | Every merged outcome is a docs fix adding at most 12 lines because the pilot fed it docs issues, not because of what it can do. 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template, measured per task and run through a hosted agent too, answer the question the roadmap cannot answer without it |
+| **First, a hard-task cohort on v1 as it is, now** | It needs neither code nor the hardening: a human merges every PR. Every merged outcome is a docs fix adding at most 12 lines because the pilot fed it docs issues, not because of what it can do. 10 to 20 real `tests`, `dashboards` and `scripts` issues through today's `pair` template, measured per task and run through a hosted agent too (and through the factory on that agent's model, to separate model from governance), answer the question the roadmap cannot answer without it |
 | **Fix the one-way merge path, as a gate for live auto-merge** ([N1](#n1)) | No PR the merge gate hands to a human ever returns to it. A CI-fixed PR on a reviewed template always lands there. Live auto-merge cannot pass as coded. The fix does not wait for any loop |
 | **Fence `internal` runs now, with the hardening** ([N4](#n4)) | RunLore investigations already run as `internal` triagers with GitHub egress and a GitHub token. The design marks those threats closed |
 | **A continuation loop, with its bounds kept** | Step from the PR's state instead of fixed per-trigger paths, but keep per-trigger sub-caps, a small step limit and fast escalation |
@@ -54,7 +54,7 @@ The gateway prices each run (`llm_gateway:price_usd_per_mtoken`,
 (USD)" panel. Nothing aggregates money per task or per accepted outcome.
 
 Re-priced at GLM-5.3 list (the same price as GLM-5.2: $1.40 input, $0.26 cached, $4.40 output per
-million). Both columns assume an input/output split, and the meter does not record cache hits, so
+million). Both columns assume an input/output split and a cache share, so
 these are estimates, not bounds:
 
 | Task | 90/10 split assumed, no cache | 97/3 split assumed, 90 % of input cached |
@@ -62,8 +62,9 @@ these are estimates, not bounds:
 | PR #2267 | ≈ $1.14 | ≈ $0.33 |
 | Issue #2238 | ≈ $1.83 | ≈ $0.53 |
 
-The gateway records input and output tokens apart, so the real split can be read; the cohort should
-read it. For scale, a published comparison of 23 model-and-harness arms puts a merged *feature* at
+The gateway records input and output tokens apart, and Agent Router v1.1.0 emits `cached_input` as
+its own observation (`vmrule-llm-gateway.yaml`), so the real split and cache share can be read; the
+cohort should read them. For scale, a published comparison of 23 model-and-harness arms puts a merged *feature* at
 $2.59 to $33.38 ([Insight, 2026-07-06](https://blog.apac.insight.com/2026/07/06/cost-to-a-merged-feature)).
 
 ### 1.3 Code and tests
@@ -95,8 +96,9 @@ except `vmrule-agent-factory.yaml` (cloud-native-ref, `observability/base/agent-
 
 <a id="n1"></a>
 **N1 · A PR handed to a human never returns to the merge gate.** `AwaitingCI` is entered only from
-`ready` (`team.go:92`) and `head_moved` (`merge.go:117,245`). Every non-arm, non-escalate
-`DecideArm` verdict moves the task to `AwaitingHuman` (`merge.go:98-109`), and nothing from there
+`ready` (`team.go:92`) and `head_moved` (`merge.go:117,245`). The `human` and `shadow`
+`DecideArm` verdicts move the task to `AwaitingHuman` (`merge.go:98-109`; `wait` stays in
+`AwaitingCI`, `ci_red` queues a fix run, `merge.go:90-94`), and nothing from there
 re-enters `AwaitingCI`: `awaitingHuman` only revises or reminds and closes
 (`implement.go:515-528`), and a revision returns to `AwaitingHuman` (`implement.go:478-480`). The sharpest
 case: a `ci` fix run skips review (`implement.go:482-484`), moves the head, and the next decision is
@@ -107,7 +109,9 @@ control group gets: `internal/factory/triage/classify.go:24-35,77-80`) and every
 review-class task. It also skews the shadow log: a CI-fixed PR records `verdict_stale`, not
 `shadow_would_arm` (`arm.go:118`, before `:139-141`). **Fix**, independent of any loop: re-review
 after a fix run, and a path from `AwaitingHuman` back to `AwaitingCI` when the head or the policy
-changes.
+changes. Only after a transient verdict (`verdict_stale`, `policy_*`, `head_unreported`) and a head
+the factory moved: a substantive hand-off stays with the human, or a later revision could
+auto-merge what a human was asked to judge.
 
 <a id="n2"></a>
 **N2 · Two daily-spend paths disagree.** `Queued` evaluates the factory's daily cap by summing live
@@ -153,9 +157,11 @@ opens nothing else". This amendment keeps that shape and adds to it.
 
 ```mermaid
 flowchart LR
-  hard["v1 hardening<br/>+ N4 fence"] --> cohort["Hard-task cohort<br/>measured, vs a hosted agent"]
+  v1["v1, as it is"] --> cohort["Hard-task cohort<br/>measured, vs a hosted agent"]
+  v1 --> hard["v1 hardening<br/>+ N4 fence"]
   cohort --> loop["Continuation loop"]
   cohort --> rev["Reviewer on another model"]
+  gw --> rev
   hard --> merge["Live auto-merge<br/>+ N1 fix"]
   hard --> warm["Warm and suspended sandboxes"]
   hard --> repo["A second repository"]
@@ -247,12 +253,9 @@ runs the children as ordinary tasks. Teams come back to the roadmap on that evid
 ## 4. Positioning and build-or-adopt
 
 **Positioning.** The closest open-source statement of the orchestration problem is OpenAI's
-[Symphony](https://github.com/openai/symphony): an Apache-2.0 specification with an Elixir
-reference ("low-key engineering preview"), Codex-only, tracker-agnostic (Linear, GitHub Issues,
-Jira Cloud, Asana and GitLab adapters), workspaces as directories with optional SSH workers. Its
-non-goals include *"Mandating strong sandbox controls beyond what the coding agent and host OS
-provide"* and *"Mandating a single default approval, sandbox, or operator-confirmation posture for
-all implementations"* (SPEC §2.2): it leaves those to each implementation. The factory's claim is
+Symphony, evaluated on the
+[alternatives page](../../../website/content/docs/platform/ai-platform/agents/alternatives.md#openai-symphony):
+it leaves sandboxing, approval and merge to each implementation. The factory's claim is
 the combination: governed autonomous coding on your own Kubernetes, any OpenAI-compatible model,
 identity, egress, budgets and merge policy enforced outside the agent. No project evaluated here or
 on the alternatives page offers it. Whether that pays for itself is what the cohort's hosted-agent
