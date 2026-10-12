@@ -12,7 +12,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 
 COLUMNS = ["issue", "arm", "pr", "tokens_in", "tokens_cached", "tokens_out", "usd",
            "label_to_pr_min", "label_to_verdict_min", "review_rounds", "fix_runs", "ended",
@@ -82,8 +82,24 @@ def build_row(**fields):
     return {c: "" if fields.get(c) is None else str(fields.get(c, "")) for c in COLUMNS}
 
 
+def concat_json_arrays(text):
+    # `gh api --paginate` (without --slurp, which needs gh >= 2.48) prints one array per page.
+    dec, i, out = json.JSONDecoder(), 0, []
+    while True:
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text):
+            return out
+        page, i = dec.raw_decode(text, i)
+        out.extend(page)
+
+
+def _gh_text(*args):
+    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+
+
 def _gh(*args):
-    return json.loads(subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout)
+    return json.loads(_gh_text(*args))
 
 
 def main():
@@ -94,16 +110,22 @@ def main():
     p.add_argument("--task-json", help="arm A: kubectl get tasks.agents.ogenki.io -o json, one Task")
     p.add_argument("--vm-url", help="arm A: VictoriaMetrics base URL")
     p.add_argument("--exec-log", help="arms B, C: the action's execution file")
-    p.add_argument("--ended", required=True)
-    p.add_argument("--verdict", default="")
+    p.add_argument("--ended", required=True, choices=sorted(ENDED))
+    p.add_argument("--verdict", default="", choices=sorted(VERDICTS - {""}))
     p.add_argument("--review-min", default="")
     p.add_argument("--counter-exhausted", default="")
     p.add_argument("--still-fixable", default="")
     p.add_argument("--out", required=True)
     a = p.parse_args()
 
-    events = _gh("api", "--paginate", "--slurp", f"repos/{REPO}/issues/{a.issue}/events")
-    events = [e for page in events for e in page]
+    task = None
+    if a.arm == "A":
+        with open(a.task_json) as fh:
+            task = json.load(fh)
+        if not task.get("status", {}).get("runs"):
+            raise SystemExit("task has no status.runs: nothing to meter, refusing to record 0 tokens")
+
+    events = concat_json_arrays(_gh_text("api", "--paginate", f"repos/{REPO}/issues/{a.issue}/events"))
     start = label_time(events, ARM_LABEL[a.arm])
     f = dict(issue=a.issue, arm=a.arm, pr=a.pr, ended=a.ended, verdict=a.verdict,
              review_min=a.review_min, counter_exhausted=a.counter_exhausted, still_fixable=a.still_fixable)
@@ -115,17 +137,17 @@ def main():
         f["label_to_pr_min"] = minutes(start, pr["createdAt"])
         f["label_to_verdict_min"] = minutes(start, end) if end else ""
     if a.arm == "A":
-        task = json.load(open(a.task_json))
-        st = task.get("status", {})
+        st = task["status"]
         f["review_rounds"], f["fix_runs"] = st.get("reviewRounds", 0), st.get("fixRuns", 0)
-        window = minutes(start, end or datetime.utcnow().isoformat() + "Z") + 15
+        window = minutes(start, end or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")) + 15
         q = urllib.parse.urlencode({"query": vm_query([r["id"] for r in st.get("runs", [])], window),
                                     **({"time": end} if end else {})})
         with urllib.request.urlopen(f"{a.vm_url.rstrip('/')}/api/v1/query?{q}") as resp:
             tin, cached, out = vm_tokens(json.load(resp))
         f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out, usd=glm_usd(tin, cached, out))
     else:
-        tin, cached, out, cost = exec_log_usage(open(a.exec_log).read())
+        with open(a.exec_log) as fh:
+            tin, cached, out, cost = exec_log_usage(fh.read())
         # Arm C's log prices GLM tokens as Claude; recompute at GLM's list.
         f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out,
                  usd=round(cost, 4) if a.arm == "B" else glm_usd(tin, cached, out),

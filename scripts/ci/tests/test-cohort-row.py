@@ -2,8 +2,15 @@
 # requires: python3
 """cohort-row.py: the v2 cohort's sheet rows (spec §5). Pure functions only; no network."""
 import importlib.util
+import contextlib
+import csv
+import io
 import json
+import os
 import pathlib
+import tempfile
+import urllib.parse
+import urllib.request
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -68,6 +75,95 @@ for bad in ({"verdict": "lgtm"}, {"ended": "done"}):
         fails.append(f"build_row accepted {bad}")
     except ValueError:
         pass
+
+check("concat arrays", cr.concat_json_arrays('[{"a":1}]\n [{"a":2},{"a":3}]  []\n'), [{"a": 1}, {"a": 2}, {"a": 3}])
+check("concat empty", cr.concat_json_arrays(""), [])
+
+# main(): arm A then arm B appended to one CSV, gh and the network stubbed.
+EVENTS = [{"event": "labeled", "label": {"name": "factory/ready"}, "created_at": "2026-10-13T08:00:00Z"},
+          {"event": "labeled", "label": {"name": "cohort/arm-b"}, "created_at": "2026-10-13T08:00:00Z"}]
+PR = {"createdAt": "2026-10-13T08:20:00Z", "closedAt": None, "mergedAt": "2026-10-13T09:30:00Z",
+      "commits": [{"committedDate": "2026-10-13T08:10:00Z"}, {"committedDate": "2026-10-13T08:40:00Z"},
+                  {"committedDate": "2026-10-13T09:00:00Z"}]}
+queries = []
+
+
+def fake_gh_text(*args):
+    if args[0] == "api":  # two pages, as --paginate prints them
+        return json.dumps(EVENTS[:1]) + "\n" + json.dumps(EVENTS[1:])
+    return json.dumps(PR)
+
+
+class FakeResp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def fake_urlopen(url):
+    queries.append(url)
+    return FakeResp(json.dumps(resp).encode())
+
+
+def run_main(argv):
+    old = sys.argv
+    sys.argv = ["cohort-row.py", *argv]
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return cr.main()
+    finally:
+        sys.argv = old
+
+
+cr._gh_text = fake_gh_text
+urllib.request.urlopen = fake_urlopen
+with tempfile.TemporaryDirectory() as d:
+    out = os.path.join(d, "sheet.csv")
+    task = os.path.join(d, "task.json")
+    log = os.path.join(d, "exec.json")
+    with open(task, "w") as fh:
+        json.dump({"status": {"reviewRounds": 1, "fixRuns": 2, "runs": [{"id": "impl-1"}, {"id": "rev-1"}]}}, fh)
+    with open(log, "w") as fh:
+        fh.write(array)
+    run_main(["--issue", "7", "--arm", "A", "--pr", "2400", "--task-json", task, "--vm-url", "http://vm:8428/",
+              "--ended", "pr", "--verdict", "merged-as-is", "--review-min", "12", "--out", out])
+    run_main(["--issue", "8", "--arm", "B", "--pr", "2400", "--exec-log", log, "--ended", "pr", "--out", out])
+    with open(out) as fh:
+        text = fh.read()
+    check("header once", text.count("issue,arm,pr"), 1)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    check("row count", len(rows), 2)
+    a_row, b_row = rows
+    check("A tokens", (a_row["tokens_in"], a_row["tokens_cached"], a_row["tokens_out"]), ("600000", "500000", "20000"))
+    check("A usd", a_row["usd"], str(cr.glm_usd(600000, 500000, 20000)))
+    check("A minutes", (a_row["label_to_pr_min"], a_row["label_to_verdict_min"]), ("20", "90"))
+    check("A rounds/fixes", (a_row["review_rounds"], a_row["fix_runs"]), ("1", "2"))
+    check("A verdict", (a_row["verdict"], a_row["review_min"]), ("merged-as-is", "12"))
+    check("B tokens/usd", (b_row["tokens_in"], b_row["tokens_out"], b_row["usd"]), ("54200", "800", "0.4211"))
+    check("B rounds/fixes", (b_row["review_rounds"], b_row["fix_runs"]), ("0", "2"))
+    qs = urllib.parse.unquote_plus(queries[0]) if queries else ""
+    if "xplane-run-(impl-1|rev-1)" not in qs:
+        fails.append(f"VM query lacks both run ids: {qs}")
+    if "[105m]" not in qs:  # 90 min label to merge, plus 15
+        fails.append(f"VM query window is not 105m: {qs}")
+
+    with open(task, "w") as fh:
+        json.dump({"status": {"runs": []}}, fh)
+    try:
+        run_main(["--issue", "9", "--arm", "A", "--task-json", task, "--vm-url", "http://vm", "--ended", "pr", "--out", out])
+        fails.append("empty runs: no SystemExit")
+    except SystemExit as e:
+        if "no status.runs" not in str(e):
+            fails.append(f"empty runs: wrong message {e}")
+    for bad in (["--ended", "done"], ["--ended", "pr", "--verdict", "lgtm"]):
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                run_main(["--issue", "9", "--arm", "B", "--exec-log", log, "--out", out, *bad])
+            fails.append(f"argparse accepted {bad}")
+        except SystemExit:
+            pass
 
 if fails:
     print("FAIL\n  " + "\n  ".join(fails))
