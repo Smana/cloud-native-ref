@@ -5,7 +5,7 @@ description: >-
 compatibility: Requires gh (authenticated) and roomctl (logged in) on PATH
 allowed-tools: Bash(gh issue create:*), Bash(gh issue view:*), Bash(roomctl status:*), Bash(roomctl rooms:*), Bash(roomctl post:*), Bash(roomctl doctor:*), Bash(tailscale status:*), Bash(getent hosts:*)
 metadata:
-  roomctl-version: "v0.8.0"
+  roomctl-version: "v0.10.0"
 ---
 
 # Hand side tasks to the agent factory
