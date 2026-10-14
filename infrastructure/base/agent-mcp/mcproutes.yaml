@@ -68,6 +68,7 @@ spec:
         include:
           - room_read
           - room_post
+          - room_progress
           - room_handoff
           - room_verdict
   securityPolicy:
@@ -219,6 +220,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
         - action: Allow
           source:
@@ -231,6 +233,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_verdict}
         - action: Allow
           source:
@@ -243,6 +246,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
               - {backend: room-broker, tool: room_verdict}
         - action: Allow
@@ -256,6 +260,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -328,6 +333,7 @@ spec:
         include:
           - room_read
           - room_post
+          - room_progress
           - room_handoff
           - room_verdict
   securityPolicy:
@@ -578,6 +584,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
         - action: Allow
           source:
@@ -590,6 +597,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_verdict}
         - action: Allow
           source:
@@ -602,6 +610,7 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
               - {backend: room-broker, tool: room_verdict}
         - action: Allow
@@ -615,4 +624,5 @@ spec:
             tools:
               - {backend: room-broker, tool: room_read}
               - {backend: room-broker, tool: room_post}
+              - {backend: room-broker, tool: room_progress}
               - {backend: room-broker, tool: room_handoff}
