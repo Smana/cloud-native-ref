@@ -36,12 +36,24 @@ for name, job in jobs.items():
             fails.append(f"{name}: {uses} is not pinned by SHA")
     claude = next((s for s in job["steps"] if s.get("id") == "claude"), {})
     # The env scrub's sandbox needs bwrap and socat; ubuntu-latest ships neither and blocks bwrap by default.
+    # `task check` needs what ci.yaml's kubernetes-validation installs, which --allowedTools keeps the arm from installing.
     before = job["steps"][: job["steps"].index(claude)] if claude in job["steps"] else []
     deps = " ".join(s.get("run", "") for s in before)
+    if not any("mise-action" in s.get("uses", "") for s in before):
+        fails.append(f"{name}: mise-action must run before the claude step")
     for needle in ("apt-get install -y -qq bubblewrap socat", "kernel.apparmor_restrict_unprivileged_userns=0",
-                   "bwrap --ro-bind / /", "command -v socat"):
+                   "bwrap --ro-bind / /", "command -v socat", "flux plugin install schema@",
+                   "pip install --quiet --disable-pip-version-check pyyaml", "install -y -qq jq","./scripts/ci/fetch-xrd-crds.sh"):
         if needle not in deps:
             fails.append(f"{name}: a step before the claude step must run `{needle}`")
+    w = claude.get("with") or {}
+    if "--max-turns 60" not in w.get("claude_args", ""):
+        fails.append(f"{name}: claude_args must cap the run with --max-turns 60")
+    prompt = " ".join(w.get("prompt", "").split())
+    arm = name.split("-")[1]
+    for needle in (f"Push only to `cohort/arm-{arm}/", "never to `agent/**`", "stop and report instead of retrying"):
+        if needle not in prompt:
+            fails.append(f"{name}: the prompt must say `{needle}`")
     env = claude.get("env") or {}
     if str(env.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB")) != "1":
         fails.append(f"{name}: the claude step must set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: \"1\"")
