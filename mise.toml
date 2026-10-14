@@ -10,7 +10,7 @@ go = "1.27.2"
 "aqua:golangci/golangci-lint" = "2.14.0"
 nodejs = "24.21.0"
 opentofu = "1.13.1"
-pre-commit = "4.6.2"
+pre-commit = "4.7.0"
 trivy = "0.75.0"
 
 # Needed by the `terraform_tflint` pre-commit hook. Pinned here rather than
