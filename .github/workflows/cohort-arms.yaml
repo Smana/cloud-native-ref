@@ -28,13 +28,14 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bwrap, which the runner lacks; Ubuntu 24.04's AppArmor
-      # blocks the unprivileged user namespaces bwrap needs, so lift that and prove bwrap runs.
-      - name: Install bubblewrap
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB's sandbox needs bwrap and socat, which the runner lacks; Ubuntu
+      # 24.04's AppArmor blocks the unprivileged user namespaces bwrap needs, so lift that and prove both run.
+      - name: Install the sandbox dependencies
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --ro-bind / / --dev /dev --proc /proc true
+          command -v socat
       - id: claude
         # Below the job's 90, so the execution file still uploads after a timeout.
         timeout-minutes: 75
@@ -78,13 +79,14 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bwrap, which the runner lacks; Ubuntu 24.04's AppArmor
-      # blocks the unprivileged user namespaces bwrap needs, so lift that and prove bwrap runs.
-      - name: Install bubblewrap
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB's sandbox needs bwrap and socat, which the runner lacks; Ubuntu
+      # 24.04's AppArmor blocks the unprivileged user namespaces bwrap needs, so lift that and prove both run.
+      - name: Install the sandbox dependencies
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --ro-bind / / --dev /dev --proc /proc true
+          command -v socat
       - id: claude
         # Below the job's 90, so the execution file still uploads after a timeout.
         timeout-minutes: 75
