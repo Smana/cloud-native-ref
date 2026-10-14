@@ -35,6 +35,12 @@ for name, job in jobs.items():
         if uses and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", uses):
             fails.append(f"{name}: {uses} is not pinned by SHA")
     claude = next((s for s in job["steps"] if s.get("id") == "claude"), {})
+    # The env scrub needs a working bwrap, which ubuntu-latest neither ships nor lets run by default.
+    before = job["steps"][: job["steps"].index(claude)] if claude in job["steps"] else []
+    bwrap = " ".join(s.get("run", "") for s in before)
+    for needle in ("apt-get install -y -qq bubblewrap", "kernel.apparmor_restrict_unprivileged_userns=0", "bwrap --ro-bind / /"):
+        if needle not in bwrap:
+            fails.append(f"{name}: a step before the claude step must run `{needle}`")
     env = claude.get("env") or {}
     if str(env.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB")) != "1":
         fails.append(f"{name}: the claude step must set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: \"1\"")
