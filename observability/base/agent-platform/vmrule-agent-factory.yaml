@@ -70,3 +70,26 @@ spec:
             description: "Resume: kubectl -n agent-system delete configmap agent-factory-stop, and remove factory/stop from the control issue."
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-dark-factory-design.md#61-kill-switch"
             dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: FactoryGitHubUnreachable
+          # Readiness ignores GitHub (agent-platform #83), so this per-replica gauge is the only signal.
+          expr: agent_factory_github_up == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agent factory replica {{ $labels.pod }} has not reached GitHub for 10 minutes"
+            description: "No task advances while GitHub is unreachable, and the replicas stay Ready. Check githubstatus.com, then the App key: kubectl logs -n agent-system -l app.kubernetes.io/name=agent-factory --prefix | grep -i github. The loops recover by themselves when GitHub returns."
+            runbook_url: "https://github.com/Smana/agent-platform/blob/main/docs/operations.md#common-failures"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"
+        - alert: AgentFactoryMeterBlind
+          # Leader-only gauge, hence max() and absent(). for: 1m because enforced admission already
+          # refuses (503 meter_blind) once the heartbeat is 5 minutes old (agent-platform #87).
+          expr: (time() - max(agent_factory_meter_last_success_timestamp_seconds) > 300) or absent(agent_factory_meter_last_success_timestamp_seconds)
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The agent factory's meter has not read token usage for over 5 minutes"
+            description: "With budgets.enforcePrincipal on, new runs are refused (503 meter_blind) and Queued tasks wait with waiting_meter_blind; active runs continue to their deadline and are revoked on recovery. Read the leader's logs: kubectl logs -n agent-system -l app.kubernetes.io/name=agent-factory --prefix | grep -i meter"
+            runbook_url: "https://github.com/Smana/agent-platform/blob/main/docs/operations.md#metrics"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-factory"

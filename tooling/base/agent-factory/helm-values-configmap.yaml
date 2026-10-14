@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform v0.8.0, the chart's appVersion.
+      # agent-platform v0.10.0, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.8.0@sha256:a52cf50712d9a9d5a6490ed203749a2ac396910dcc552509ffdb1fb84c99ec03"
+      tag: "v0.10.0@sha256:4fb31602c915a9d2fed624b190465fd186e73696025e07ae3d739f5d59634b2f"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -91,6 +91,9 @@ data:
         mergerLogin: ogenki-agent-merger[bot]
         autoMergesPerDay: 10
         fixRuns: 2
+        # Re-runs of a cancelled required check per task (agent-platform #86); 0 hands it to a
+        # human. Above 0 the merger App needs actions: write.
+        checkReruns: 1
         verifyFor: 30m
         revertWindow: 168h
         leakScanCheck: "Security scanning 🔒"  # R42: TruffleHog's check run, in both lists above
