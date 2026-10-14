@@ -762,7 +762,8 @@ EOF
   `scripts/ci/tests/test-cohort-arms.py`; `gh secret delete COHORT_ARM_B_API_KEY` and `…_C_…`;
   revoke both keys; restore `controlPercent: 10` and its original comment; set `docs`, `tests`,
   `dashboards` and `scripts` back to `{}` and drop their shadow comment; remove `refs/heads/cohort/**`
-  from the `agent-branches` ruleset's exclude list, added 2026-10-14 so the arms' `GITHUB_TOKEN` can
+  and `refs/heads/cohort/*/*` (a ruleset `**` matches one segment) from the `agent-branches`
+  ruleset's exclude list, added 2026-10-14 so the arms' `GITHUB_TOKEN` can
   push `cohort/arm-*/<N>` (`gh api repos/Smana/cloud-native-ref/rulesets/24063626`); turn "Allow
   GitHub Actions to create and approve pull requests" back off, enabled 2026-10-14 so the arms open
   their PRs with `GITHUB_TOKEN` (`gh api -X PUT repos/Smana/cloud-native-ref/actions/permissions/workflow
