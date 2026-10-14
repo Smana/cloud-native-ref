@@ -83,7 +83,7 @@ the maintainer before the issue is labelled.
 
 ### A · the factory
 
-v1 unchanged, except two settings in `tooling/base/agent-factory/helm-values-configmap.yaml`, a
+v1 unchanged, except three settings in `tooling/base/agent-factory/helm-values-configmap.yaml`, a
 gate path the maintainer changes before the first run:
 
 - A `scripts` class beside `tests` and `dashboards`, and its `class:scripts` issue label. v0.8.0
@@ -92,6 +92,8 @@ gate path the maintainer changes before the first run:
   are literals.
 - `triage.controlPercent: 0` for the cohort's duration, restored to 10 at the end. The control
   group runs on the frontier tier, whose template is `trio`, not `pair` (`classify.go:24-35`).
+- Every class `shadow: true` for the cohort's duration, restored to `{}` at the end: arm A runs with
+  the merge gate in shadow, so no arm merges before the maintainer's verdict.
 
 ### B and C · Claude Code Action
 
