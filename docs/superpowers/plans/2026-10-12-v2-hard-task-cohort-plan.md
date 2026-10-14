@@ -709,7 +709,8 @@ Pilot rows are discarded.
 
 ### Task 7: Run the cohort (maintainer, one issue at a time)
 
-For each issue in spec §2's order:
+For each issue in spec §2's order. Every factory class is `shadow: true` for the cohort's duration
+(Task 8, step 4 reverts it), so arm A's PR is never auto-merged before your verdict.
 
 - [ ] Before labelling a backlog issue, check its label history for an earlier `factory/ready`:
   `gh api repos/Smana/cloud-native-ref/issues/<n>/events --jq '.[] | select(.event == "labeled") | [.label.name, .created_at]'`.
@@ -759,7 +760,8 @@ EOF
 
 - [ ] **Step 4: Close-out (maintainer)**: delete `.github/workflows/cohort-arms.yaml` and
   `scripts/ci/tests/test-cohort-arms.py`; `gh secret delete COHORT_ARM_B_API_KEY` and `…_C_…`;
-  revoke both keys; restore `controlPercent: 10` and its original comment.
+  revoke both keys; restore `controlPercent: 10` and its original comment; set `docs`, `tests`,
+  `dashboards` and `scripts` back to `{}` and drop their shadow comment.
 
 - [ ] **Step 5: Validate and commit**
 

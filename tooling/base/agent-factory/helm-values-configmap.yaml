@@ -64,10 +64,12 @@ data:
         # Shadow until the wave (owner, 2026-09-27; R32): decided like a live class, never armed.
         docs-links: {shadow: true}
         revert: {shadow: true}
-        docs: {}
-        tests: {}
-        dashboards: {}
-        scripts: {}
+        # Shadow while the v2 cohort runs: the maintainer's verdict on all three arms comes before any
+        # merge. Back to {} when it ends (docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md).
+        docs: {shadow: true}
+        tests: {shadow: true}
+        dashboards: {shadow: true}
+        scripts: {shadow: true}
       merge:
         # Classic protection's 8 contexts (app 15368), read with `gh api repos/Smana/cloud-native-ref/branches/main/protection`.
         requiredChecks:
