@@ -10,6 +10,7 @@ import os
 import pathlib
 import tempfile
 import urllib.parse
+import ssl
 import urllib.request
 import sys
 
@@ -117,8 +118,9 @@ class FakeResp(io.BytesIO):
         return False
 
 
-def fake_urlopen(url):
+def fake_urlopen(url, context=None):
     queries.append(url)
+    contexts.append(context)
     return FakeResp(json.dumps(resp).encode())
 
 
@@ -132,6 +134,15 @@ def run_main(argv):
         sys.argv = old
 
 
+# The private root CA has no keyUsage (#2350): drop only the strict flag, keep chain + hostname checks.
+ctx = cr.tls_context()
+check("tls verify_mode", ctx.verify_mode, ssl.CERT_REQUIRED)
+check("tls check_hostname", ctx.check_hostname, True)
+check("tls strict flag dropped", bool(ctx.verify_flags & ssl.VERIFY_X509_STRICT), False)
+check("tls other flags kept", ctx.verify_flags | ssl.VERIFY_X509_STRICT,
+      ssl.create_default_context().verify_flags | ssl.VERIFY_X509_STRICT)
+
+contexts = []
 cr._gh_text = fake_gh_text
 urllib.request.urlopen = fake_urlopen
 with tempfile.TemporaryDirectory() as d:
@@ -163,6 +174,7 @@ with tempfile.TemporaryDirectory() as d:
     check("timeout cost cells", tuple(t_row[c] for c in ("tokens_in", "tokens_cached", "tokens_out", "usd")),
           ("", "", "", ""))
     check("timeout ended/fixes", (t_row["ended"], t_row["fix_runs"]), ("timeout", "2"))
+    check("VM query uses tls_context", [type(c) for c in contexts], [ssl.SSLContext])
     qs = urllib.parse.unquote_plus(queries[0]) if queries else ""
     if "xplane-run-(impl-1|rev-1)" not in qs:
         fails.append(f"VM query lacks both run ids: {qs}")

@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 import os
+import ssl
 import subprocess
 import sys
 import urllib.parse
@@ -25,6 +26,14 @@ ARM_LABEL = {"A": "factory/ready", "B": "cohort/arm-b", "C": "cohort/arm-c"}
 GLM = {"in": 1.40, "cached": 0.26, "out": 4.40}
 REPO = "Smana/cloud-native-ref"
 MAINTAINER = "Smana"
+
+
+def tls_context():
+    # Python >=3.13 sets VERIFY_X509_STRICT, which rejects the private root CA for lacking keyUsage
+    # (#2350). Drop only that flag; chain and hostname verification stay on.
+    ctx = ssl.create_default_context()
+    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
 
 
 def glm_usd(tokens_in, cached, out):
@@ -156,7 +165,7 @@ def main():
         window = minutes(start, end or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")) + 15
         q = urllib.parse.urlencode({"query": vm_query([r["id"] for r in st.get("runs", [])], window),
                                     **({"time": end} if end else {})})
-        with urllib.request.urlopen(f"{a.vm_url.rstrip('/')}/api/v1/query?{q}") as resp:
+        with urllib.request.urlopen(f"{a.vm_url.rstrip('/')}/api/v1/query?{q}", context=tls_context()) as resp:
             tin, cached, out = vm_tokens(json.load(resp))
         f.update(tokens_in=tin, tokens_cached=cached, tokens_out=out, usd=glm_usd(tin, cached, out))
     else:
