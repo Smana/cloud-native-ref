@@ -169,6 +169,8 @@ Fifteen issues tell apart only large differences; the results say so rather than
 | The nine new issues written, the metrics behind each dashboard issue checked | Each issue has acceptance criteria |
 | `scripts` class and label | The factory admits a `scripts` task (checked on the pilot) |
 | Arm B and C workflows and keys, arm B's spend limit | Each arm opens a PR on the pilot |
+| The `agent-branches` ruleset excludes `refs/heads/cohort/**` for the cohort's duration | The arms' `GITHUB_TOKEN` pushes `cohort/arm-<x>/<issue>` |
+| The repository setting "Allow GitHub Actions to create and approve pull requests" is on for the cohort's duration (enabled 2026-10-14) | The arms' `GITHUB_TOKEN` opens their PRs |
 | Z.ai API wallet topped up $100 (A + C) | Arm C's pilot run answers |
 | A pilot on a throwaway issue (fix a typo in a comment of a file under `scripts/`, so the `scripts` class is exercised), all three arms | Three PRs, three rows that fill every column; the pilot rows are discarded |
 
