@@ -394,7 +394,7 @@ def postprocess(text):
     docs = unwrap_lists([d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)])
     # Drop non-resource docs before they reach the bundle. `helm template`
     # (notably Helm v4) can emit a stray YAML document that is a non-empty dict
-    # yet carries no apiVersion/kind - not an applyable Kubernetes resource, but
+    # yet carries no apiVersion/kind - not an appliable Kubernetes resource, but
     # a dict, so the isinstance() filter above lets it through and gate 1 then
     # rejects it ("missing required property: /apiVersion"). A real resource
     # always has both fields, so requiring them here is the faithful stand-in
