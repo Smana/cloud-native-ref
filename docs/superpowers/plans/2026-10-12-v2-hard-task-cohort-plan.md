@@ -654,8 +654,9 @@ git commit -m "📝 docs(agents): the cohort's new issues, numbered"
 
 ### Task 6: Keys, wallet, and the pilot (maintainer)
 
-- [ ] **Step 1: Keys and limits.** Create one Anthropic Console key for arm B and one Z.ai
-  open-platform key for arm C, each in its own workspace/project with a $50 spend limit. Store
+- [ ] **Step 1: Keys and limits.** Create one Anthropic Console key for arm B, in its own workspace
+  with a $50 spend limit, and one Z.ai open-platform key for arm C on the account that holds the
+  platform's Z.ai key (Z.ai has no per-key limit; C is capped by hand, Task 7). Store
   both in OpenBao (`bao kv put platform/cohort arm_b=… arm_c=…`) for the record, then:
 
 ```bash
@@ -663,8 +664,9 @@ gh secret set COHORT_ARM_B_API_KEY --repo Smana/cloud-native-ref
 gh secret set COHORT_ARM_C_API_KEY --repo Smana/cloud-native-ref
 ```
 
-- [ ] **Step 2: Fund the Z.ai API wallet** (the coding plan does not cover the API; error 1113 =
-  empty wallet).
+- [ ] **Step 2: Top up the Z.ai API wallet $100**: A's and C's shares combined, since both keys
+  draw from the account's one wallet (the coding plan does not cover the API; error 1113 = empty
+  wallet).
 
 - [ ] **Step 3: Pilot issue.** Create a throwaway issue fixing a typo in a comment of a file under
   `scripts/` (a real one; a wording slip in a comment will do), so the
@@ -716,6 +718,9 @@ For each issue in spec §2's order:
 - [ ] Wait for each arm to end: a PR, an escalation (`needsYou`), a timeout or a budget stop.
 - [ ] When a B or C PR opens, close and reopen it: a PR opened with `GITHUB_TOKEN` starts no
   `pull_request` CI otherwise. `createdAt` is unchanged, so the timings hold.
+- [ ] Read arm C's spend on Z.ai's per-key usage page; at $50, stop labelling `cohort/arm-c` and
+  record C's remaining tasks as `budget-exhausted`. An error 1113 is the shared wallet empty: record
+  A's and C's remaining tasks as `budget-exhausted`, not as a factory failure.
 - [ ] Review every PR. **Record each verdict and your minutes before choosing which to merge.**
 - [ ] For an arm A escalation: note which counter ran out (`reviewRounds` 2, `fixRuns` 2,
   `resumes` 2) and whether the PR was still fixable.

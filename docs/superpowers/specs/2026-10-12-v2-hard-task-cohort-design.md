@@ -106,7 +106,7 @@ One workflow, `.github/workflows/cohort-arms.yaml`, with one job per arm, each o
 | Arm C | `ANTHROPIC_BASE_URL` set to Z.ai's Anthropic-compatible endpoint, with the model set to `glm-5.3` |
 | Arm C model slots | `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` all `glm-5.3`, so subagents run on A's model too |
 | Time limit | The agent step stops at 75 minutes, inside the job's 90, so the execution log still uploads |
-| Keys | One dedicated key per arm, with the provider's own spend limit set to the arm's share. Stored in OpenBao under the platform mount for the record; set by the maintainer as repository secrets. No literal in the workflow |
+| Keys | One dedicated key per arm. B's carries an Anthropic workspace spend limit of its share; Z.ai has no per-key limit, so C's key caps nothing (§4). Stored in OpenBao under the platform mount for the record; set by the maintainer as repository secrets. No literal in the workflow |
 
 The workflow sits under `.github/`, a gate path: the maintainer adds it. It is deleted when the
 cohort ends.
@@ -114,15 +114,24 @@ cohort ends.
 A PR opened with `GITHUB_TOKEN` starts no `pull_request` CI, so the maintainer closes and reopens
 each B and C PR once it opens; `createdAt` is unchanged, so the timings hold.
 
-Arm C bills the Z.ai open-platform API wallet, not the GLM coding plan; an empty wallet answers
-error 1113. Fund it before the first run.
+Arm C bills the Z.ai open-platform API wallet, not the GLM coding plan. The wallet belongs to the
+account, and C's key shares that account with the platform key arm A uses: one wallet pays both,
+topped up $100 for their combined shares. Error 1113 means that wallet is empty, for A and C at once.
 
 ## 4. Budget
 
 $150 in total, $50 per arm, about $3.30 per task-arm. Arm A's share is enforced by its existing
-task budget (`standard`: 3 M tokens) and watched on the run dashboard. Arms B and C's shares are
-enforced by their keys' spend limits. An arm that runs dry ends its remaining tasks as
-*budget-exhausted*, which is a result, not an error.
+task budget (`standard`: 3 M tokens) and watched on the run dashboard.
+
+| Arm | Share enforced by |
+|---|---|
+| A | The factory's task budget |
+| B | The Anthropic workspace spend limit on its key |
+| C | The maintainer: Z.ai has no per-key limit, so C's spend is read from Z.ai's per-key usage page after each issue, and C stops at $50 |
+
+An arm that runs dry ends its remaining tasks as *budget-exhausted*, which is a result, not an
+error. Error 1113 during the cohort is the shared A + C wallet running dry: record both arms'
+remaining tasks as *budget-exhausted*, not as a factory failure.
 
 ## 5. The sheet
 
@@ -157,8 +166,8 @@ Fifteen issues tell apart only large differences; the results say so rather than
 |---|---|
 | The nine new issues written, the metrics behind each dashboard issue checked | Each issue has acceptance criteria |
 | `scripts` class and label | The factory admits a `scripts` task (checked on the pilot) |
-| Arm B and C workflows, keys and spend limits | Each arm opens a PR on the pilot |
-| Z.ai API wallet funded | Arm C's pilot run answers |
+| Arm B and C workflows and keys, arm B's spend limit | Each arm opens a PR on the pilot |
+| Z.ai API wallet topped up $100 (A + C) | Arm C's pilot run answers |
 | A pilot on a throwaway issue (fix a typo in a comment of a file under `scripts/`, so the `scripts` class is exercised), all three arms | Three PRs, three rows that fill every column; the pilot rows are discarded |
 
 ## 8. Done
