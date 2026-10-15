@@ -110,8 +110,9 @@ Re-check at ADR-0042's trigger (2026-12-15, or an MCP server dropping 2025-06-18
 
 **Chosen option**: "Option 3", for the agent router only. Gateway `agent-router`, class
 `agentgateway`, in a new namespace `agent-gateway`, keeps its three listeners and its audiences.
-Budgets B1–B2 run on `envoyproxy/ratelimit` with its own Valkey `KVStore`, token-costed, shared and
-in shadow. `ai-gateway` stays on Envoy Gateway and Agent Router: its Semantic Router insertion order
+Budgets B1–B2 run on `envoyproxy/ratelimit` with its own Valkey `KVStore`, shared and in shadow.
+**USD is the policy unit** (run and task caps, 2026-10-15); the rate limiter counts it in reference
+tokens, its integer for the same money (USD ÷ $1.70 per million). `ai-gateway` stays on Envoy Gateway and Agent Router: its Semantic Router insertion order
 and InferencePool wiring work today and gain nothing from a move.
 
 **Rationale**: It is the only option that closes the boundary gap, the MCP gaps and the advisory

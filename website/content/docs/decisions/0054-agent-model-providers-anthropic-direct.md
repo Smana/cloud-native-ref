@@ -34,7 +34,7 @@ rejection for internal data.
 ## Decision Drivers
 
 - `internal` data reaches only a provider whose data terms we accept, never a SaaS aggregator
-- The same model on both clouds, provable on the live cluster
+- The same model on both clouds
 - No provider key in namespace `agents`: the gateway holds it
 - Cloud-agnostic: no per-cloud identity plumbing for the default path
 
@@ -64,7 +64,7 @@ rejection for internal data.
 ### Option 3: Anthropic API directly (chosen)
 
 **Pros**:
-- One backend, one model ID set, both clouds; provable on either cluster at once
+- One backend, one model ID set, both clouds
 - Native agentgateway provider (`spec.ai.provider.anthropic`), Messages format end to end
 - Anthropic is the only data processor for internal prompts
 
@@ -95,8 +95,8 @@ depends on them.
 | `public` | Z.ai (`api.z.ai`, agents' own key) | OpenRouter (`openrouter.ai`, its own key, `custom` provider since 1.6), off by default |
 | `internal` | Anthropic API (`api.anthropic.com`, key from OpenBao `agents` mount, secret `anthropic`) | Bedrock (aws), Vertex (gcp), per team |
 
-**Rationale**: It is the only option that gives internal work a model on both clouds now, with one
-backend and one processor.
+**Rationale**: It is the only option with one backend and the same model on both clouds, with one
+data processor. Bedrock is provable on aws-0 too; it still means a second backend and model set per cloud.
 
 ---
 

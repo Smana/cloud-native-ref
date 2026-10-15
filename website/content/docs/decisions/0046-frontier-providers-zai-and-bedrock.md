@@ -6,7 +6,8 @@ description: Frontier models reach the platform through two providers chosen by 
 lastVerified: 2026-10-07
 ---
 
-**Status**: Accepted
+**Status**: Partly superseded by [ADR-0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}})
+**Partly superseded**: the provider for internal data (keyless Claude through Bedrock or Vertex) is now the Anthropic API. Z.ai for public data stands.
 **Date**: 2026-09-25
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [SP4 — LLM complexity routing](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-llm-complexity-routing-design.md)

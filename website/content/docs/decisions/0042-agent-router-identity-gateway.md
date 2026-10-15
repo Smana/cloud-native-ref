@@ -6,7 +6,8 @@ description: Agent runs reach models and MCP tools only through a dedicated agen
 lastVerified: 2026-09-26
 ---
 
-**Status**: Accepted
+**Status**: Partly superseded by [ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})
+**Partly superseded**: Option 1 (Agent Router on Envoy Gateway) and its rejection of Option 2, for the agent router only. The audiences, listeners, Kyverno reservation and in-pod identity-proxy stand.
 **Date**: 2026-09-26
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: [SP1 — Agent runtime & identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md)
