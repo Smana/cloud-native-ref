@@ -302,12 +302,12 @@ Found by the live gates on `gcp-0` and `aws-0`.
 | F7 | The room broker's certificate had no CN, and the PKI role signed only the private domain | **Fixed** in [#2150](https://github.com/Smana/cloud-native-ref/pull/2150) on `gcp-0`; the same PKI change on `aws-0` is unverified |
 | F8 | The rooms SSO client was missing on `gcp-0` | **Fixed** by re-running the client sync |
 | F9 | `cilium-agent` was OOM-killed twice on new nodes | **Fixed** ([#2145](https://github.com/Smana/cloud-native-ref/pull/2145)) |
-| F10 | The bridge-to-broker event stream reset every 10 s | **Fixed** in agent-platform `v0.8.0`; live re-check pending ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
+| F10 | The bridge-to-broker event stream reset every 10 s | **Fixed and verified** on `aws-0`, 2026-10-15: three cohort bridges re-dialled twice each in 23 min, cleanly, not every 10 s ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
 | F11 | Short conversations lost their whole transcript during the gVisor cold start | **Fixed and verified** on `aws-0`, 2026-10-07 |
-| F12 | A deleted or evicted run pod was re-created by its Sandbox and the task restarted from scratch | **Fixed** in crossplane-configuration `v0.9.3`; live re-check pending ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
+| F12 | A deleted or evicted run pod was re-created by its Sandbox and the task restarted from scratch | **Fixed and verified** on `aws-0`, 2026-10-15: a run pod deleted mid-task read `Failed PodLost` in 6 s, its Sandbox suspended, and the task did not restart ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
 | F13 | The live-gate step grepped for `room_busy`, but the broker logs "room busy" | **Fixed** ([#2155](https://github.com/Smana/cloud-native-ref/pull/2155)) |
 | F14 | `cnpg-promote-seed.sh --cloud gcp` nested the seed one level too deep | **Fixed** ([#2154](https://github.com/Smana/cloud-native-ref/pull/2154)) |
-| F15 | A run refused the room lease still executed its task, unrecorded, on the shared branch | **Fixed** with F12; live re-check pending ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
+| F15 | A run refused the room lease still executed its task, unrecorded, on the shared branch | **Fixed and verified** on `aws-0`, 2026-10-15: of two runs requested 110 ms apart in one room, the factory refused the second `409 room_busy`, so it never existed. The pod's `room-gate` refusal was not exercised ([#2282](https://github.com/Smana/cloud-native-ref/issues/2282)) |
 | F16 | MCP calls are not joined to the run's trace | **Open** ([#2283](https://github.com/Smana/cloud-native-ref/issues/2283)) |
 | F17 | Runbook 08's GCP commands had bugs | **Fixed** |
 | F18 | A successful run's page showed no outcome or PR | **Fixed and verified** on `aws-0`, 2026-10-08: `agentrun_pull_request_info` names the PR; `agentrun_outcome_info` is emitted for failures only, by design |
