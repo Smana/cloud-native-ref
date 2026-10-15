@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform v0.10.1, the chart's appVersion.
+      # agent-platform v0.11.0, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.10.1@sha256:de57e45a05bce748804796d10e59b3fa73c3362a9ae1c811f652ea6dbf8c7386"
+      tag: "v0.11.0@sha256:99cafabfcc4b172d6f88b119aeb0ff8bef6e814927f889430a5f029823801955"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -107,9 +107,11 @@ data:
             file. If none is broken, change nothing and open no pull request.
       # Every tier routes to agent-default until SP4 PR 2 serves tier-* on agent-router (R11).
       tiers:
-        light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20}
-        standard: {model: agent-default, runTokens: 1500000, taskTokens: 3000000, runMinutes: 45}
-        frontier: {model: agent-default, runTokens: 4000000, taskTokens: 8000000, runMinutes: 90}
+        # USD caps price cache reads at their own rate (agent-platform#100, v2 cohort, OD-6 on #2369):
+        # runTokens/taskTokens apply only to a run or task the meter cannot price.
+        light:    {model: agent-default, runTokens: 300000,  taskTokens: 600000,  runMinutes: 20, runUSD: 0.51, taskUSD: 1.02}
+        standard: {model: agent-default, runTokens: 1500000, taskTokens: 3000000, runMinutes: 45, runUSD: 2.55, taskUSD: 5.10}
+        frontier: {model: agent-default, runTokens: 4000000, taskTokens: 8000000, runMinutes: 90, runUSD: 6.80, taskUSD: 13.60}
       templates:
         solo: {roles: [implementer]}
         pair: {roles: [implementer, reviewer], maxReviewRounds: 2}
@@ -129,7 +131,10 @@ data:
       # SP4 PR 2's agent_router:run_tokens:total expression over the raw series (R12).
       meter:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
-        query: 'sum by (ar_agent) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|output"})'
+        query: 'sum by (ar_agent, gen_ai_token_type) (gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:xplane-run-.+", gen_ai_token_type=~"input|cached_input|cache_creation_input|output"})'
+        # GLM-5.3 list (Z.ai), $ per M tokens: valid while every tier routes to agent-default.
+        prices:
+          agent-default: {input: 1.40, cacheRead: 0.26, output: 4.40}
         # The 429 lookup (R13): throttle hits per agent over the gateway's access logs.
         logsURL: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
         throttleQuery: '_time:2m kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" | unpack_json | log.response_code:429 AND log.response_flags:~"RL" | stats by (log.x_ar_agent) count() hits'
