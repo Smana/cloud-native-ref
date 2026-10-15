@@ -1,0 +1,390 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: security-external-secrets
+  # folderRef only resolves a GrafanaFolder in the dashboard's own namespace,
+  # and the kubernetes folder lives in infrastructure.
+  namespace: infrastructure
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "kubernetes"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "__inputs": [],
+      "__requires": [],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "panels": [],
+          "title": "Health",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "ExternalSecrets whose Ready condition is True.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 8, "x": 0, "y": 1 },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "count(externalsecret_status_condition{condition=\"Ready\", status=\"True\", namespace=~\"$${namespace}\"} == 1) or vector(0)",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "ExternalSecrets ready",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "ExternalSecrets whose Ready condition is False: the target Secret is stale or missing.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 8, "x": 8, "y": 1 },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "count(externalsecret_status_condition{condition=\"Ready\", status=\"False\", namespace=~\"$${namespace}\"} == 1) or vector(0)",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "ExternalSecrets not ready",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Failed syncs over the selected time range.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 }
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "sum(increase(externalsecret_sync_calls_error{namespace=~\"$${namespace}\"}[$$__range])) or vector(0)",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Sync errors (time range)",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+          "id": 5,
+          "panels": [],
+          "title": "Ready status",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Ready condition of every ExternalSecret, not-ready first.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "cellOptions": { "type": "color-background" } },
+              "mappings": [
+                {
+                  "options": {
+                    "0": { "color": "red", "index": 1, "text": "Not ready" },
+                    "1": { "color": "green", "index": 0, "text": "Ready" }
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 0, "y": 7 },
+          "id": 6,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "sortBy": [{ "desc": false, "displayName": "Ready" }]
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "max by (namespace, name) (externalsecret_status_condition{condition=\"Ready\", status=\"True\", namespace=~\"$${namespace}\"})",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "title": "ExternalSecret Ready status",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "Time": true },
+                "renameByName": { "Value": "Ready", "name": "ExternalSecret", "namespace": "Namespace" }
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Not-ready ExternalSecrets per namespace over time.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+              "min": 0,
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 12, "y": 7 },
+          "id": 7,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "sum by (namespace) (externalsecret_status_condition{condition=\"Ready\", status=\"False\", namespace=~\"$${namespace}\"})",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Not-ready ExternalSecrets",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+          "id": 8,
+          "panels": [],
+          "title": "Sync",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Reconciles per second, by ExternalSecret namespace.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+              "min": 0,
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 9, "w": 8, "x": 0, "y": 18 },
+          "id": 9,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "sum by (namespace) (rate(externalsecret_sync_calls_total{namespace=~\"$${namespace}\"}[$$__rate_interval]))",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Sync calls",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Failed syncs per second, by ExternalSecret. Flat at zero when every sync succeeds.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+              "min": 0,
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 9, "w": 8, "x": 8, "y": 18 },
+          "id": 10,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "sum by (namespace, name) (rate(externalsecret_sync_calls_error{namespace=~\"$${namespace}\"}[$$__rate_interval])) or on() vector(0)",
+              "legendFormat": "{{namespace}}/{{name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Sync errors",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "description": "Slowest reconciles: the ten ExternalSecrets with the longest last reconcile.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1, "showPoints": "never" },
+              "min": 0,
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 9, "w": 8, "x": 16, "y": 18 },
+          "id": 11,
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "expr": "topk(10, max by (namespace, name) (externalsecret_reconcile_duration{namespace=~\"$${namespace}\"}))",
+              "legendFormat": "{{namespace}}/{{name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Reconcile duration",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "1m",
+      "schemaVersion": 39,
+      "tags": ["external-secrets", "security"],
+      "templating": {
+        "list": [
+          {
+            "current": { "selected": true, "text": "default", "value": "default" },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Data source",
+            "multi": false,
+            "name": "datasource",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          },
+          {
+            "allValue": ".*",
+            "current": { "selected": true, "text": ["All"], "value": ["$$__all"] },
+            "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+            "definition": "label_values(externalsecret_status_condition, namespace)",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Namespace",
+            "multi": true,
+            "name": "namespace",
+            "options": [],
+            "query": {
+              "query": "label_values(externalsecret_status_condition, namespace)",
+              "refId": "namespace"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          }
+        ]
+      },
+      "time": { "from": "now-24h", "to": "now" },
+      "timepicker": {},
+      "timezone": "",
+      "title": "External Secrets",
+      "uid": "external-secrets-overview",
+      "version": 1,
+      "weekStart": ""
+    }
