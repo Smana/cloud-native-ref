@@ -140,6 +140,17 @@ if [ "$1" = "s3" ] && [ "$2" = "ls" ]; then
         s3://test-bucket/settle-timeout-server/wals/0000000700000002/) empty_prefix ;;  # never lands
         s3://test-bucket/settle-error-server/wals/0000000700000002/)
             echo "An error occurred (SlowDown) when calling the ListObjectsV2 operation" >&2; exit 254 ;;
+        # #2292: an idle database. A bare pg_switch_wal closes nothing, so the
+        # segment lands only after the SECOND switch preceded by a CHECKPOINT
+        # -- proving both the CHECKPOINT and the re-issue while polling.
+        s3://test-bucket/settle-idle-server/wals/0000000700000002/)
+            if [ "$(grep -c 'CHECKPOINT;.*pg_switch_wal' "$FIXDIR/exec-calls" 2>/dev/null)" -ge 2 ]; then
+                echo "2026-09-02 12:41:00     123456 00000007000000020000007F.bz2"
+            else
+                empty_prefix
+            fi ;;
+        s3://test-bucket/settle-idle-seed/base/)                  cat "$FIXDIR/good-base-listing.txt" ;;
+        s3://test-bucket/settle-idle-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
         s3://test-bucket/settle-lands-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
         s3://test-bucket/settle-lands-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
         # round-4 fixture: base/ and backup.info are fine, but the WAL shard
@@ -164,6 +175,7 @@ if [ "$1" = "s3" ] && [ "$2" = "cp" ]; then
             echo "Note: switching to next-gen CRT-based S3 transfer client" >&2
             cat "$FIXDIR/good-backup.info" ;;
         s3://test-bucket/settle-lands-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
+        s3://test-bucket/settle-idle-seed/base/20260902T123813/backup.info)  cat "$FIXDIR/good-backup.info" ;;
         s3://test-bucket/absent-shard-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
         *) echo "fatal error: An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 1 ;;
     esac
@@ -240,7 +252,8 @@ if [ "$1" = "get" ] && [ "$2" = "backup" ]; then
     exit 1
 fi
 if [ "$1" = "exec" ]; then
-    exit 0   # pg_switch_wal
+    echo "$*" >> "$STUB_FIXTURES/exec-calls"   # CHECKPOINT + pg_switch_wal
+    exit 0
 fi
 exit 1
 EOF
@@ -503,5 +516,20 @@ rc=$?
 check "gcp apply: exit code" "0" "$rc"
 check_contains "gcp apply: copied with rsync" "storage rsync --recursive gs://test-bucket/gcp-apply-server gs://test-bucket/gcp-apply-seed" "$(cat "$FIX/gcloud-copy-calls" 2>/dev/null)"
 check_contains "gcp apply: verifies the flat seed" "Set spec.objectStoreRecovery.path to: gcp-apply-seed" "$out"
+
+# ---- 20. #2292: an idle database's end_wal lands only after CHECKPOINT +
+#          pg_switch_wal is re-issued while polling -----------------------
+rm -f "$FIX/exec-calls"
+export STUB_SERVER_NAME="settle-idle-server"
+export STUB_PRIMARY_POD="settle-idle-server-1"
+export STUB_END_WAL="00000007000000020000007F"
+out="$(bash "$SCRIPT" --cluster xplane-settle-idle --namespace ns --cloud aws --bucket test-bucket \
+    --seed settle-idle-seed --apply 2>&1)"
+rc=$?
+check "idle database: promotion succeeds -> exit code" "0" "$rc"
+check_contains "idle database: end_wal archived" "end_wal 00000007000000020000007F archived" "$out"
+check "idle database: switch re-issued while polling" "2" "$(grep -c 'pg_switch_wal' "$FIX/exec-calls")"
+check_contains "idle database: CHECKPOINT precedes pg_switch_wal" \
+    '-c CHECKPOINT; -c SELECT pg_switch_wal();' "$(head -1 "$FIX/exec-calls")"
 
 exit $fail
