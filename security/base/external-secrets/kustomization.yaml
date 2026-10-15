@@ -6,4 +6,5 @@ kind: Kustomization
 # provider (`aws` on aws-0, `gcpsm` on gcp-0), so it was never shared anyway;
 # it lives in security/{aws-0,gcp-0}/openbao/clustersecretstore.yaml.
 resources:
+  - grafana-dashboard.yaml
   - helmrelease.yaml
