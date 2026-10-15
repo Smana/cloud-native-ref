@@ -64,12 +64,12 @@ Other open v1-hardening issues (#2273, #2274, #2276, #2280, #2281, #2292) do not
 
 | # | Decision | Chosen | What it changes |
 |---|---|---|---|
-| OD-1 | Sequence with the AI split's S2 | **Migrate before S2**, in cloud-native-ref; S2's `filter-repo` carries the result | Every PR below targets cloud-native-ref. No porting of open PRs |
-| OD-2 | agentgateway pin | **v1.6.0**, after the PoC's live check passed L1–L7 on aws-0 (2026-10-15). **Re-run L1–L8 on v1.7.0 before phase F** and take it if it passes | ADR-0053 D3's rule becomes "a minor that passes our live gate (L1–L8)": agentgateway rarely ships a patch release ([research](../specs/2026-10-15-agentgateway-open-issues-research.md#releases)). The 1.6 deltas apply to A.3, C.1, E.2, J.1 |
+| OD-1 | Sequence with the AI split's S2 | **Phases A–H before S2**: the migration ends with the Envoy router removed, in cloud-native-ref, and S2's `filter-repo` carries it. **I–J may land after the split** | AGW-1 to AGW-7, AP-AGW1, CC-AGW1 and CC-AGW2 target cloud-native-ref's repositories as today. AGW-8 and AGW-9 land in `ai-native-ref` if S2 has happened by then |
+| OD-2 | agentgateway pin | **v1.6.0**, after the PoC's live check passed L1–L7 on aws-0 (2026-10-15). L8 was only partly evidenced: the captured output has no line labelled L8, so **L8 still needs a full captured log on v1.6.0**. The gate stays L1–L8. **Re-run L1–L8 on v1.7.0 before phase F** and take it if it passes | ADR-0053 D3's rule becomes "a minor that passes our live gate (L1–L8)": agentgateway rarely ships a patch release ([research](../specs/2026-10-15-agentgateway-open-issues-research.md#releases)). The 1.6 deltas apply to A.3, C.1, E.2, J.1 |
 | OD-3 | Price cache reads in the run meter before the migration | **Shipped**: agent-platform v0.11.0 (#100), pinned by #2379 | J0 is done |
 | OD-4 | #2283 | **Closes with phase E** | E.1 carries its acceptance (SC-20) |
 | OD-5 | Live cluster for phases B–J | **aws-0** | **[LIVE]** means aws-0. The PoC ran B.6's EKS checks. gcp-0 renders in CI only |
-| OD-6 | Budget unit | **USD caps per run and task**, shipped (#2379: `runUSD`, `taskUSD`; `runTokens` applies only to a run the meter cannot price) | Design D11's reference tokens are superseded for the meter. J-AC1 is read in USD |
+| OD-6 | Budget unit | **USD is the policy unit**: caps per run and task, shipped (#2379: `runUSD`, `taskUSD`; `runTokens` applies only to a run the meter cannot price). Reference tokens (USD ÷ $1.70 per million) remain only as the gateway rate limiter's integer for the same money | Design D11 says so. J-AC1 is read in USD; B1, B2 and B6 descriptors count reference tokens |
 | OD-7 | Harness retry versus budget 429 | **Retry 503 and connection errors only**; any 429 stays terminal. Shipped in agent-platform#101 | No budget-refusal marker in D.2 |
 | OD-8 | agentgateway 1.6's per-key local token limits | **Adopt as a per-replica backstop** beside the rate-limit server | D.2 adds them; the PoC's per-sub limit is the template |
 
@@ -121,7 +121,8 @@ flowchart TD
   P5["P5 · Anthropic key in OpenBao"] --> I
   I --> J["J · prompt caching,<br/>budgets on the gateway price"]
   J0 -.->|"replaced by"| J
-  H -.->|"OD-1: migration first"| S2["AI split S2"]
+  H -->|"OD-1: A–H first"| S2["AI split S2"]
+  S2 -.->|"I–J may land after the split"| I
 ```
 
 ## PR map
@@ -149,7 +150,9 @@ merge only with live evidence from a feature-branch deploy (`TF_VAR_flux_git_ref
 | AP-AGW2 | agent-platform | J | price comment, prompt-prefix pin (J.5 step 6, J.6) |
 | CC-AGW3, AP-AGW3 | crossplane-configuration, agent-platform | J.9 | only if J.7 step 3's `internal` leg reads nothing |
 
-Under OD-1, the migration (AGW-1 to AGW-7) lands in cloud-native-ref before S2.
+Under OD-1, phases A–H (AGW-1 to AGW-7, AP-AGW1, CC-AGW1, CC-AGW2) land before S2, with the
+Envoy router removed. Phases I–J (AGW-8, AGW-9, AP-AGW2 and J.9's rows) may land after it, in
+`ai-native-ref`.
 
 ## Global constraints: what changed
 
@@ -280,8 +283,10 @@ may rely on a defaulted field being present. AG1–AG9 then print `11 checks`; J
 
 ### Task B.6 deltas: first install on EKS
 
-The aws-0 PoC ran L1–L8 on EKS. Before AGW-2 leaves draft, the same checks run against the real
-Gateway, plus one new check: the JWKS resolves for the EKS issuer after a rebuild, which changes it.
+The aws-0 PoC passed L1–L7 on EKS. L8 (JWT from an EKS projected token) was only partly evidenced
+and still needs a full captured log on v1.6.0. Before AGW-2 leaves draft, all of L1–L8 must pass
+against the real Gateway, plus one new check: the JWKS resolves for the EKS issuer after a rebuild,
+which changes it.
 
 ## Phase C — routes at parity
 
@@ -352,7 +357,7 @@ Phase J is accepted when all of these hold, each with a command run and its outp
 | # | Criterion | Proof |
 |---|---|---|
 | J-AC1 | **A cache read is never charged at the full input rate.** The four arm-A rows of the cohort ([results](../specs/2026-10-12-v2-hard-task-cohort-results.csv): #2279, #2277, #2278, #2269), replayed through the run meter's expression, charge **at most 0.42 M** each against the `standard` run budget (their price, $0.58–$0.70, ÷ REF), not their 1.54–1.69 M raw tokens. None would have been revoked at 1.5 M. Under OD-6, they charge their USD price against `standard`'s `runUSD: 2.55` | Offline: a rule test over a fixture holding the four rows' `input`, `cached_input`, `output`. Live: J.7 step 5's run, whose `agents.ogenki.io/usage-tokens` equals `gateway cost ÷ REF` within one scrape |
-| J-AC2 | **The gateway and the meter count the same unit.** B1 and B2 descriptors, the run-token recording rule and `meter.query` use one expression (D11), and gate AG8 fails a token descriptor without it | AG8 in `validate-manifests.sh`; J.7 step 4 |
+| J-AC2 | **The gateway and the meter count the same money.** USD is the policy unit; B1 and B2 descriptors count it as reference tokens (USD ÷ REF), from the same price expression as the run-token recording rule and `meter.query` (D11), and gate AG8 fails a token descriptor without it | AG8 in `validate-manifests.sh`; J.7 step 4 |
 | J-AC3 | **Caching works with no provider field in the request** (SC-14) | J.7 step 3, or J.9 |
 | J-AC4 | **An unpriced model is visible, not free.** `AgentModelUnpriced` fires for a pinned model missing from the overlay, and its budgets fall back to raw tokens | J.7 step 5; AG10 |
 | J-AC5 | **A transient upstream error does not end a run.** A 503 injected once on the probe's path is retried and counted, a budget 429 is not retried (P4, OD-7) | agent-platform#99's test, then one live injection in G.4 |
