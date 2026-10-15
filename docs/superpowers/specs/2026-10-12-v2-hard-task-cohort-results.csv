@@ -8,3 +8,6 @@ issue,arm,pr,tokens_in,tokens_cached,tokens_out,usd,label_to_pr_min,label_to_ver
 2278,A,,1690907,1619776,27722,0.6427,,,0,0,escalated,budget-run,,,
 2278,B,2358,3663127,3563969,24638,1.6938,8,24,0,0,pr,,,merged-as-is,
 2278,C,,6182196,6013568,59116,2.0597,,,0,,timeout,,,,
+2269,A,,1594321,1507328,15932,0.5838,,,0,0,escalated,budget-run,,,
+2269,B,2360,3118463,3022472,21512,1.5072,13,21,0,0,pr,,,merged-as-is,
+2269,C,,5469200,5372608,19364,1.6173,,,0,,timeout,,,,
