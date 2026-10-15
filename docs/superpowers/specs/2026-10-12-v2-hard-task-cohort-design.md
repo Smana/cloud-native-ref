@@ -188,3 +188,37 @@ its secrets are deleted; `controlPercent` is back at 10.
 | The maintainer favours an arm when choosing what to merge | Verdicts are per PR on a fixed scale, recorded before the merge choice |
 | A dashboard issue turns out to have no metrics | Checked before labelling; a failing one is swapped for the next reserve |
 | An issue is fixed by other work mid-cohort | Reserves, in order |
+
+## Results
+
+All 15 issues ran, 2026-10-14 to 2026-10-15. Inputs from `python3 scripts/ops/github/cohort-results.py`
+on the 45 rows of the [sheet](2026-10-12-v2-hard-task-cohort-results.csv).
+
+| Arm | Accepted | USD | USD per accepted | Ended | Median label → PR |
+|---|---|---|---|---|---|
+| A, the factory, GLM-5.3 | 0 of 15 | 9.00 | n/a | 13 `escalated` (11 `budget-run`, 1 `agent_error`, 1 `stuck`), 2 `pr` | 38 min (the two PRs) |
+| B, Claude Code Action, Claude | 13 of 15 (10 as-is, 3 after edits) | 15.80 | 1.22 | 13 `pr`, 1 `no-pr`, 1 `timeout` | 11 min |
+| C, Claude Code Action, GLM-5.3 | 0 of 15 | 25.65 | n/a | 15 `timeout` | n/a |
+
+| Question | Answer |
+|---|---|
+| Does the factory pay for operating it? | **No.** A's 0 accepted is not within one of B's 13, and A has no cost per accepted outcome: $9.00 bought none |
+| Is a gap the model or the harness? | **B ≫ C ≈ A: the model**, as the rule reads. C ran B's harness on A's model and ended every issue on the turn cap, so the gap follows the model. With a caveat: A was stopped by its own budget, not by the work it did (below) |
+| Build the continuation loop? | **No.** 0 of the 3 required: A's escalations were the run budget (11), a provider error (1) and a stall (1), none a counter on a fixable PR |
+| Reviewer on another model? | **No ADR.** A's reviewer approved nothing the maintainer rejected: A's two PRs were correct and closed only as superseded |
+| Human time | Not recorded: the maintainer delegated the reviews (2026-10-15), and `review_min` is empty on every row |
+
+**What the data shows.**
+- **A's run budget, not A's work, decided 11 of 15 issues.** It counts every input token at full weight, and 91–96% of A's tokens were cache reads. Runs stopped at about 1.5 M tokens and $0.58–0.76; B finished the same issues with 1.0–3.7 M. Owner decision OD-3/OD-6 (#2369) replaces it with a USD cap per run.
+- **When A finished, its work was sound.** Both of A's PRs (#2371, #2376) were correct. Each lost to B's PR for the same issue, which had already merged.
+- **C hit the 60-turn cap on all 15**, at 3.5–6.6 M tokens and $1.13–2.33 each. GLM-5.3 in Claude Code's harness neither converged nor stopped early.
+- **B missed twice.** #2319 ran past the turn cap. #2321 was finished on its branch, but its sandbox refused the PR body, and one of its panels reads a metric aws-0 does not have. Three of B's PRs needed a small shellcheck fix before merging.
+
+**Limit.**
+- **Sample size.** Fifteen issues tell apart only large differences (§6). 13–0 is one; the order between A and C is not, since both accepted 0.
+- **Batching.** Issues 1–4 ran one at a time. From issue 5 the arms ran in batches of disjoint issues (§3), which affects four things:
+  - the latency columns mix two schedules;
+  - A queued behind its own active-task cap on #2321;
+  - one A run stalled and one failed on the shared Z.ai account under eight concurrent runs (#2315, #2291; agent-platform#99);
+  - both of A's PRs were superseded by B's.
+- **Single verdict source.** From issue 5 the verdicts were given by the operating agent (Claude) under the owner's delegation, not by the maintainer.
