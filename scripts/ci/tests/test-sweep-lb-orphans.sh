@@ -93,6 +93,8 @@ EMPTY=1 sweep "${args[@]}" --apply
 check "empty: exit 0, nothing deleted" '[ "$rc" -eq 0 ] && [ ! -s "$T/deletes" ]'
 
 # The cluster guard: any cluster refuses, as does a list that fails.
+# rc and err are read inside check's eval strings, where the linter cannot see them.
+# shellcheck disable=SC2034
 refuses() { # $1 = case, then env assignments
   local what="$1"; shift
   : >"$T/calls"; : >"$T/deletes"
