@@ -47,7 +47,7 @@ spec:
     # The latest ZITADEL release, which can run ahead of the chart's appVersion; Renovate bumps it
     # with the chart, in one PR a human reads. Never below v4.17.3 / v4.18.0: older releases let a
     # user add an unverified IdP link to their own account, which forges the GitHub identity D7
-    # reads (ADR-0056).
+    # reads (ADR-0056). `assert-zitadel-floor.py` fails CI on a rendered tag below that.
     image:
       # renovate: datasource=docker depName=ghcr.io/zitadel/zitadel
       tag: "v4.19.4@sha256:90a3045b80a2b5b395e1e770302076906af3a5911225af7c464b4f3bd00d0a1b"

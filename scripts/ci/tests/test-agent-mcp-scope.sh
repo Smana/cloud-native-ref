@@ -36,12 +36,12 @@ VL_TOOLS = {"documentation", "query", "hits", "facets", "field_names", "field_va
 
 # SP2 §3: the same room tools on both listeners; room_handoff is not a reviewer's,
 # room_verdict is not an implementer's or a triager's.
-ROOM_TOOLS = {"room_read", "room_post", "room_handoff", "room_verdict"}
+ROOM_TOOLS = {"room_read", "room_post", "room_progress", "room_handoff", "room_verdict"}
 ROOM_GRANTS = {
-    "implementer": {"room_read", "room_post", "room_handoff"},
-    "reviewer": {"room_read", "room_post", "room_verdict"},
+    "implementer": {"room_read", "room_post", "room_progress", "room_handoff"},
+    "reviewer": {"room_read", "room_post", "room_progress", "room_verdict"},
     "tester": ROOM_TOOLS,
-    "triager": {"room_read", "room_post", "room_handoff"},
+    "triager": {"room_read", "room_post", "room_progress", "room_handoff"},
 }
 
 EXPECTED_BACKEND_TOOLS = {
