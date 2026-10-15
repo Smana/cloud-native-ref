@@ -22,5 +22,5 @@ spec:
   interval: 24h
   url: oci://cr.agentgateway.dev/charts/agentgateway
   ref:
-    tag: "v1.6.0"
-    digest: sha256:d3edf2b33cbf2e9d59406c207b8d3554597799707b8803b5f62e698fe5376e28
+    tag: "v2.2.1"
+    digest: sha256:f7497fcb08f73fdad9f60fb54a9623aa8e3a53a485ed78269f8cc80d38eaab94
