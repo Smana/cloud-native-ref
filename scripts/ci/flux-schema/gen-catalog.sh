@@ -42,6 +42,37 @@ source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
 
+# An exactly pinned OCI chart, from the cache render-bundle.py shares (same dir, same key), so a
+# cached run sends no request to a registry that rations anonymous pulls per runner IP (#2356).
+# Prints the chart to hand to `helm template`: the cached .tgz, or the URL for a range pin.
+OCI_CHART_CACHE="${HELM_CACHE_HOME:-${HOME}/.cache/helm}/oci-charts"
+oci_chart() {
+  local url="$1" version="$2" tgz dest delay err
+  if ! [[ "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+    echo "${url}"
+    return
+  fi
+  tgz="${OCI_CHART_CACHE}/$(printf '%s' "${url#oci://}@${version}" | tr -c 'A-Za-z0-9._-' '_').tgz"
+  if [[ ! -f "${tgz}" ]]; then
+    mkdir -p "${OCI_CHART_CACHE}"
+    dest="$(mktemp -d)"
+    for delay in 20 60 0; do
+      if err="$("${HELM_BIN}" pull "${url}" --version "${version}" --destination "${dest}" 2>&1)"; then
+        mv "${dest}"/*.tgz "${tgz}"
+        break
+      fi
+      if [[ "${delay}" -eq 0 || "${err}" != *429* && "${err}" != *toomanyrequests* ]]; then
+        echo "${err}" >&2
+        rm -rf "${dest}"
+        return 1
+      fi
+      sleep "${delay}"
+    done
+    rm -rf "${dest}"
+  fi
+  echo "${tgz}"
+}
+
 # Single source of truth: the same OCIRepository pin Flux uses to install the
 # CRDs on the cluster. Renovate bumps that file; this script follows it.
 # Portable (no GNU-only `grep -oP`): sed -E is extended-regex on both GNU
@@ -177,7 +208,8 @@ echo "==> Rendering Envoy AI Gateway CRDs (chart ${AI_GATEWAY_VERSION})"
 # --include-crds: Helm skips a chart's crds/ directory by default. Without
 # this flag a chart that packages its CRDs there (rather than as regular
 # templates) renders zero CRDs, and helm still exits 0.
-"${HELM_BIN}" template aigw-crds "${AI_GATEWAY_CHART}" --version "${AI_GATEWAY_VERSION}" --include-crds \
+chart="$(oci_chart "${AI_GATEWAY_CHART}" "${AI_GATEWAY_VERSION}")"
+"${HELM_BIN}" template aigw-crds "${chart}" --version "${AI_GATEWAY_VERSION}" --include-crds \
   > "${tmp}/aigateway-crds.yaml"
 
 echo "==> Rendering Karpenter CRDs (chart ${KARPENTER_VERSION})"
@@ -187,7 +219,8 @@ echo "==> Rendering Karpenter CRDs (chart ${KARPENTER_VERSION})"
 # ("Chart cannot be installed without a valid settings.clusterName!"). The value
 # is render-only: `flux schema extract crd` below picks out ONLY the CRDs, so
 # this throwaway name never reaches the catalog.
-"${HELM_BIN}" template karpenter "${KARPENTER_CHART}" --version "${KARPENTER_VERSION}" --include-crds \
+chart="$(oci_chart "${KARPENTER_CHART}" "${KARPENTER_VERSION}")"
+"${HELM_BIN}" template karpenter "${chart}" --version "${KARPENTER_VERSION}" --include-crds \
   --set settings.clusterName=catalog \
   > "${tmp}/karpenter-crds.yaml"
 
