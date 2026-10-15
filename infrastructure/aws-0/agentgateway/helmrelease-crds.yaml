@@ -1,0 +1,18 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agentgateway-crds
+  namespace: agentgateway-system
+spec:
+  releaseName: agentgateway-crds
+  chartRef:
+    kind: OCIRepository
+    name: agentgateway-crds
+    namespace: agentgateway-system
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3

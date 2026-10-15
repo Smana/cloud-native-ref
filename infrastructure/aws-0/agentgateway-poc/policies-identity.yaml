@@ -1,0 +1,109 @@
+# ADR-0042 on agentgateway: one policy per listener validates the projected
+# ServiceAccount token offline, requires the caller's `sub` prefix, and REPLACES
+# x-ar-agent with the verified sub. The validated JWT is removed before any backend
+# sees it (preserveToken defaults off).
+#
+# Audiences `agw-poc.*`: `agent-router.*` is reserved for namespace agents by
+# Kyverno (security/base/agent-policies), and no agent uses this Gateway.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: strip-identity-headers
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+  traffic:
+    phase: PreRouting
+    transformation:
+      request:
+        remove:
+          - x-ar-agent
+          - x-ar-human
+          - x-ar-client
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-public
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: public
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agw-poc.implementer.public
+            - agw-poc.reviewer.public
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+          # The rate-limit key reads `sub`: a token without it is refused here,
+          # never counted in a shared bucket (#3523).
+          validation:
+            requiredClaims:
+              - exp
+              - sub
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agw-poc-clients:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
+    timeouts:
+      request: 600s
+    # OD-8: a per-replica backstop, one bucket per verified sub. Not a budget.
+    rateLimit:
+      local:
+        - tokens: 200000
+          unit: Minutes
+          key: jwt.sub
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-internal
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: internal
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agw-poc.implementer.internal
+            - agw-poc.reviewer.internal
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+          validation:
+            requiredClaims:
+              - exp
+              - sub
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agw-poc-clients:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
