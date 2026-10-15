@@ -11,7 +11,10 @@
 #     "SQLInstance CRD not available", which reads as "nothing to seed";
 #   - discovery must pick claims by spec.backup and strip `xplane-` from the
 #     seed and alias names (the bucket lifecycle rule expires `xplane-*`);
-#   - --cloud must reach the promote script unchanged.
+#   - --cloud must reach the promote script unchanged;
+#   - the seed name must carry the serverName's per-generation suffix, so a
+#     rebuild torn down the same day gets its own seed instead of colliding
+#     with the morning's and leaving the alias on the old lineage (#2291).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../../ops/k8s/cnpg-pre-destroy-seed.sh"
@@ -56,6 +59,11 @@ case "${args[0]}" in
   get)
     case "${args[1]}" in
       ns) echo "namespace/default" ;;
+      cluster)
+        case "${args[2]}" in
+          xplane-zitadel-cnpg-cluster) [ -n "${GEN-a1b2c3d4}" ] && echo "xplane-zitadel-cnpg-cluster-${GEN-a1b2c3d4}" ;;
+          xplane-harbor-cnpg-cluster) echo "xplane-harbor-cnpg-cluster-e5f6a7b8" ;;
+        esac ;;
       sqlinstance) cat <<'J'
 {"items":[
  {"metadata":{"namespace":"security","name":"xplane-zitadel"},"spec":{"backup":{"schedule":"0 2 * * *"}}},
@@ -86,12 +94,30 @@ echo "case: two backed-up claims, harbor's promotion fails (gcp)"
 run MODE=ok -- --cloud gcp --bucket proj-ogenki-cnpg-backups
 check "exits 0 although a promotion failed" 0 "$rc"
 check_contains "zitadel promoted, xplane- stripped, --cloud gcp passed through" \
-  "--cloud gcp --bucket proj-ogenki-cnpg-backups --cluster xplane-zitadel --namespace security --apply --seed zitadel-20261006 --rotate-alias zitadel-pre-destroy" \
+  "--cloud gcp --bucket proj-ogenki-cnpg-backups --cluster xplane-zitadel --namespace security --apply --seed zitadel-20261006-a1b2c3d4 --rotate-alias zitadel-pre-destroy" \
   "$(cat "$PROMOTE_LOG")"
 check_contains "harbor promoted" "--cluster xplane-harbor --namespace tooling" "$(cat "$PROMOTE_LOG")"
 check_contains "failed promotion warns" "[warn] seed for xplane-harbor failed" "$out"
 check "a claim without spec.backup is not promoted" 2 "$(wc -l < "$PROMOTE_LOG" | tr -d ' ')"
 check "every kubectl call carries --request-timeout" "" "$(grep -v -- '--request-timeout' "$KUBECTL_LOG")"
+
+echo "case: a rebuild torn down the same day gets its own seed (#2291)"
+run MODE=ok -- --cloud gcp --bucket b
+first="$(grep -o -- '--seed zitadel-[^ ]*' "$PROMOTE_LOG")"
+run MODE=ok -- --cloud gcp --bucket b
+check "a same-lineage re-run reuses the seed name, so the collision guard skips it" \
+  "$first" "$(grep -o -- '--seed zitadel-[^ ]*' "$PROMOTE_LOG")"
+run MODE=ok GEN=99887766 -- --cloud gcp --bucket b
+check "a new lineage the same day gets a distinct seed" \
+  "--seed zitadel-20261006-99887766" "$(grep -o -- '--seed zitadel-[^ ]*' "$PROMOTE_LOG")"
+
+echo "case: serverName unreadable"
+run MODE=ok GEN= -- --cloud gcp --bucket b
+check "exits 0" 0 "$rc"
+check_contains "warns rather than seeding under a date-only name" \
+  "[warn] seed for xplane-zitadel failed: could not read its serverName" "$out"
+check_absent "zitadel not promoted" "--cluster xplane-zitadel" "$(cat "$PROMOTE_LOG")"
+check_contains "other claims still promoted" "--cluster xplane-harbor" "$(cat "$PROMOTE_LOG")"
 
 echo "case: --cloud aws passthrough"
 run MODE=ok -- --cloud aws --bucket eu-west-3-ogenki-cnpg-backups
