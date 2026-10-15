@@ -5,6 +5,7 @@ resources:
   - app-all-in-one.yaml
   - runlore.yaml
   - kubernetes-node-exporter-full.yaml
+  - openbao.yaml
 
 # The four kubernetes-views-* dashboards were here until 2026-08-28 and are gone
 # because victoria-metrics-k8s-stack ALREADY SHIPS THEM, and shipping them twice
