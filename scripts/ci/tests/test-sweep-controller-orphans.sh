@@ -68,6 +68,8 @@ out_stuck="$(STUB_SG_STUCK=1 sweep --cluster-name aws-0 --region eu-west-3 --app
 
 fails=0
 check() { if eval "$2"; then echo "  ok   $1"; else echo "  FAIL $1"; fails=1; fi; }
+# Read inside check's eval strings, where the linter cannot see it.
+# shellcheck disable=SC2034
 deletes='delete-load-balancer|terminate-instances|delete-security-group'
 
 check "no --cluster-name exits 2" '[ "$rc_noname" -eq 2 ] && grep -q -- "--cluster-name is required" <<<"$out_noname"'
