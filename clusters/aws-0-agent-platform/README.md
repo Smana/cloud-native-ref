@@ -13,7 +13,7 @@ Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 | `agent-secrets` | `security/base/agent-secrets` | `SecretStore agents-secrets` → the `agents` mount |
 | `agent-router` | `infrastructure/base/agent-router` | `agent-router` Gateway, JWT per listener, the agents' Z.ai backend |
 | `agentgateway` | `infrastructure/aws-0/agentgateway` | agentgateway controller and CRDs in `agentgateway-system` (ADR-0053); also the PoC's namespaces until phase H |
-| `agent-gateway` | `infrastructure/aws-0/agent-gateway` | The agent router on agentgateway, beside `agent-router` until the cutover: Gateway `agent-gateway/agent-router`, JWT per listener |
+| `agent-gateway` | `infrastructure/aws-0/agent-gateway` | The agent router on agentgateway, beside `agent-router` until the cutover: Gateway `agent-gateway/agent-router`, JWT per listener, B1-B2 in shadow on its own rate-limit server and Valkey |
 | `agentgateway-poc` | `infrastructure/aws-0/agentgateway-poc` | The PoC Gateway `agw-poc/agent-router-agw`, removed in phase H |
 | `octo-sts` | `security/base/octo-sts` | GitHub token exchange for the agents' App, reached only through agent-router's `sts` listener |
 | `merge-gate-secrets` | `security/base/merge-gate-secrets` | `SecretStore merge-gate-secrets` → the `merge-gate` OpenBao mount (SP3, R44) |

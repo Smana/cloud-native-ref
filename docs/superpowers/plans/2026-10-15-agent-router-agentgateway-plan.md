@@ -196,9 +196,9 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | C.3 | done (AGW-3) | cnref | All phase C objects live in `infrastructure/base/agent-gateway/` (child `agent-gateway`), not the `agent-router` and `agent-mcp` children, whose `dependsOn` stays unchanged. Names avoid agent-system's existing HTTPRoutes `agent-models` (generated from the AIGatewayRoute), `agent-models-list` and `octo-sts`: octo-sts gets its own route `agentgateway-sts`, not a second parent. **Phase H moves** `externalsecret-zai.yaml` (the backends read `agents-zai-api-key`) into that directory before deleting the Envoy files |
 | C.4 | done (AGW-3) | cnref | — |
 | C.5 | done (AGW-3), live check after merge | cnref | On aws-0: `agentgateway-poc-live-check.sh --gateway real` (L1–L8) |
-| D.1 | valid | cnref | `KVStore` comes from crossplane-configuration v0.9.7. 1.6's rate-limit call timeout defaults to 10 s |
-| D.2 | changed | cnref | Plus OD-8's per-key local token limit, per replica, from the PoC's policy. No budget-refusal marker (OD-7) |
-| D.3 | valid | cnref | — |
+| D.1 | done (AGW-4) | cnref | `KVStore` comes from crossplane-configuration v0.9.7. 1.6's rate-limit call timeout defaults to 10 s. The server also sets `SHADOW_MODE=true`, so no descriptor can enforce before SP4 PR 7. The child gains `agent-secrets` and `crossplane-configuration` in `dependsOn` |
+| D.2 | done (AGW-4) | cnref | Plus OD-8's per-key local token limit, per replica, from the PoC's policy, at 30 M tokens per hour per sub: more than the frontier run cap can buy. No budget-refusal marker (OD-7). J.2's reference-token `cost` lands here (OD-6); AG8 pins it and fails an entry or key that reads a claim the JWT policy does not require (#3523) |
+| D.3 | done (AGW-4), live check after merge | cnref | PC6 on aws-0 once the umbrella is resumed: shadow counters rise, no 429, a server restart fails open |
 | E.1 | changed | cnref | Also #2283's acceptance (OD-4): each MCP call is a child span of the run's trace, with tool name and duration, no content. 1.6 aligns HTTP span attributes with OTel semconv: re-read the attribute names E.1 step 4 records |
 | E.2 | changed | cnref | Adds the proxy `VMPodScrape` (none yet). The relabel maps `input_cache_read` → `cached_input` and `input_cache_write` → `cache_creation_input`, which the meter reads. 1.6's `error_type` is `_OTHER` for every failure: an error ratio, not a per-status split |
 | E.3, E.4 | valid | cnref | — |

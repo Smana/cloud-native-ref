@@ -28,9 +28,13 @@ names its listeners, audiences, caller namespace and route namespace:
        own class: Allow expressions are OR-ed at runtime (PoC N7).
   AG7  Every listener with an LLM route answers an Exact /v1/models with a
        404 direct response (PoC N3).
-  AG8  Every rateLimit.global fails open, charges Tokens, names no route or
-       backend, and its domain resolves to a rate-limit ConfigMap whose
-       matching descriptors are in shadow mode.
+  AG8  Every rateLimit.global fails open, charges Tokens at the reference-token
+       cost (design D11), names no route or backend, and its domain resolves to
+       a rate-limit ConfigMap whose matching descriptors are in shadow mode,
+       mounted only by servers that set SHADOW_MODE. Every descriptor entry and
+       local-limit key reads only claims the JWT policy requires on each
+       listener it covers: a descriptor whose CEL fails is dropped, unlimited
+       (#3523). A local limit names a key.
   AG9  The Gateway's AgentgatewayParameters keeps the constitution's pod shape
        (seccomp, liveness, memory limit), ClusterIP, 2 replicas, a PDB, a
        digest-pinned image, and shutdown {min: 10, max: 660} (PoC N1).
@@ -62,6 +66,12 @@ REQUIRED_CLAIMS = {"exp", "sub"}
 SHUTDOWN = {"min": 10, "max": 660}
 UNTYPED_ROUTES = {"Detect", "Passthrough"}
 ROUTE_KINDS = ("HTTPRoute", "GRPCRoute")
+# Design D11, OD-6: USD is the policy unit, and a rate-limit descriptor needs an
+# integer, so a request costs its gateway price in reference tokens (REF USD per
+# token), or its total tokens when unpriced. A cost that fails to evaluate drops
+# the descriptor silently, so the string is pinned.
+REF = "0.0000017"
+BILLABLE_COST = f"has(llm.cost) ? uint(llm.cost.total / {REF}) : uint(llm.totalTokens)"
 CLUSTER = re.compile(r"-((?:aws|gcp)-\d+)-")
 
 
@@ -384,11 +394,56 @@ def ratelimit_configs(objs):
     return configs
 
 
+def required_claims(objs, policy):
+    """Claims that every listener the policy covers refuses a token without (#3523's workaround)."""
+    sets = []
+    for g, prof in profiled(objs):
+        sections = gateway_targets(policy, g)
+        listeners = set(prof.listeners) if None in sections else set(sections)
+        for p in policies(objs):
+            jwt = (spec_of(p).get("traffic") or {}).get("jwtAuthentication")
+            if jwt is None or not listeners & set(gateway_targets(p, g)):
+                continue
+            sets += [set((prov.get("validation") or {}).get("requiredClaims") or [])
+                     for prov in jwt.get("providers") or []]
+    return set.intersection(*sets) if sets else set()
+
+
+def unrequired_reads(expr, required):
+    """What a key expression reads beyond the required claims: a claim, or any other variable."""
+    claims = set(re.findall(r'\bjwt\s*\[\s*"([^"]+)"\s*\]', expr)) | set(re.findall(r"\bjwt\.(\w+)", expr))
+    rest = re.sub(r'\bjwt\s*\[\s*"[^"]*"\s*\]|\bjwt\.\w+', "", expr)
+    rest = re.sub(r'"(?:[^"\\]|\\.)*"' + r"|'(?:[^'\\]|\\.)*'", "", rest)
+    roots = {m.group(1) for m in re.finditer(r"(?<![\w.])([A-Za-z_]\w*)\b(?!\s*\()", rest)}
+    return sorted(claims - required) + sorted(roots - {"true", "false", "null"})
+
+
+def mounting_servers(objs, cm):
+    """Deployments in the ConfigMap's namespace that mount it: its rate-limit servers."""
+    return [d for d in kind(objs, "Deployment") if meta(d).get("namespace") == meta(cm).get("namespace")
+            and any((v.get("configMap") or {}).get("name") == meta(cm).get("name")
+                    for v in ((spec_of(d).get("template") or {}).get("spec") or {}).get("volumes") or [])]
+
+
+def server_shadowed(server):
+    containers = ((spec_of(server).get("template") or {}).get("spec") or {}).get("containers") or []
+    return bool(containers) and all({"name": "SHADOW_MODE", "value": "true"} in (c.get("env") or [])
+                                    for c in containers)
+
+
 def check_budgets(objs):
     out = []
     configs = ratelimit_configs(objs)
     for p in policies(objs):
-        glob = ((spec_of(p).get("traffic") or {}).get("rateLimit") or {}).get("global")
+        rate_limit = (spec_of(p).get("traffic") or {}).get("rateLimit") or {}
+        required = required_claims(objs, p)
+        for lim in rate_limit.get("local") or []:
+            if "key" not in lim:
+                out.append(f"AG8: {ref(p)} local limit has no key: every caller would share one bucket")
+            elif extra := unrequired_reads(lim["key"], required):
+                out.append(f"AG8: {ref(p)} local key reads {extra}, which the JWT policy does not require: "
+                           "an unevaluable key falls into one shared bucket (#3523)")
+        glob = rate_limit.get("global")
         if glob is None:
             continue
         if glob.get("failureMode") != "FailOpen":
@@ -398,14 +453,24 @@ def check_budgets(objs):
             out.append(f"AG8: {ref(p)} domain {domain!r} has no rate-limit ConfigMap in the bundle")
             continue
         cm, cfg = configs[domain]
+        servers = mounting_servers(objs, cm)
+        if not servers or not all(map(server_shadowed, servers)):
+            out.append(f"AG8: every rate-limit server mounting {ref(cm)} must set SHADOW_MODE \"true\" until "
+                       f"enforcement, whatever a descriptor says ({len(servers)} found)")
         rules = {d.get("key"): d for d in cfg["descriptors"]}
         for d in glob.get("descriptors") or []:
             if d.get("unit") != "Tokens":
                 out.append(f"AG8: {ref(p)} descriptor must charge unit Tokens")
+            elif d.get("cost") != BILLABLE_COST:
+                out.append(f"AG8: {ref(p)} Tokens descriptor must charge reference tokens: cost: {BILLABLE_COST}")
             for entry in d.get("entries") or []:
-                if re.search(r"route|backend|request\.path", f"{entry.get('name', '')} {entry.get('expression', '')}"):
+                expr = entry.get("expression", "")
+                if re.search(r"route|backend|request\.path", f"{entry.get('name', '')} {expr}"):
                     out.append(f"AG8: {ref(p)} descriptor entry {entry.get('name')} keys on a route; "
                                "buckets must be shared")
+                if extra := unrequired_reads(expr, required):
+                    out.append(f"AG8: {ref(p)} descriptor entry {entry.get('name')} reads {extra}, which the JWT "
+                               "policy does not require: a descriptor whose CEL fails is dropped, unlimited (#3523)")
                 rule = rules.get(entry.get("name"))
                 if rule is None:
                     out.append(f"AG8: {ref(p)} entry {entry.get('name')} has no descriptor in {ref(cm)}")
