@@ -1,6 +1,6 @@
 # agent-factory (SP3 §6.5). Default deny; one allow per flow. The 8080 RunLore intake ingress is
-# FR-9 (§1). The classifier egress is SP4's C7; the 8443 ingress and the ZITADEL and
-# VictoriaLogs egresses are FR-5.
+# FR-9 (§1). The classifier egress is SP4's C7; the 8082 run-request API ingress and the ZITADEL
+# and VictoriaLogs egresses are FR-5. 8443 below is the broker's TLS listener, not ours.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -22,13 +22,13 @@ spec:
         - ports: [{port: "9090", protocol: TCP}]
     - fromEntities: [ingress]  # the tailnet gateway (Cilium's Gateway API identity)
       toPorts:
-        - ports: [{port: "8443", protocol: TCP}]
+        - ports: [{port: "8082", protocol: TCP}]
     - fromEndpoints:  # the room broker's hand to role, fork and add agent (SP2 P14)
         - matchLabels:
             io.kubernetes.pod.namespace: agent-system
             app.kubernetes.io/name: room-broker
       toPorts:
-        - ports: [{port: "8443", protocol: TCP}]
+        - ports: [{port: "8082", protocol: TCP}]
     - fromEndpoints:  # RunLore's templated notifier (§1)
         - matchLabels:
             io.kubernetes.pod.namespace: runlore

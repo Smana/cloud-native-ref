@@ -21,4 +21,4 @@ spec:
           method: POST
       backendRefs:
         - name: agent-factory
-          port: 8443
+          port: 8082

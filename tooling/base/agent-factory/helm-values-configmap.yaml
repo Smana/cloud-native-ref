@@ -14,9 +14,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform v0.11.0, the chart's appVersion.
+      # agent-platform v0.12.0, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.11.0@sha256:99cafabfcc4b172d6f88b119aeb0ff8bef6e814927f889430a5f029823801955"
+      tag: "v0.12.0@sha256:ca2cb3b651511c76fa1d86336cab904e19e533f115f7f4bb73d6494e089077fe"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
@@ -41,7 +41,8 @@ data:
       # The run-request API (FR-5): tailnet only via the HTTPRoute, tokens checked
       # offline against ZITADEL's JWKS; the client ids ride the chart's oidcSecret mount.
       api:
-        listen: ":8443"
+        # Plaintext inside the mesh; 8443 is the broker's TLS listener (agent-platform#111).
+        listen: ":8082"
         repositories: [Smana/cloud-native-ref]  # OD-6
         humanIssuer: ${identity_provider_url}
         humanJWKS: ${identity_provider_url}/oauth/v2/keys
