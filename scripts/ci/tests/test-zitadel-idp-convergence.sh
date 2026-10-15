@@ -254,7 +254,8 @@ reset_state() {
     echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
     echo '{"client_id":"google-id","client_secret":"gs"}' > "$S/store/zitadel-google-idp"
 }
-with_github_key() { echo '{"client_id":"gh-id","client_secret":"ghs"}' > "$S/store/zitadel-github-idp"; }
+GH_SECRET=0123456789abcdef0123456789abcdef01234567  # pragma: allowlist secret
+with_github_key() { printf '%s' "$GH_SECRET" | jq -Rc '{client_id: "gh-id", client_secret: .}' > "$S/store/zitadel-github-idp"; }
 sync() { # [--apply]; prints the script's output, last line is its exit status
     local out rc
     out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
@@ -457,5 +458,76 @@ check "unnamed GitHub: no github create" "0" "$(calls '^POST /admin/v1/idps/gith
 check "unnamed GitHub: renamed through the github PUT" "1" "$(calls '^PUT /admin/v1/idps/github/gh-hand$')"
 check "unnamed GitHub: PUT keeps the link-only options" '{"isLinkingAllowed":true,"isCreationAllowed":false,"isAutoCreation":false,"isAutoUpdate":false}' \
     "$(jq -c '.providerOptions' "$S/idp-put-body.json" 2>/dev/null)"
+
+# 17. A stored GitHub secret of the wrong shape is refused before anything is
+#     applied (#2278: a 20-character client id sat in the secret field).
+for bad in Ov23liAbCdEfGhIjKlMn gh-id; do
+    reset_state
+    jq -nc --arg s "$bad" '{client_id: "gh-id", client_secret: $s}' > "$S/store/zitadel-github-idp"
+    out="$(sync --apply)"
+    check "malformed stored secret '$bad': exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+    check "malformed stored secret '$bad': no GitHub IdP call" "0" "$(calls '/admin/v1/idps/github')"
+done
+check "malformed stored secret: names the rotation command" "1" "$(count 'rotate-github-secret --cluster aws-0 --cloud aws' "$out")"
+reset_state
+jq -nc '{client_id: "gh-id", client_secret: "Ov23liAbCdEfGhIjKlMn"}' > "$S/store/zitadel-github-idp"
+out="$(sync)"
+check "malformed stored secret: refused on a dry run too" "1" "$(count '^\[FAILED \] zitadel-github-idp: client_secret is 20 characters' "$out")"
+check "malformed stored secret: value never printed" "0" "$(count 'Ov23liAbCdEfGhIjKlMn' "$out")"
+
+# 18. rotate-github-secret: stdin -> ZITADEL and the store, in one command.
+NEW_GH_SECRET=fedcba9876543210fedcba9876543210fedcba98  # pragma: allowlist secret
+rotate() { # <secret> [args]; same output contract as sync()
+    local secret="$1" out rc
+    shift
+    out="$(printf '%s\n' "$secret" | PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" rotate-github-secret --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+GH_STORE="$S/store/zitadel-github-idp"
+converge
+out="$(rotate "$NEW_GH_SECRET")"
+check "rotate dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotate dry run: plans the IdP update" "1" "$(count "would update IdP 'GitHub' \(idp-github\)" "$out")"
+check "rotate dry run: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+check "rotate dry run: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+out="$(rotate "$NEW_GH_SECRET" --apply)"
+check "rotate apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotate apply: one PUT to the GitHub IdP" "1" "$(calls '^PUT /admin/v1/idps/github/idp-github$')"
+check "rotate apply: PUT carries the new secret" "$NEW_GH_SECRET" "$(jq -r .clientSecret "$S/idp-put-body.json")"
+check "rotate apply: PUT keeps the client id, stays link-only" '["gh-id",false]' \
+    "$(jq -c '[.clientId, .providerOptions.isCreationAllowed]' "$S/idp-put-body.json")"
+check "rotate apply: store holds the new pair" "gh-id $NEW_GH_SECRET" "$(jq -r '"\(.client_id) \(.client_secret)"' "$GH_STORE")"
+check "rotate apply: secret never printed" "0" "$(count "$NEW_GH_SECRET" "$out")"
+out="$(sync)"
+check "rotate apply: sync accepts the rotated pair" "rc=0" "$(tail -1 <<< "$out")"
+rotate 00000000001111111111222222222233333333aa --client-id new-gh-id --apply > /dev/null
+check "rotate --client-id: store and IdP take the new id" '["new-gh-id","new-gh-id"]' \
+    "$(jq -sc '[.[0].client_id, .[1].clientId]' "$GH_STORE" "$S/idp-put-body.json")"
+
+# 19. A malformed rotation secret is refused before any call.
+converge
+out="$(rotate Ov23liAbCdEfGhIjKlMn --apply)"
+check "rotate malformed: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate malformed: says why" "1" "$(count 'refusing the new secret: client_secret is 20 characters' "$out")"
+check "rotate malformed: no ZITADEL call" "0" "$(calls '.')"
+check "rotate malformed: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+out="$(rotate "${GH_SECRET^^}" --apply)"
+check "rotate uppercase hex: refused" "1" "$(count 'refusing the new secret' "$out")"
+
+# 20. A refused PUT leaves the store alone; a refused store write says how to recover.
+converge
+out="$(FAIL_ON='PUT /admin/v1/idps/github/*' rotate "$NEW_GH_SECRET" --apply)"
+check "rotate PUT fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate PUT fails: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+out="$(FAIL_STORE=zitadel-github-idp rotate "$NEW_GH_SECRET" --apply)"
+check "rotate store fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate store fails: says re-run" "1" "$(count 're-run this command with the same secret' "$out")"
+
+# 21. No GitHub IdP yet: rotation refuses rather than half-applying.
+reset_state; with_github_key
+out="$(rotate "$NEW_GH_SECRET" --apply)"
+check "rotate without IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate without IdP: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
 
 exit "$fail"

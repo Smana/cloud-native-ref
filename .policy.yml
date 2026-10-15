@@ -64,7 +64,9 @@ approval_rules:
           - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
           - '^opentofu/aws/eks/configure/openbao\.tf$'
           - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
-          - '^container-images/agent-harness/'
+          - '^infrastructure/base/crossplane/configuration-(aws|gcp)/'  # selects the AgentRun composition and the harness digest (AI split S0)
+          - '^infrastructure/(aws-0|gcp-0)/crossplane/configuration/'  # per-cloud render roots: a kustomize patches/images entry can override spec.package
+          - '^clusters/[^/]+/infrastructure/crossplane-configuration\.yaml$'  # its spec.path picks the Configuration render root
           - '^docs/platform-constitution\.md$'
           - '^docs/(superpowers|specs)/'
           - '^website/content/docs/decisions/'
@@ -108,7 +110,9 @@ approval_rules:
           - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
           - '^opentofu/aws/eks/configure/openbao\.tf$'
           - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
-          - '^container-images/agent-harness/'
+          - '^infrastructure/base/crossplane/configuration-(aws|gcp)/'  # selects the AgentRun composition and the harness digest (AI split S0)
+          - '^infrastructure/(aws-0|gcp-0)/crossplane/configuration/'  # per-cloud render roots: a kustomize patches/images entry can override spec.package
+          - '^clusters/[^/]+/infrastructure/crossplane-configuration\.yaml$'  # its spec.path picks the Configuration render root
           - '^docs/platform-constitution\.md$'
           - '^docs/(superpowers|specs)/'
           - '^website/content/docs/decisions/'
@@ -148,7 +152,9 @@ approval_rules:
           - '^opentofu/aws/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
           - '^opentofu/aws/eks/configure/openbao\.tf$'
           - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
-          - '^container-images/agent-harness/'
+          - '^infrastructure/base/crossplane/configuration-(aws|gcp)/'  # selects the AgentRun composition and the harness digest (AI split S0)
+          - '^infrastructure/(aws-0|gcp-0)/crossplane/configuration/'  # per-cloud render roots: a kustomize patches/images entry can override spec.package
+          - '^clusters/[^/]+/infrastructure/crossplane-configuration\.yaml$'  # its spec.path picks the Configuration render root
           - '^docs/platform-constitution\.md$'
     requires:
       count: 1

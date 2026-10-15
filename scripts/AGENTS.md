@@ -5,7 +5,7 @@ Layout: [`README.md`](README.md). CI calls the entry point below as `task ci:val
 `./scripts/ci/validate-manifests.sh` is the single entry point CI runs and the one to cite as evidence. It
 renders the repo the way Flux does — every Kustomize overlay with `postBuild` vars substituted,
 plus every HelmRelease rendered through `helm template` with its own values and `postRenderers` —
-then applies five gates to the result.
+then applies six gates to the result.
 
 | Gate | Tool | Catches |
 |---|---|---|
@@ -13,7 +13,8 @@ then applies five gates to the result.
 | 2 | `polaris audit` | workload best practices — privilege escalation, capabilities, image tags |
 | 3 | `flux-schema/assert-ai-gateway.py` | cross-object AI-gateway invariants: budget rules shared, token-costed and in shadow mode; identity headers stripped on every envoy-ai-gateway Gateway; every `agent-router` route pins a `sectionName` and every SecurityPolicy on one sets `mergeType`; no MCPRoute hands `Authorization` to an MCP server via `forwardHeaders`, `securityPolicy.oauth.claimToHeaders` or `securityPolicy.apiKeyAuth.forwardClientIDHeader`, nor injects a backend `apiKey` as Authorization (A6); every `agent-router` listener an AIGatewayRoute attaches to has an Exact `/v1/models` HTTPRoute that direct-responds ahead of that listener's ext_proc (A7) |
 | 4 | `flux-schema/assert-cloud-shape.py` | gcp-0's agent and AI-gateway overlays carry no AWS-shaped value (an `amazonaws.com` or EKS host, a `certificates/` CA key, `platform-llm-api-keys`), their run-token issuer and JWKS are GKE's, and no gcp-0 umbrella child substitutes `gke-gcp-0-vars` into a path CI renders with AWS values. Positively: `ai-gateway-api-keys` is generated (`Password` generators, `CreatedOnce`, no store), `openbao-ca` reads `openbao-priv-gcp-ca-chain`, envoy-gateway renders the rate-limit `KVStore` while `llm-gateway` is deployed, no chart-rendered CNP reaches the metadata server via `toEntities: host`, and no pod off the host network in a gcp-0 or base render (only `-aws-0-` renders are skipped) tolerates Cilium's startup taint (`agentNotReadyTaintKey`) or every taint (F2). Each check fails, not passes, when its subject disappears: an expected overlay, a run-token issuer, an umbrella directory. Exists because the render fixtures were AWS-shaped for both clusters, so a GCP-only break rendered clean (GP-14) |
-| 5 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
+| 5 | `flux-schema/assert-zitadel-floor.py` | every rendered `ghcr.io/zitadel/zitadel` container runs a release ≥ v4.17.3 and no pre-release (the v4.18 pre-releases predate the fix): older ones let a user add an unverified IdP link and forge the GitHub identity room access reads (ADR-0056). Reads the rendered image, so it covers the `image.tag` override and the chart's appVersion alike; an unparseable tag, or no ZITADEL container at all, fails |
+| 6 | `validate-alertmanager-templates.sh` | the Slack notification actually renders |
 
 Two properties are load-bearing:
 
@@ -45,6 +46,21 @@ break the build — it quietly shrinks what the build checks.
 Both run inside `task ci:test`, alongside the other suites, because they test the scripts that do
 the rendering. They are deliberately not folded into `validate-manifests.sh`, whose contract is
 manifest validation. Run them directly: `python3 scripts/ci/tests/flux-schema/<file>`.
+
+**`flux-schema/check-ai-boundary.py`** **reads source `*.yaml` under `clusters/`, `infrastructure/`,
+`security/`, `observability/`, `tooling/`, `apps/`, `flux/`, `namespaces/` and `crds/`, not the
+rendered bundle**, and fails on a reference across the host/AI boundary that the host contract does
+not list (ADR-0057; design §1 and §2): kustomize file references, Flux `spec.path`, `dependsOn`,
+`sourceRef` and `substituteFrom`, HelmRelease `valuesFrom` (H8's ConfigMap must carry `optional:
+true`), and `${var}` in AI files. Its data, `flux-schema/ai-boundary.yaml`, is the move list S2
+hands to `git filter-repo`: a path added there is a path that moves, and a change there is a
+host-contract change. A move-list entry matching no file fails too. It runs in step 1 of
+`validate-manifests.sh`; its suite, `tests/flux-schema/test-check-ai-boundary.py`, plants a crossing
+each way in a copy of the tree.
+Blind spots: a reference in a script, a doc, a CiliumNetworkPolicy selector, Helm values text,
+`.policy.yml`, `.github/`, `website/` or `container-images/` goes unseen. So does a host Flux
+Kustomization whose path has no `kustomization.yaml` and therefore applies every YAML under it
+(today `flux-sources` → `flux/sources/`, known, design §1); a new case is not flagged.
 
 **`validate-vmrules.sh`** parses alerting expressions, which nothing else ever did. It reads
 committed VMRules rather than the bundle, because the bundle also holds VMRules shipped by upstream

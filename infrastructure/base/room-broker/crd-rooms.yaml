@@ -1,5 +1,5 @@
 # Vendored from Smana/agent-platform (ruling P16): the release asset since the merge wave.
-# Source: the crd-rooms.yaml asset of agent-platform v0.8.0, the room-broker pin.
+# Source: the crd-rooms.yaml asset of agent-platform v0.10.0, the room-broker pin.
 # Refresh with every AP pin: gh release download <tag> --repo Smana/agent-platform --pattern crd-rooms.yaml
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -195,8 +195,16 @@ spec:
                   TaskStatus is the last task facts the factory wrote into the room, projected so the room list
                   can filter on them without reading every room's log.
                 properties:
+                  issue:
+                    description: The issue and PR the task works on, for the room
+                      list's rows (#50).
+                    format: int32
+                    type: integer
                   issueAuthor:
                     maxLength: 64
+                    type: string
+                  issueTitle:
+                    maxLength: 500
                     type: string
                   labelledBy:
                     maxLength: 64
@@ -204,6 +212,9 @@ spec:
                   phase:
                     maxLength: 32
                     type: string
+                  pr:
+                    format: int32
+                    type: integer
                   prAuthor:
                     maxLength: 64
                     type: string

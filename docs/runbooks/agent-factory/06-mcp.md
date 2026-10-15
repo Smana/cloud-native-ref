@@ -62,7 +62,7 @@ kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh public tools/list 
 
 Expected: the three documentation tools `flux-operator-mcp__search_flux_docs`,
 `mcp-victoriametrics__documentation` and `mcp-victorialogs__documentation`, plus the implementer's
-room tools `room-broker__room_read`, `room-broker__room_post` and `room-broker__room_handoff` (on both
+room tools `room-broker__room_read`, `room-broker__room_post`, `room-broker__room_progress` and `room-broker__room_handoff` (on both
 routes since c6a56f78). No `get_kubernetes_*`, no `query`, no other tool. Tool names are namespaced by
 backend.
 
@@ -82,11 +82,11 @@ Expected (the probe is an `implementer`):
 | `flux-operator-mcp` | `search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics` | `get_kubernetes_logs`, `get_kubernetes_resources` |
 | `mcp-victoriametrics` | 13 tools | `tsdb_status`, `active_queries`, `top_queries` |
 | `mcp-victorialogs` | `documentation` only | the query tools |
-| `room-broker` | `room_read`, `room_post`, `room_handoff` (same caveat as Step 3) | `room_verdict` |
+| `room-broker` | `room_read`, `room_post`, `room_progress`, `room_handoff` (same caveat as Step 3) | `room_verdict` |
 
 Other roles, from `infrastructure/base/agent-mcp/mcproutes.yaml`: reviewer, tester and triager also
 get `get_kubernetes_resources`, `get_kubernetes_logs` and the VictoriaLogs query tools. Room tools:
-reviewer `room_read`, `room_post`, `room_verdict`; tester all four; triager `room_read`, `room_post`,
+reviewer `room_read`, `room_post`, `room_progress`, `room_verdict`; tester all five; triager `room_read`, `room_post`, `room_progress`,
 `room_handoff`.
 
 ### Step 5 — SC-12: an implementer is denied the logs tool by the MCPRoute, and the backend SA has no secrets access

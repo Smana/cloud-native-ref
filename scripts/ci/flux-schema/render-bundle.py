@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 import yaml
 
@@ -394,7 +395,7 @@ def postprocess(text):
     docs = unwrap_lists([d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)])
     # Drop non-resource docs before they reach the bundle. `helm template`
     # (notably Helm v4) can emit a stray YAML document that is a non-empty dict
-    # yet carries no apiVersion/kind - not an applyable Kubernetes resource, but
+    # yet carries no apiVersion/kind - not an appliable Kubernetes resource, but
     # a dict, so the isinstance() filter above lets it through and gate 1 then
     # rejects it ("missing required property: /apiVersion"). A real resource
     # always has both fields, so requiring them here is the faithful stand-in
@@ -676,6 +677,39 @@ def render_overlay(overlay, outdir):
     return None, rendered
 
 
+# `helm template oci://…` resolves the manifest against the registry on every run, even when the
+# tarball is cached, and public ECR meters anonymous pulls per source IP — shared by every tenant of
+# a GitHub-hosted runner — so CI went red on a 429 nobody here caused (#2356). An exactly pinned chart
+# is immutable: pull it once into the CI-cached helm dir and render the tarball.
+OCI_CHART_CACHE = pathlib.Path(os.environ.get("HELM_CACHE_HOME", pathlib.Path.home() / ".cache/helm")) / "oci-charts"
+EXACT_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]+)?$")
+RETRY_DELAYS = (20, 60)
+
+
+def cached_oci_chart(chart_path, version, cache_dir=OCI_CHART_CACHE, run=subprocess.run, sleep=time.sleep):
+    """(tgz, error) for an exactly pinned OCI chart — by digest or an exact version. (None, None) when
+    the pin is a range or absent: helm must resolve it against the registry, as before."""
+    if "@sha256:" not in chart_path and not (version and EXACT_VERSION_RE.match(version)):
+        return None, None
+    key = re.sub(r"[^A-Za-z0-9._-]", "_", chart_path.removeprefix("oci://") + ("@" + version if version else ""))
+    tgz = pathlib.Path(cache_dir) / f"{key}.tgz"
+    if tgz.exists():
+        return str(tgz), None
+    cmd = [HELM_BIN, "pull", chart_path] + (["--version", version] if version else [])
+    for delay in (*RETRY_DELAYS, None):
+        with tempfile.TemporaryDirectory() as dest:
+            result = run(cmd + ["--destination", dest], capture_output=True, text=True, timeout=300)
+            pulled = list(pathlib.Path(dest).glob("*.tgz"))
+            if result.returncode == 0 and len(pulled) == 1:
+                tgz.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(pulled[0]), tgz)
+                return str(tgz), None
+        throttled = "429" in result.stderr or "toomanyrequests" in result.stderr
+        if delay is None or not throttled:
+            return None, _last_line(result, "helm pull failed")
+        sleep(delay)
+
+
 def chartref_path(source):
     """The helm chart reference for a chartRef source: `<url>@<digest>` when it is digest-pinned."""
     digest = (source.get("ref") or {}).get("digest")
@@ -913,6 +947,14 @@ def render_helmrelease(doc, sources, outdir, namespace, stem, value_objects):
             chart_path = chartref_path(source)
         else:
             chart_path = f"{url.rstrip('/')}/{chart}" if is_oci else chart
+
+        if is_oci and not is_git:
+            with _repo_lock(url):
+                tgz, pull_error = cached_oci_chart(chart_path, version)
+            if pull_error:
+                return f"HelmRelease/{namespace}/{meta['name']}: {pull_error}"
+            if tgz:
+                chart_path, version = tgz, None
 
         cmd = [
             HELM_BIN, "template", meta["name"], chart_path,

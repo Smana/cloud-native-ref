@@ -1,5 +1,9 @@
 # Agent factory: remaining work, in order
 
+> **2026-10-12.** v1 shipped on 2026-10-08 and this is the pre-v1 ordering. What comes next is the
+> status page's v2 roadmap, with the amendment the
+> [v1 review](../specs/2026-10-12-agent-factory-v1-review.md) proposes.
+
 **As of 2026-10-04.** gcp-0 is torn down; the next session starts from here. Each step names the
 plan that holds its tasks. The SDD ledgers (git-ignored, under
 `.claude/worktrees/o1-agent-observability/.superpowers/sdd/<plan>/progress.md` on the owner's
