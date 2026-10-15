@@ -4,7 +4,6 @@ kind: Kustomization
 # The room broker (SP2): the log of record for every AgentRun with a roomRef.
 resources:
   - crd-rooms.yaml
-  - config.yaml
   - rbac.yaml
   - tls.yaml
   - app.yaml
@@ -21,3 +20,15 @@ resources:
   - externalsecret-mcp-key.yaml
   - externalsecret-factory-app.yaml
   - externalsecret-zitadel-reader.yaml
+
+# The broker reads its config once at startup, so the ConfigMap is generated: a change
+# moves the content-hash suffix, the App's volume reference follows it through
+# kustomizeconfig.yaml, and the composed Deployment rolls (#2274). Flux substitutes
+# after the build, so a change in a cluster variable alone does not roll it.
+configMapGenerator:
+  - name: room-broker-config
+    namespace: agent-system
+    files:
+      - config.yaml
+configurations:
+  - kustomizeconfig.yaml
