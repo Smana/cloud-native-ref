@@ -1,0 +1,9 @@
+# Kustomize rewrites generated names only in the built-in kinds' fields. The App claim
+# is a CRD: without this, its volume keeps the bare name and nothing rolls.
+nameReference:
+  - kind: ConfigMap
+    version: v1
+    fieldSpecs:
+      - kind: App
+        group: cloud.ogenki.io
+        path: spec/extraVolumes/configMap/name
