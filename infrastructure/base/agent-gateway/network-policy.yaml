@@ -1,6 +1,6 @@
 # Default deny in agent-gateway (`- {}` selects no peer: it switches enforcement
 # on and allows nothing), then the data plane's own peers and its phase C
-# upstreams, then the rate-limit server. Phase E adds traces and the proxy scrape.
+# upstreams, its telemetry, then the rate-limit server.
 # Valkey's own policy comes with its KVStore: 6379 from this namespace.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -47,6 +47,15 @@ spec:
       toPorts:
         - ports:
             - port: "15021"
+              protocol: TCP
+    # The proxy scrape (vmpodscrape.yaml).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "15020"
               protocol: TCP
   egress:
     - toEndpoints:
@@ -114,6 +123,15 @@ spec:
       toPorts:
         - ports:
             - port: "8090"
+              protocol: TCP
+    # Spans (policy-frontend.yaml), to the collector's platform port.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: agent-traces-collector
+      toPorts:
+        - ports:
+            - port: "4317"
               protocol: TCP
     # Budget checks (policy-budgets.yaml). Fail open: a dropped check admits the call.
     - toEndpoints:

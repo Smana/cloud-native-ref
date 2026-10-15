@@ -2,7 +2,8 @@
 # requires: python3
 """Agent observability on the real tree (docs/superpowers/plans/2026-09-27-agent-observability-plan.md).
 The trace collector keeps metadata only and takes no run id from a span, agent-router traces to
-it, kube-state-metrics reads AgentRuns, and the two dashboards are wired to all of it."""
+it, kube-state-metrics reads AgentRuns, and the two dashboards are wired to all of it. agentgateway's
+router (ADR-0053) traces to the same collector and is scraped under the same gen_ai_* contract."""
 import json
 import pathlib
 import re
@@ -69,6 +70,8 @@ CNP_INGRESS = [
     {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "envoy-gateway-system",
                                         "gateway.envoyproxy.io/owning-gateway-name": "agent-router",
                                         "gateway.envoyproxy.io/owning-gateway-namespace": "agent-system"}},
+                       {"matchLabels": {"io.kubernetes.pod.namespace": "agent-gateway",
+                                        "gateway.networking.k8s.io/gateway-name": "agent-router"}},
                        {"matchLabels": {"io.kubernetes.pod.namespace": "agent-system",
                                         "app.kubernetes.io/name": "agent-factory"}}],
      "toPorts": tcp("4317")},
@@ -191,6 +194,12 @@ def check_reference_grant():
           and spec.get("from") == [{"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "namespace": "agent-system"}]
           and spec.get("to") == [{"group": "", "kind": "Service", "name": "agent-traces-collector"}],
           "agent-system's EnvoyProxy may reference the collector Service and nothing else (EG 1.9 backendRefs)")
+    agw = find(GRANT, "ReferenceGrant", "agent-gateway-traces")
+    spec = agw.get("spec", {})
+    check(agw.get("metadata", {}).get("namespace") == "observability"
+          and spec.get("from") == [{"group": "agentgateway.dev", "kind": "AgentgatewayPolicy", "namespace": "agent-gateway"}]
+          and spec.get("to") == [{"group": "", "kind": "Service", "name": "agent-traces-collector"}],
+          "agent-gateway's policies may reference the collector Service and nothing else (agentgateway enforces it)")
     resources = yaml.safe_load((ROOT / PLATFORM / "kustomization.yaml").read_text()).get("resources", [])
     for rel in (COLLECTOR, GRANT):
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
@@ -214,6 +223,94 @@ def check_router():
               and (r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("io.kubernetes.pod.namespace") == "observability"
               and r["toPorts"][0]["ports"] == [{"port": "4317", "protocol": "TCP"}] for r in egress),
           "the data plane may reach the collector's :4317")
+
+
+AGW = "infrastructure/base/agent-gateway"
+SUB = "jwt.sub"
+# The run meter's query (tooling/base/agent-factory/helm-values-configmap.yaml) and the run page
+# read these names; agentgateway 1.6 emits the left-hand ones (PoC L6, telemetry/log.rs).
+METER_TYPES = {"input", "cached_input", "cache_creation_input", "output"}
+
+
+def relabel(rules, series):
+    """Prometheus metric_relabel_configs, for the two actions the scrape uses."""
+    labels = dict(series)
+    for r in rules:
+        if r.get("action", "replace") == "labeldrop":
+            labels = {k: v for k, v in labels.items() if not re.fullmatch(r["regex"], k)}
+            continue
+        value = ";".join(labels.get(l, "") for l in r.get("sourceLabels", []))
+        m = re.fullmatch(r.get("regex", "(.*)"), value)
+        if m:
+            out = m.expand(r.get("replacement", "$1").replace("$1", r"\g<1>"))
+            if out:
+                labels[r["targetLabel"]] = out
+            else:
+                labels.pop(r["targetLabel"], None)
+    return labels
+
+
+def check_agent_gateway():
+    raw = (ROOT / f"{AGW}/vmpodscrape.yaml").read_text()
+    check("$" not in "".join(l for l in raw.splitlines() if not l.lstrip().startswith("#")),
+          "no `$` in the scrape: the child substitutes postBuild variables")
+    scrape = find(f"{AGW}/vmpodscrape.yaml", "VMPodScrape", "agent-router").get("spec", {})
+    check(scrape.get("selector") == {"matchLabels": {"gateway.networking.k8s.io/gateway-name": "agent-router"}}
+          and scrape.get("namespaceSelector") == {"matchNames": ["agent-gateway"]},
+          "the scrape selects the real router's proxies only, never the PoC's")
+    endpoint = (scrape.get("podMetricsEndpoints") or [{}])[0]
+    check(endpoint.get("port") == "metrics", "the proxy's port 15020 is named metrics")
+    rules = endpoint.get("metricRelabelConfigs", [])
+    base = {"namespace": "agent-gateway", "gen_ai_system": "custom", "gen_ai_request_model": "glm-5.3",
+            "ar_agent": "system:serviceaccount:agents:xplane-run-x"}
+    for agw_type, want in (("input", "input"), ("output", "output"),
+                           ("input_cache_read", "cached_input"), ("input_cache_write", "cache_creation_input")):
+        for suffix in ("sum", "count", "bucket"):
+            got = relabel(rules, {**base, "__name__": f"agentgateway_gen_ai_client_token_usage_{suffix}",
+                                  "gen_ai_token_type": agw_type})
+            check(got.get("__name__") == f"gen_ai_client_token_usage_{suffix}" and got.get("gen_ai_token_type") == want,
+                  f"agentgateway {agw_type} _{suffix} becomes gen_ai_client_token_usage_{suffix}{{gen_ai_token_type={want}}}, got {got}")
+    check(METER_TYPES <= {relabel(rules, {"__name__": "agentgateway_gen_ai_client_token_usage_sum", "gen_ai_token_type": t})
+                          ["gen_ai_token_type"] for t in ("input", "output", "input_cache_read", "input_cache_write")},
+          "every token type the meter prices is produced")
+    got = relabel(rules, {**base, "__name__": "agentgateway_gen_ai_client_token_usage_sum", "gen_ai_token_type": "input"})
+    check(got.get("ar_agent") == base["ar_agent"] and got.get("gen_ai_provider_name") == "custom" and "gen_ai_system" not in got,
+          f"ar_agent survives and gen_ai_system becomes Envoy's gen_ai_provider_name, got {got}")
+    for suffix in ("bucket", "sum", "count"):
+        got = relabel(rules, {**base, "__name__": f"agentgateway_gen_ai_server_request_duration_{suffix}"})
+        check(got.get("__name__") == f"gen_ai_server_request_duration_seconds_{suffix}",
+              f"the request duration's _{suffix} takes Envoy's unit-suffixed name, got {got.get('__name__')}")
+    for keep in ("agentgateway_requests_total", "agentgateway_mcp_requests_total",
+                 "agentgateway_gen_ai_server_time_to_first_token_bucket"):
+        check(relabel(rules, {"__name__": keep})["__name__"] == keep,
+              f"{keep} keeps its name: the shared LLM gateway dashboards read the gen_ai_* time series too")
+    resources = yaml.safe_load((ROOT / f"{AGW}/kustomization.yaml").read_text()).get("resources", [])
+    check("vmpodscrape.yaml" in resources, f"{AGW}/kustomization.yaml lists vmpodscrape.yaml")
+
+    front = find(f"{AGW}/policy-frontend.yaml", "AgentgatewayPolicy", "frontend").get("spec", {}).get("frontend", {})
+    tracing = front.get("tracing", {})
+    check(tracing.get("backendRef") == {"name": "agent-traces-collector", "namespace": "observability", "port": 4317}
+          and tracing.get("protocol") == "GRPC",
+          "the router's spans go to the collector's gRPC platform port, as Envoy's do")
+    check({"name": "service.name", "expression": '"agent-router"'} in tracing.get("resources", []),
+          "spans are service agent-router, which the run page's span panel searches")
+    check({"http.path", "mcp.error.message"} <= set(tracing.get("attributes", {}).get("remove", [])),
+          "spans drop the request path and the MCP error text (run-controlled)")
+    check("clientSampling" not in tracing and "parentNotSampled" not in tracing,
+          "a sampled caller's traceparent is always honoured: an MCP call joins the run's trace (#2283)")
+    adds = {(a["name"], a["expression"]) for section in (tracing, front.get("accessLog", {}), front.get("metrics", {}))
+            for a in section.get("attributes", {}).get("add", [])}
+    for name in ("agent.principal", "x_ar_agent", "ar_agent"):
+        check((name, SUB) in adds, f"{name} is the verified sub, as on Envoy's router")
+    np = find(f"{AGW}/network-policy.yaml", "CiliumNetworkPolicy", "agent-router-data-plane").get("spec", {})
+    check({"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "observability",
+                                              "app.kubernetes.io/name": "vmagent"}}],
+           "toPorts": tcp("15020")} in np.get("ingress", []),
+          "vmagent may scrape the proxies on :15020")
+    check({"toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "observability",
+                                            "app.kubernetes.io/name": "agent-traces-collector"}}],
+           "toPorts": tcp("4317")} in np.get("egress", []),
+          "the proxies may reach the collector's :4317")
 
 
 VM_VALUES = "observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml"
@@ -329,6 +426,21 @@ def check_task_runs():
           "one click from a run of the task, the resumed one included, opens its page (disruption design §6)")
 
 
+def check_agentgateway_dashboards():
+    raw_run = (ROOT / f"{DASHBOARDS}/grafana-dashboard-agent-run.yaml").read_text()
+    check('gateway.networking.k8s.io/gateway-name:\\"agent-router\\"' in raw_run and "log.http.path" in raw_run,
+          "the run page's gateway log panels select agentgateway's proxies and fields too (ADR-0053)")
+    board = dashboard(f"{DASHBOARDS}/grafana-dashboard-agent-gateway.yaml", "agent-gateway")
+    check(board.get("uid") == "agent-gateway", "uid agent-gateway: the agent-gateway alerts link to it")
+    targets = json.dumps([t for p in board.get("panels", []) for t in p.get("targets", [])])
+    for needle in ("agentgateway_requests_total", 'status=~\\"5..\\"', "error_type", "gen_ai_server_request_duration_seconds_bucket",
+                   "gen_ai_client_token_usage_sum", "ratelimit_service_rate_limit_shadow_mode", "agentgateway_mcp_requests_total"):
+        check(needle in targets, f"the agent-gateway dashboard reads {needle}")
+    check(targets.count('namespace=\\"agent-gateway\\"') >= 10, "every metric panel stays in namespace agent-gateway")
+    resources = yaml.safe_load((ROOT / PLATFORM / "kustomization.yaml").read_text()).get("resources", [])
+    check("grafana-dashboard-agent-gateway.yaml" in resources, f"{PLATFORM}/kustomization.yaml lists the agent-gateway dashboard")
+
+
 def check_factory_resumes():
     rel = f"{DASHBOARDS}/grafana-dashboard-agent-factory.yaml"
     d = find(rel, "GrafanaDashboard", "agent-factory")
@@ -339,7 +451,7 @@ def check_factory_resumes():
 
 
 CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier,
-          check_task_runs, check_factory_resumes]
+          check_task_runs, check_factory_resumes, check_agent_gateway, check_agentgateway_dashboards]
 
 for run in CHECKS:
     run()

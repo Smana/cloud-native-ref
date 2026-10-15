@@ -58,3 +58,62 @@ spec:
             description: "No enforced per-run cap exists until SP4 PR 2. Revoke the noisiest run by hand: kubectl annotate agentrun -n agents <name> agents.ogenki.io/revoked=budget-run"
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/integration/agent-factory/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
             dashboard: "https://grafana.${private_domain_name}/d/agent-platform"
+    # The agent router on agentgateway (ADR-0053), beside Envoy's until phase H. The
+    # scrape relabel feeds the gen_ai_* rules above; these read agentgateway_* too
+    # (infrastructure/base/agent-gateway/vmpodscrape.yaml).
+    - name: agent-gateway
+      rules:
+        # G2 guard: the relabel holds only while upstream's names do. Model calls
+        # with no token series, or a token type the meter does not select, is the
+        # signature of a silent rename: the meter would read zero or misprice.
+        - alert: AgentRouterMetricContractBroken
+          expr: (sum(increase(agentgateway_requests_total{namespace="agent-gateway", route="agent-system/agentgateway-models", status="200"}[15m])) > 0 unless sum(increase(gen_ai_client_token_usage_count{namespace="agent-gateway"}[15m])) > 0) or count(gen_ai_client_token_usage_sum{namespace="agent-gateway", gen_ai_token_type!~"input|output|cached_input|cache_creation_input"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-router (agentgateway) serves model calls the gen_ai contract does not see"
+            description: "An agentgateway upgrade renamed a metric or token type that infrastructure/base/agent-gateway/vmpodscrape.yaml maps. The run meter, the budget alerts and the run page read zero or misprice until fixed."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/08-observability.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-gateway"
+        - alert: AgentGateway5xxRatioHigh
+          expr: sum(rate(agentgateway_requests_total{namespace="agent-gateway", status=~"5.."}[10m])) / sum(rate(agentgateway_requests_total{namespace="agent-gateway"}[10m])) > 0.05 and sum(increase(agentgateway_requests_total{namespace="agent-gateway", status=~"5.."}[10m])) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-router (agentgateway) answers {{ $value | humanizePercentage }} of requests with a 5xx"
+            description: "Split by route and reason on the agent-gateway dashboard: UpstreamFailure or Timeout is the provider or an MCP server, Internal is the proxy."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-gateway"
+        # 1.6 sets error_type="_OTHER" on every failed model call: a ratio, not a cause.
+        - alert: AgentGatewayModelErrorRatioHigh
+          expr: sum(rate(gen_ai_server_request_duration_seconds_count{namespace="agent-gateway", error_type=~".+"}[10m])) / sum(rate(gen_ai_server_request_duration_seconds_count{namespace="agent-gateway"}[10m])) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $value | humanizePercentage }} of model calls through agent-router (agentgateway) fail"
+            description: "The provider is failing or refusing. The access log's http.status and error fields name the cause: kubectl logs -n agent-gateway -l gateway.networking.k8s.io/gateway-name=agent-router"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-gateway"
+        # The metric twin of the LogsQL AgentRouterUnauthorizedBurst: here the refusal reason is a label.
+        - alert: AgentGatewayUnauthorizedBurst
+          expr: sum(increase(agentgateway_requests_total{namespace="agent-gateway", reason=~"JwtAuth|Authorization"}[5m])) > 20
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-router (agentgateway) refused {{ $value }} requests in 5 minutes"
+            description: "Invalid tokens, wrong audience or a sub outside namespace agents. T8: replayed or foreign tokens; R2: identity-proxy rotation broken."
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/02-identity-tokens.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-gateway"
+        - alert: AgentRateLimitDown
+          expr: absent(up{namespace="agent-gateway", pod=~"agent-ratelimit-.*"} == 1)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "agent-ratelimit is down: agentgateway budgets count nothing"
+            description: "The router fails open, so agents run unmetered by B1-B2. kubectl get pods -n agent-gateway -l app.kubernetes.io/name=agent-ratelimit"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/docs/runbooks/agent-factory/04-gateway-secrets-budgets.md"
+            dashboard: "https://grafana.${private_domain_name}/d/agent-gateway"

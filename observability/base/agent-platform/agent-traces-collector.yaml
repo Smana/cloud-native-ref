@@ -292,6 +292,10 @@ spec:
             io.kubernetes.pod.namespace: envoy-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: agent-router
             gateway.envoyproxy.io/owning-gateway-namespace: agent-system
+        # The same router on agentgateway (ADR-0053), until phase H removes Envoy's.
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-gateway
+            gateway.networking.k8s.io/gateway-name: agent-router
         # SP3's factory: one root span per task (O20, SP3 R46).
         - matchLabels:
             io.kubernetes.pod.namespace: agent-system

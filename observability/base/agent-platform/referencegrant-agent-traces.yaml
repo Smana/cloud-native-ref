@@ -16,3 +16,20 @@ spec:
     - group: ""
       kind: Service
       name: agent-traces-collector
+---
+# agentgateway enforces this grant (unlike EG 1.9.2): without it the agent
+# router's spans never leave the proxy.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: agent-gateway-traces
+  namespace: observability
+spec:
+  from:
+    - group: agentgateway.dev
+      kind: AgentgatewayPolicy
+      namespace: agent-gateway
+  to:
+    - group: ""
+      kind: Service
+      name: agent-traces-collector

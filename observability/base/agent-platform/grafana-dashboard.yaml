@@ -37,6 +37,6 @@ spec:
         {"id": 4, "type": "logs", "title": "agent-router 4xx",
          "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "expr": "kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\" | unpack_json | log.response_code:4*", "queryType": "instant"}]}
+         "targets": [{"refId": "A", "expr": "((kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\") OR (kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\")) | unpack_json | filter (log.response_code:4* OR log.http.status:4*)", "queryType": "instant"}]}
       ]
     }
