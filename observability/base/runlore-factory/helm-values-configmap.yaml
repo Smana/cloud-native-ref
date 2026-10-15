@@ -6,6 +6,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  # helm-controller re-reconciles the HelmRelease on change (#2276).
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
   name: runlore-factory-values
   namespace: runlore
 data:
