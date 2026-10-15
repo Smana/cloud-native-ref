@@ -1,0 +1,26 @@
+# Metric and access-log labels carry the verified sub, as agent-router's
+# ar_agent / x_ar_agent do. No tracing: the PoC stays out of observability.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: telemetry
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+  frontend:
+    # agent-router buffers 8Mi. The 2 MiB default caps federated MCP lists (PoC P4).
+    http:
+      maxBufferSize: 8Mi
+    accessLog:
+      attributes:
+        add:
+          - name: x_ar_agent
+            expression: jwt.sub
+    metrics:
+      attributes:
+        add:
+          - name: ar_agent
+            expression: jwt.sub
