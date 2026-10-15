@@ -1,10 +1,7 @@
 # The GCP XRDs and Compositions, published from Smana/crossplane-configuration.
 #
-# Only the -gcp package is declared. It pulls -core through its `dependsOn`, and
-# Crossplane creates that dependency itself under a registry-derived name
-# (smana-crossplane-configuration-core). Declaring -core here as well would leave
-# two Configuration objects for one package — the same reasoning as the AWS
-# tree's configuration-packages.yaml.
+# -core, which this package `dependsOn`, is pinned in ../configuration-core at the
+# same tag: bump all three pins in one PR.
 #
 # v0.2.0 is the first release containing this package; v0.1.0 shipped only -core
 # and -aws, so there is no earlier tag to roll back to.
