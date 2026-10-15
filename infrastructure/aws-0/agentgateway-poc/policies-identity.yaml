@@ -22,6 +22,8 @@ spec:
         remove:
           - x-ar-agent
           - x-ar-human
+          - x-ai-gateway-client-id
+          - agent-session-id
           - x-ar-client
 ---
 apiVersion: agentgateway.dev/v1alpha1

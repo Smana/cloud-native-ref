@@ -182,8 +182,8 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | Task | Status | Repo | Delta |
 |---|---|---|---|
 | A.1 | changed | cnref | See below: restore the design and both ADRs on `main`, no stack |
-| A.2 | changed | cnref | agentgateway becomes source 7 of `gen-catalog.sh` (6 today), pinned to v1.6.0. The hosted catalog carries v1.6.0 today (#2385: `Invalid: 0`); A.2 stops a catalog bump from moving it |
-| A.3 | changed | cnref | AG1–AG9 as written, plus the 1.6 checks below |
+| A.2 | done (#2395) | cnref | agentgateway becomes source 7 of `gen-catalog.sh` (6 today), pinned to v1.6.0. The hosted catalog carries v1.6.0 today (#2385: `Invalid: 0`); A.2 stops a catalog bump from moving it |
+| A.3 | done (#2395) | cnref | AG1–AG9 as written, plus the 1.6 checks below. Wired as gate 6 now, not in B (old R2): `PROFILES` judges the PoC Gateway until phase H removes its entry |
 | A.4 | valid | cnref | A PR to `main`, not a draft on `feat/rooms-driver` |
 | B.1 | changed | cnref | Plus the boundary and host-contract rows (below) |
 | B.2 | changed | cnref | Partly done by #2385 on aws-0: move `infrastructure/aws-0/agentgateway/` to a base plus both render roots. R5 returns: the controller child keeps the PoC's name `agentgateway`. After any pin change, touch the Gateway so the proxy re-renders |
