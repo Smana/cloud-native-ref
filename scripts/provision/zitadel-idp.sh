@@ -40,6 +40,13 @@
 #   zitadel-idp.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #   zitadel-idp.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F --mirror-openbao]
+#   zitadel-idp.sh rotate-github-secret --cluster C --cloud aws|gcp [--client-id ID] [--apply] < secret
+#
+# rotate-github-secret reads the new GitHub OAuth App client secret on stdin
+# (never argv), checks its shape, then PUTs it to the GitHub IdP and writes
+# {"client_id","client_secret"} to `zitadel-github-idp`. sync cannot do this:
+# ZITADEL never echoes a stored secret back, so a secret-only change is
+# invisible to it. --client-id replaces the stored client id in the same step.
 #
 # --mirror-openbao also copies `room-broker-zitadel-reader` to OpenBao's
 # agents/zitadel-reader (scripts/lib/bao-map.sh), where the broker's
@@ -94,6 +101,7 @@ OPENBAO_URL=""
 OPENBAO_ROOT_TOKEN_SECRET=""
 OPENBAO_CA_FILE=""
 MIRROR_OPENBAO="false"
+NEW_CLIENT_ID=""
 
 IDP_NAME="Google Workspace"
 IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
@@ -139,11 +147,15 @@ while [ $# -gt 0 ]; do
         --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
         --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
         --mirror-openbao) MIRROR_OPENBAO="true"; shift ;;
+        --client-id) NEW_CLIENT_ID="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
-[ "$COMMAND" = "sync" ] || { sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+case "$COMMAND" in
+    sync|rotate-github-secret) ;;
+    *) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
 if [ -n "$OPENBAO_URL" ]; then
@@ -154,6 +166,29 @@ if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
     echo "--mirror-openbao requires --openbao-url" >&2; exit 2
 fi
 [ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
+if [ "$COMMAND" != "rotate-github-secret" ] && [ -n "$NEW_CLIENT_ID" ]; then
+    echo "--client-id is only for rotate-github-secret" >&2; exit 2
+fi
+
+# On 2026-10-08 the stored secret was 20 characters -- a client id pasted into
+# the secret field -- and ZITADEL accepted it, so the failure surfaced only at
+# GitHub as `incorrect_client_credentials` on someone's first link. GitHub OAuth
+# App secrets are 40 lowercase hex. Prints the reason, never the value.
+github_secret_shape_error() {
+    [[ "$1" =~ ^[0-9a-f]{40}$ ]] \
+        || echo "client_secret is ${#1} characters, want 40 lowercase hex (a 20-character value is a client id)"
+}
+
+# Read before anything touches the network, so a malformed secret costs nothing.
+NEW_SECRET=""
+if [ "$COMMAND" = "rotate-github-secret" ]; then
+    [ -t 0 ] && printf 'new GitHub client secret: ' >&2
+    IFS= read -rs NEW_SECRET || true
+    [ -t 0 ] && echo >&2
+    [ -n "$NEW_SECRET" ] || { echo "[FAILED ] no client secret on stdin" >&2; exit 2; }
+    shape="$(github_secret_shape_error "$NEW_SECRET")"
+    [ -z "$shape" ] || { echo "[FAILED ] refusing the new secret: ${shape}" >&2; exit 1; }
+fi
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
@@ -417,7 +452,7 @@ github_idp_payload() {
 # Reads the store key ONCE and records the answer in GITHUB_ENABLED, which the
 # login-policy step and ensure_broker_reader read instead of asking again.
 ensure_github_idp() {
-    local blob client_id client_secret template existing existing_client_id
+    local blob client_id client_secret shape template existing existing_client_id
 
     blob="$(store_read "$GITHUB_IDP_SECRET_KEY" || true)"
     if [ -z "$blob" ]; then
@@ -428,6 +463,13 @@ ensure_github_idp() {
     client_secret="$(jq -r '.client_secret // empty' <<< "$blob")"
     if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
         echo "[FAILED ] ${GITHUB_IDP_SECRET_KEY} has no client_id/client_secret" >&2
+        return 1
+    fi
+    shape="$(github_secret_shape_error "$client_secret")"
+    if [ -n "$shape" ]; then
+        echo "[FAILED ] ${GITHUB_IDP_SECRET_KEY}: ${shape}; not applied" >&2
+        echo "           Regenerate the secret on the GitHub OAuth App, then:" >&2
+        echo "           zitadel-idp.sh rotate-github-secret --cluster ${CLUSTER} --cloud ${CLOUD} --apply < secret-file" >&2
         return 1
     fi
     GITHUB_ENABLED="true"
@@ -477,6 +519,49 @@ ensure_github_idp() {
         return 1
     fi
     echo "[created] IdP '${GITHUB_IDP_NAME}' (${id}, client ${client_id})"
+}
+
+# ZITADEL first: a refused PUT leaves the store on the old pair. A store write
+# that fails after it is repaired by re-running the same command, since the PUT
+# is idempotent -- sync could not repair it, having no secret to compare.
+rotate_github_secret() {
+    local blob client_id template existing
+
+    blob="$(store_read "$GITHUB_IDP_SECRET_KEY" || true)"
+    client_id="$NEW_CLIENT_ID"
+    [ -n "$client_id" ] || client_id="$(jq -r '.client_id // empty' <<< "${blob:-null}" 2>/dev/null || true)"
+    if [ -z "$client_id" ]; then
+        echo "[FAILED ] ${GITHUB_IDP_SECRET_KEY} holds no client_id in the ${CLOUD} store; pass --client-id" >&2
+        return 1
+    fi
+
+    template="$(resolve_idp_template "$GITHUB_IDP_NAME" PROVIDER_TYPE_GITHUB)" || return 1
+    existing="$(jq -r '.id // empty' <<< "$template")"
+    if [ -z "$existing" ]; then
+        echo "[FAILED ] no GitHub IdP in ZITADEL to rotate; write ${GITHUB_IDP_SECRET_KEY} and run sync, which creates it" >&2
+        return 1
+    fi
+
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would update IdP '${GITHUB_IDP_NAME}' (${existing}) with the new secret, client ${client_id}"
+        echo "[dry-run] would write the pair to ${GITHUB_IDP_SECRET_KEY}"
+        return 0
+    fi
+
+    github_idp_payload "$client_id" "$NEW_SECRET" \
+        | api PUT "/admin/v1/idps/github/${existing}" -d @- >/dev/null \
+        || { echo "[FAILED ] ZITADEL refused the update; ${GITHUB_IDP_SECRET_KEY} unchanged" >&2; return 1; }
+    echo "[updated] IdP '${GITHUB_IDP_NAME}' (${existing}) client secret, client ${client_id}"
+
+    # Read by store_write.
+    # shellcheck disable=SC2034
+    local STORE_WRITE_DESCRIPTION="GitHub OAuth App for ZITADEL's link-only GitHub IdP. Written by zitadel-idp.sh."
+    # shellcheck disable=SC2034
+    local STORE_WRITE_LABEL="zitadel-idp"
+    printf '%s' "$NEW_SECRET" | jq -Rs --arg ci "$client_id" '{client_id: $ci, client_secret: .}' \
+        | store_write "$GITHUB_IDP_SECRET_KEY" \
+        || { echo "[FAILED ] ZITADEL holds the new secret but ${GITHUB_IDP_SECRET_KEY} was not written; re-run this command with the same secret" >&2; return 1; }
+    echo "[updated] ${GITHUB_IDP_SECRET_KEY} in the ${CLOUD} store"
 }
 
 # ── the broker's link reader ──────────────────────────────────────────────────
@@ -856,6 +941,12 @@ echo "cluster:  ${CLUSTER} (${CLOUD})"
 echo "idp:      ${IDP_URL}"
 echo "scope:    instance (/admin/v1) for the IdP, org (/management/v1) for the action"
 echo
+
+if [ "$COMMAND" = "rotate-github-secret" ]; then
+    rotate_github_secret
+    [ "$APPLY" = "true" ] || echo "This was a DRY RUN. Re-run with --apply."
+    exit 0
+fi
 
 ensure_idp
 ensure_github_idp
