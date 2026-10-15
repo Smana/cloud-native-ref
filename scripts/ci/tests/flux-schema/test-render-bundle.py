@@ -467,6 +467,55 @@ check("digest-pinned chartRef renders <url>@<digest>", rb.chartref_path(source) 
 check("tag-pinned chartRef renders the bare url",
       rb.chartref_path({"url": "oci://r/c", "ref": {"tag": "1"}}) == "oci://r/c")
 
+# --- An exactly pinned OCI chart is pulled once, then rendered from the cache (#2356) ---
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+
+def fake_helm(outcomes):
+    """A `run` that answers each `helm pull` with the next outcome: a .tgz, or stderr and rc 1."""
+    calls = []
+
+    def run(cmd, **_):
+        calls.append(cmd)
+        stderr = outcomes.pop(0)
+        if stderr is None:
+            dest = cmd[cmd.index("--destination") + 1]
+            (pathlib.Path(dest) / "c-1.0.0.tgz").write_text("chart")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 1, "", stderr)
+    return run, calls
+
+
+THROTTLED = 'Error: GET ".../manifests/1.0.0": response status code 429: toomanyrequests: Data limit exceeded'
+with tempfile.TemporaryDirectory() as cache:
+    run, calls = fake_helm([None])
+    tgz, error = rb.cached_oci_chart("oci://r/c", "1.0.0", cache, run, lambda _: None)
+    check("exact version: pulled once into the cache", error is None and tgz and pathlib.Path(tgz).exists()
+          and calls[0][:5] == [rb.HELM_BIN, "pull", "oci://r/c", "--version", "1.0.0"], f"{tgz!r} {error!r} {calls!r}")
+    again, _ = rb.cached_oci_chart("oci://r/c", "1.0.0", cache, run, lambda _: None)
+    check("cache hit: no registry call", again == tgz and len(calls) == 1, f"{calls!r}")
+
+    run, calls = fake_helm([THROTTLED, None])
+    slept = []
+    tgz, error = rb.cached_oci_chart("oci://r/c@sha256:ab", None, cache, run, slept.append)
+    check("429: retried after a pause, then cached", error is None and tgz and len(calls) == 2 and slept == [20],
+          f"{error!r} {calls!r} {slept!r}")
+    check("digest pin passes no --version", "--version" not in calls[0], f"{calls[0]!r}")
+
+    run, calls = fake_helm([THROTTLED] * 3)
+    tgz, error = rb.cached_oci_chart("oci://r/d", "2.0.0", cache, run, lambda _: None)
+    check("429 three times: fails loudly", tgz is None and "429" in (error or "") and len(calls) == 3, f"{error!r}")
+
+    run, calls = fake_helm(["Error: chart not found"])
+    tgz, error = rb.cached_oci_chart("oci://r/e", "3.0.0", cache, run, lambda _: None)
+    check("other errors: no retry", tgz is None and len(calls) == 1 and "not found" in error, f"{error!r}")
+
+    run, calls = fake_helm([])
+    for version in (">=0.43.0 <1.0.0", None, "1.x"):
+        tgz, error = rb.cached_oci_chart("oci://r/f", version, cache, run, lambda _: None)
+        check(f"range or absent pin {version!r}: left to helm", (tgz, error) == (None, None) and not calls)
+
 print()
 if FAILURES:
     print(f"FAIL: {len(FAILURES)} case(s): {', '.join(FAILURES)}", file=sys.stderr)
