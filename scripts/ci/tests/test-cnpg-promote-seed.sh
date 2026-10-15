@@ -142,6 +142,25 @@ if [ "$1" = "s3" ] && [ "$2" = "ls" ]; then
             echo "An error occurred (SlowDown) when calling the ListObjectsV2 operation" >&2; exit 254 ;;
         s3://test-bucket/settle-lands-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
         s3://test-bucket/settle-lands-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
+        # issue #2292 fixture: an IDLE database. The segment appears in the
+        # archive only once TWO checkpoint-preceded pg_switch_wal pairs are in
+        # the recorded psql stream: a switch NOT preceded by a CHECKPOINT
+        # closes nothing (the idle-DB no-op), and the first valid pair can
+        # race the archiver -- the re-issued pair is what makes the segment
+        # land. The test resets psql-calls before this case, so only THIS
+        # run's statements count.
+        s3://test-bucket/idle-lands-server/wals/0000000700000002/)
+            if [ -f "$FIXDIR/psql-calls" ] && awk '
+                /CHECKPOINT/ { cp = 1 }
+                /pg_switch_wal/ { if (cp) pairs++ }
+                END { exit (pairs >= 2) ? 0 : 1 }
+            ' "$FIXDIR/psql-calls"; then
+                echo "2026-09-02 12:41:00     123456 00000007000000020000007F.bz2"
+            else
+                empty_prefix
+            fi ;;
+        s3://test-bucket/idle-lands-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
+        s3://test-bucket/idle-lands-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
         # round-4 fixture: base/ and backup.info are fine, but the WAL shard
         # DIRECTORY does not exist at all -- the commonest shape of a genuinely
         # incomplete seed. Falls through to the catch-all below (rc 1, no
@@ -164,6 +183,7 @@ if [ "$1" = "s3" ] && [ "$2" = "cp" ]; then
             echo "Note: switching to next-gen CRT-based S3 transfer client" >&2
             cat "$FIXDIR/good-backup.info" ;;
         s3://test-bucket/settle-lands-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
+        s3://test-bucket/idle-lands-seed/base/20260902T123813/backup.info)  cat "$FIXDIR/good-backup.info" ;;
         s3://test-bucket/absent-shard-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
         *) echo "fatal error: An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 1 ;;
     esac
@@ -240,7 +260,16 @@ if [ "$1" = "get" ] && [ "$2" = "backup" ]; then
     exit 1
 fi
 if [ "$1" = "exec" ]; then
-    exit 0   # pg_switch_wal
+    # The psql payload is the LAST argument; every SQL statement the script
+    # runs on the primary is recorded so tests can assert on the ORDER (a
+    # CHECKPOINT must precede each pg_switch_wal) and on re-issue counts.
+    # STUB_FAIL_SQL makes the matching statement fail, to test fail-closed.
+    sql="${@: -1}"
+    echo "$sql" >> "$STUB_FIXTURES/psql-calls"
+    if [ -n "${STUB_FAIL_SQL:-}" ] && printf '%s' "$sql" | grep -qF -- "$STUB_FAIL_SQL"; then
+        echo "psql: error: connection refused" >&2; exit 1
+    fi
+    exit 0
 fi
 exit 1
 EOF
@@ -503,5 +532,78 @@ rc=$?
 check "gcp apply: exit code" "0" "$rc"
 check_contains "gcp apply: copied with rsync" "storage rsync --recursive gs://test-bucket/gcp-apply-server gs://test-bucket/gcp-apply-seed" "$(cat "$FIX/gcloud-copy-calls" 2>/dev/null)"
 check_contains "gcp apply: verifies the flat seed" "Set spec.objectStoreRecovery.path to: gcp-apply-seed" "$out"
+
+# ---- 20. issue #2292: an idle database. pg_switch_wal is a NO-OP when no WAL
+#          record has been written since the last switch, so on an idle DB the
+#          open segment never archives and the promotion times out. The stub's
+#          idle-lands-server only reports the segment once a CHECKPOINT has
+#          preceded a pg_switch_wal in the psql stream, so a script that
+#          switches without checkpointing first fails exactly like the real
+#          one did on 2026-10-08. ------------------------------------------
+export STUB_SERVER_NAME="idle-lands-server"
+export STUB_PRIMARY_POD="idle-lands-server-1"
+export STUB_END_WAL="00000007000000020000007F"
+rm -f "$FIX/psql-calls"   # isolate this run's psql stream from earlier cases
+out="$(bash "$SCRIPT" --cluster xplane-idle-lands --namespace ns --cloud aws --bucket test-bucket \
+    --seed idle-lands-seed --apply 2>&1)"
+rc=$?
+check "idle database: promotion succeeds without manual steps -> exit code" "0" "$rc"
+check_contains "idle database: reports the pair issued" \
+    "CHECKPOINT + pg_switch_wal issued" "$out"
+check_contains "idle database: reports the segment archived" \
+    "end_wal 00000007000000020000007F archived" "$out"
+check_contains "idle database: verifies the copied seed" \
+    "Set spec.objectStoreRecovery.path to: idle-lands-seed" "$out"
+# The very first SQL statement on the primary must be a CHECKPOINT, and every
+# pg_switch_wal in the recorded stream must be immediately preceded by one.
+if [ "$(head -1 "$FIX/psql-calls")" = "CHECKPOINT;" ]; then
+    printf '  ok   idle database: CHECKPOINT precedes every pg_switch_wal\n'
+else
+    printf '  FAIL idle database: first SQL on the primary was %q, expected CHECKPOINT;\n%s\n' \
+        "$(head -1 "$FIX/psql-calls")" "$(cat "$FIX/psql-calls")"; fail=1
+fi
+if awk '
+    { prev = curr; curr = $0 }
+    /pg_switch_wal/ && prev !~ /CHECKPOINT/ { bad = 1 }
+    END { exit bad ? 1 : 0 }
+' "$FIX/psql-calls"; then
+    printf '  ok   idle database: every pg_switch_wal was preceded by a CHECKPOINT\n'
+else
+    printf '  FAIL idle database: a pg_switch_wal ran without a preceding CHECKPOINT\n'; fail=1
+fi
+# The pair is re-issued while polling: the settle stub makes the segment
+# visible on its second listing at the earliest, so a run that archives the
+# segment has necessarily issued the pair at least twice.
+switches="$(grep -c "pg_switch_wal" "$FIX/psql-calls")"
+if [ "$switches" -ge 2 ]; then
+    printf '  ok   idle database: CHECKPOINT + pg_switch_wal re-issued while polling (%s switches)\n' "$switches"
+else
+    printf '  FAIL idle database: pair issued only %s time(s), expected re-issue while polling\n' "$switches"; fail=1
+fi
+
+# ---- 21. a failed CHECKPOINT (or switch) on the primary fails closed -----
+export STUB_SERVER_NAME="settle-lands-server"
+export STUB_PRIMARY_POD="settle-lands-server-1"
+export STUB_END_WAL="00000007000000020000007F"
+export STUB_FAIL_SQL="CHECKPOINT"
+out="$(bash "$SCRIPT" --cluster xplane-cp-fail --namespace ns --cloud aws --bucket test-bucket \
+    --seed cp-fail-seed --apply 2>&1)"
+rc=$?
+check "CHECKPOINT failure: exit code" "1" "$rc"
+check_contains "CHECKPOINT failure: names the failed statement" "[fail] CHECKPOINT failed" "$out"
+if printf '%s' "$out" | grep -qF "did not land in the archive"; then
+    printf '  FAIL CHECKPOINT failure: must be reported as an exec failure, not an archive timeout\n'; fail=1
+else
+    printf '  ok   CHECKPOINT failure: not reported as an archive timeout\n'
+fi
+unset STUB_FAIL_SQL
+
+export STUB_FAIL_SQL="pg_switch_wal"
+out="$(bash "$SCRIPT" --cluster xplane-sw-fail --namespace ns --cloud aws --bucket test-bucket \
+    --seed sw-fail-seed --apply 2>&1)"
+rc=$?
+check "pg_switch_wal failure: exit code" "1" "$rc"
+check_contains "pg_switch_wal failure: names the failed statement" "[fail] pg_switch_wal failed" "$out"
+unset STUB_FAIL_SQL
 
 exit $fail

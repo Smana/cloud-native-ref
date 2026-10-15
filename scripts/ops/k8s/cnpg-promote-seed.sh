@@ -379,7 +379,7 @@ if [ -n "$existing" ]; then
 fi
 
 if [ "$APPLY" != "1" ]; then
-  echo "[dry-run] would create a one-shot Backup, pg_switch_wal, wait for its end_wal segment,"
+  echo "[dry-run] would create a one-shot Backup, CHECKPOINT + pg_switch_wal, wait for its end_wal segment,"
   echo "[dry-run] then copy $SERVER_NAME/ -> $SEED/ and verify. Re-run with --apply."
   if [ -n "$ROTATE_ALIAS" ]; then
     echo "[dry-run] would then rotate alias $ROTATE_ALIAS: clear $URI/$ROTATE_ALIAS/, copy $SEED/ into it, verify."
@@ -426,10 +426,17 @@ done
 echo "[ok    ] backup $BACKUP completed"
 
 # 5. The specific WAL segment THIS backup needs archived -- read from CNPG's
-#    own status, never guessed. Force it out with pg_switch_wal (PostgreSQL
-#    only archives a segment once it is full; without forcing the switch, the
-#    segment can sit open and unarchived indefinitely -- the exact
+#    own status, never guessed. Force it out with CHECKPOINT + pg_switch_wal
+#    (PostgreSQL only archives a segment once it is full; without forcing the
+#    switch, the segment can sit open and unarchived indefinitely -- the exact
 #    zitadel-20260829-2 failure), then poll for THAT segment specifically.
+#    The CHECKPOINT is not decoration: pg_switch_wal is a NO-OP when no WAL
+#    record has been written since the last switch, which is the steady state
+#    of an idle database (issue #2292: the LSN sat at the very start of the
+#    open segment, the switch closed nothing, and end_wal never reached the
+#    archive). CHECKPOINT writes a WAL record first, so the switch always has
+#    something to close. The pair is re-issued on every poll for the same
+#    reason: the first attempt can race the archiver.
 #    Breaking on "any WAL count increase" was the bug: unrelated WAL churn
 #    satisfies it while the segment actually needed is still missing, and if
 #    the count never rises the old loop exited by exhaustion and copied
@@ -438,10 +445,17 @@ END_WAL="$(kubectl get backup "$BACKUP" -n "$NAMESPACE" -o jsonpath='{.status.en
 [ -n "$END_WAL" ] || { echo "[fail] backup $BACKUP has no status.endWal" >&2; exit 1; }
 echo "[ok    ] backup $BACKUP needs end_wal $END_WAL"
 
-kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
-  psql -tAc "SELECT pg_switch_wal();" >/dev/null 2>&1 \
-  || { echo "[fail] pg_switch_wal failed" >&2; exit 1; }
-echo "[ok    ] pg_switch_wal issued"
+checkpoint_and_switch() {
+  kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
+    psql -tAc "CHECKPOINT;" >/dev/null 2>&1 \
+    || { echo "[fail] CHECKPOINT failed" >&2; return 1; }
+  kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
+    psql -tAc "SELECT pg_switch_wal();" >/dev/null 2>&1 \
+    || { echo "[fail] pg_switch_wal failed" >&2; return 1; }
+}
+
+checkpoint_and_switch || exit 1
+echo "[ok    ] CHECKPOINT + pg_switch_wal issued"
 
 settled=0
 settle_rc=0
@@ -452,6 +466,7 @@ for _ in $(seq 1 30); do
     settled=1
     break
   fi
+  checkpoint_and_switch || exit 1
   sleep 10
 done
 if [ "$settled" != "1" ]; then
