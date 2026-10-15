@@ -161,7 +161,7 @@ fi
 
 # Same single-source-of-truth approach for agentgateway: the first document is the
 # CRD chart's OCIRepository (url ends in -crds), read like the AI Gateway's above.
-AGW_SOURCE="infrastructure/aws-0/agentgateway/ocirepositories.yaml"
+AGW_SOURCE="infrastructure/base/agentgateway/ocirepositories.yaml"
 AGW_CHART="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(oci://[^"[:space:]]+-crds)"?[[:space:]]*$#\1#p' "${AGW_SOURCE}" | head -n1 || true)"
 AGW_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AGW_SOURCE}" | head -n1 || true)"
 if [[ -z "${AGW_CHART}" || -z "${AGW_VERSION}" ]]; then

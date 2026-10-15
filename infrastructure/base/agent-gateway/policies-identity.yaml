@@ -1,0 +1,158 @@
+# ADR-0042 on agentgateway (ADR-0053). Per listener: validate the run's projected
+# ServiceAccount token offline against this cluster's issuer, require `exp` and
+# `sub` (a sub-less token would share one unlimited rate-limit bucket, #3523) and
+# the `agents` sub prefix, and REPLACE x-ar-agent with the verified sub. The
+# validated JWT is removed before any backend sees it (preserveToken is off); only
+# `sts` forwards it, to octo-sts. Audiences are the Envoy agent-router's, so one
+# token works on both gateways during the cutover; Kyverno reserves them for
+# namespace agents.
+#
+# The identity headers are dropped before routing, so no route or backend sees a
+# forged one even where `set` does not run.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: strip-identity-headers
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+  traffic:
+    phase: PreRouting
+    transformation:
+      request:
+        remove:
+          - x-ar-agent
+          - x-ar-human
+          - x-ai-gateway-client-id
+          - agent-session-id
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-public
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: public
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agent-router.implementer.public
+            - agent-router.reviewer.public
+            - agent-router.tester.public
+            - agent-router.triager.public
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+          validation:
+            requiredClaims:
+              - exp
+              - sub
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agents:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
+    # A long GLM completion must not time out (agent-router's agent-models rule).
+    timeouts:
+      request: 600s
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-internal
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: internal
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - agent-router.implementer.internal
+            - agent-router.reviewer.internal
+            - agent-router.tester.internal
+            - agent-router.triager.internal
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+          validation:
+            requiredClaims:
+              - exp
+              - sub
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agents:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub
+    # A long GLM completion must not time out (agent-router's agent-models rule).
+    timeouts:
+      request: 600s
+---
+# octo-sts's trust policies match the EKS issuer by pattern (it changes every
+# rebuild); this pins THIS cluster's issuer and the four audiences first. These
+# audiences ARE the per-repository opt-in (ADR-0043): another repository fails
+# closed here. The only listener that forwards the bearer.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: listener-sts
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      sectionName: sts
+  traffic:
+    jwtAuthentication:
+      mode: Strict
+      preserveToken: true
+      providers:
+        - issuer: ${oidc_issuer_url}
+          audiences:
+            - octo-sts/Smana/cloud-native-ref/implementer
+            - octo-sts/Smana/cloud-native-ref/reviewer
+            - octo-sts/Smana/cloud-native-ref/tester
+            - octo-sts/Smana/cloud-native-ref/triager
+          jwks:
+            remote:
+              url: ${oidc_jwks_uri}
+          validation:
+            requiredClaims:
+              - exp
+              - sub
+    authorization:
+      action: Require
+      policy:
+        matchExpressions:
+          - 'jwt.sub.startsWith("system:serviceaccount:agents:")'
+    transformation:
+      request:
+        set:
+          - name: x-ar-agent
+            value: jwt.sub

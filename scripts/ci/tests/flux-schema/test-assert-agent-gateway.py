@@ -165,9 +165,10 @@ def params(o):
 
 
 print("compliant bundles")
-for key in (REAL, POC):
-    got = gate.run(compliant(key))
-    check(f"compliant {key[0]}/{key[1]} passes", got == [], f"got {got}")
+got = gate.run(compliant(REAL))
+check("compliant agent-gateway/agent-router passes", got == [], f"got {got}")
+got = gate.run(compliant(REAL) + compliant(POC))
+check("the PoC beside the real Gateway passes", got == [], f"got {got}")
 check("eleven checks", len(gate.CHECKS) == 11, f"got {len(gate.CHECKS)}")
 
 print("AG1 gateway")
@@ -175,6 +176,9 @@ expect("no Gateway fails", lambda o: o.remove(find(o, "Gateway", "agent-router")
 expect("a dropped listener fails", lambda o: spec_at(o, "Gateway", "agent-router", "listeners").pop(), "AG1")
 expect("routes from All fails", lambda o: spec_at(o, "Gateway", "agent-router", "listeners")[0]
        ["allowedRoutes"].update({"namespaces": {"from": "All"}}), "AG1")
+got = gate.run(compliant(POC))
+check("the PoC without the real Gateway fails AG1",
+      any(v.startswith("AG1: required Gateway agent-gateway/agent-router") for v in got), f"got {got}")
 expect("an unknown agentgateway Gateway fails", lambda o: o.append(
     obj("Gateway", "elsewhere", "shadow", {"gatewayClassName": "agentgateway", "listeners": []},
         api="gateway.networking.k8s.io/v1")), "AG1")

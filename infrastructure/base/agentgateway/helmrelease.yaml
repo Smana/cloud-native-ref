@@ -26,11 +26,12 @@ spec:
     # 1.6: drops the Istio permissions from the controller's ClusterRole.
     istio:
       enabled: false
-    # Namespaced writes (Deployments, Services, Secrets) only where the PoC Gateway
-    # lives. Reads stay cluster-wide: the Z.ai backend's secretRef is in agent-system.
+    # Writes (Deployments, Services, Secrets) only in agent-gateway, which holds the
+    # proxies and nothing else (ADR-0053 D1). Reads stay cluster-wide: backend
+    # secretRefs live in agent-system.
     rbac:
       gatewayNamespaces:
-        - agw-poc
+        - agent-gateway
     podSecurityContext:
       runAsNonRoot: true
       seccompProfile:

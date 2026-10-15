@@ -8,7 +8,9 @@ names its listeners, audiences, caller namespace and route namespace:
 
   AG1  Every Gateway of class agentgateway has a profile, declares exactly its
        listeners and ports, and admits routes from its route namespace only.
-       No such Gateway at all is a layout regression, not compliance.
+       A required profile (the real agent router) must render in every cluster
+       that renders agentgateway, so the PoC alone never passes. No such Gateway
+       at all is a layout regression, not compliance.
   AG2  Each listener has exactly one listener-scoped jwtAuthentication: mode
        Strict, audiences equal to its class set, requiredClaims holding exp and
        sub, an authorization Require on the caller namespace's sub prefix, and
@@ -69,13 +71,14 @@ class Profile(NamedTuple):
     aud_prefix: str
     sub_ns: str
     roles: tuple = ROLES
+    required: bool = False
 
 
 # Keyed by Gateway (namespace, name). Phase H removes the PoC with its entry.
 PROFILES = {
     ("agent-gateway", "agent-router"): Profile(
         listeners={"public": 8080, "internal": 8081, "sts": 8082},
-        routes_ns="agent-system", aud_prefix="agent-router", sub_ns="agents"),
+        routes_ns="agent-system", aud_prefix="agent-router", sub_ns="agents", required=True),
     ("agw-poc", "agent-router-agw"): Profile(
         listeners={"public": 8080, "internal": 8081},
         routes_ns="agw-poc", aud_prefix="agw-poc", sub_ns="agw-poc-clients", roles=("implementer", "reviewer")),
@@ -185,7 +188,9 @@ def check_gateway(objs):
     gws = gateways(objs)
     if not gws:
         return [f"AG1: no Gateway of class {CLASS} (zero is a layout regression, not compliance)"]
-    out = []
+    out = [f"AG1: required Gateway {ns}/{name} is not rendered (the PoC alone must not pass)"
+           for (ns, name), prof in PROFILES.items()
+           if prof.required and (ns, name) not in {key(g) for g, _ in gws}]
     for g, prof in gws:
         if prof is None:
             out.append(f"AG1: {ref(g)} is a Gateway of class {CLASS} with no entry in PROFILES")

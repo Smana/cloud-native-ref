@@ -185,12 +185,12 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | A.2 | done (#2395) | cnref | agentgateway becomes source 7 of `gen-catalog.sh` (6 today), pinned to v1.6.0. The hosted catalog carries v1.6.0 today (#2385: `Invalid: 0`); A.2 stops a catalog bump from moving it |
 | A.3 | done (#2395) | cnref | AG1–AG9 as written, plus the 1.6 checks below. Wired as gate 6 now, not in B (old R2): `PROFILES` judges the PoC Gateway until phase H removes its entry |
 | A.4 | valid | cnref | A PR to `main`, not a draft on `feat/rooms-driver` |
-| B.1 | changed | cnref | Plus the boundary and host-contract rows (below) |
-| B.2 | changed | cnref | Partly done by #2385 on aws-0: move `infrastructure/aws-0/agentgateway/` to a base plus both render roots. R5 returns: the controller child keeps the PoC's name `agentgateway`. After any pin change, touch the Gateway so the proxy re-renders |
-| B.3 | changed | cnref | `shutdown: {min: 10, max: 660}`, proven on aws-0; the defaults fail. G3's overlay from the PoC's `AgentgatewayParameters` |
-| B.4 | changed | cnref | `requiredClaims: [exp, sub]` on every listener (L5). The `agents` sub-prefix stays CEL: `requiredClaims` checks presence, not a prefix |
-| B.5 | valid | cnref | — |
-| B.6 | changed | cnref | Live on aws-0. The PoC ran the EKS checks; B.6 repeats L1–L8 against the real Gateway, below |
+| B.1 | done (AGW-2) | cnref | Plus the boundary and host-contract rows (below) |
+| B.2 | done (AGW-2) | cnref | Partly done by #2385 on aws-0: move `infrastructure/aws-0/agentgateway/` to a base plus both render roots. R5 returns: the controller child keeps the PoC's name `agentgateway`. After any pin change, touch the Gateway so the proxy re-renders |
+| B.3 | done (AGW-2) | cnref | `shutdown: {min: 10, max: 660}`, proven on aws-0; the defaults fail. G3's overlay from the PoC's `AgentgatewayParameters` |
+| B.4 | done (AGW-2) | cnref | `requiredClaims: [exp, sub]` on every listener (L5). The `agents` sub-prefix stays CEL: `requiredClaims` checks presence, not a prefix |
+| B.5 | done (#2395, AGW-2) | cnref | Wired by #2395; AGW-2 makes `agent-gateway/agent-router` a required profile, so the PoC alone fails AG1 |
+| B.6 | changed | cnref | Live on aws-0. The PoC ran the EKS checks; B.6 repeats L1–L8 against the real Gateway, below. `agentgateway-poc-live-check.sh --gateway real` runs L4, L5, L8, the JWKS issuer check and the proxy shape now; L1–L3, L6 and L7 need phase C's routes |
 | C.1 | changed | cnref | 1.6 provider rules, below; the PoC's `llm.yaml` is the text |
 | C.2 | changed | cnref | `sessionRouting: Stateless`. 1.6 pages `tools/list` (`nextCursor`): the scope test and the probe read every page. `mcp.methodName` is now a CEL attribute; N7 (Allow is OR) re-verified on the pinned CRD text |
 | C.3 | valid | cnref | Paths exist: `security/base/octo-sts/{httproute,network-policy}.yaml` |

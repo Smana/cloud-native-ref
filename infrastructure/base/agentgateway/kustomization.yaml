@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The agent router's controller (ADR-0053). Its GatewayClass `agentgateway` is
+# created by the controller at startup, not by Git. It shares only the Gateway
+# API CRDs with Envoy Gateway and Cilium.
+resources:
+  - namespace.yaml
+  - ocirepositories.yaml
+  - helmrelease-crds.yaml
+  - helmrelease.yaml
+  - network-policy.yaml

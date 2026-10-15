@@ -48,7 +48,7 @@ tasks:
     desc: Promote a live CNPG archive to a frozen restore seed, or verify one
     cmds: ["{{.TASKFILE_DIR}}/k8s/cnpg-promote-seed.sh {{.CLI_ARGS}}"]
   k8s:agentgateway-poc-live-check:
-    desc: Run the agentgateway PoC's live checks L1-L8 on the current context (five tiny GLM-5.3 calls)
+    desc: "Run the agentgateway live checks L1-L8 on the current context: the PoC (five tiny GLM-5.3 calls), or --gateway real"
     cmds: ["{{.TASKFILE_DIR}}/k8s/agentgateway-poc-live-check.sh {{.CLI_ARGS}}"]
   github:agent-branch-ruleset:
     desc: Apply the agents' branch and tag rulesets (agent/** branches only, no tags, for the agents' App) to one repository

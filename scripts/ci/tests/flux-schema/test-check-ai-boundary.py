@@ -70,6 +70,11 @@ errs = errors_after(lambda r: edit(r, "infrastructure/aws-0/kustomization.yaml",
 check(has(errs, "infrastructure/aws-0/kustomization.yaml", "../base/kueue", "host -> ai"),
       "a host kustomization that lists an AI directory fails")
 
+errs = errors_after(lambda r: edit(r, "infrastructure/aws-0/kustomization.yaml",
+                                   lambda d: d["resources"].append("../base/agent-gateway")))
+check(has(errs, "infrastructure/aws-0/kustomization.yaml", "../base/agent-gateway", "host -> ai"),
+      "a host kustomization that lists the agent router's Gateway directory fails")
+
 errs = errors_after(lambda r: edit(r, "clusters/aws-0/apps.yaml",
                                    lambda d: d["spec"]["dependsOn"].append({"name": "agent-router"})))
 check(has(errs, "clusters/aws-0/apps.yaml", "Kustomization/apps depends on the AI Kustomization agent-router"),
