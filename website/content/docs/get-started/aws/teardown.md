@@ -130,6 +130,11 @@ Before OpenTofu deletes anything, the script:
   Pod Identity associations.
 - Strips finalizers from any Crossplane composite resource stuck terminating,
   so the namespace delete that follows doesn't hang forever.
+- Deletes the load balancers and security groups the AWS Load Balancer
+  Controller created for this cluster (tag `elbv2.k8s.aws/cluster`). Stripping
+  the gateway Services' finalizers stops the controller from deleting them, and
+  left behind they hold the public subnets and the internet gateway, which
+  hangs the VPC destroy.
 
 ## Stage 2 never gates the cluster
 
