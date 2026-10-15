@@ -16,9 +16,6 @@ jobs:
     if: github.event.sender.login == 'Smana' && github.event.label.name == 'cohort/arm-b'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    concurrency:
-      group: cohort-arm-b
-      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -82,9 +79,6 @@ jobs:
     if: github.event.sender.login == 'Smana' && github.event.label.name == 'cohort/arm-c'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    concurrency:
-      group: cohort-arm-c
-      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
