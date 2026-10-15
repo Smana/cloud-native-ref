@@ -94,6 +94,8 @@ single-file fixes never need one.
 | [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
 | [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Accepted | 2026-09-25 |
 | [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
+| [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) | The agent router runs on agentgateway, pinned to a minor that passes our live gate; ai-gateway stays on Envoy Gateway | Accepted | 2026-10-01 |
+| [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
 | [0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}}) | The factory is driven from the developer's local agent through a skill and roomctl, and a room is as visible as its repo on GitHub | Accepted | 2026-10-08 |
 | [0057]({{< relref "/docs/decisions/0057-ai-platform-own-repository.md" >}}) | The AI platform moves to its own repository, consumed by cloud-native-ref as a pinned artifact | Accepted | 2026-10-12 |
 
