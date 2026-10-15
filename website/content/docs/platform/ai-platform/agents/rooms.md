@@ -43,5 +43,15 @@ linked to your ZITADEL user; `agents-admin` reads every room
 ([ADR-0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}})). The full transcript
 (prompts and outputs) stays in the room; traces carry metadata only.
 
+## Changing and rolling back the broker
+
+Everything ships through Git under `infrastructure/base/room-broker/`, so a rollback is a revert.
+
+| What changes | What happens | Rollback |
+|---|---|---|
+| Config (`config.yaml`) | The generated ConfigMap's hash suffix changes, so the pod template does | Revert the commit: the old hash rolls the pods back. A change to a cluster variable alone does not roll them (Flux substitutes after the build) |
+| Binary (`app.yaml` image) | The new digest rolls the pods | Revert the pin, which moves with the retention CronJob's image, `crd-rooms.yaml` and `atlasSchema.ref` |
+| Schema (`atlasSchema.ref` in `sqlinstance.yaml`) | Atlas applies the new migrations | None: migrations are append-only and Atlas never runs a down migration, so the database keeps the newer schema after a binary revert |
+
 How a developer uses a room day to day is in the
 [user guide]({{< relref "/docs/platform/ai-platform/agents/user-guide.md" >}}).
