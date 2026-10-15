@@ -1,0 +1,721 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: kubernetes-cert-manager
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "kubernetes"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 100,
+          "panels": [],
+          "title": "Certificates",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Certificates whose Ready condition is not True — including Unknown (issuance in progress and never completing), the state the CertificateNotReady alert catches. Empty is healthy; every bar is a certificate that is not issued, so anything mounting its Secret is waiting on it.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "custom": {
+                "fillOpacity": 70,
+                "lineWidth": 0
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "id": 1,
+          "options": {
+            "alignValue": "left",
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "mergeValues": true,
+            "rowHeight": 0.85,
+            "showValue": "auto",
+            "tooltip": {
+              "mode": "single",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (name, exported_namespace) (certmanager_certificate_ready_status{condition=\"True\"} == 0)",
+              "legendFormat": "{{exported_namespace}}/{{name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Certificates not Ready",
+          "type": "state-timeline"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Ready=True certificates by namespace over time. A series dropping to zero and staying there means a certificate stopped being reported ready.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (exported_namespace) (certmanager_certificate_ready_status{condition=\"True\"})",
+              "legendFormat": "{{exported_namespace}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Ready certificates by namespace",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Shortest time to expiry per certificate (highest severity: in-cluster OpenBao PKI certificates last hours to days, so the second-shortest series is the real renewal signal). Green above 14 days — the CertificateExpiringSoon alert's threshold.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 86400
+                  },
+                  {
+                    "color": "green",
+                    "value": 1209600
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 3,
+          "options": {
+            "displayMode": "gradient",
+            "maxVizHeight": 300,
+            "minVizHeight": 16,
+            "minVizWidth": 8,
+            "namePlacement": "auto",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true,
+            "sizing": "auto",
+            "valueMode": "color"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "min by (name, exported_namespace) (certmanager_certificate_expiration_timestamp_seconds - time())",
+              "legendFormat": "{{exported_namespace}}/{{name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Time to expiry",
+          "type": "bargauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Total time to expiry for every certificate, not just the shortest. Renewals show as a sawtooth: expiry climbs after each successful reissue. A flat line running down to zero is a renewal that is not happening.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "certmanager_certificate_expiration_timestamp_seconds - time()",
+              "legendFormat": "{{exported_namespace}}/{{name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Time to expiry per certificate",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 15
+          },
+          "id": 200,
+          "panels": [],
+          "title": "Issuance activity",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "CertificateRequests signed per minute (all reasons: initial issuance and renewal). Spikes line up with renewal waves and rollouts of new ingresses; silence means nothing is being issued, which for this platform's short-lived certificates would itself be a smell.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 16
+          },
+          "id": 5,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(certmanager_certificaterequests_created_total[$__rate_interval]))",
+              "legendFormat": "requests/s",
+              "refId": "A"
+            }
+          ],
+          "title": "CertificateRequests signed",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "CertificateRequests that reconciled into an error state per minute. The two red incidents in the alerting rules both end here: an errored ACME Order is never retried and the CertificateRequest backs off for up to an hour.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.001
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 16
+          },
+          "id": 6,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(certmanager_certificaterequests_ready_condition{status=\"False\"}[$__rate_interval]))",
+              "legendFormat": "failed/s",
+              "refId": "A"
+            }
+          ],
+          "title": "CertificateRequests failing",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Reconciliation events per minute, by type — the controller's heartbeat. Renewal and SelfSigned Vault issuer events dominate on this platform; the certificate_sync_duration buckets behind them live one row down.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never",
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (type) (rate(certmanager_certificate_renewals_total[$__rate_interval]) or rate(certmanager_renewal_errors_total[$__rate_interval]) or rate(certmanager_certificate_sync_duration_seconds_count[$__rate_interval]))",
+              "legendFormat": "{{type}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Controller activity (renewals, syncs, renewal errors)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Certificate sync p99, from the histogram cert-manager emits per reconcile. In-cluster OpenBao-issued certificates renew every few hours, so syncs are frequent and slow ones here are the early sign of API-server pressure.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 23
+          },
+          "id": 8,
+          "options": {
+            "legend": {
+              "calcs": [
+                "max"
+              ],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "multi",
+              "show": true
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(certmanager_certificate_sync_duration_seconds_bucket[$__rate_interval])))",
+              "legendFormat": "p99",
+              "refId": "A"
+            }
+          ],
+          "title": "Certificate sync p99",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Controller build info — one series per running cert-manager version. A brief two-series window is a rollout in progress; steady state shows one. Also proves the metrics endpoint is reachable, so an empty dashboard means a scraping problem, not an idle one.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 23
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "none",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "name"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "max by (version) (certmanager_build_info)",
+              "legendFormat": "{{version}}",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "title": "cert-manager version",
+          "type": "stat"
+        }
+      ],
+      "preload": false,
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "cert-manager",
+        "kubernetes",
+        "certificates"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "default",
+              "value": "default"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Data source",
+            "multi": false,
+            "name": "datasource",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "cert-manager",
+      "uid": "cert-manager",
+      "version": 1,
+      "weekStart": ""
+    }
