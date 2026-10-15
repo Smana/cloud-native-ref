@@ -204,6 +204,8 @@ kind: AgentgatewayBackend
 metadata: {name: agw-check-mcp, namespace: agent-system, labels: {agw-live-check: "true"}}
 spec:
   mcp:
+    # A lone target is unprefixed by default; Always keeps echo_echo_headers, as on agent-mcp.
+    prefixMode: Always
     sessionRouting: Stateless
     targets:
       - name: echo

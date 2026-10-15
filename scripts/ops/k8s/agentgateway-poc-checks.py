@@ -229,7 +229,8 @@ def mcp_real(phase):
     seen = json.loads(text) if text.startswith("{") else {}
     check("L3/P4", f"[{phase}] a target's key injected in its own header, no Authorization on the MCP hop",
           "x-echo-mcp-key" in seen and "authorization" not in seen,
-          f"x-echo-mcp-key={seen.get('x-echo-mcp-key')} authorization={'authorization' in seen}")
+          f"x-echo-mcp-key={seen.get('x-echo-mcp-key')} authorization={'authorization' in seen}"
+          + ("" if seen else f" reply={json.dumps(r)[:200]}"))
     names = Mcp().tools()
     check("L3", f"[{phase}] the federation still lists the in-cluster servers' tools",
           set(names) == REAL_TOOLS["public"], f"tools/list = {sorted(names)}")
