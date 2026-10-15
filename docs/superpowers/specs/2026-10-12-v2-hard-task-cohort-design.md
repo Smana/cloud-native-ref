@@ -103,7 +103,7 @@ One workflow, `.github/workflows/cohort-arms.yaml`, with one job per arm, each o
 |---|---|
 | Action | `anthropics/claude-code-action`, pinned by digest |
 | Permissions | `contents: write`, `pull-requests: write`, `issues: write`; nothing else. `main` stays protected by its ruleset, so neither arm can merge |
-| Concurrency | One run per arm |
+| Concurrency | None. Issues are labelled in batches of disjoint files; a concurrency group keeps one *pending* run, so a third label would cancel the second run (amended 2026-10-15, issue 5 on) |
 | Prompt | Names the issue; the agent reads the body with `gh issue view` (the body is never interpolated). Plus: open a PR from a `cohort/arm-<x>/<issue>` branch that closes the issue, and run `task check` before pushing |
 | Arm C | `ANTHROPIC_BASE_URL` set to Z.ai's Anthropic-compatible endpoint, with the model set to `glm-5.3` |
 | Arm C model slots | `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` all `glm-5.3`, so subagents run on A's model too |
