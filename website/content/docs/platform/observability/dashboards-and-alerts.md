@@ -50,7 +50,7 @@ scope for this always-on page:
 | `cilium` | `kube-system` | Cilium agent/operator and Hubble dashboards |
 | `databases` | `infrastructure` | CloudNativePG query-performance and query-plan-correlation |
 | `flux` | `flux-system` | Flux cluster and control-plane dashboards |
-| `kubernetes` | `infrastructure` | Kubernetes views, node-exporter, Karpenter |
+| `kubernetes` | `infrastructure` | Kubernetes views, node-exporter, Karpenter, Crossplane |
 | `logs` | `observability` | VictoriaLogs explorer, single/cluster overview |
 | `runlore` | `observability` | RunLore's own dashboard |
 | `traces` | `observability` | VictoriaTraces overview |
@@ -62,6 +62,7 @@ scope for this always-on page:
 | `kubernetes-views-{global,namespaces,nodes,pods}` | `observability` | Imported — vendored by the `victoria-metrics-k8s-stack` chart |
 | `kubernetes-node-exporter-full` | `kubernetes` | Imported, [grafana.com dashboard 1860](https://grafana.com/grafana/dashboards/1860/) |
 | `kubernetes-karpenter` | `kubernetes` | Imported, [grafana.com dashboard 20398](https://grafana.com/grafana/dashboards/20398/) |
+| `kubernetes-crossplane` | `kubernetes` | Authored in-repo — managed-resource ready/synced counts and reconcile errors, from the provider pods' `crossplane_managed_resource_*` gauges |
 | `app-all-in-one` | `apps` | Authored in-repo |
 | `runlore` | `runlore` | Authored in-repo |
 | `observability-victoria-logs-explorer` | `logs` | Authored in-repo |

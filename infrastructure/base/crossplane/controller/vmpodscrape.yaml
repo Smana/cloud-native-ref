@@ -1,0 +1,16 @@
+# The crossplane_managed_resource_* gauges come from the provider pods (crossplane-runtime), not
+# from the core controller, whose own metrics carry no crossplane_ prefix. Crossplane gives every
+# provider pod the pkg.crossplane.io/provider label and a container port named "metrics" (8080),
+# but creates no Service for it, hence a pod scrape.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: crossplane-providers
+  namespace: crossplane-system
+spec:
+  selector:
+    matchExpressions:
+      - key: pkg.crossplane.io/provider
+        operator: Exists
+  podMetricsEndpoints:
+    - port: metrics

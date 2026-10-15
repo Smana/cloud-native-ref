@@ -1,6 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: crossplane-system
 
+# No kustomization-wide namespace: the dashboard must sit in `infrastructure`, because folderRef
+# only resolves a GrafanaFolder in the dashboard's own namespace. Each resource sets its own.
 resources:
   - helmrelease.yaml
+  - vmpodscrape.yaml
+  - grafana-dashboard.yaml

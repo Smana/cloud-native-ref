@@ -2,6 +2,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: crossplane
+  namespace: crossplane-system
 spec:
   releaseName: crossplane
   driftDetection:
