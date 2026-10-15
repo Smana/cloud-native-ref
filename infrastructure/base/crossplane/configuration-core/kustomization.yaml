@@ -1,0 +1,7 @@
+# The -core Configuration (XRDs shared by both clouds), pinned once and
+# referenced by configuration-aws/ and configuration-gcp/, like ../functions.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configuration-core.yaml
