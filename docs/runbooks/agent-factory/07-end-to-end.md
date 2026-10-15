@@ -20,8 +20,8 @@ ideally 01–06 first (they de-risk the pieces this one composes).
 kubectl get composition xagentruns.cloud.ogenki.io -o yaml | grep -o 'ghcr.io/smana/agent-harness:[^@"]*' | sort -u
 ```
 
-Expected: one line, the harness released by `agent-platform`. At crossplane-configuration `v0.9.7` that is
-`ghcr.io/smana/agent-harness:v0.10.0`.
+Expected: one line, the harness released by `agent-platform`. At crossplane-configuration `v0.9.8` that is
+`ghcr.io/smana/agent-harness:v0.11.0`.
 
 ## Step 2 — SC-04: an implementer run ends in a PR within 30 minutes
 
