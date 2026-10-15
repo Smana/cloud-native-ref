@@ -27,9 +27,10 @@ for name, job in jobs.items():
         fails.append(f"{name}: if must require the maintainer and {label}: {cond}")
     if job.get("permissions") != {"contents": "write", "pull-requests": "write", "issues": "write"}:
         fails.append(f"{name}: permissions must be contents/pull-requests/issues write only")
-    conc = job.get("concurrency", {})
-    if conc.get("group") != f"cohort-{name}" or conc.get("cancel-in-progress") is not False:
-        fails.append(f"{name}: concurrency must be cohort-{name}, not cancelling")
+    # No concurrency group: GitHub keeps one PENDING run per group, so a third issue labelled in a
+    # batch would cancel the second one's run (spec §3, amended 2026-10-15).
+    if "concurrency" in job:
+        fails.append(f"{name}: no concurrency group, batched issues must each run")
     for step in job["steps"]:
         uses = step.get("uses")
         if uses and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", uses):
