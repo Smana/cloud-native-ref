@@ -10,8 +10,8 @@ spec:
   egress:
     - {}
 ---
-# The controller serves xDS to the PoC proxies and fetches the JWKS itself:
-# proxies receive the keyset over xDS and never call the issuer.
+# The controller serves xDS to the agent router's proxies and fetches the JWKS
+# itself: proxies receive the keyset over xDS and never call the issuer.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -25,8 +25,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: agw-poc
-            gateway.networking.k8s.io/gateway-name: agent-router-agw
+            io.kubernetes.pod.namespace: agent-gateway
+            gateway.networking.k8s.io/gateway-name: agent-router
       toPorts:
         - ports:
             - port: "9978"

@@ -22,12 +22,14 @@ import sys
 
 import yaml
 
-SCOPED = re.compile(r"^overlay-(infrastructure|security|observability|tooling)-gcp-0-(agent-[a-z-]+|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
+SCOPED = re.compile(r"^overlay-(infrastructure|security|observability|tooling)-gcp-0-(agent-[a-z-]+|agentgateway|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
-RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp)\.yaml$")
+RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp|gateway)\.yaml$")
 # By name, so a renamed overlay directory fails instead of silently leaving scope.
 EXPECTED = (
     "overlay-infrastructure-gcp-0-agent-router.yaml",
+    "overlay-infrastructure-gcp-0-agentgateway.yaml",
+    "overlay-infrastructure-gcp-0-agent-gateway.yaml",
     "overlay-infrastructure-gcp-0-agent-mcp.yaml",
     "overlay-infrastructure-gcp-0-room-broker.yaml",
     "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml",
@@ -79,17 +81,17 @@ def check_bundle(bundle_dir):
             continue
         gke = 0
         for doc in yaml.safe_load_all(text):
-            if not doc or doc.get("kind") not in ("SecurityPolicy", "MCPRoute"):
+            if not doc or doc.get("kind") not in ("SecurityPolicy", "MCPRoute", "AgentgatewayPolicy"):
                 continue
             for iss in _walk(doc, "issuer"):
                 gke += isinstance(iss, str) and iss.startswith(GKE_ISSUER)
                 if isinstance(iss, str) and not iss.startswith(GKE_ISSUER):
                     problems.append(f"{f.name}: {doc['kind']} {doc['metadata']['name']} issuer {iss} is not GKE's")
-            for uri in _walk(doc, "uri"):
+            for uri in [*_walk(doc, "uri"), *_walk(doc, "url")]:  # agentgateway names it jwks.remote.url
                 if isinstance(uri, str) and uri.startswith(GKE_ISSUER) and not uri.endswith("/jwks"):
                     problems.append(f"{f.name}: {doc['kind']} {doc['metadata']['name']} JWKS {uri} is not <issuer>/jwks")
         if not gke:
-            problems.append(f"{f.name}: no SecurityPolicy or MCPRoute with a GKE issuer: the issuer check would be vacuous")
+            problems.append(f"{f.name}: no SecurityPolicy, MCPRoute or AgentgatewayPolicy with a GKE issuer: the issuer check would be vacuous")
     if seen == 0:
         problems.append("no gcp-0 agent or AI-gateway overlay in the bundle: the gate would be vacuous")
     return problems

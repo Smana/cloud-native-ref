@@ -1,0 +1,11 @@
+# Declared by this child, not namespaces/base (old plan R3): the PoC declared it
+# here, and moving it to another Kustomization would let this inventory's prune
+# delete it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentgateway-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

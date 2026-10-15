@@ -12,6 +12,8 @@ resources:
   - security-agent-policies.yaml
   - security-agent-secrets.yaml
   - infrastructure-agent-router.yaml
+  - infrastructure-agentgateway.yaml
+  - infrastructure-agent-gateway.yaml
   - security-octo-sts.yaml
   - infrastructure-agent-mcp.yaml
   - infrastructure-room-broker.yaml

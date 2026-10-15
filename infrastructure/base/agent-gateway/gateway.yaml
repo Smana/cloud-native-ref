@@ -1,0 +1,44 @@
+# The agents' Gateway on agentgateway (ADR-0053). One listener per data class,
+# as on Envoy (ADR-0042): an internal token never reaches Z.ai because Z.ai
+# routes attach to `public` only. Same name as the Envoy Gateway it replaces, in
+# its own namespace, so both run side by side until the cutover.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agent-router
+  namespace: agent-gateway
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+    - name: public
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-system
+    - name: internal
+      protocol: HTTP
+      port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-system
+    - name: sts
+      protocol: HTTP
+      port: 8082
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-system
+  infrastructure:
+    parametersRef:
+      group: agentgateway.dev
+      kind: AgentgatewayParameters
+      name: agent-router

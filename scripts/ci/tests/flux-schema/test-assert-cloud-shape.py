@@ -42,7 +42,21 @@ def bundle(files):
 
 
 ROUTER, MCPF = "overlay-infrastructure-gcp-0-agent-router.yaml", "overlay-infrastructure-gcp-0-agent-mcp.yaml"
-RUN = {ROUTER: GOOD, MCPF: GOOD.replace("kind: SecurityPolicy", "kind: MCPRoute").replace("agent-router-public", "agent-mcp")}
+AGW, AGWC = "overlay-infrastructure-gcp-0-agent-gateway.yaml", "overlay-infrastructure-gcp-0-agentgateway.yaml"
+AGW_GOOD = f"""apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata: {{name: listener-public, namespace: agent-gateway}}
+spec:
+  traffic:
+    jwtAuthentication:
+      providers:
+        - issuer: {GKE}
+          jwks:
+            remote:
+              url: {GKE}/jwks
+"""
+RUN = {ROUTER: GOOD, MCPF: GOOD.replace("kind: SecurityPolicy", "kind: MCPRoute").replace("agent-router-public", "agent-mcp"),
+       AGW: AGW_GOOD}
 # Every expected overlay present, so a case isolates the one thing it changes.
 FULL = {**{name: "" for name in acs.EXPECTED}, **RUN}
 
@@ -55,6 +69,12 @@ if acs.check_bundle(full({})):
     fails.append("a GKE-shaped gcp-0 agent-router must pass")
 if not acs.check_bundle(full({ROUTER: GOOD.replace("/jwks", "/keys")})):
     fails.append("an EKS-shaped JWKS path on gcp-0 must fail")
+if not acs.check_bundle(full({AGW: AGW_GOOD.replace("/jwks", "/keys")})):
+    fails.append("an EKS-shaped JWKS url in an agentgateway policy on gcp-0 must fail")
+if not acs.check_bundle(full({AGW: AGW_GOOD.replace(GKE + "\n", "https://oidc.eks.x/id/Y\n", 1)})):
+    fails.append("an EKS issuer in an agentgateway policy on gcp-0 must fail")
+if not acs.check_bundle(full({AGWC: "toFQDNs:\n  - matchName: oidc.eks.europe-west4.amazonaws.com\n"})):
+    fails.append("an amazonaws.com host in gcp-0's agentgateway controller overlay must fail")
 if not acs.check_bundle(full({"overlay-security-gcp-0-octo-sts.yaml": "toFQDNs:\n  - matchName: oidc.eks.europe-west4.amazonaws.com\n"})):
     fails.append("an amazonaws.com host in a gcp-0 agent overlay must fail")
 if not acs.check_bundle(full({ROUTER: GOOD.replace(GKE + "\n", "https://oidc.eks.x/id/Y\n", 1)})):

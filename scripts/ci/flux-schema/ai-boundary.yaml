@@ -4,7 +4,7 @@
 # list, so a path added here is a path that moves.
 ai_paths:
   - '^clusters/[^/]+-(ai-gateway|llm-platform|agent-platform)/'
-  - '^infrastructure/[^/]+/(agent-sandbox|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|envoy-gateway|envoy-gateway-ratelimit|envoy-ai-gateway|llm-gateway|vllm-semantic-router|karpenter-nodepools-agents|karpenter-nodepools-gpu|runtimeclass-gvisor|runtimeclass-nvidia|agentgateway|agentgateway-poc)/'
+  - '^infrastructure/[^/]+/(agent-sandbox|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|envoy-gateway|envoy-gateway-ratelimit|envoy-ai-gateway|llm-gateway|vllm-semantic-router|karpenter-nodepools-agents|karpenter-nodepools-gpu|runtimeclass-gvisor|runtimeclass-nvidia|agentgateway|agent-gateway|agentgateway-poc)/'
   - '^security/[^/]+/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets|epis-llm|llm-models-preload)/'
   - '^tooling/[^/]+/(agent-factory|policy-bot|promptfoo)/'
   - '^observability/[^/]+/agent-platform/'

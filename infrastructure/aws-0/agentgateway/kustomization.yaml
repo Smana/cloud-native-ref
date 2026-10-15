@@ -1,11 +1,34 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# agentgateway PoC controller, aws-0 only. Own controller, GatewayClass and
-# namespaces: it shares only the Gateway API CRDs with Envoy Gateway and Cilium.
+# The shared controller, plus what the aws-0 PoC (infrastructure/aws-0/agentgateway-poc)
+# still needs from it until phase H removes the PoC: its two namespaces, write
+# access to agw-poc and xDS for its proxies. The namespaces stay in this child so
+# moving them never lets an inventory prune delete them.
 resources:
-  - namespaces.yaml
-  - ocirepositories.yaml
-  - helmrelease-crds.yaml
-  - helmrelease.yaml
-  - network-policy.yaml
+  - ../../base/agentgateway
+  - namespaces-poc.yaml
+
+patches:
+  - target:
+      kind: HelmRelease
+      name: agentgateway
+    patch: |
+      - op: add
+        path: /spec/values/rbac/gatewayNamespaces/-
+        value: agw-poc
+  - target:
+      kind: CiliumNetworkPolicy
+      name: agentgateway-controller
+    patch: |
+      - op: add
+        path: /spec/ingress/-
+        value:
+          fromEndpoints:
+            - matchLabels:
+                io.kubernetes.pod.namespace: agw-poc
+                gateway.networking.k8s.io/gateway-name: agent-router-agw
+          toPorts:
+            - ports:
+                - port: "9978"
+                  protocol: TCP

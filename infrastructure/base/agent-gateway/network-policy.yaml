@@ -1,0 +1,72 @@
+# Default deny in agent-gateway (`- {}` selects no peer: it switches enforcement
+# on and allows nothing), then the data plane's own peers. Phases C-E add the
+# upstreams (Z.ai, MCP servers, octo-sts, rate limit, traces, metrics scrape).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agent-gateway
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+# Selected by Gateway name in the Gateway's own namespace: any namespace can name
+# a Gateway `agent-router` (CC-1).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-router-data-plane
+  namespace: agent-gateway
+spec:
+  endpointSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: agent-router
+  ingress:
+    # Sandbox pods only, as on the Envoy data plane. Runs cannot reach it yet:
+    # the run CNP gains this peer at the cutover (CC-AGW1).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agents
+          matchExpressions:
+            - key: agents.ogenki.io/run-id
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+            - port: "8081"
+              protocol: TCP
+            - port: "8082"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "15021"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # xDS from the controller, which also fetches the JWKS: the proxies never call the issuer.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agentgateway-system
+            app.kubernetes.io/name: agentgateway
+      toPorts:
+        - ports:
+            - port: "9978"
+              protocol: TCP

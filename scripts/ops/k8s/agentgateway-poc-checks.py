@@ -1,16 +1,19 @@
 """In-pod half of agentgateway-poc-live-check.sh. Stdlib only.
 
-usage (inside a throwaway pod): python3 - <check> [args]
+usage (inside a throwaway pod): [AGW_URL=... AGW_SUB_NS=...] python3 - <check> [args]
+AGW_URL and AGW_SUB_NS pick the Gateway and the caller namespace (default: the PoC).
 Tokens are read from the projected volume at /var/run/agw, never from argv.
 Each check prints `PASS|FAIL <id> <what>` lines plus a short evidence excerpt.
 """
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
-GW = "http://agent-router-agw.agw-poc.svc.cluster.local"
+GW = os.environ.get("AGW_URL") or "http://agent-router-agw.agw-poc.svc.cluster.local"
+SUB = f"system:serviceaccount:{os.environ.get('AGW_SUB_NS') or 'agw-poc-clients'}:"
 RESULTS = []
 
 
@@ -63,8 +66,18 @@ def identity():
     code, _, body = call("GET", "/echo", headers={"x-ar-agent": "forged"})
     seen = json.loads(body).get("headers", {}) if code == 200 else {}
     check("L8/P2", "public token -> 200, forged x-ar-agent replaced, no Authorization upstream",
-          code == 200 and seen.get("x-ar-agent", "").startswith("system:serviceaccount:agw-poc-clients:")
+          code == 200 and seen.get("x-ar-agent", "").startswith(SUB)
           and "authorization" not in seen, f"HTTP {code} x-ar-agent={seen.get('x-ar-agent')} authorization={'authorization' in seen}")
+
+
+def sts():
+    code, _, body = call("GET", "/echo", port=8082)
+    check("L8/P1", "public-audience token on sts -> 401", code == 401, f"HTTP {code} {body}")
+    code, _, body = call("GET", "/echo", token="sts", port=8082, headers={"x-ar-agent": "forged"})
+    seen = json.loads(body).get("headers", {}) if code == 200 else {}
+    check("L8/AG4", "sts token on sts -> 200, x-ar-agent verified, the bearer forwarded (preserveToken)",
+          code == 200 and seen.get("x-ar-agent", "").startswith(SUB) and "authorization" in seen,
+          f"HTTP {code} x-ar-agent={seen.get('x-ar-agent')} authorization={'authorization' in seen}")
 
 
 def rogue():
@@ -170,7 +183,7 @@ def drain(secs):
 
 
 cmd = sys.argv[1]
-{"identity": identity, "rogue": rogue, "models": models, "llm": llm}.get(cmd, lambda: None)()
+{"identity": identity, "sts": sts, "rogue": rogue, "models": models, "llm": llm}.get(cmd, lambda: None)()
 if cmd == "mcp":
     mcp(sys.argv[2])
 elif cmd == "drain":

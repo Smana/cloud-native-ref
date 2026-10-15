@@ -39,13 +39,13 @@ move list below, checked in CI (S1).
 | Moves to `ai-native-ref` | Stays in `cloud-native-ref` |
 |---|---|
 | `clusters/<cluster>-{ai-gateway,llm-platform,agent-platform}/` (the children) | `clusters/<cluster>/{ai-gateway,llm-platform,agent-platform}.yaml` (the umbrellas, retargeted, still suspended) |
-| `infrastructure/{base,<cloud>}/`: `agent-sandbox`, `agent-runtime`, `agent-router`, `agent-mcp`, `room-broker`, `kueue`, `kueue-queues`, `envoy-gateway`, `envoy-gateway-ratelimit`, `envoy-ai-gateway`, `llm-gateway`, `vllm-semantic-router`, `karpenter-nodepools-agents` and `karpenter-nodepools-gpu` (with their `EC2NodeClass`es), `runtimeclass-gvisor`, `runtimeclass-nvidia`, and the aws-0 agentgateway PoC's `agentgateway` and `agentgateway-poc` | Every other `infrastructure/` path, including Karpenter itself, the shared `EC2NodeClass`es, Cilium and the Gateways |
+| `infrastructure/{base,<cloud>}/`: `agent-sandbox`, `agent-runtime`, `agent-router`, `agent-mcp`, `room-broker`, `kueue`, `kueue-queues`, `envoy-gateway`, `envoy-gateway-ratelimit`, `envoy-ai-gateway`, `llm-gateway`, `vllm-semantic-router`, `karpenter-nodepools-agents` and `karpenter-nodepools-gpu` (with their `EC2NodeClass`es), `runtimeclass-gvisor`, `runtimeclass-nvidia`, the agent router's `agentgateway` (controller) and `agent-gateway` (Gateway), and the aws-0 PoC's `agentgateway-poc` | Every other `infrastructure/` path, including Karpenter itself, the shared `EC2NodeClass`es, Cilium and the Gateways |
 | `security/{base,<cloud>}/`: `agent-policies`, `agent-secrets`, `octo-sts`, `merge-gate-secrets`, `epis-llm`, `llm-models-preload` | `security/` otherwise; OpenBao's mounts and policies and the JWT auth roles (OpenTofu) |
 | `tooling/{base,<cloud>}/`: `agent-factory`, `policy-bot`, `promptfoo` | — |
 | `observability/{base,<cloud>}/agent-platform`, `observability/base/runlore-factory` | `observability/base/runlore` (RunLore is the platform's SRE agent) |
 | `apps/llm` (what aws-0's `llm-platform-apps` applies), `apps/base/ai`, `apps/<cloud>/llm`, `apps/base/openwebui` (pulled in by `apps/llm`) | `apps/` otherwise |
 | `flux/sources/`: `gitrepo-agent-sandbox`, `ocirepo-agent-factory`, `ocirepo-envoy-ai-gateway{,-crds}`, `ocirepo-envoy-gateway`, `ocirepo-kueue`, `ocirepo-vllm-semantic-router`, `ocirepo-inferencepool`, `ocirepo-flux-operator-mcp`, `helmrepo-open-telemetry` | Every other source, including `gitrepo-inference-extension` and `helmrepo-oauth2-proxy`, which the rooms share with Headlamp. `flux/sources/` has no `kustomization.yaml`: the host's `flux-sources` Kustomization applies every file in it, so the AI sources stay applied from the host until S2 and S3 ship them in `ai-native-ref` |
-| — | `namespaces/base/{agents,agent-system,llm,llm-gateway,envoy-ai-gateway-system,envoy-gateway-system,merge-gate}.yaml`: namespaces and their PSA labels are the host's (H5) |
+| — | `namespaces/base/{agents,agent-system,agent-gateway,llm,llm-gateway,envoy-ai-gateway-system,envoy-gateway-system,merge-gate}.yaml`: namespaces and their PSA labels are the host's (H5) |
 | — | `crds/base/kustomization-inference-extension.yaml`: CRDs are the host's (H2) |
 | `website/content/docs/platform/ai-platform/`, its diagrams (`website/static/images/diagrams/{ai-platform,agent-factory,llm-platform}-*.svg`) and the AI ADRs (the serving ones 0003, 0004, 0021; 0041–0046, 0048–0051, 0056, 0057, and 0047, 0052–0054 when they merge), published on `ai-native-ref`'s own site (§5) | One overview page and an index row per moved ADR, linking out to that site |
 | `docs/runbooks/agent-factory/`, AI specs and plans under `docs/superpowers/` | — |
@@ -127,7 +127,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 
 | Item | Contract |
 |---|---|
-| Namespaces | The host creates `agents`, `agent-system`, `llm`, `llm-gateway`, `envoy-ai-gateway-system`, `envoy-gateway-system` and `merge-gate`, with their PSA labels (`agents` is `restricted`) |
+| Namespaces | The host creates `agents`, `agent-system`, `agent-gateway`, `llm`, `llm-gateway`, `envoy-ai-gateway-system`, `envoy-gateway-system` and `merge-gate`, with their PSA labels (`agents` is `restricted`) |
 | OpenBao | Mounts `agents` (both clouds) and `merge-gate` (aws), with the policies in `opentofu/<cloud>/openbao/management` and the JWT auth roles at `jwt/${cluster_name}` from `opentofu/<cloud>/{eks,gke}/configure/openbao.tf` that the `agents-secrets` and `merge-gate-secrets` stores log in with |
 | Stores | `ai-native-ref` creates its own namespaced stores (`agents-secrets`, `merge-gate-secrets`); it reads the cluster-wide `openbao-platform` store only where it does today, and the CA from `openbao-ca` |
 | ZITADEL | The rooms and `roomctl` OIDC clients and the link-only GitHub IdP, provisioned by the host's scripts |

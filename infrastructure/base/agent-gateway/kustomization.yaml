@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The agent router on agentgateway (ADR-0053), installed beside the Envoy
+# agent-router: the Gateway and its data plane here; routes and backends come in
+# agent-system with phase C. Nothing reaches it until the cutover (phase F).
+resources:
+  - gateway.yaml
+  - parameters.yaml
+  - policies-identity.yaml
+  - network-policy.yaml

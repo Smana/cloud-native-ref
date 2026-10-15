@@ -1,0 +1,74 @@
+# Gap G3: the generated proxy has no pod seccomp profile, no liveness probe, no
+# limits and a LoadBalancer Service. These fields are strategic-merge overlays on
+# what the controller renders (its container is already non-root, read-only,
+# capabilities dropped). Proven on the aws-0 PoC (agentgateway-poc/gateway.yaml).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: agent-router
+  namespace: agent-gateway
+spec:
+  # A controller pin change does not re-render the proxy until the Gateway is
+  # touched (PoC finding): bump this with the charts, then check the pod's digest.
+  image:
+    registry: cr.agentgateway.dev
+    repository: agentgateway
+    tag: v1.6.0
+    digest: sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
+  logging:
+    format: json
+  # The default (10s/60s) cut a 200s stream; min 10 / max 660 held it through the
+  # deletion of every proxy pod (PoC N1). 660 = the 600s request timeout + 60s, and
+  # the controller sets terminationGracePeriodSeconds from max.
+  shutdown:
+    min: 10
+    max: 660
+  # 1.6 buffers up to 32 MiB per LLM request with no aggregate cap (#3184).
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  deployment:
+    spec:
+      # Two replicas and a PDB: a drain never takes every in-flight completion.
+      replicas: 2
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  gateway.networking.k8s.io/gateway-name: agent-router
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  gateway.networking.k8s.io/gateway-name: agent-router
+          containers:
+            - name: agentgateway
+              securityContext:
+                seccompProfile:
+                  type: RuntimeDefault
+              livenessProbe:
+                httpGet:
+                  path: /healthz/ready
+                  port: 15021
+                periodSeconds: 10
+                failureThreshold: 6
+  service:
+    spec:
+      # Agents reach it in-cluster; a LoadBalancer would give their boundary a cloud address.
+      type: ClusterIP
+  podDisruptionBudget:
+    spec:
+      minAvailable: 1
