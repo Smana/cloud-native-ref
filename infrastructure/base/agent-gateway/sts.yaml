@@ -1,0 +1,26 @@
+# octo-sts behind agentgateway's `sts` listener, the twin of security/base/octo-sts's
+# route on the Envoy one: same path, same Service. A route of its own rather than
+# a second parentRef, so the Envoy route stays untouched until phase H deletes it;
+# `octo-sts` is that route's name in agent-system. The listener pins this
+# cluster's issuer and the four octo-sts audiences, then forwards the bearer
+# (preserveToken), which octo-sts verifies itself.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agentgateway-sts
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: sts
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /sts/exchange
+      backendRefs:
+        - name: octo-sts
+          port: 8080

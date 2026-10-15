@@ -1,0 +1,181 @@
+# The agents' MCP tools on agentgateway (ADR-0053), at parity with agent-mcp's two
+# MCPRoutes: one backend federating the four in-cluster servers, one route per
+# listener, one Allow list per route. test-agent-mcp-scope.sh holds both files
+# to the same per-role sets.
+#
+# Tools are named <target>_<tool> (prefixMode Always, design D6): target names
+# are the MCPRoute backend names, so room-broker__room_post on Envoy reads
+# room-broker_room_post here (the bridge and harness learn both, AP-AGW1).
+#
+# Allow expressions are OR-ed at runtime (PoC N7): each is one complete
+# alternative (role AND target AND tool names), for its route's own class (gate
+# AG6). An item no expression matches is hidden from lists and refused on call,
+# prompts and resources included, which no role is granted.
+#
+# No MCP server sees a run's token: the listener drops the validated JWT
+# (preserveToken is off outside sts), and room-broker's key travels in its own
+# header, never Authorization (gate AG4).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: agent-mcp
+  namespace: agent-system
+spec:
+  mcp:
+    prefixMode: Always
+    # Works around #3834 (the session-key Secret is overwritten, live sessions
+    # get 400) and #3622 (one upstream dropping its session kills its tools).
+    sessionRouting: Stateless
+    # A target that is down drops its own tools, not the session: losing
+    # VictoriaLogs must not take a run's room_handoff with it. Authorization is
+    # unaffected. Explicit, since 1.6 CRDs store no default.
+    failureMode: FailOpen
+    targets:
+      - name: flux-operator-mcp
+        static:
+          host: flux-operator-mcp.agent-system.svc.cluster.local
+          port: 9090
+          path: /mcp
+          protocol: StreamableHTTP
+      - name: mcp-victoriametrics
+        static:
+          host: mcp-victoriametrics.agent-system.svc.cluster.local
+          port: 8081
+          path: /mcp
+          protocol: StreamableHTTP
+      - name: mcp-victorialogs
+        static:
+          host: mcp-victorialogs.agent-system.svc.cluster.local
+          port: 8081
+          path: /mcp
+          protocol: StreamableHTTP
+      # The broker reads this key at start and 401s any room call without it.
+      - name: room-broker
+        static:
+          host: room-broker.agent-system.svc.cluster.local
+          port: 8090
+          path: /mcp
+          protocol: StreamableHTTP
+          policies:
+            auth:
+              credentials:
+                - location:
+                    header:
+                      name: x-room-mcp-key
+                  secretRef:
+                    name: room-broker-mcp-key
+                    key: apiKey
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agentgateway-mcp-public
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: public
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /mcp
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agent-mcp
+---
+# public: documentation only, plus each role's room tools.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agentgateway-mcp-public
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agentgateway-mcp-public
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+            - '"agent-router.implementer.public" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs"]'
+            - '"agent-router.implementer.public" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.implementer.public" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.implementer.public" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff"]'
+            - '"agent-router.reviewer.public" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs"]'
+            - '"agent-router.reviewer.public" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.reviewer.public" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.reviewer.public" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_verdict"]'
+            - '"agent-router.tester.public" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs"]'
+            - '"agent-router.tester.public" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.tester.public" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.tester.public" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff", "room_verdict"]'
+            - '"agent-router.triager.public" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs"]'
+            - '"agent-router.triager.public" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.triager.public" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.triager.public" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff"]'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agentgateway-mcp-internal
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: internal
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /mcp
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agent-mcp
+---
+# internal: read tools. No role gets VictoriaMetrics' operator introspection
+# (tsdb_status, active_queries, top_queries); an implementer gets neither
+# get_kubernetes_resources nor get_kubernetes_logs (external review M2, M3).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agentgateway-mcp-internal
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agentgateway-mcp-internal
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+            - '"agent-router.implementer.internal" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs", "get_flux_instance", "get_kubernetes_api_versions", "get_kubernetes_metrics"]'
+            - '"agent-router.implementer.internal" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation", "query", "query_range", "metrics", "metrics_metadata", "labels", "label_values", "series", "alerts", "rules", "explain_query", "prettify_query", "metric_statistics"]'
+            - '"agent-router.implementer.internal" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation"]'
+            - '"agent-router.implementer.internal" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff"]'
+            - '"agent-router.reviewer.internal" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs", "get_flux_instance", "get_kubernetes_api_versions", "get_kubernetes_resources", "get_kubernetes_metrics", "get_kubernetes_logs"]'
+            - '"agent-router.reviewer.internal" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation", "query", "query_range", "metrics", "metrics_metadata", "labels", "label_values", "series", "alerts", "rules", "explain_query", "prettify_query", "metric_statistics"]'
+            - '"agent-router.reviewer.internal" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation", "query", "hits", "facets", "field_names", "field_values", "stats_query", "stats_query_range", "streams", "stream_ids", "stream_field_names", "stream_field_values"]'
+            - '"agent-router.reviewer.internal" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_verdict"]'
+            - '"agent-router.tester.internal" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs", "get_flux_instance", "get_kubernetes_api_versions", "get_kubernetes_resources", "get_kubernetes_metrics", "get_kubernetes_logs"]'
+            - '"agent-router.tester.internal" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation", "query", "query_range", "metrics", "metrics_metadata", "labels", "label_values", "series", "alerts", "rules", "explain_query", "prettify_query", "metric_statistics"]'
+            - '"agent-router.tester.internal" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation", "query", "hits", "facets", "field_names", "field_values", "stats_query", "stats_query_range", "streams", "stream_ids", "stream_field_names", "stream_field_values"]'
+            - '"agent-router.tester.internal" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff", "room_verdict"]'
+            - '"agent-router.triager.internal" in jwt.aud && mcp.tool.target == "flux-operator-mcp" && mcp.tool.name in ["search_flux_docs", "get_flux_instance", "get_kubernetes_api_versions", "get_kubernetes_resources", "get_kubernetes_metrics", "get_kubernetes_logs"]'
+            - '"agent-router.triager.internal" in jwt.aud && mcp.tool.target == "mcp-victoriametrics" && mcp.tool.name in ["documentation", "query", "query_range", "metrics", "metrics_metadata", "labels", "label_values", "series", "alerts", "rules", "explain_query", "prettify_query", "metric_statistics"]'
+            - '"agent-router.triager.internal" in jwt.aud && mcp.tool.target == "mcp-victorialogs" && mcp.tool.name in ["documentation", "query", "hits", "facets", "field_names", "field_values", "stats_query", "stats_query_range", "streams", "stream_ids", "stream_field_names", "stream_field_values"]'
+            - '"agent-router.triager.internal" in jwt.aud && mcp.tool.target == "room-broker" && mcp.tool.name in ["room_read", "room_post", "room_progress", "room_handoff"]'

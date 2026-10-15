@@ -14,14 +14,17 @@
 # and one PoC target once (L3). It touches nothing outside agentgateway-system,
 # agw-poc and agw-poc-clients.
 #
-# real: until phase C attaches routes, the real Gateway has none, so the script
-# brings a throwaway echo (labelled agw-live-check=true, deleted on exit): a
-# Sandbox client in agents, an echo Deployment, Service and HTTPRoute in
-# agent-system, and one additive CNP each in agents, agent-system and
-# agent-gateway. It runs L8 (identity on all three listeners), L5, L4 (deletes
-# the real proxy pods once: no run uses them before the cutover), the JWKS issuer
-# check and the proxy's shape. L1-L3, L6 and L7 need phase C's routes and print
-# NOT RUN. No model call is made.
+# real: L1-L8 against phase C's routes (AGW-3), plus a throwaway echo, all
+# labelled agw-live-check=true and deleted on exit: a Sandbox client in agents,
+# an echo Deployment, Service and HTTPRoute (/echo) in agent-system, an echo MCP
+# backend with a generated key and its route (/mcp with header x-agw-check: mcp)
+# and Allow list, and one additive CNP each in agents, agent-system and
+# agent-gateway. It makes five GLM-5.3 calls of max_tokens 16 on the agents' own
+# Z.ai key (L1-L2), lists and calls MCP tools as a non-run implementer (L3: the
+# room broker refuses a non-run, so its key is proven by its rejection counter),
+# restarts the agentgateway controller and the throwaway echo once (L3), reads
+# the proxies' token metrics (L6) and deletes the real proxy pods once (L4): no
+# run uses them before the cutover. Nothing on the Envoy agent-router is touched.
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
@@ -90,8 +93,29 @@ run() { # namespace pod check args... (AGW_URL/AGW_SUB_NS pass through `env`)
   $K -n "$ns" exec -i "$p" -- env "AGW_URL=${AGW_URL:-}" "AGW_SUB_NS=${AGW_SUB_NS:-}" python3 - "$@" < "$CHECKS" || FAILED=1
 }
 
+scrape() { # namespace selector port grep-regex: matching metric lines from every selected pod
+  local ns=$1 sel=$2 port=$3 re=$4 local_port=15120 pf p
+  for p in $($K -n "$ns" get pod -l "$sel" -o name); do
+    $K -n "$ns" port-forward "$p" "$local_port:$port" >/dev/null 2>&1 &
+    pf=$!
+    sleep 2
+    curl -s "localhost:$local_port/metrics" | grep -E "$re" || true
+    kill "$pf" 2>/dev/null || true
+    local_port=$((local_port + 1))
+  done
+}
+broker_rejects() { # "<mcp_key> <mcp_identity+run_not_live>" summed over the room-broker pods
+  scrape agent-system app.kubernetes.io/name=room-broker 9090 '^rooms_rejected_actions_total\{' | awk '
+    /reason="mcp_key"/ {k += $NF} /reason="(mcp_identity|run_not_live)"/ {o += $NF}
+    END {printf "%d %d\n", k, o}'
+}
+
 # ---------------------------------------------------------------- the real Gateway
-real_objects() { # the throwaway echo, its route and the client (all agw-live-check=true)
+real_objects() { # the throwaway echo, its routes and the client (all agw-live-check=true)
+  # A throwaway key, generated here and handed over on stdin: never in git, never on argv.
+  head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' \
+    | $K -n agent-system create secret generic agw-check-mcp-key --from-file=key=/dev/stdin \
+      --dry-run=client -o yaml | $K label --local -f - agw-live-check=true -o yaml | $K apply -f - >/dev/null
   $K -n agent-system create configmap agw-check-echo --from-file=echo-server.py="$ECHO_SERVER" \
     --dry-run=client -o yaml | $K label --local -f - agw-live-check=true -o yaml | $K apply -f - >/dev/null
   $K apply -f - >/dev/null <<EOF
@@ -173,6 +197,50 @@ spec:
     - matches: [{path: {type: PathPrefix, value: /echo}}]
       backendRefs: [{name: agw-check-echo, port: 8080}]
 ---
+# L3/P4 on the real Gateway: a target key in its own header, never Authorization.
+# Header-matched, so it outranks the agents' /mcp route for this client only.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata: {name: agw-check-mcp, namespace: agent-system, labels: {agw-live-check: "true"}}
+spec:
+  mcp:
+    sessionRouting: Stateless
+    targets:
+      - name: echo
+        static:
+          host: agw-check-echo.agent-system.svc.cluster.local
+          port: 8080
+          path: /mcp
+          protocol: StreamableHTTP
+          policies:
+            auth:
+              credentials:
+                - location: {header: {name: x-echo-mcp-key}}
+                  secretRef: {name: agw-check-mcp-key, key: key}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: agw-check-mcp, namespace: agent-system, labels: {agw-live-check: "true"}}
+spec:
+  parentRefs:
+    - {group: gateway.networking.k8s.io, kind: Gateway, namespace: agent-gateway, name: agent-router, sectionName: public}
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /mcp}, headers: [{name: x-agw-check, value: mcp}]}]
+      backendRefs: [{group: agentgateway.dev, kind: AgentgatewayBackend, name: agw-check-mcp}]
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata: {name: agw-check-mcp, namespace: agent-system, labels: {agw-live-check: "true"}}
+spec:
+  targetRefs: [{group: gateway.networking.k8s.io, kind: HTTPRoute, name: agw-check-mcp}]
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+            - '"agent-router.implementer.public" in jwt.aud && mcp.tool.target == "echo" && mcp.tool.name == "echo_headers"'
+---
 # Shaped like scripts/ops/k8s/agent-probe.yaml: Kyverno admits only Sandbox pods
 # under gVisor in agents, and reserves these audiences for that namespace.
 apiVersion: agents.x-k8s.io/v1beta1
@@ -212,7 +280,9 @@ EOF
 }
 real_cleanup() {
   for ns in agents agent-system agent-gateway; do
-    $K -n "$ns" delete sandbox,deploy,svc,httproute,configmap,ciliumnetworkpolicy,serviceaccount \
+    $K -n "$ns" delete sandbox,deploy,svc,httproute,configmap,secret,ciliumnetworkpolicy,serviceaccount \
+      -l agw-live-check=true --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    $K -n "$ns" delete agentgatewaybackend,agentgatewaypolicy \
       -l agw-live-check=true --ignore-not-found --wait=false >/dev/null 2>&1 || true
   done
 }
@@ -276,6 +346,39 @@ real() {
   done
   echo "   a sub-less token cannot be minted against the EKS JWKS; the 401 itself is proven on kind only"
 
+  echo "== phase C routes Accepted (agent-system)"
+  $K -n agent-system get httproute agentgateway-models agentgateway-mcp-public agentgateway-mcp-internal \
+    agentgateway-sts agw-check-mcp -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.parents[*].conditions[?(@.type=="Accepted")].status}{"\n"}{end}'
+  $K -n agent-system get agentgatewaybackend zai zai-anthropic agent-mcp agw-check-mcp
+
+  echo "== L7/N3 /v1/models"; run agents agw-check models
+  echo "== L1/L2 Z.ai (real GLM-5.3 calls on the agents' key, max_tokens 16)"; run agents agw-check llm real
+
+  echo "== L3 MCP federation, Allow lists and per-target keys"
+  local before after
+  before=$(broker_rejects)
+  run agents agw-check mcp-real open
+  after=$(broker_rejects)
+  echo "   room-broker rejections (mcp_key other) before: $before  after: $after"
+  # The broker 401s a missing or wrong key (mcp_key) before it judges the caller,
+  # and 403s a non-run (mcp_identity, run_not_live): only the second may rise.
+  local keyed=false
+  [ "${before% *}" = "${after% *}" ] && [ "${after#* }" -gt "${before#* }" ] && keyed=true
+  assert "L3/P4 room-broker got its x-room-mcp-key (no mcp_key rejection, a non-run refused after it)" "$keyed"
+  if ! $SKIP_RESTART; then
+    $K -n agentgateway-system rollout restart deploy/agentgateway >/dev/null
+    $K -n agentgateway-system rollout status deploy/agentgateway --timeout=180s >/dev/null
+    run agents agw-check mcp-real after-controller-restart
+    $K -n agent-system rollout restart deploy/agw-check-echo >/dev/null
+    $K -n agent-system rollout status deploy/agw-check-echo --timeout=120s >/dev/null
+    run agents agw-check mcp-real after-target-restart
+  fi
+
+  echo "== L6 gen_ai token usage by type (every real proxy replica)"
+  scrape agent-gateway "$sel" 15020 '^agentgateway_gen_ai_client_token_usage_sum' \
+    | sed -E 's/.*gen_ai_token_type="([a-z_]+)".*\} (.*)/  \1 \2/'
+  echo "  expect input and output (no ar_agent label until phase E's telemetry policy)"
+
   if ! $SKIP_DRAIN; then
     echo "== L4/N1 drain: a 200s stream, every real proxy pod deleted 10s in"
     $K -n agents exec -i agw-check -- env "AGW_URL=$AGW_URL" "AGW_SUB_NS=$AGW_SUB_NS" python3 - drain 200 < "$CHECKS" &
@@ -284,8 +387,6 @@ real() {
     $K -n agent-gateway delete pod -l "$sel" --wait=false
     wait "$stream" || FAILED=1
   fi
-
-  echo "== L1-L3, L6, L7: NOT RUN on the real Gateway until phase C (AGW-3) attaches its routes"
 }
 
 # ---------------------------------------------------------------- the PoC
@@ -320,16 +421,9 @@ poc() {
   fi
 
   echo "== L6 gen_ai token usage by type (every proxy replica)"
-  port=15120
-  for p in $($K -n agw-poc get pod -l gateway.networking.k8s.io/gateway-name=agent-router-agw -o name); do
-    $K -n agw-poc port-forward "$p" "$port:15020" >/dev/null 2>&1 &
-    pf=$!
-    sleep 2
-    curl -s "localhost:$port/metrics" | grep '^agentgateway_gen_ai_client_token_usage_sum' \
-      | sed -E 's/.*gen_ai_token_type="([a-z_]+)".*ar_agent="([^"]*)".*\} (.*)/  \1 \2 \3/' || true
-    kill "$pf" 2>/dev/null || true
-    port=$((port + 1))
-  done
+  scrape agw-poc gateway.networking.k8s.io/gateway-name=agent-router-agw 15020 \
+    '^agentgateway_gen_ai_client_token_usage_sum' \
+    | sed -E 's/.*gen_ai_token_type="([a-z_]+)".*ar_agent="([^"]*)".*\} (.*)/  \1 \2 \3/'
   echo "  expect input, output and input_cache_read for agw-poc-clients:implementer; input includes the cache"
 
   if ! $SKIP_DRAIN; then

@@ -1,0 +1,16 @@
+# agent-router buffers 8Mi (its ClientTrafficPolicy). agentgateway's 2 MiB default
+# cuts a federated MCP tools/list short (PoC P4), and the internal list
+# federates four servers' schemas.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: frontend
+  namespace: agent-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+  frontend:
+    http:
+      maxBufferSize: 8Mi

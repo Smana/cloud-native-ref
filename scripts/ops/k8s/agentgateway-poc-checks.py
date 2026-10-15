@@ -93,7 +93,7 @@ def models():
           code == 404 and "not served" in body, f"HTTP {code} {body}")
 
 
-def llm():
+def llm(gateway="poc"):
     code, _, body = call("POST", "/v1/chat/completions", OA)
     u = json.loads(body).get("usage") if code == 200 else None
     check("L1", "GLM-5.3 chat completion, buffered", code == 200 and bool(u), f"HTTP {code} usage={u} {body[:160]}")
@@ -101,33 +101,51 @@ def llm():
     u = usage_of_stream(body)
     check("L1", "GLM-5.3 chat completion, streamed with usage", code == 200 and "[DONE]" in body and bool(u),
           f"HTTP {code} usage={u}")
-    code, _, body = call("POST", "/anthropic/v1/messages", AN, headers=AV)
-    check("L2", "Anthropic Messages -> Chat Completions conversion, buffered",
+    # The real Gateway sends /anthropic to Z.ai's native endpoint and converts only
+    # /v1/messages; the PoC converted /anthropic and served the native one apart.
+    converted, native = ("/v1/messages", "/anthropic/v1/messages") if gateway == "real" else \
+        ("/anthropic/v1/messages", "/zai-anthropic/v1/messages")
+    code, _, body = call("POST", converted, AN, headers=AV)
+    check("L2", f"Anthropic Messages -> Chat Completions conversion on {converted}, buffered",
           code == 200 and '"type":"message"' in body.replace(" ", ""), f"HTTP {code} {body[:240]}")
-    code, _, body = call("POST", "/anthropic/v1/messages", dict(AN, stream=True), headers=AV)
-    check("L2", "Anthropic Messages conversion, streamed", code == 200 and "message_stop" in body,
+    streamed = native if gateway == "real" else converted
+    code, _, body = call("POST", streamed, dict(AN, stream=True), headers=AV)
+    check("L2", f"Anthropic Messages on {streamed}, streamed", code == 200 and "message_stop" in body,
           f"HTTP {code} {body[-200:]}")
-    code, _, body = call("POST", "/zai-anthropic/v1/messages", AN, headers=AV)
-    check("L2", "Anthropic Messages to Z.ai's native /api/anthropic, buffered",
+    code, _, body = call("POST", native, AN, headers=AV)
+    check("L2", f"Anthropic Messages to Z.ai's native /api/anthropic on {native}, buffered",
           code == 200 and '"type":"message"' in body.replace(" ", ""), f"HTTP {code} {body[:240]}")
 
 
 class Mcp:
     H = {"Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18"}
 
-    def __init__(self):
+    def __init__(self, token="public", port=8080, extra=None):
+        self.token, self.port = token, port
+        self.h = dict(self.H, **(extra or {}))
         code, hdr, body = call("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
             "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "agw-poc", "version": "1"}}},
-            headers=self.H)
-        self.h = dict(self.H)
+            token=token, port=port, headers=self.h)
         if hdr.get("mcp-session-id"):
             self.h["Mcp-Session-Id"] = hdr["mcp-session-id"]
-        call("POST", "/mcp", {"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=self.h)
+        call("POST", "/mcp", {"jsonrpc": "2.0", "method": "notifications/initialized"}, token=token, port=port,
+             headers=self.h)
         self.init = code
+
+    @classmethod
+    def resume(cls, extra=None):
+        """The session `open` saved, as a phase after a restart reuses it."""
+        m = cls.__new__(cls)
+        m.token, m.port = "public", 8080
+        m.h = dict(cls.H, **(extra or {}))
+        sid = open("/tmp/mcp-session").read()
+        if sid:
+            m.h["Mcp-Session-Id"] = sid
+        return m
 
     def rpc(self, method, params=None):
         code, _, body = call("POST", "/mcp", {"jsonrpc": "2.0", "id": 2, "method": method, "params": params or {}},
-                             headers=self.h)
+                             token=self.token, port=self.port, headers=self.h)
         for line in body.splitlines():
             if line.startswith("data: "):
                 return code, json.loads(line[6:])
@@ -158,8 +176,7 @@ def mcp(phase):
         _, r = m.rpc("tools/call", {"name": "echo_admin_delete", "arguments": {}})
         check("L3/P4", "a tool outside the Allow list is refused", "error" in r, json.dumps(r)[:200])
     else:
-        m = Mcp.__new__(Mcp)
-        m.h = dict(Mcp.H, **{"Mcp-Session-Id": open("/tmp/mcp-session").read()})
+        m = Mcp.resume()
     _, r = m.rpc("tools/call", {"name": "echo_echo_headers", "arguments": {}})
     text = (r.get("result", {}).get("content") or [{}])[0].get("text", "{}")
     seen = json.loads(text) if text.startswith("{") else {}
@@ -169,6 +186,53 @@ def mcp(phase):
     names = m.tools()
     check("L3", f"[{phase}] the session still lists both in-cluster servers' tools",
           {"victoriametrics_documentation", "victorialogs_documentation"} <= set(names), f"tools/list = {names}")
+
+
+# The implementer's grants on the real Gateway (infrastructure/base/agent-gateway/mcp.yaml),
+# without room-broker: the broker answers only a live AgentRun's subject (403 otherwise), so
+# a throwaway client never lists room tools. The live check proves the key from the
+# broker's own rejection counter instead.
+VM = ["documentation", "query", "query_range", "metrics", "metrics_metadata", "labels", "label_values", "series",
+      "alerts", "rules", "explain_query", "prettify_query", "metric_statistics"]
+REAL_TOOLS = {
+    "public": {"flux-operator-mcp_search_flux_docs", "mcp-victoriametrics_documentation",
+               "mcp-victorialogs_documentation"},
+    "internal": {f"flux-operator-mcp_{t}" for t in ("search_flux_docs", "get_flux_instance",
+                                                     "get_kubernetes_api_versions", "get_kubernetes_metrics")}
+    | {f"mcp-victoriametrics_{t}" for t in VM} | {"mcp-victorialogs_documentation"},
+}
+REFUSED = {"public": "mcp-victoriametrics_query", "internal": "flux-operator-mcp_get_kubernetes_logs"}
+ECHO = {"x-agw-check": "mcp"}  # selects the throwaway echo MCP route on /mcp
+
+
+def mcp_real(phase):
+    if phase == "open":
+        for cls, port in (("public", 8080), ("internal", 8081)):
+            m = Mcp(cls, port)
+            names = m.tools()
+            check("L3/P4", f"{cls}: exactly the implementer's Allow list, named <target>_<tool>",
+                  set(names) == REAL_TOOLS[cls], f"init HTTP {m.init}, tools/list (all pages) = {sorted(names)}")
+            _, r = m.rpc("tools/call", {"name": REFUSED[cls], "arguments": {}})
+            check("L3/P4", f"{cls}: {REFUSED[cls]} is outside the implementer's Allow list -> refused",
+                  "error" in r or (r.get("result") or {}).get("isError") is True, json.dumps(r)[:200])
+            _, r = m.rpc("resources/list")
+            check("L3/P4", f"{cls}: no role is granted a resource",
+                  not (r.get("result") or {}).get("resources"), json.dumps(r)[:200])
+        _, r = Mcp().rpc("tools/call", {"name": "room-broker_room_read", "arguments": {}})
+        print("     room-broker_room_read as a non-run (the broker's counter judges it): " + json.dumps(r)[:200])
+        m = Mcp(extra=ECHO)
+        open("/tmp/mcp-session", "w").write(m.h.get("Mcp-Session-Id", ""))
+    else:
+        m = Mcp.resume(ECHO)
+    _, r = m.rpc("tools/call", {"name": "echo_echo_headers", "arguments": {}})
+    text = (r.get("result", {}).get("content") or [{}])[0].get("text", "{}")
+    seen = json.loads(text) if text.startswith("{") else {}
+    check("L3/P4", f"[{phase}] a target's key injected in its own header, no Authorization on the MCP hop",
+          "x-echo-mcp-key" in seen and "authorization" not in seen,
+          f"x-echo-mcp-key={seen.get('x-echo-mcp-key')} authorization={'authorization' in seen}")
+    names = Mcp().tools()
+    check("L3", f"[{phase}] the federation still lists the in-cluster servers' tools",
+          set(names) == REAL_TOOLS["public"], f"tools/list = {sorted(names)}")
 
 
 def drain(secs):
@@ -183,9 +247,13 @@ def drain(secs):
 
 
 cmd = sys.argv[1]
-{"identity": identity, "sts": sts, "rogue": rogue, "models": models, "llm": llm}.get(cmd, lambda: None)()
-if cmd == "mcp":
+{"identity": identity, "sts": sts, "rogue": rogue, "models": models}.get(cmd, lambda: None)()
+if cmd == "llm":
+    llm(*sys.argv[2:3])
+elif cmd == "mcp":
     mcp(sys.argv[2])
+elif cmd == "mcp-real":
+    mcp_real(sys.argv[2])
 elif cmd == "drain":
     drain(int(sys.argv[2]))
 sys.exit(0 if all(RESULTS) else 1)
