@@ -1,0 +1,65 @@
+# agentgateway PoC (OD-2, OD-5), aws-0 only. Beside agent-router, never instead of
+# it: nothing in `agents` routes through it. Remove this file and both directories
+# to tear it down; prune deletes everything the two children created.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agentgateway
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 10m0s
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/aws-0/agentgateway
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agentgateway-crds
+      namespace: agentgateway-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: agentgateway
+      namespace: agentgateway-system
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agentgateway-poc
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 10m0s
+  retryInterval: 30s
+  timeout: 5m0s
+  path: ./infrastructure/aws-0/agentgateway-poc
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  # agent-secrets serves the store the Z.ai ExternalSecret reads; agent-mcp runs
+  # the MCP servers the PoC federates.
+  dependsOn:
+    - name: agentgateway
+    - name: agent-secrets
+    - name: agent-mcp
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: agent-router-agw
+      namespace: agw-poc
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      current: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'True')
+      failed: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'False')

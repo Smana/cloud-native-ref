@@ -15,6 +15,7 @@ resources:
   - security-octo-sts.yaml
   - security-merge-gate-secrets.yaml
   - infrastructure-agent-mcp.yaml
+  - infrastructure-agentgateway-poc.yaml
   - infrastructure-room-broker.yaml
   - tooling-agent-factory.yaml
   - tooling-policy-bot.yaml

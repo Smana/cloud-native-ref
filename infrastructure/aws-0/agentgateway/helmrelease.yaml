@@ -1,0 +1,68 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agentgateway
+  namespace: agentgateway-system
+spec:
+  releaseName: agentgateway
+  chartRef:
+    kind: OCIRepository
+    name: agentgateway
+    namespace: agentgateway-system
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  dependsOn:
+    - name: agentgateway-crds
+      namespace: agentgateway-system
+  values:
+    controller:
+      image:
+        tag: "v1.6.0@sha256:d84259a7e2d87f8f39bae385d4b032d823c0a4450aecb32e0e31e2258449645b"
+    # 1.6: drops the Istio permissions from the controller's ClusterRole.
+    istio:
+      enabled: false
+    # Namespaced writes (Deployments, Services, Secrets) only where the PoC Gateway
+    # lives. Reads stay cluster-wide: the Z.ai backend's secretRef is in agent-system.
+    rbac:
+      gatewayNamespaces:
+        - agw-poc
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+  # The chart has a readiness and a startup probe but no liveness probe, and no value adds one.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: agentgateway
+            patch: |
+              - op: add
+                path: /spec/template/spec/containers/0/livenessProbe
+                value:
+                  httpGet:
+                    path: /readyz
+                    port: 9093
+                  periodSeconds: 20
+                  failureThreshold: 6

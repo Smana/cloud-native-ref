@@ -1,0 +1,26 @@
+# Here rather than flux/sources: flux-sources applies on every cluster, and this
+# child sets no commonMetadata, so the sources stay on the default shard beside
+# the HelmCharts they feed.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agentgateway-crds
+  namespace: agentgateway-system
+spec:
+  interval: 24h
+  url: oci://cr.agentgateway.dev/charts/agentgateway-crds
+  ref:
+    tag: "v1.6.0"
+    digest: sha256:dd7f965d43e54dffa9c95af089b6f762397a23c963a159ad6d4992f6c582292a
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agentgateway
+  namespace: agentgateway-system
+spec:
+  interval: 24h
+  url: oci://cr.agentgateway.dev/charts/agentgateway
+  ref:
+    tag: "v1.6.0"
+    digest: sha256:d3edf2b33cbf2e9d59406c207b8d3554597799707b8803b5f62e698fe5376e28
