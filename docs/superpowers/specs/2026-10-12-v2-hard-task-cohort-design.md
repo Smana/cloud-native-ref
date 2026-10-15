@@ -188,3 +188,34 @@ its secrets are deleted; `controlPercent` is back at 10.
 | The maintainer favours an arm when choosing what to merge | Verdicts are per PR on a fixed scale, recorded before the merge choice |
 | A dashboard issue turns out to have no metrics | Checked before labelling; a failing one is swapped for the next reserve |
 | An issue is fixed by other work mid-cohort | Reserves, in order |
+
+## Results
+
+**DRAFT — 4 of 15 issues; recomputed at close-out.** Inputs from
+`python3 scripts/ops/github/cohort-results.py` on the 12 rows of the
+[sheet](2026-10-12-v2-hard-task-cohort-results.csv) (#2279, #2277, #2278, #2269).
+
+| Arm | Accepted | USD | USD per accepted | Ended | Median label → PR |
+|---|---|---|---|---|---|
+| A | 0 of 4 | 2.57 | n/a | 4 `escalated`, all `budget-run` | n/a |
+| B | 4 of 4, all merged as-is | 4.88 | 1.22 | 4 `pr` | 9.5 min |
+| C | 0 of 4 | 7.75 | n/a | 4 `timeout` | n/a |
+
+| Question | On the current rows |
+|---|---|
+| Does the factory pay for operating it? | **No.** A's 0 accepted is not within one of B's 4, and A has no cost per accepted outcome to compare: $2.57 bought none |
+| Is a gap the model or the harness? | **B ≫ C ≈ A reads as the model**, but A and C both stopped on a cap before any PR, so they are equal in how they ended, not in work judged. The rule cannot yet separate the model from the caps |
+| Build the continuation loop? | **No.** 0 of the 3 required: every A escalation was `budget-run`, none of the three counters, and none left a PR to judge fixable |
+| Reviewer on another model? | **No ADR.** A trails B, but A opened no PR, so its reviewer approved nothing the maintainer rejected |
+| Human time | Not recorded: `review_min` is empty on all 12 rows |
+
+**What the data shows.** Arm A ended `budget-run` on 4 of 4 issues at about 1.5 M tokens, about 95%
+of them cache reads, costing under $0.70 each. Arm B finished all four with 1.3–3.7 M tokens. The run
+budget counts cached tokens like any others, so A is stopped by volume that costs it little: at GLM's
+list price a cache read costs about a fifth of an uncached input token. Arm C hit the 60-turn cap
+(`--max-turns 60`) on 4 of 4, at 5.5–6.6 M tokens.
+
+**Limit.** Four issues, one class (`scripts`), one source (the backlog). Only a 4–0 split shows at
+this size; the `tests` and `dashboards` classes are untouched, and §6 already holds that fifteen
+issues tell apart only large differences. Issues 1–4 ran one at a time; from issue 5 the arms run
+in batches of disjoint issues (§3, Concurrency), so the close-out's latency columns mix two schedules.
