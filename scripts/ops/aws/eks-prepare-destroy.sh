@@ -489,6 +489,30 @@ else
 	if [ -z "${CLUSTER_VPC}" ] || [ "${CLUSTER_VPC}" = "None" ]; then
 		echo "Could not determine the cluster VPC — skipping (cluster may already be gone)."
 	else
+		# Delete the NLBs ourselves (#2277). The Gateway step above strips the
+		# `service.k8s.aws/resources` finalizer from the gateway Services, so
+		# the controller never deletes them: the 2026-10-08 aws-0 teardown hung
+		# 18 minutes on two of them holding the public subnets and the IGW.
+		# Same cluster-tag scoping as the security groups below.
+		mapfile -t VPC_LBS < <(${AWS_CMD} elbv2 describe-load-balancers \
+			--query "LoadBalancers[?VpcId=='${CLUSTER_VPC}'].LoadBalancerArn" \
+			--output text 2>/dev/null | tr '\t' '\n' | grep -v '^[[:space:]]*$' || true)
+		OWNED_LBS=()
+		# describe-tags accepts at most 20 ARNs per call.
+		for ((i = 0; i < ${#VPC_LBS[@]}; i += 20)); do
+			mapfile -t -O "${#OWNED_LBS[@]}" OWNED_LBS < <(${AWS_CMD} elbv2 describe-tags \
+				--resource-arns "${VPC_LBS[@]:i:20}" \
+				--query "TagDescriptions[?Tags[?Key=='elbv2.k8s.aws/cluster' && Value=='${CLUSTER_NAME}']].ResourceArn" \
+				--output text 2>/dev/null | tr '\t' '\n' | grep -v '^[[:space:]]*$' || true)
+		done
+		for lb in "${OWNED_LBS[@]}"; do
+			if ${AWS_CMD} elbv2 delete-load-balancer --load-balancer-arn "${lb}" >/dev/null 2>&1; then
+				echo "  deleted load balancer ${lb##*/loadbalancer/}"
+			else
+				echo "  WARNING: failed to delete load balancer ${lb} — the VPC destroy will hang on it"
+			fi
+		done
+
 		# Wait for the LBs to go. Their security groups cannot be deleted while
 		# they are attached, and Gateway deletion above only STARTS that teardown.
 		for _ in $(seq 1 30); do
