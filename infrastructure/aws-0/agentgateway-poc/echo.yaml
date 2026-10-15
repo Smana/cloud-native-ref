@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: echo
-          image: docker.io/library/python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
+          image: docker.io/library/python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
           command: ["python3", "-u", "/app/echo-server.py", "8080"]
           ports:
             - name: http
