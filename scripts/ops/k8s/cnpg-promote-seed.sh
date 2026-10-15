@@ -379,7 +379,7 @@ if [ -n "$existing" ]; then
 fi
 
 if [ "$APPLY" != "1" ]; then
-  echo "[dry-run] would create a one-shot Backup, pg_switch_wal, wait for its end_wal segment,"
+  echo "[dry-run] would create a one-shot Backup, CHECKPOINT + pg_switch_wal, wait for its end_wal segment,"
   echo "[dry-run] then copy $SERVER_NAME/ -> $SEED/ and verify. Re-run with --apply."
   if [ -n "$ROTATE_ALIAS" ]; then
     echo "[dry-run] would then rotate alias $ROTATE_ALIAS: clear $URI/$ROTATE_ALIAS/, copy $SEED/ into it, verify."
@@ -438,19 +438,32 @@ END_WAL="$(kubectl get backup "$BACKUP" -n "$NAMESPACE" -o jsonpath='{.status.en
 [ -n "$END_WAL" ] || { echo "[fail] backup $BACKUP has no status.endWal" >&2; exit 1; }
 echo "[ok    ] backup $BACKUP needs end_wal $END_WAL"
 
-kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
-  psql -tAc "SELECT pg_switch_wal();" >/dev/null 2>&1 \
-  || { echo "[fail] pg_switch_wal failed" >&2; exit 1; }
-echo "[ok    ] pg_switch_wal issued"
+# pg_switch_wal is a no-op when nothing was written since the last switch:
+# the insert position sits at a segment boundary, so an idle database never
+# archives end_wal (image-gallery, 2026-10-08, #2292). A forced CHECKPOINT
+# always writes a WAL record, so the switch has something to close. Separate
+# -c flags keep each statement in its own transaction.
+switch_wal() {
+  kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
+    psql -tA -c "CHECKPOINT;" -c "SELECT pg_switch_wal();" >/dev/null 2>&1
+}
+
+switch_wal || { echo "[fail] CHECKPOINT + pg_switch_wal failed" >&2; exit 1; }
+echo "[ok    ] CHECKPOINT + pg_switch_wal issued"
 
 settled=0
 settle_rc=0
-for _ in $(seq 1 30); do
+for i in $(seq 1 30); do
   wal_present "$URI/$SERVER_NAME" "$END_WAL"
   settle_rc=$?
   if [ "$settle_rc" -eq 0 ]; then
     settled=1
     break
+  fi
+  # Re-issue every minute in case a switch closed without end_wal reaching the
+  # archive. A failed re-issue is retried next minute, not fatal.
+  if [ $((i % 6)) -eq 0 ]; then
+    switch_wal || echo "[warn  ] re-issuing CHECKPOINT + pg_switch_wal failed; still polling" >&2
   fi
   sleep 10
 done
