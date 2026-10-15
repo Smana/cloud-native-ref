@@ -1,0 +1,172 @@
+# The PoC's own copy of the agents' Z.ai key, from the same OpenBao entry as
+# agent-router's (agents/zai). It lives in agent-system because agents-secrets is
+# that namespace's store, and a backend's secretRef is namespace-local, so the
+# two backends sit beside it and the PoC route reaches them by ReferenceGrant.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: agw-poc-zai-api-key
+  namespace: agent-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: SecretStore
+    name: agents-secrets
+  target:
+    name: agw-poc-zai-api-key
+    creationPolicy: Owner
+    deletionPolicy: Delete
+  data:
+    - secretKey: apiKey  # pragma: allowlist secret
+      remoteRef:
+        key: zai
+        property: api_key  # pragma: allowlist secret
+---
+# 1.6: "use the OpenAI provider only for the OpenAI API". A custom provider that
+# advertises Chat Completions only, with the full base path: a base without a path
+# now means `/`. Anthropic Messages requests convert to Completions, never to
+# Responses, which Z.ai is not known to serve. Typed routes only (#3853).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: agw-poc-zai
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      custom:
+        model: glm-5.3
+        formats:
+          - type: Completions
+            path: /api/paas/v4/chat/completions
+      host: api.z.ai
+      port: 443
+  policies:
+    auth:
+      secretRef:
+        name: agw-poc-zai-api-key
+        key: apiKey
+    tls:
+      sni: api.z.ai
+    ai:
+      routes:
+        /v1/chat/completions: Completions
+        /v1/messages: Messages
+---
+# Z.ai's own Anthropic-compatible endpoint, no conversion: the alternative to the
+# Messages -> Completions path above (open-issues research, #3835 and #3700).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: agw-poc-zai-anthropic
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      custom:
+        model: glm-5.3
+        formats:
+          - type: Messages
+            path: /api/anthropic/v1/messages
+      host: api.z.ai
+      port: 443
+  policies:
+    auth:
+      secretRef:
+        name: agw-poc-zai-api-key
+        key: apiKey
+    tls:
+      sni: api.z.ai
+    ai:
+      routes:
+        /v1/messages: Messages
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: agw-poc-zai
+  namespace: agent-system
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: agw-poc
+  to:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: agw-poc-zai
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: agw-poc-zai-anthropic
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-models
+  namespace: agw-poc
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router-agw
+      sectionName: public
+  rules:
+    # N3: answered by the directResponse below, after JWT. A `Models` route type
+    # answers 501 on 1.5.0 and 1.6.0 alike.
+    - name: models
+      matches:
+        - path:
+            type: Exact
+            value: /v1/models
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agw-poc-zai
+          namespace: agent-system
+    - name: openai
+      matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agw-poc-zai
+          namespace: agent-system
+    - name: anthropic
+      matches:
+        - path:
+            type: PathPrefix
+            value: /anthropic
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agw-poc-zai
+          namespace: agent-system
+    - name: anthropic-native
+      matches:
+        - path:
+            type: PathPrefix
+            value: /zai-anthropic
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: agw-poc-zai-anthropic
+          namespace: agent-system
+---
+# agent-router's body (httproutefilter-agent-models-list.yaml).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agent-models-list
+  namespace: agw-poc
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agent-models
+      sectionName: models
+  traffic:
+    directResponse:
+      status: 404
+      body: '{"error":"model listing is not served on agent-router"}'

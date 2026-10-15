@@ -51,7 +51,7 @@ approval_rules:
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
-          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'
           - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
           - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'
@@ -97,7 +97,7 @@ approval_rules:
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
-          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'
           - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
           - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'
@@ -139,7 +139,7 @@ approval_rules:
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing)/'
-          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'
           - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
           - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts)/'

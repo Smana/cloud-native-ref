@@ -1,0 +1,29 @@
+# Here rather than namespaces/base: the PoC is aws-0 only and removable as one unit.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentgateway-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# The PoC Gateway and its proxies (they run in the Gateway's namespace, gap G4).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agw-poc
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# Throwaway test pods: the only namespace whose ServiceAccount `sub` the listeners accept.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agw-poc-clients
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
