@@ -1,6 +1,16 @@
-# agent-router buffers 8Mi (its ClientTrafficPolicy). agentgateway's 2 MiB default
-# cuts a federated MCP tools/list short (PoC P4), and the internal list
-# federates four servers' schemas.
+# One frontend policy per Gateway: two would leave the merge to the controller.
+#
+# Buffer: agent-router buffers 8Mi (its ClientTrafficPolicy). agentgateway's
+# 2 MiB default cuts a federated MCP tools/list short (PoC P4), and the internal
+# list federates four servers' schemas.
+#
+# Telemetry (phase E): every identity label is the verified sub, under the names
+# Envoy's router uses (ar_agent, x_ar_agent, agent.principal), so the run meter,
+# the run page and the trace search read both gateways. A server span is the
+# child of the caller's traceparent: an MCP call carrying the run's context joins
+# the run's trace (#2283), named after its MCP method, with gen_ai.tool.name.
+# Spans drop the request path and the MCP error text, which a run controls; the
+# collector's transform/cap bounds the rest (url.query is derived after `remove`).
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -14,3 +24,32 @@ spec:
   frontend:
     http:
       maxBufferSize: 8Mi
+    tracing:
+      backendRef:
+        name: agent-traces-collector
+        namespace: observability
+        port: 4317
+      protocol: GRPC
+      # As Envoy's samplingRate 100: a request without a traceparent still gets a trace.
+      randomSampling: "true"
+      # The run page's "agent-router spans" panel searches this service on either gateway.
+      resources:
+        - name: service.name
+          expression: '"agent-router"'
+      attributes:
+        remove:
+          - http.path
+          - mcp.error.message
+        add:
+          - name: agent.principal
+            expression: jwt.sub
+    accessLog:
+      attributes:
+        add:
+          - name: x_ar_agent
+            expression: jwt.sub
+    metrics:
+      attributes:
+        add:
+          - name: ar_agent
+            expression: jwt.sub

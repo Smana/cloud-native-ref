@@ -6,11 +6,13 @@ kind: Kustomization
 # backends in agent-system (llm, mcp, sts), the only namespace its listeners
 # admit. Nothing reaches it until the cutover (phase F): no run CNP names it yet.
 # Budgets B1-B2 count on its own rate-limit server and Valkey, in shadow.
+# Telemetry (phase E): policy-frontend.yaml and the proxy scrape.
 resources:
   - gateway.yaml
   - parameters.yaml
   - policies-identity.yaml
   - policy-frontend.yaml
+  - vmpodscrape.yaml
   - network-policy.yaml
   - llm.yaml
   - mcp.yaml

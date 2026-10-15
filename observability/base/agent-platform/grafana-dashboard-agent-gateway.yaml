@@ -1,0 +1,87 @@
+---
+# The agent router on agentgateway (ADR-0053): its proxies, budgets and MCP traffic,
+# beside Envoy's until phase H. Token and latency panels read the relabelled gen_ai_*
+# contract (infrastructure/base/agent-gateway/vmpodscrape.yaml), scoped to namespace
+# agent-gateway so Envoy's series stay out. 1.6's error_type is "_OTHER" for every
+# failure: causes come from agentgateway_requests_total's status and reason.
+# $${…} survives Flux's postBuild substitution; bare $__rate_interval does too.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: agent-gateway
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "agents"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Agent gateway (agentgateway)",
+      "uid": "agent-gateway",
+      "schemaVersion": 39,
+      "time": {"from": "now-24h", "to": "now"},
+      "links": [{"title": "Agent platform", "type": "link", "url": "/d/agent-platform/agent-platform", "keepTime": true}],
+      "templating": {"list": [
+        {"name": "datasource", "type": "datasource", "query": "prometheus"},
+        {"name": "logs_datasource", "type": "datasource", "query": "victoriametrics-logs-datasource"}
+      ]},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Requests by status",
+         "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+         "targets": [{"refId": "A", "legendFormat": "{{status}}", "expr": "sum by (status) (rate(agentgateway_requests_total{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 2, "type": "timeseries", "title": "5xx ratio by route",
+         "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+         "targets": [{"refId": "A", "legendFormat": "{{route}}", "expr": "sum by (route) (rate(agentgateway_requests_total{namespace=\"agent-gateway\", status=~\"5..\"}[$__rate_interval])) / sum by (route) (rate(agentgateway_requests_total{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 3, "type": "timeseries", "title": "Refusals and failures by reason",
+         "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+         "targets": [{"refId": "A", "legendFormat": "{{status}} {{reason}}", "expr": "sum by (status, reason) (rate(agentgateway_requests_total{namespace=\"agent-gateway\", status!~\"2..\"}[$__rate_interval]))"}]},
+        {"id": 4, "type": "timeseries", "title": "Model call error ratio (error_type)",
+         "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+         "targets": [{"refId": "A", "legendFormat": "{{gen_ai_request_model}}", "expr": "sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{namespace=\"agent-gateway\", error_type=~\".+\"}[$__rate_interval])) / sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 5, "type": "timeseries", "title": "Model latency p50 / p95",
+         "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+         "targets": [
+           {"refId": "A", "legendFormat": "p50", "expr": "histogram_quantile(0.5, sum by (le) (rate(gen_ai_server_request_duration_seconds_bucket{namespace=\"agent-gateway\"}[$__rate_interval])))"},
+           {"refId": "B", "legendFormat": "p95", "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_server_request_duration_seconds_bucket{namespace=\"agent-gateway\"}[$__rate_interval])))"}
+         ]},
+        {"id": 6, "type": "timeseries", "title": "Tokens by type (as the run meter reads them)",
+         "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{gen_ai_token_type}}", "expr": "sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 7, "type": "timeseries", "title": "Tokens per agent (top 10)",
+         "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{ar_agent}}", "expr": "topk(10, sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{namespace=\"agent-gateway\", gen_ai_token_type=~\"input|output\"}[$__rate_interval])))"}]},
+        {"id": 8, "type": "timeseries", "title": "MCP calls by method and server",
+         "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+         "targets": [{"refId": "A", "legendFormat": "{{server}} {{method}}", "expr": "sum by (server, method) (rate(agentgateway_mcp_requests_total{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 9, "type": "timeseries", "title": "Budgets B1-B2: reference tokens counted (shadow)",
+         "description": "agent-ratelimit's total_hits per descriptor: key1 agent is B1 (per run), fleet_agents is B2.",
+         "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{key1}}", "expr": "sum by (key1) (increase(ratelimit_service_rate_limit_total_hits{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 10, "type": "timeseries", "title": "Budgets B1-B2: would have refused (shadow)",
+         "description": "Over-limit hits the shadow mode admitted. Non-zero here is what SP4 PR 7 would turn into a 429.",
+         "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+         "targets": [{"refId": "A", "legendFormat": "{{key1}}", "expr": "sum by (key1) (increase(ratelimit_service_rate_limit_shadow_mode{namespace=\"agent-gateway\"}[$__rate_interval]))"}]},
+        {"id": 11, "type": "logs", "title": "Access log: 4xx and 5xx",
+         "gridPos": {"x": 0, "y": 32, "w": 24, "h": 8},
+         "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" AND log.http.status:~\"^[45]\""}]}
+      ]
+    }

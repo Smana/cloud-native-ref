@@ -51,7 +51,7 @@ task marked **valid** is executed from the old text, with the global deltas belo
 |---|---|---|---|
 | P0 | Any task | **The v2 cohort ends** (all 15 issues have three rows, per the [cohort design](../specs/2026-10-12-v2-hard-task-cohort-design.md)). The migration replaces the gateway under arm A; changing it mid-cohort breaks the comparison | — |
 | P1 | Phase G | **#2282**: F10, F12, F15 re-checked live. Phase G's parity runs compare against a verified baseline | v1 hardening |
-| P2 | Phase E's acceptance | **#2283** (MCP calls not joined to the run's trace) closes with phase E (OD-4) | this plan |
+| P2 | Phase E's acceptance | **#2283** (MCP calls not joined to the run's trace) closes with phase E (OD-4), **on live proof** (SC-20, below): AGW-5 ships the gateway half, AP-AGW1 the harness half | this plan |
 | P3 | Phases F, H (each crossplane-configuration release) | **#2275**: until it closes, each live check hand-patches the core package (old plan, Global Constraints) | v1 hardening |
 | P4 | Phase G | **Done**: agent-platform#99, fixed by agent-platform#101. The harness retries a 503 or a connection error, bounded; any 429 stays terminal (OD-7) | agent-platform |
 | P5 | Task I.2's live step | **[OWNER] The Anthropic API key in OpenBao**, mount `agents`, secret `anthropic`, field `api_key`, read from stdin: `bao kv put -mount=agents anthropic api_key=-`. A dedicated workspace with a monthly spend limit (old plan, P1) | Owner |
@@ -93,8 +93,8 @@ PoC's objects are the starting text for each, and phase H removes the PoC.
 | Finding | Where it lands |
 |---|---|
 | The drain defaults (10 s / 60 s) cut a 200 s stream. `shutdown: {min: 10, max: 660}` held it; the maximum is what counts | B.3 and AG9 pin 10/660. Design N1's `min: 120` is no longer needed |
-| agentgateway emits `input_cache_read` and `input_cache_write`; the meter reads `cached_input` and `cache_creation_input` | E.2's relabel maps both, before cutover. Without it the meter prices every cache read at the input rate |
-| The proxy's metrics are not scraped yet (the PoC stays out of observability) | E.2 adds the `VMPodScrape` |
+| agentgateway emits `input_cache_read` and `input_cache_write`; the meter reads `cached_input` and `cache_creation_input` | E.2's relabel maps both, before cutover. Without it the meter prices every cache read at the input rate. **Done** in AGW-5 |
+| The proxy's metrics are not scraped yet (the PoC stays out of observability) | **Done** in AGW-5: `infrastructure/base/agent-gateway/vmpodscrape.yaml` |
 | A controller version change does not re-render the proxy Deployment until the Gateway object is touched | Every pin change (B.2, the v1.7.0 re-run) touches the Gateway, then checks the proxy image digest |
 | Z.ai needs `provider.custom` with typed routes (`Completions`, `Messages`), never `provider.openai`, `Detect` or `Passthrough` (#3853) | C.1, AG5, AG11 |
 | MCP federation runs `sessionRouting: Stateless` (#3834, #3622) | C.2 |
@@ -139,8 +139,8 @@ merge only with live evidence from a feature-branch deploy (`TF_VAR_flux_git_ref
 | AGW-2 | cloud-native-ref | B | controller, Gateway, identity, CNPs, both clouds; gate wired; boundary and host-contract rows |
 | AGW-3 | cloud-native-ref | C | routes, MCP Allow lists, sts, ingress peers, probe |
 | AGW-4 | cloud-native-ref | D | rate-limit server, KVStore, B1–B2 shadow |
-| AGW-5 | cloud-native-ref | E | telemetry, relabel, alerts, dashboards |
-| AP-AGW1 | agent-platform | F | the bridge classifier and the harness read both tool-name separators; release |
+| AGW-5 | cloud-native-ref | E | telemetry, relabel, alerts, dashboards. #2283 closes on live proof |
+| AP-AGW1 | agent-platform | F | the bridge classifier and the harness read both tool-name separators; the harness sends its `agent-run` span's `traceparent` on MCP requests (#2283); release |
 | CC-AGW1 | crossplane-configuration | F | the run CNP reaches both gateways; AP-AGW1's bridge and harness pins; release |
 | AGW-6 | cloud-native-ref | F | CC-AGW1 pin, identity-proxy switch, meter throttle query |
 | CC-AGW2 | crossplane-configuration | H | the run CNP reaches agentgateway only |
@@ -199,9 +199,10 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | D.1 | done (AGW-4) | cnref | `KVStore` comes from crossplane-configuration v0.9.7. 1.6's rate-limit call timeout defaults to 10 s. The server also sets `SHADOW_MODE=true`, so no descriptor can enforce before SP4 PR 7. The child gains `agent-secrets` and `crossplane-configuration` in `dependsOn` |
 | D.2 | done (AGW-4) | cnref | Plus OD-8's per-key local token limit, per replica, from the PoC's policy, at 30 M tokens per hour per sub: more than the frontier run cap can buy. No budget-refusal marker (OD-7). J.2's reference-token `cost` lands here (OD-6); AG8 pins it and fails an entry or key that reads a claim the JWT policy does not require (#3523) |
 | D.3 | done (AGW-4), live check after merge | cnref | PC6 on aws-0 once the umbrella is resumed: shadow counters rise, no 429, a server restart fails open |
-| E.1 | changed | cnref | Also #2283's acceptance (OD-4): each MCP call is a child span of the run's trace, with tool name and duration, no content. 1.6 aligns HTTP span attributes with OTel semconv: re-read the attribute names E.1 step 4 records |
-| E.2 | changed | cnref | Adds the proxy `VMPodScrape` (none yet). The relabel maps `input_cache_read` → `cached_input` and `input_cache_write` → `cache_creation_input`, which the meter reads. 1.6's `error_type` is `_OTHER` for every failure: an error ratio, not a per-status split |
-| E.3, E.4 | valid | cnref | — |
+| E.1 | done (AGW-5), live check after merge | cnref | Also #2283's acceptance (OD-4): each MCP call is a child span of the run's trace, with tool name and duration, no content. Telemetry joins the existing `frontend` policy, not a second `policy-telemetry.yaml`. Step 4's facts were read from the PoC's access logs; see Phase E below. **#2283 closes on live proof** |
+| E.2 | done (AGW-5), live check after merge | cnref | Adds the proxy `VMPodScrape`. The relabel maps `input_cache_read` → `cached_input` and `input_cache_write` → `cache_creation_input`, which the meter reads. 1.6's `error_type` is `_OTHER` for every failure: an error ratio, not a per-status split. Only the token and request-duration families are renamed. Alerts land in a new `agent-gateway` group |
+| E.3 | done (AGW-5) | cnref | 1.6 has `error_type`, so the run page's error-rate panel reads both gateways unchanged; only the log panels change. Plus an `agent-gateway` dashboard |
+| E.4 | changed | cnref | AGW-5 is a PR to `main`. Its live step runs once the umbrella is resumed; see Phase E below |
 | F.1 | changed, moved | agent-platform | Base `main`, not `feat/room-approvals` (#11, merged). Also `images/agent-harness/agent_run.py:438` and its test (`__room_progress`), not only `internal/bridge/classify.go:93,102`. Both separators accepted until phase H. One release carries both |
 | F.2 | changed | crossplane-configuration | Base `main` (v0.9.7), not `chore/room-bridge-v0.4.0` (#35, merged). `main.k` L61 and L507; pins AP-AGW1's bridge (`_BRIDGE_IMAGE`, L68) and harness |
 | F.3 | valid | cnref | `identity-proxy-configmap.yaml` L225, L236, L247 |
@@ -305,6 +306,65 @@ passed L1–L2 on aws-0 and is the text:
 - [ ] Re-verify N3 and D7 on the pinned version: `GET /v1/models` with a valid token still gets the
   404 JSON body. 1.6 expands wildcard models on `/v1/models`, so the `directResponse` must still win.
 
+## Phase E — telemetry (AGW-5)
+
+### What E.1 step 4 recorded
+
+Read from the PoC's access logs in VictoriaLogs and from agentgateway v1.6.0's source
+(`telemetry/metrics.rs`, `telemetry/log.rs`), not from the real Gateway, which is not live yet:
+
+| Fact | Value | Used by |
+|---|---|---|
+| Token series | `agentgateway_gen_ai_client_token_usage_{bucket,sum,count}`, types `input`, `output`, `input_cache_read`, `input_cache_write` | the relabel |
+| Model labels | `gen_ai_request_model` = the backend's model (`glm-5.3`, as Envoy's), `gen_ai_system` (Envoy: `gen_ai_provider_name`) | the run page's cost join; the relabel |
+| Duration | `agentgateway_gen_ai_server_request_duration_*`, observed in seconds, `error_type="_OTHER"` on failure | the relabel adds `_seconds` |
+| Requests | `agentgateway_requests_total{status, reason, route="agent-system/<route>", ar_agent}`; reasons seen: `JwtAuth`, `Authorization`, `DirectResponse`, `MCP`; a rate-limit refusal is `RateLimit` | alerts, dashboard |
+| Access log | `log.http.status`, `log.http.path`, `log.reason`, `log.route`, `log.jwt.sub`, `log.x_ar_agent`, `log.mcp.method.name`, `log.gen_ai.tool.name` | run page, F.4 |
+| Spans | server span, parent = the incoming `traceparent`; named after the MCP method (`tools/call`), with `gen_ai.tool.name`, `mcp.target` | #2283 |
+
+### Metric contract after the relabel
+
+| agentgateway emits | The meter and dashboards read |
+|---|---|
+| `agentgateway_gen_ai_client_token_usage_{bucket,sum,count}` | `gen_ai_client_token_usage_{bucket,sum,count}` |
+| `gen_ai_token_type="input_cache_read"` | `gen_ai_token_type="cached_input"` |
+| `gen_ai_token_type="input_cache_write"` | `gen_ai_token_type="cache_creation_input"` |
+| `agentgateway_gen_ai_server_request_duration_{bucket,sum,count}` | `gen_ai_server_request_duration_seconds_{bucket,sum,count}` |
+| `gen_ai_system` | `gen_ai_provider_name` |
+| `ar_agent` (metrics attribute `jwt.sub`) | `ar_agent`, unchanged |
+
+Envoy's series carry `namespace="envoy-gateway-system"`, agentgateway's `namespace="agent-gateway"`,
+so no two series collide, and one request crosses one gateway, so `meter.query`'s sum counts it
+once. Every other agentgateway family keeps its own name: the shared LLM-gateway dashboards read the
+`gen_ai_*` time-to-first-token series unscoped.
+
+### #2283: the trace join
+
+The gateway half ships in AGW-5: agentgateway parents its server span on the caller's
+`traceparent` (client sampling defaults to 100 %), names an MCP span after its method, records
+`gen_ai.tool.name` and the duration, and drops `http.path` and `mcp.error.message`. It exports to
+the agent traces collector as service `agent-router`.
+
+The harness half is AP-AGW1's: today the harness's MCP client sends no `traceparent`, which is
+why each Envoy `/mcp` span is its own root (F16). The harness adds
+`headers: {traceparent: 00-<agent-run trace id>-<agent-run span id>-01}` to
+`mcp_config.platform` (`images/agent-harness/agent_run.py`, `build_request`); identity-proxy
+forwards it unchanged.
+
+**#2283 closes on live proof** (SC-20, at G.3): one factory run through agentgateway, then
+VictoriaTraces `GET /select/jaeger/api/traces/<run trace id>` returns `tools/call` spans of
+service `agent-router` whose parent is the `agent-run` span, each with `gen_ai.tool.name` and a
+duration, and no `http.path`, `url.path` or content key.
+
+### E.4 live step, once the umbrella is resumed
+
+- [ ] `sum by (gen_ai_token_type) (gen_ai_client_token_usage_sum{namespace="agent-gateway", ar_agent=~".*:agent-probe"})`
+  returns `input` and `output` after one probe completion.
+- [ ] `AgentRouterMetricContractBroken` and `AgentRateLimitDown` are inactive.
+- [ ] One probe completion sent with `traceparent: 00-<32 hex>-<16 hex>-01` has a server span of
+  service `agent-router` whose parent is the sent span id, `agent.principal` = the probe's sub, no
+  `http.path` tag.
+
 ## Phase F — the cutover
 
 ### Task F.4: The meter's throttle query follows the gateway (new)
@@ -315,11 +375,10 @@ passed L1–L2 on aws-0 and is the text:
 and `response_flags:~"RL"`. After the switch the meter would never see a B1/B2 throttle, and nothing
 fails loudly.
 
-- [ ] **Step 1:** From E.1 step 4's recorded field names, write the agentgateway equivalent: proxy
-  pods in `agent-gateway` with `gateway.networking.k8s.io/gateway-name: agent-router`, status 429 from
-  the rate-limit policy, grouped by the verified `x-ar-agent`.
-- [ ] **Step 2:** Make the query match either gateway (an `OR` of both selectors) until phase H, which
-  drops the Envoy half.
+- [ ] **Steps 1–2:** AGW-5 recorded the fields (Phase E above) and ran this query against
+  VictoriaLogs with the PoC's selector in place of `agent-gateway`'s; it matches either gateway until phase H drops the Envoy half:
+  `_time:2m ((kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router") OR (kubernetes.pod_namespace:"agent-gateway" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:"agent-router")) | unpack_json | filter (log.response_code:429 AND log.response_flags:~"RL") OR (log.http.status:429 AND log.reason:RateLimit) | stats by (log.x_ar_agent) count() hits`.
+  It belongs to F, not E: a gateway that serves no run throttles nothing.
 - [ ] **Step 3:** [LIVE] With a B1 limit lowered on a test descriptor, one probe request is refused
   and the query returns its `x_ar_agent` within 2 minutes.
 
