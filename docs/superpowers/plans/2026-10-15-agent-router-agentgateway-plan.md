@@ -81,7 +81,7 @@ Other open v1-hardening issues (#2273, #2274, #2276, #2280, #2281, #2292) do not
 | P4, the harness retry | agent-platform#101 | OD-7; J-AC5's offline half |
 | The PoC, beside agent-router on aws-0 | cnref #2385 | Controller and CRDs (`infrastructure/aws-0/agentgateway/`): pinned OCIRepositories, HelmReleases with `istio.enabled: false`, restricted context, controller CNP. A twin Gateway (`infrastructure/aws-0/agentgateway-poc/`) with the G3 overlay, `shutdown` 10/660, per-listener JWT, the `/v1/models` 404, the Z.ai backends, MCP federation and the per-sub local limit. `ai-boundary.yaml` and `.policy.yml` rows. Live check L1–L8 (`scripts/ops/k8s/agentgateway-poc-live-check.sh`) |
 
-**What that leaves of B and C.** The PoC is aws-0-only, in a throwaway namespace, with no `sts`
+**What that leaves of B and C** (before AGW-2 and AGW-3, which did it). The PoC is aws-0-only, in a throwaway namespace, with no `sts`
 listener and two of four MCP targets. Still to do: the cloud-neutral base under
 `infrastructure/base/agent-gateway/` and both render roots; the real Gateway `agent-gateway/agent-router`
 with three listeners; the data-plane and ingress CNPs; `flux-operator-mcp` and `room-broker` as
@@ -190,12 +190,12 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | B.3 | done (AGW-2) | cnref | `shutdown: {min: 10, max: 660}`, proven on aws-0; the defaults fail. G3's overlay from the PoC's `AgentgatewayParameters` |
 | B.4 | done (AGW-2) | cnref | `requiredClaims: [exp, sub]` on every listener (L5). The `agents` sub-prefix stays CEL: `requiredClaims` checks presence, not a prefix |
 | B.5 | done (#2395, AGW-2) | cnref | Wired by #2395; AGW-2 makes `agent-gateway/agent-router` a required profile, so the PoC alone fails AG1 |
-| B.6 | changed | cnref | Live on aws-0. The PoC ran the EKS checks; B.6 repeats L1–L8 against the real Gateway, below. `agentgateway-poc-live-check.sh --gateway real` runs L4, L5, L8, the JWKS issuer check and the proxy shape now; L1–L3, L6 and L7 need phase C's routes |
-| C.1 | changed | cnref | 1.6 provider rules, below; the PoC's `llm.yaml` is the text |
-| C.2 | changed | cnref | `sessionRouting: Stateless`. 1.6 pages `tools/list` (`nextCursor`): the scope test and the probe read every page. `mcp.methodName` is now a CEL attribute; N7 (Allow is OR) re-verified on the pinned CRD text |
-| C.3 | valid | cnref | Paths exist: `security/base/octo-sts/{httproute,network-policy}.yaml` |
-| C.4 | valid | cnref | — |
-| C.5 | valid | cnref | Live on aws-0 |
+| B.6 | changed | cnref | Live on aws-0. The PoC ran the EKS checks; B.6 repeats L1–L8 against the real Gateway, below. Since AGW-3, `agentgateway-poc-live-check.sh --gateway real` runs all of L1–L8, the JWKS issuer check and the proxy shape |
+| C.1 | done (AGW-3) | cnref | 1.6 provider rules, below; the PoC's `llm.yaml` is the text. `/anthropic` takes the native backend `zai-anthropic`; `/v1/messages` converts. Routes are prefixed `agentgateway-` (see C.3) |
+| C.2 | done (AGW-3) | cnref | `sessionRouting: Stateless`, `failureMode: FailOpen`. 1.6 pages `tools/list` (`nextCursor`): the scope test and the probe read every page. `mcp.methodName` is now a CEL attribute; N7 (Allow is OR) re-verified on the pinned CRD text. Grants keep `room_progress`, which the old text dropped |
+| C.3 | done (AGW-3) | cnref | All phase C objects live in `infrastructure/base/agent-gateway/` (child `agent-gateway`), not the `agent-router` and `agent-mcp` children, whose `dependsOn` stays unchanged. Names avoid agent-system's existing HTTPRoutes `agent-models` (generated from the AIGatewayRoute), `agent-models-list` and `octo-sts`: octo-sts gets its own route `agentgateway-sts`, not a second parent. **Phase H moves** `externalsecret-zai.yaml` (the backends read `agents-zai-api-key`) into that directory before deleting the Envoy files |
+| C.4 | done (AGW-3) | cnref | — |
+| C.5 | done (AGW-3), live check after merge | cnref | On aws-0: `agentgateway-poc-live-check.sh --gateway real` (L1–L8) |
 | D.1 | valid | cnref | `KVStore` comes from crossplane-configuration v0.9.7. 1.6's rate-limit call timeout defaults to 10 s |
 | D.2 | changed | cnref | Plus OD-8's per-key local token limit, per replica, from the PoC's policy. No budget-refusal marker (OD-7) |
 | D.3 | valid | cnref | — |

@@ -1,0 +1,136 @@
+# The agents' Z.ai path on agentgateway (ADR-0053), at parity with agent-router's
+# agent-models. Route names carry an `agentgateway-` prefix: agent-system already
+# holds HTTPRoutes `agent-models` (generated from the AIGatewayRoute) and
+# `agent-models-list`, and a same-named route would overwrite Envoy's.
+#
+# The key is agent-router's own Secret (externalsecret-zai.yaml, OpenBao
+# agents/zai), read by reference and never copied; phase H moves that
+# ExternalSecret here before it deletes the Envoy files.
+#
+# Both backends pin glm-5.3 (design D8): whatever name a run asks for, it gets
+# that model, so no request can pick another, paid, Z.ai model. Envoy answers an
+# unknown name 404; model-name routing comes with phase I.
+#
+# 1.6: "use the OpenAI provider only for the OpenAI API". A custom provider that
+# advertises Chat Completions with its full path (a base without a path now
+# means `/`), and typed routes only (#3853). Z.ai is not known to serve
+# Responses, so /v1/responses is not routed; /v1/messages converts to
+# Completions (the PoC's text, plan C.1).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: zai
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      custom:
+        model: glm-5.3
+        formats:
+          - type: Completions
+            path: /api/paas/v4/chat/completions
+      host: api.z.ai
+      port: 443
+  policies:
+    auth:
+      secretRef:
+        name: agents-zai-api-key
+        key: apiKey
+    tls:
+      sni: api.z.ai
+    ai:
+      routes:
+        /v1/chat/completions: Completions
+        /v1/messages: Messages
+---
+# /anthropic goes to Z.ai's own Anthropic-compatible endpoint, Messages in and
+# out, with no conversion: the Messages -> Completions path hits #3835 and #3700.
+# Both passed L2 on the PoC.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: zai-anthropic
+  namespace: agent-system
+spec:
+  ai:
+    provider:
+      custom:
+        model: glm-5.3
+        formats:
+          - type: Messages
+            path: /api/anthropic/v1/messages
+      host: api.z.ai
+      port: 443
+  policies:
+    auth:
+      secretRef:
+        name: agents-zai-api-key
+        key: apiKey
+    tls:
+      sni: api.z.ai
+    ai:
+      routes:
+        /v1/messages: Messages
+---
+# `public` only: Z.ai is a SaaS model, and internal data never reaches it
+# (ADR-0042, ADR-0054; gate AG5).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agentgateway-models
+  namespace: agent-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agent-router
+      namespace: agent-gateway
+      sectionName: public
+  rules:
+    # Answered by the directResponse below, after the listener's JWT (PoC N3). The
+    # Exact match outranks /v1; a `Models` route type answers 501 on 1.6.0.
+    - name: models
+      matches:
+        - path:
+            type: Exact
+            value: /v1/models
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: zai
+    - name: openai
+      matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: zai
+    - name: anthropic
+      matches:
+        - path:
+            type: PathPrefix
+            value: /anthropic
+      backendRefs:
+        - group: agentgateway.dev
+          kind: AgentgatewayBackend
+          name: zai-anthropic
+---
+# agent-router's answer, byte for byte (httproutefilter-agent-models-list.yaml):
+# every harness works with it (design D7).
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: agentgateway-models-list
+  namespace: agent-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agentgateway-models
+      sectionName: models
+  traffic:
+    directResponse:
+      status: 404
+      body: '{"error":"model listing is not served on agent-router"}'

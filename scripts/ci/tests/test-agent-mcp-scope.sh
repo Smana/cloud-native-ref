@@ -136,6 +136,60 @@ for route in yaml.safe_load_all(open(os.path.join(base, "mcproutes.yaml"))):
     if extra_auds:
         errors.append(f"{name}: unexpected audience(s) with grants {sorted(extra_auds)}")
 
+# --- agentgateway: the same per-role sets, read from its Allow lists (ADR-0053) ---
+# Each expression must be one alternative in the gate's grammar (AG6), so the grants can
+# be recomputed exactly; one outside it is an error here too.
+import importlib.util, re
+sys.path.insert(0, os.path.join(root, "scripts/ci/flux-schema"))
+_spec = importlib.util.spec_from_file_location(
+    "agw_gate", os.path.join(root, "scripts/ci/flux-schema/assert-agent-gateway.py"))
+_agw = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_agw)
+grammar = _agw.alternative(_agw.PROFILES[("agent-gateway", "agent-router")])
+
+AGW_FILE = os.path.join(root, "infrastructure/base/agent-gateway/mcp.yaml")
+AGW_ROUTES = {"agentgateway-mcp-public": "agent-mcp-public", "agentgateway-mcp-internal": "agent-mcp-internal"}
+agw_docs = [d for d in yaml.safe_load_all(open(AGW_FILE)) if d]
+backends = [d for d in agw_docs if d["kind"] == "AgentgatewayBackend"]
+if len(backends) != 1:
+    errors.append(f"agent-gateway/mcp.yaml: expected one AgentgatewayBackend, found {len(backends)}")
+else:
+    mcp = backends[0]["spec"]["mcp"]
+    if mcp.get("prefixMode") != "Always":
+        errors.append("agent-mcp backend: prefixMode must be Always, so tools read <target>_<tool>")
+    if mcp.get("sessionRouting") != "Stateless":
+        errors.append("agent-mcp backend: sessionRouting must be Stateless (#3834, #3622)")
+    names = {t["name"] for t in mcp["targets"]}
+    want = set(EXPECTED_BACKEND_TOOLS["agent-mcp-public"])
+    if names != want:
+        errors.append(f"agent-mcp backend targets are {sorted(names)}, expected {sorted(want)}")
+seen_policies = set()
+for pol in (d for d in agw_docs if d["kind"] == "AgentgatewayPolicy"):
+    name = pol["metadata"]["name"]
+    if name not in AGW_ROUTES:
+        errors.append(f"agent-gateway/mcp.yaml: unexpected policy {name}")
+        continue
+    seen_policies.add(name)
+    authz = pol["spec"]["backend"]["mcp"]["authorization"]
+    if authz.get("action") != "Allow":
+        errors.append(f"{name}: MCP authorization must be an Allow list")
+    got = {}
+    for e in authz["policy"]["matchExpressions"]:
+        m = grammar.match(e.strip())
+        if not m:
+            errors.append(f"{name}: expression outside the canonical grammar: {e}")
+            continue
+        aud = f"agent-router.{m.group('role')}.{m.group('cls')}"
+        tools = set(re.findall(r'"([a-z0-9_]+)"', m.group(0).split("mcp.tool.name", 1)[1]))
+        got.setdefault(aud, {}).setdefault(m.group("target"), set()).update(tools)
+    want = EXPECTED_ROLE_TOOLS[AGW_ROUTES[name]]
+    if got != want:
+        for aud in sorted(set(got) | set(want)):
+            if got.get(aud) != want.get(aud):
+                errors.append(f"{name}: {aud} grants {got.get(aud)}, expected {want.get(aud)}")
+if seen_policies != set(AGW_ROUTES):
+    errors.append(f"agent-gateway/mcp.yaml: missing Allow list(s) {sorted(set(AGW_ROUTES) - seen_policies)}")
+
 # --- flux-operator-mcp RBAC: allowlist the flux-system Role, deny secrets/* anywhere the
 #     ServiceAccount is bound, and require exactly one well-formed RoleBinding for it ---
 

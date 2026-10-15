@@ -1,6 +1,6 @@
 # Default deny in agent-gateway (`- {}` selects no peer: it switches enforcement
-# on and allows nothing), then the data plane's own peers. Phases C-E add the
-# upstreams (Z.ai, MCP servers, octo-sts, rate limit, traces, metrics scrape).
+# on and allows nothing), then the data plane's own peers and its phase C
+# upstreams. Phases D-E add rate limit, traces and the metrics scrape.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -69,4 +69,48 @@ spec:
       toPorts:
         - ports:
             - port: "9978"
+              protocol: TCP
+    # The agents' provider (llm.yaml). Only it: the controller fetches the JWKS.
+    - toFQDNs:
+        - matchName: api.z.ai
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # octo-sts behind the sts listener (sts.yaml).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: octo-sts
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # The four MCP targets (mcp.yaml).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: flux-operator-mcp
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victoriametrics
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: mcp-victorialogs
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: agent-system
+            app.kubernetes.io/name: room-broker
+      toPorts:
+        - ports:
+            - port: "8090"
               protocol: TCP
