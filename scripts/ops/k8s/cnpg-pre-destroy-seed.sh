@@ -16,14 +16,18 @@
 #         down.
 #
 # Every SQLInstance with a spec.backup block is promoted to a destroy-day
-# dated seed (<app>-YYYYMMDD), then the stable <app>-pre-destroy alias the
-# next bootstrap restores from is refreshed from it.
+# dated seed (<app>-YYYYMMDD-<gen>), then the stable <app>-pre-destroy alias
+# the next bootstrap restores from is refreshed from it. <gen> is the uid
+# suffix of the cluster's serverName, which changes with every rebuild.
 # cnpg-promote-seed.sh's --rotate-alias touches the alias ONLY after
 # verify_seed passed on the fresh dated seed this run produced, so a failed
 # promotion leaves the alias holding the previous verified seed — which is
-# what makes the failure posture warn-not-block. A same-day re-run hits the
-# promote script's dated-collision guard and skips — correct, the alias is
-# already refreshed. Skipping the hook entirely is the operator's explicit
+# what makes the failure posture warn-not-block. A same-day re-run on the
+# same lineage hits the promote script's dated-collision guard and skips —
+# correct, the alias is already refreshed. A date-only name also made a
+# rebuilt cluster torn down the same day collide with the morning's seed,
+# leaving the alias on the previous lineage and losing everything written
+# since the rebuild (#2291); <gen> gives each lineage its own seed. Skipping the hook entirely is the operator's explicit
 # data-loss decision via CNPG_SKIP_PRE_DESTROY_SEED=true.
 #
 # Discovery is `kubectl get sqlinstance -A | select(.spec.backup)`, not an
@@ -75,9 +79,15 @@ if kubectl --request-timeout=20s api-resources --api-group=cloud.ogenki.io 2>/de
     | while read -r seed_ns seed_claim; do
       [ -z "${seed_claim}" ] && continue
       seed_app="${seed_claim#xplane-}"
+      seed_server="$(kubectl --request-timeout=20s get cluster "${seed_claim}-cnpg-cluster" -n "${seed_ns}" \
+        -o jsonpath='{.spec.plugins[?(@.name=="barman-cloud.cloudnative-pg.io")].parameters.serverName}' 2>/dev/null)"
+      if [ -z "${seed_server}" ]; then
+        echo "[warn] seed for ${seed_claim} failed: could not read its serverName — destroy continues; the alias still holds the last verified seed"
+        continue
+      fi
       "$(dirname "$0")/cnpg-promote-seed.sh" --cloud "${CLOUD}" --bucket "${BUCKET}" \
         --cluster "${seed_claim}" --namespace "${seed_ns}" --apply \
-        --seed "${seed_app}-${SEED_DATE}" --rotate-alias "${seed_app}-pre-destroy" \
+        --seed "${seed_app}-${SEED_DATE}-${seed_server##*-}" --rotate-alias "${seed_app}-pre-destroy" \
         || echo "[warn] seed for ${seed_claim} failed — destroy continues; the alias still holds the last verified seed"
     done || true
 else
