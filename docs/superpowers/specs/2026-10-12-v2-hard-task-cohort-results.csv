@@ -1,1 +1,4 @@
 issue,arm,pr,tokens_in,tokens_cached,tokens_out,usd,label_to_pr_min,label_to_verdict_min,review_rounds,fix_runs,ended,counter_exhausted,still_fixable,verdict,review_min
+2279,A,,1631496,1552384,30304,0.6477,,,0,0,escalated,budget-run,,,
+2279,B,2352,1881516,1815802,14310,0.9704,9,507,0,0,pr,,,merged-as-is,
+2279,C,,5467253,5349632,43390,1.7465,,,0,,timeout,,,,
