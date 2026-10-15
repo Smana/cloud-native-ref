@@ -42,6 +42,8 @@ probe() {
 run_cases() {
   local s="$1" n=0 multi
   multi="$(printf '{\n  "name": "flux-operator",\n  "namespace": "flux-system"\n}')"
+  # desc comes from each call's `desc=... c` prefix, which bash scopes to the call; the linter cannot follow it.
+  # shellcheck disable=SC2154
   c() { if probe "$s" "$@"; then echo "  ok   $desc"; else echo "  FAIL $desc"; n=$((n + 1)); fi; }
   desc="release present"                 c "$T/bin:$PATH" '{"name":"flux-operator","namespace":"flux-system"}' true
   desc="release present, multi-line JSON" c "$T/bin:$PATH" "$multi" true
