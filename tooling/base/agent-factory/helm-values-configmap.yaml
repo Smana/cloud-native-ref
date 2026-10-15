@@ -9,9 +9,9 @@ data:
   values.yaml: |  # pragma: allowlist secret -- Secret names and key file paths, no credential value
     image:
       repository: ghcr.io/smana/agent-factory
-      # agent-platform v0.10.0, the chart's appVersion.
+      # agent-platform v0.10.1, the chart's appVersion.
       # renovate: datasource=docker depName=ghcr.io/smana/agent-factory
-      tag: "v0.10.0@sha256:4fb31602c915a9d2fed624b190465fd186e73696025e07ae3d739f5d59634b2f"
+      tag: "v0.10.1@sha256:de57e45a05bce748804796d10e59b3fa73c3362a9ae1c811f652ea6dbf8c7386"
     # Explicit so they visibly agree with externalsecret-github.yaml and agent-secrets' openbao-ca.
     githubSecret: agent-factory-github
     brokerCASecret: openbao-ca
