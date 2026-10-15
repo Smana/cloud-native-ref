@@ -41,6 +41,13 @@
 #   zitadel-idp.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F --mirror-openbao]
 #   zitadel-idp.sh rotate-github-secret --cluster C --cloud aws|gcp [--client-id ID] [--apply] < secret
+#   zitadel-idp.sh link-github <loginName> <githubLogin> --cluster C --cloud aws|gcp [--apply]
+#
+# link-github adds a user's GitHub link as an admin (ADR-0056 allows it). ZITADEL's
+# self-service "link to an existing user" makes the user prove that user with a
+# password, which a Google-only user does not have: it ends on a password reset
+# (#2269). An existing link to the same GitHub account is ok; one to a different
+# account is refused, never replaced.
 #
 # rotate-github-secret reads the new GitHub OAuth App client secret on stdin
 # (never argv), checks its shape, then PUTs it to the GitHub IdP and writes
@@ -102,6 +109,9 @@ OPENBAO_ROOT_TOKEN_SECRET=""
 OPENBAO_CA_FILE=""
 MIRROR_OPENBAO="false"
 NEW_CLIENT_ID=""
+LINK_LOGIN=""
+GITHUB_LOGIN=""
+GITHUB_API="${GITHUB_API:-https://api.github.com}"
 
 IDP_NAME="Google Workspace"
 IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
@@ -136,6 +146,17 @@ READER_STORE_KEY="room-broker-zitadel-reader" # pragma: allowlist secret
 READER_PAT_DAYS=365
 READER_PAT_ROTATE_DAYS=30
 
+if [ "$COMMAND" = "link-github" ]; then
+    LINK_LOGIN="${1:-}"; GITHUB_LOGIN="${2:-}"
+    if [ -z "$LINK_LOGIN" ] || [ -z "$GITHUB_LOGIN" ] || [[ "$LINK_LOGIN" == -* || "$GITHUB_LOGIN" == -* ]]; then
+        echo "usage: zitadel-idp.sh link-github <loginName> <githubLogin> --cluster C --cloud aws|gcp [--apply]" >&2; exit 2
+    fi
+    # GitHub's own login rule; it also keeps the value from reshaping the API path.
+    [[ "$GITHUB_LOGIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$ ]] \
+        || { echo "not a GitHub login: ${GITHUB_LOGIN}" >&2; exit 2; }
+    shift 2
+fi
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
@@ -153,7 +174,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$COMMAND" in
-    sync|rotate-github-secret) ;;
+    sync|rotate-github-secret|link-github) ;;
     *) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
@@ -564,6 +585,52 @@ rotate_github_secret() {
     echo "[updated] ${GITHUB_IDP_SECRET_KEY} in the ${CLOUD} store"
 }
 
+# The link carries GitHub's numeric id, which the broker reads (ADR-0056): a
+# login can be renamed or reused, the id cannot.
+link_github() {
+    local gh_idp resp gh_user gh_id gh_login matches user_id existing
+    gh_idp="$(idp_id_by_name "$GITHUB_IDP_NAME")"
+    [ -n "$gh_idp" ] || { echo "[FAILED ] no '${GITHUB_IDP_NAME}' IdP in ZITADEL; write ${GITHUB_IDP_SECRET_KEY} and run sync first" >&2; return 1; }
+
+    gh_user="$(curl -fsS -H "Accept: application/vnd.github+json" "${GITHUB_API}/users/${GITHUB_LOGIN}")" \
+        || { echo "[FAILED ] GitHub has no user '${GITHUB_LOGIN}' (or its API is unreachable)" >&2; return 1; }
+    gh_id="$(jq -r '.id // empty' <<< "$gh_user")"
+    gh_login="$(jq -r '.login // empty' <<< "$gh_user")"
+    [ -n "$gh_id" ] && [ -n "$gh_login" ] || { echo "[FAILED ] GitHub answered no id for '${GITHUB_LOGIN}'" >&2; return 1; }
+
+    resp="$(jq -nc --arg l "$LINK_LOGIN" \
+        '{queries: [{loginNameQuery: {loginName: $l, method: "TEXT_QUERY_METHOD_EQUALS"}}]}' \
+        | api POST /v2/users -d @-)" \
+        || { echo "[FAILED ] cannot search ZITADEL users" >&2; return 1; }
+    matches="$(jq -r '[.result[]?.userId] | length' <<< "$resp")"
+    [ "$matches" = "1" ] || { echo "[FAILED ] ${matches} ZITADEL users with login name '${LINK_LOGIN}', want exactly 1" >&2; return 1; }
+    user_id="$(jq -r '.result[0].userId' <<< "$resp")"
+
+    resp="$(api POST "/v2/users/${user_id}/links/_search" -d '{}')" \
+        || { echo "[FAILED ] cannot list the IdP links of ${LINK_LOGIN}" >&2; return 1; }
+    existing="$(jq -c --arg i "$gh_idp" '[.result[]? | select(.idpId == $i)][0] // empty' <<< "$resp")"
+    if [ -n "$existing" ]; then
+        if [ "$(jq -r '.userId' <<< "$existing")" = "$gh_id" ]; then
+            echo "[ok     ] ${LINK_LOGIN} (${user_id}) is linked to GitHub ${gh_login} (${gh_id})"
+            return 0
+        fi
+        echo "[FAILED ] ${LINK_LOGIN} is already linked to GitHub $(jq -r '"\(.userName) (\(.userId))"' <<< "$existing"), not ${gh_login} (${gh_id})" >&2
+        echo "           Not replaced. Remove that link in the ZITADEL console first if it is wrong." >&2
+        return 1
+    fi
+
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would link ${LINK_LOGIN} (${user_id}) to GitHub ${gh_login} (${gh_id})"
+        return 0
+    fi
+    jq -nc --arg i "$gh_idp" --arg u "$gh_id" --arg n "$gh_login" \
+        '{idpLink: {idpId: $i, userId: $u, userName: $n}}' \
+        | api POST "/v2/users/${user_id}/links" -d @- >/dev/null \
+        || { echo "[FAILED ] ZITADEL refused the link (is GitHub ${gh_login} linked to another user?)" >&2; return 1; }
+    echo "[linked ] ${LINK_LOGIN} (${user_id}) to GitHub ${gh_login} (${gh_id})"
+    echo "           roomctl rooms sees it once the broker's cached answer expires (5 minutes)"
+}
+
 # ── the broker's link reader ──────────────────────────────────────────────────
 #
 # The room broker decides who may see a room from the user's GitHub IdP link
@@ -944,6 +1011,11 @@ echo
 
 if [ "$COMMAND" = "rotate-github-secret" ]; then
     rotate_github_secret
+    [ "$APPLY" = "true" ] || echo "This was a DRY RUN. Re-run with --apply."
+    exit 0
+fi
+if [ "$COMMAND" = "link-github" ]; then
+    link_github
     [ "$APPLY" = "true" ] || echo "This was a DRY RUN. Re-run with --apply."
     exit 0
 fi
