@@ -48,8 +48,10 @@ spec:
 
 **Compositions are not in this repository.** They live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship here
-as a Configuration package — see `configuration-aws/configuration-packages.yaml` for the pinned version.
-Render, test and validate them there with `task check`; then bump the pin here.
+as Configuration packages. Render, test and validate them there with `task check`; then bump the
+pin here, in one PR: `configuration-core/`, `configuration-aws/`, `configuration-gcp/` and the App
+Wizard's clone all name the same tag ([`infrastructure/AGENTS.md`](../../AGENTS.md) lists them; a CI test holds them
+together).
 
 What this directory still owns is the cluster's side of the wiring, and it is split by cloud
 because a `Provider` and a `ManagedResourceActivationPolicy` are cluster-scoped:
@@ -58,6 +60,7 @@ because a `Provider` and a `ManagedResourceActivationPolicy` are cluster-scoped:
 |---|---|---|
 | `controller/` | both | The Crossplane chart. Nothing cloud-specific. |
 | `functions/` | both | Function packages, version-pinned. Shared so the two clouds cannot drift. |
+| `configuration-core/` | both | The `-core` package (the XRDs), pinned instead of resolved by the cloud packages' `dependsOn`, which Crossplane never upgrades (#2275). |
 | `providers-aws/` | AWS | 5 provider packages, `aws-config` runtime config, activation policy, extra RBAC. |
 | `configuration-aws/` | AWS | ProviderConfig (`PodIdentity`), `eks-environment`, the Configuration package pin. |
 | `providers-gcp/` | GCP | `provider-gcp-cloudplatform`, `gcp-config` runtime config, activation policy. |
