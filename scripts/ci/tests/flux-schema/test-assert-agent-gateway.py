@@ -121,16 +121,24 @@ def compliant(key=REAL):
                 allow + ' && mcp.tool.name == "room_read"']}}}}}),
         obj("AgentgatewayPolicy", gw_ns, "token-budgets", {
             "targetRefs": [gw_ref],
-            "traffic": {"rateLimit": {"global": {
-                "backendRef": {"name": "agent-ratelimit", "port": 8081}, "domain": "agent-router",
-                "failureMode": "FailOpen", "descriptors": [
-                    {"entries": [{"name": "agent", "expression": "jwt.sub"}], "unit": "Tokens"},
-                    {"entries": [{"name": "fleet", "expression": '"agents"'}], "unit": "Tokens"}]}}}}),
+            "traffic": {"rateLimit": {
+                "global": {
+                    "backendRef": {"name": "agent-ratelimit", "port": 8081}, "domain": "agent-router",
+                    "failureMode": "FailOpen", "descriptors": [
+                        {"entries": [{"name": "agent", "expression": "jwt.sub"}], "unit": "Tokens",
+                         "cost": gate.BILLABLE_COST},
+                        {"entries": [{"name": "fleet", "expression": '"agents"'}], "unit": "Tokens",
+                         "cost": gate.BILLABLE_COST}]},
+                "local": [{"tokens": 30000000, "unit": "Hours", "key": "jwt.sub"}]}}}),
         {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"namespace": gw_ns, "name": "agent-ratelimit-config"},
          "data": {"config.yaml": yaml.safe_dump({"domain": "agent-router", "descriptors": [
              {"key": "agent", "rate_limit": {"unit": "day", "requests_per_unit": 5000000}, "shadow_mode": True},
              {"key": "fleet", "value": "agents", "rate_limit": {"unit": "day", "requests_per_unit": 40000000},
               "shadow_mode": True}]})}},
+        {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"namespace": gw_ns, "name": "agent-ratelimit"},
+         "spec": {"template": {"spec": {
+             "containers": [{"name": "ratelimit", "env": [{"name": "SHADOW_MODE", "value": "true"}]}],
+             "volumes": [{"name": "config", "configMap": {"name": "agent-ratelimit-config"}}]}}}},
     ]
 
 
@@ -145,11 +153,11 @@ def spec_at(objs, kind, name, *path):
     return node
 
 
-def expect(name, mutate, code):
+def expect(name, mutate, code, needle=""):
     objs = copy.deepcopy(compliant())
     mutate(objs)
     v = gate.run(objs)
-    check(name, any(x.startswith(code) for x in v), f"got {v}")
+    check(name, any(x.startswith(code) and needle in x for x in v), f"got {v}")
 
 
 def jwt_of(o, listener):
@@ -273,6 +281,48 @@ expect("a route-keyed entry fails", lambda o: glob(o)["descriptors"][0]["entries
     {"name": "route", "expression": "request.path"}), "AG8")
 expect("an enforcing descriptor fails", unshadow, "AG8")
 expect("a missing ConfigMap fails", lambda o: o.remove(find(o, "ConfigMap", "agent-ratelimit-config")), "AG8")
+
+
+def server_env(o):
+    return find(o, "Deployment", "agent-ratelimit")["spec"]["template"]["spec"]["containers"][0]["env"]
+
+
+def local(o):
+    return spec_at(o, "AgentgatewayPolicy", "token-budgets", "traffic", "rateLimit", "local")
+
+
+print("AG8 shadow on the server (no budget 429 while any descriptor could enforce)")
+expect("a server without SHADOW_MODE fails", lambda o: server_env(o).clear(), "AG8", "SHADOW_MODE")
+expect("SHADOW_MODE false fails", lambda o: server_env(o)[0].update({"value": "false"}), "AG8", "SHADOW_MODE")
+expect("no server reading the ConfigMap fails", lambda o: o.remove(find(o, "Deployment", "agent-ratelimit")),
+       "AG8", "SHADOW_MODE")
+
+print("AG8 reference tokens (design D11, OD-6)")
+expect("a Tokens descriptor without cost fails", lambda o: glob(o)["descriptors"][0].pop("cost"), "AG8",
+       "reference tokens")
+expect("a raw-token cost fails", lambda o: glob(o)["descriptors"][1].update({"cost": "llm.totalTokens"}), "AG8",
+       "reference tokens")
+
+print("AG8 required claims (#3523: a descriptor whose CEL fails is dropped, unlimited)")
+expect("a descriptor reading an unrequired claim fails",
+       lambda o: glob(o)["descriptors"][0]["entries"][0].update({"expression": "jwt.team"}), "AG8", "#3523")
+expect("a descriptor reading a bracketed unrequired claim fails",
+       lambda o: glob(o)["descriptors"][0]["entries"][0].update({"expression": 'jwt["team"]'}), "AG8", "#3523")
+expect("a descriptor reading a header fails",
+       lambda o: glob(o)["descriptors"][0]["entries"][0].update({"expression": 'request.headers["x-ar-agent"]'}),
+       "AG8", "#3523")
+expect("sub no longer required on one listener fails",
+       lambda o: jwt_of(o, "sts")["providers"][0]["validation"].update({"requiredClaims": ["exp"]}), "AG8", "#3523")
+expect("an unkeyed local token limit fails", lambda o: local(o)[0].pop("key"), "AG8", "key")
+expect("a local key reading an unrequired claim fails", lambda o: local(o)[0].update({"key": "jwt.team"}),
+       "AG8", "#3523")
+got = gate.run([o if o["kind"] != "AgentgatewayPolicy" or o["metadata"]["name"] != "token-budgets" else
+                {**o, "spec": {**o["spec"], "traffic": {"rateLimit": {**o["spec"]["traffic"]["rateLimit"], "global": {
+                    **o["spec"]["traffic"]["rateLimit"]["global"], "descriptors": [
+                        {"entries": [{"name": "agent", "expression": 'jwt["sub"].lowerAscii()'}], "unit": "Tokens",
+                         "cost": gate.BILLABLE_COST}]}}}}}
+                for o in compliant()])
+check("a required claim read with a method call passes", got == [], f"got {got}")
 
 print("AG9 parameters")
 expect("a LoadBalancer Service fails", lambda o: params(o)["service"]["spec"].update({"type": "LoadBalancer"}), "AG9")

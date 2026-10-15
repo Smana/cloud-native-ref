@@ -1,0 +1,177 @@
+# agentgateway speaks Envoy's RLS v3 but bundles no server (gap G1): this is
+# envoyproxy/ratelimit, the image and digest Envoy Gateway runs for ai-gateway,
+# with a static config instead of Envoy Gateway's xDS.
+#
+# Limits are ADR-0050's, in reference tokens (design D11: USD / $1.70 per M):
+# B1 5M per run per day (= $8.50), B2 40M for the whole fleet per day (= $68).
+#
+# SHADOW twice, so no budget can answer 429 before SP4 PR 7: every descriptor
+# sets shadow_mode, and SHADOW_MODE overrides any result server-wide, including
+# a descriptor added later without it. Gate AG8 holds both.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-ratelimit-config
+  namespace: agent-gateway
+data:
+  config.yaml: |
+    domain: agent-router
+    descriptors:
+      # B1: one bucket per verified sub, i.e. per run (policy-budgets.yaml).
+      - key: agent
+        rate_limit:
+          unit: day
+          requests_per_unit: 5000000
+        shadow_mode: true
+      # B2: one bucket for every agent call.
+      - key: fleet
+        value: agents
+        rate_limit:
+          unit: day
+          requests_per_unit: 40000000
+        shadow_mode: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-ratelimit
+  namespace: agent-gateway
+automountServiceAccountToken: false
+---
+# One replica: the policy fails open, so a restart costs a few uncounted
+# requests. Enforcement (SP4 PR 7) revisits HA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-ratelimit
+  namespace: agent-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-ratelimit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-ratelimit
+    spec:
+      serviceAccountName: agent-ratelimit
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ratelimit
+          image: docker.io/envoyproxy/ratelimit:0482748e@sha256:5fdd8e3ae335ab6d64316f8d2fd9a886830075cbbb40a1d8065c869275909162
+          command: ["/bin/ratelimit"]
+          env:
+            - name: SHADOW_MODE
+              value: "true"
+            # Reads /data/ratelimit/config/*.yaml; watching the subdirectory
+            # picks up a ConfigMap update without a restart.
+            - name: RUNTIME_ROOT
+              value: /data
+            - name: RUNTIME_SUBDIRECTORY
+              value: ratelimit
+            - name: RUNTIME_WATCH_ROOT
+              value: "false"
+            - name: RUNTIME_IGNOREDOTFILES
+              value: "true"
+            - name: LOG_LEVEL
+              value: info
+            - name: LOG_FORMAT
+              value: json
+            - name: USE_STATSD
+              value: "false"
+            - name: USE_PROMETHEUS
+              value: "true"
+            - name: PROMETHEUS_ADDR
+              value: ":19001"
+            - name: REDIS_SOCKET_TYPE
+              value: tcp
+            - name: REDIS_URL
+              value: xplane-agent-ratelimit-valkey.agent-gateway.svc.cluster.local:6379
+            - name: REDIS_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: agent-ratelimit-valkey
+                  key: REDIS_PASSWORD
+          ports:
+            - name: grpc
+              containerPort: 8081
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 19001
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: config
+              mountPath: /data/ratelimit/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: agent-ratelimit-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-ratelimit
+  namespace: agent-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: agent-ratelimit
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: grpc
+      appProtocol: kubernetes.io/h2c
+---
+# Shadow counters: the only evidence of what B1-B2 WOULD refuse
+# (ratelimit_service_rate_limit_{total_hits,shadow_mode}, as on ai-gateway).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: agent-ratelimit
+  namespace: agent-gateway
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-ratelimit
+  namespaceSelector:
+    matchNames:
+      - agent-gateway
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

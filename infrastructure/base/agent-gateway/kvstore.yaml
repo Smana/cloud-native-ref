@@ -1,0 +1,49 @@
+# B1-B2 counters (ADR-0053, design D4). Our own store, not ai-gateway's: that
+# password lives in envoy-gateway-system, and agent budgets never share a bucket
+# with B3-B5. Ephemeral, like that one: a restart resets the day, which costs
+# nothing in shadow mode.
+#
+# The password is generated in-cluster, not read from OpenBao: the counters are
+# ephemeral, so a per-cluster password loses nothing and a bootstrap needs no
+# seeding. CreatedOnce: a rotation would lock the running Valkey out.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: agent-ratelimit-valkey
+  namespace: agent-gateway
+spec:
+  length: 48
+  symbols: 0 # alphanumeric only: it lands in env vars and Valkey's config
+  noUpper: false
+  allowRepeat: true
+  secretKeys:
+    - REDIS_PASSWORD
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: agent-ratelimit-valkey
+  namespace: agent-gateway
+spec:
+  refreshPolicy: CreatedOnce
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: agent-ratelimit-valkey
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: agent-ratelimit-valkey
+---
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: KVStore
+metadata:
+  name: xplane-agent-ratelimit
+  namespace: agent-gateway
+spec:
+  size: nano
+  auth:
+    existingSecret: agent-ratelimit-valkey # pragma: allowlist secret — checkov:skip=CKV_SECRET_6 secret name, not a value
+    passwordKey: REDIS_PASSWORD # pragma: allowlist secret

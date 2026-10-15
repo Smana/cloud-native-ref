@@ -5,6 +5,7 @@ kind: Kustomization
 # agent-router: the Gateway and its data plane in agent-gateway; routes and
 # backends in agent-system (llm, mcp, sts), the only namespace its listeners
 # admit. Nothing reaches it until the cutover (phase F): no run CNP names it yet.
+# Budgets B1-B2 count on its own rate-limit server and Valkey, in shadow.
 resources:
   - gateway.yaml
   - parameters.yaml
@@ -14,3 +15,6 @@ resources:
   - llm.yaml
   - mcp.yaml
   - sts.yaml
+  - kvstore.yaml
+  - ratelimit.yaml
+  - policy-budgets.yaml

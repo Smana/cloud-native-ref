@@ -100,7 +100,7 @@ make it both correct and safe to roll out.
 | Step | Scope | State |
 |---|---|---|
 | SP4 PR 1 | The rate limit, the `KVStore`, and B3–B5 on `ai-gateway`, all in shadow | Built |
-| SP4 PR 2 | B1–B2 on `agent-router`, in shadow; the oidc listener that sets `x-ar-human` | Not built |
+| SP4 PR 2 | B1–B2 on `agent-router`, in shadow; the oidc listener that sets `x-ar-human` | B1–B2 built in shadow on agentgateway (ADR-0053), counting runs from its cutover; the oidc listener not built |
 | SP4 PR 7 | Enforcement | Not built |
 
 B3, the per-human budget, counts nothing until PR 2's oidc listener sets `x-ar-human`: today that

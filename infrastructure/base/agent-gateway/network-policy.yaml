@@ -1,6 +1,7 @@
 # Default deny in agent-gateway (`- {}` selects no peer: it switches enforcement
 # on and allows nothing), then the data plane's own peers and its phase C
-# upstreams. Phases D-E add rate limit, traces and the metrics scrape.
+# upstreams, then the rate-limit server. Phase E adds traces and the proxy scrape.
+# Valkey's own policy comes with its KVStore: 6379 from this namespace.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -113,4 +114,67 @@ spec:
       toPorts:
         - ports:
             - port: "8090"
+              protocol: TCP
+    # Budget checks (policy-budgets.yaml). Fail open: a dropped check admits the call.
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: agent-ratelimit
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-ratelimit
+  namespace: agent-gateway
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-ratelimit
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            gateway.networking.k8s.io/gateway-name: agent-router
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Kubelet probes on /healthcheck.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "19001"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: valkey
+            app.kubernetes.io/instance: xplane-agent-ratelimit-valkey
+      toPorts:
+        - ports:
+            - port: "6379"
               protocol: TCP

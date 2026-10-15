@@ -19,8 +19,12 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: gke-gcp-0-vars
+  # agent-secrets: External Secrets is up (the Valkey password) and the Z.ai key
+  # the backends read exists. crossplane-configuration: the KVStore XRD.
   dependsOn:
     - name: agentgateway
+    - name: agent-secrets
+    - name: crossplane-configuration
   # Flux evaluates healthCheckExprs only for resources named in healthChecks;
   # Gateway API v1 has no Ready condition, so the expression is what waits.
   healthChecks:
