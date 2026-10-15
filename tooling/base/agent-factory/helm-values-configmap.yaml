@@ -3,6 +3,11 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  # helm-controller upgrades the release when this ConfigMap changes, not on the
+  # next 30m interval: the chart (flux/sources) and this tag (tooling) reach the
+  # cluster through different Kustomizations, in either order (#2276).
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
   name: agent-factory-helm-values
   namespace: agent-system
 data:
