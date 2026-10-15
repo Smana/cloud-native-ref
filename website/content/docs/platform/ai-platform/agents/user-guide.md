@@ -220,8 +220,15 @@ the broker refuses once its cached answer expires.
 
 Link your GitHub account once: sign in at `https://auth.cloud.ogenki.io`, choose **GitHub**, and link
 it to your existing user. If you sign in with Google only, that flow ends on a password reset: ask an
-admin to add the link ([#2269](https://github.com/Smana/cloud-native-ref/issues/2269)). Until it
-exists, `roomctl rooms` lists nothing and says how to link.
+admin to add the link, which takes one command:
+
+```bash
+IDP_URL=https://auth.cloud.ogenki.io scripts/provision/zitadel-idp.sh link-github \
+  <your-zitadel-login> <your-github-login> --cluster aws-0 --cloud aws --apply
+```
+
+Until the link exists, `roomctl rooms` lists nothing and says how to link; once it does, the hint
+goes away when the broker's cached answer expires, within 5 minutes.
 
 ### The room page
 

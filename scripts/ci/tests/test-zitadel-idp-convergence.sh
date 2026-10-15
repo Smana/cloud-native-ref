@@ -183,6 +183,12 @@ if [[ "$url" == https://bao.test/v1/* ]]; then
     esac
     exit 0
 fi
+# A fake GitHub users API: a login is known when $S/github/<login> holds its JSON.
+if [[ "$url" == https://gh.test/users/* ]]; then
+    f="$S/github/${url##*/}"
+    [ -f "$f" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
+    cat "$f"; exit 0
+fi
 path="${url#"$IDP_URL"}"
 echo "$method $path" >> "$S/calls.log"
 # FAIL_ON is a glob over "METHOD /path": that request answers a curl-style 500.
@@ -241,6 +247,15 @@ case "$method $path" in
         id="tok-$(next)"
         upd pats.json --argjson d "$data" --arg i "$id" '. + [{id:$i,expirationDate:$d.expirationDate}]'
         echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
+    "POST /v2/users")
+        jq -c --argjson d "$data" '{result: [.[] | select(.loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id}]}' "$S/humans.json" ;;
+    "POST /v2/users/"*"/links/_search")
+        u="${path#/v2/users/}"; u="${u%%/*}"
+        jq -c --arg u "$u" '{result: [.[] | select(.user == $u) | del(.user)]}' "$S/links.json" ;;
+    "POST /v2/users/"*"/links")
+        u="${path#/v2/users/}"; u="${u%%/*}"
+        upd links.json --argjson d "$data" --arg u "$u" '. + [$d.idpLink + {user: $u}]'
+        echo '{}' ;;
     *) echo "fake curl: unhandled $method $path" >&2; exit 22 ;;
 esac
 SHIM
@@ -251,6 +266,8 @@ reset_state() {
     echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
+    echo '[]' > "$S/links.json"; echo '[{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
+    rm -rf "$S/github"; mkdir -p "$S/github"; echo '{"login":"Alice-GH","id":4242}' > "$S/github/alice-gh"
     echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
     echo '{"client_id":"google-id","client_secret":"gs"}' > "$S/store/zitadel-google-idp"
 }
@@ -529,5 +546,41 @@ reset_state; with_github_key
 out="$(rotate "$NEW_GH_SECRET" --apply)"
 check "rotate without IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "rotate without IdP: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+
+# 22. link-github: an admin links a Google-only user's GitHub account (#2269).
+link() { # <loginName> <githubLogin> [args]; same output contract as sync()
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" link-github "$1" "$2" --cluster aws-0 --cloud aws "${@:3}" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+converge
+out="$(link alice@ogenki.io alice-gh)"
+check "link dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "link dry run: plans the link with the numeric id" "1" "$(count 'would link alice@ogenki.io \(u-alice\) to GitHub Alice-GH \(4242\)' "$out")"
+check "link dry run: nothing written" "0" "$(grep -cvE '_search|^GET |^POST /v2/users$' "$S/calls.log" || true)"
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "link apply: the link the broker reads" '[{"idpId":"idp-github","userId":"4242","userName":"Alice-GH","user":"u-alice"}]' "$(jq -c . "$S/links.json")"
+: > "$S/calls.log"
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link converged: reported ok" "1" "$(count '^\[ok     \] alice@ogenki.io' "$out")"
+check "link converged: no second POST" "0" "$(calls '/links$')"
+echo '{"login":"mallory","id":666}' > "$S/github/mallory"
+out="$(link alice@ogenki.io mallory --apply)"
+check "link to another account: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link to another account: existing link kept" '["4242"]' "$(jq -c '[.[].userId]' "$S/links.json")"
+out="$(link bob@ogenki.io alice-gh --apply)"
+check "link unknown ZITADEL user: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+: > "$S/calls.log"
+out="$(link alice@ogenki.io nobody-here --apply)"
+check "link unknown GitHub login: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link unknown GitHub login: no ZITADEL user lookup" "0" "$(calls '^POST /v2/users$')"
+out="$(link alice@ogenki.io '../orgs' --apply)"
+check "link malformed GitHub login: refused" "rc=2" "$(tail -1 <<< "$out")"
+reset_state
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link without a GitHub IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link without a GitHub IdP: names sync" "1" "$(count 'run sync first' "$out")"
 
 exit "$fail"

@@ -99,6 +99,7 @@ The `X-Rooms-Access` header (R21) reads `unlinked` before `dev2` links GitHub (5
 | # | Check | Expected |
 |---|---|---|
 | 5a | `dev2`, GitHub **not** linked: `roomctl rooms` | The unlinked hint (link GitHub in your ZITADEL profile); no room listed |
+| 5a′ | `dev2` signs in with Google only: an admin runs `IDP_URL=https://auth.cloud.ogenki.io scripts/provision/zitadel-idp.sh link-github <dev2-login> <dev2-github> --cluster aws-0 --cloud aws --apply`, then `dev2` runs `roomctl rooms` after 5 minutes | `[linked ]` with GitHub's numeric id; the unlinked hint is gone and `X-Rooms-Access` reads `ok` (the self-service link ends on a password reset for a user without one, #2269) |
 | 5b | `dev2` links GitHub, has no read on `<private-repo>`: `roomctl rooms`, `roomctl status <private-room>`, and the page URL | The private room is not listed; `status` and the page answer 404, never 403 |
 | 5c | Grant `dev2` read on `<private-repo>` on GitHub; poll `roomctl rooms` every 30 s | The room appears within 5 minutes |
 | 5d | Open the room's WebSocket as `dev2` (the page, or `roomctl watch <room>`), then revoke `dev2`'s read | The socket is cut within TTL + 30 s (5 min 30 s) |
