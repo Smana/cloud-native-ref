@@ -10,8 +10,8 @@ spec:
   interval: 24h
   url: oci://cr.agentgateway.dev/charts/agentgateway-crds
   ref:
-    tag: "v1.6.0"
-    digest: sha256:dd7f965d43e54dffa9c95af089b6f762397a23c963a159ad6d4992f6c582292a
+    tag: "v2.2.1"
+    digest: sha256:a82eae1e4346aa4165edb380ef72551898e92a4c55182780c332c06d534054c8
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
