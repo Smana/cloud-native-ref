@@ -17,12 +17,11 @@ spec:
   prune: true
   interval: 1m0s
   timeout: 5m0s
-  # A sibling of clusters/aws-0/, never a sub-path: flux-system syncs aws-0/
-  # recursively and would apply the children around this umbrella.
+  # The children's directory in the ai-native-ref artifact (ADR-0057, split design H1).
   path: ./clusters/aws-0-agent-platform
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: OCIRepository
+    name: ai-native-ref
   # Agents run on frontier models through the ai-gateway controllers, with zero
   # GPUs: never llm-platform (C1).
   dependsOn:

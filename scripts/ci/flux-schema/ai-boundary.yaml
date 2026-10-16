@@ -45,17 +45,10 @@ substitution_keys:
   - region
   - storage_class
   - llm_hf_token_secret
-  - ai_native_ref_tag
 
-# H1: host sources a child may name. The ExternalArtifacts and flux-system are today's
-# sources, until S3 retargets the children to the ai-native-ref OCIRepository.
+# H1: host sources a child may name. Since S3 every child reads the pinned artifact.
 host_sources:
-  - GitRepository/flux-system
-  - ExternalArtifact/infra-artifact
-  - ExternalArtifact/security-artifact
-  - ExternalArtifact/observability-artifact
-  - ExternalArtifact/tooling-artifact
-  - ExternalArtifact/apps-artifact
+  - OCIRepository/ai-native-ref
   - HelmRepository/oauth2-proxy
 
 # H8: the one object an AI path defines that a host path reads.

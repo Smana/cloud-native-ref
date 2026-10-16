@@ -160,3 +160,56 @@ node_modules/
 # the render scripts, so CPython drops __pycache__ next to them on every run.
 __pycache__/
 *.py[cod]
+
+# The AI platform lives in Smana/ai-native-ref (ADR-0057, split S3). scripts/ci/ai-overlay.sh
+# (`task ai:overlay`) lays the pinned, cosign-verified artifact over these paths so CI renders
+# and links against it; they are never committed here. Keep in step with `ai_paths` in
+# scripts/ci/flux-schema/ai-boundary.yaml.
+/.ai-artifact/
+/clusters/*-ai-gateway/
+/clusters/*-llm-platform/
+/clusters/*-agent-platform/
+/infrastructure/*/agent-sandbox/
+/infrastructure/*/agent-runtime/
+/infrastructure/*/agent-router/
+/infrastructure/*/agent-mcp/
+/infrastructure/*/room-broker/
+/infrastructure/*/kueue/
+/infrastructure/*/kueue-queues/
+/infrastructure/*/envoy-gateway/
+/infrastructure/*/envoy-gateway-ratelimit/
+/infrastructure/*/envoy-ai-gateway/
+/infrastructure/*/llm-gateway/
+/infrastructure/*/vllm-semantic-router/
+/infrastructure/*/karpenter-nodepools-agents/
+/infrastructure/*/karpenter-nodepools-gpu/
+/infrastructure/*/runtimeclass-gvisor/
+/infrastructure/*/runtimeclass-nvidia/
+/infrastructure/*/agentgateway/
+/infrastructure/*/agent-gateway/
+/infrastructure/*/agentgateway-poc/
+/security/*/agent-policies/
+/security/*/agent-secrets/
+/security/*/octo-sts/
+/security/*/merge-gate-secrets/
+/security/*/epis-llm/
+/security/*/llm-models-preload/
+/tooling/*/agent-factory/
+/tooling/*/policy-bot/
+/tooling/*/promptfoo/
+/observability/*/agent-platform/
+/observability/base/runlore-factory/
+/apps/llm/
+/apps/base/ai/
+/apps/base/openwebui/
+/apps/*/llm/
+/flux/sources/gitrepo-agent-sandbox.yaml
+/flux/sources/ocirepo-agent-factory.yaml
+/flux/sources/ocirepo-envoy-ai-gateway.yaml
+/flux/sources/ocirepo-envoy-ai-gateway-crds.yaml
+/flux/sources/ocirepo-envoy-gateway.yaml
+/flux/sources/ocirepo-kueue.yaml
+/flux/sources/ocirepo-vllm-semantic-router.yaml
+/flux/sources/ocirepo-inferencepool.yaml
+/flux/sources/ocirepo-flux-operator-mcp.yaml
+/flux/sources/helmrepo-open-telemetry.yaml
