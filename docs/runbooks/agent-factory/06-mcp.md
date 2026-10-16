@@ -64,7 +64,9 @@ Expected: the three documentation tools `flux-operator-mcp__search_flux_docs`,
 `mcp-victoriametrics__documentation` and `mcp-victorialogs__documentation`, plus the implementer's
 room tools `room-broker__room_read`, `room-broker__room_post`, `room-broker__room_progress` and `room-broker__room_handoff` (on both
 routes since c6a56f78). No `get_kubernetes_*`, no `query`, no other tool. Tool names are namespaced by
-backend.
+backend: `server__tool` on Envoy's agent-router, which the probe calls, and `server_tool` on
+agentgateway, which runs call since AGW-6 (`room-broker_room_read`). The room bridge accepts both
+forms since agent-platform v0.12.0.
 
 Not yet observed live: whether the room broker lists its tools for a caller with no room, such as
 `agent-probe`. Three documentation tools and no `room_*` tool is also a pass; record which you saw.
