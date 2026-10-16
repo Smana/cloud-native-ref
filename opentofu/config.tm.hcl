@@ -100,7 +100,7 @@ globals {
   # custom manager in .github/renovate.json: the flux, helm-values and
   # kubernetes managers ignore opentofu/, so these were only ever bumped by hand.
   # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io
-  cilium_version = "1.20.2"
+  cilium_version = "1.20.3"
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-operator
   flux_operator_version = "0.60.0"
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-instance
