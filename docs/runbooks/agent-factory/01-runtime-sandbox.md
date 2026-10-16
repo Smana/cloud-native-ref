@@ -36,7 +36,7 @@ Crossplane's aggregate ClusterRole (`agent-sandbox:aggregate-to-crossplane`) act
 
 ```bash
 T0=$(date +%s)
-RUN=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
+RUN=$(task agent:run -- --role implementer --class public --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 NODE=$(kubectl get pod -n agents $RUN -o jsonpath='{.spec.nodeName}')
 kubectl get node "$NODE" -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{.lastTransitionTime}{"\n"}{end}'
@@ -183,7 +183,7 @@ kubectl delete pod -n agents $RUN --wait=true
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Failed --timeout=2m
 kubectl get agentrun -n agents $RUN -o jsonpath='{.status.phase} {.status.reason}{"\n"}'
 kubectl get sa -n agents $RUN 2>&1 | tail -1
-RUN2=$(task agent:run -- --role implementer --class public --minutes 20 --branch "$BRANCH" --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1)
+RUN2=$(task agent:run -- --role implementer --class public --branch "$BRANCH" --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1)
 kubectl wait -n agents agentrun/$RUN2 --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl get agentrun -n agents $RUN2 -o jsonpath='{.status.branch}{"\n"}'
 ```

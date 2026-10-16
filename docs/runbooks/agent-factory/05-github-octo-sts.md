@@ -38,8 +38,8 @@ Expected: `Ready=True`.
 ### Step 3 — start two runs, one per role
 
 ```bash
-IMPL=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1); echo "$IMPL"
-REVW=$(task agent:run -- --role reviewer --class public --minutes 20 --task-url "https://github.com/Smana/cloud-native-ref/pull/1" | tail -1); echo "$REVW"
+IMPL=$(task agent:run -- --role implementer --class public --task "Run 'sleep 600' in the terminal, then finish. Change nothing." | tail -1); echo "$IMPL"
+REVW=$(task agent:run -- --role reviewer --class public --task-url "https://github.com/Smana/cloud-native-ref/pull/1" | tail -1); echo "$REVW"
 kubectl wait -n agents agentrun/$IMPL agentrun/$REVW --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
 
