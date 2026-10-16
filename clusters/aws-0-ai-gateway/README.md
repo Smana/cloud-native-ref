@@ -1,13 +1,10 @@
-# AI gateway — opt-in Flux umbrella
+# AI gateway — Flux umbrella
 
-Aggregated by `../aws-0/ai-gateway.yaml`, which is **suspended by default** (programme OD-3, amended
-2026-09-26). CPU only. It is what lets agents run on frontier models with no GPU node.
-
-Resume it before `llm-platform` and `agent-platform`, which depend on it:
-
-```bash
-flux resume kustomization ai-gateway -n flux-system
-```
+Aggregated by `../aws-0/ai-gateway.yaml`, **live on aws-0** since 2026-10-16 (owner): the agent
+factory runs here. It was suspended by default (programme OD-3, amended 2026-09-26) until a suspended
+umbrella was found to freeze its children's own specs. gcp-0's twin stays suspended. CPU only. It is
+what lets agents run on frontier models with no GPU node; `llm-platform` and `agent-platform` depend
+on it.
 
 Nothing to seed per rebuild; `platform-llm-api-keys` is a one-time, per-account entry (below). The
 Z.ai key comes from `platform/runlore/credentials`, which OpenBao restores from its snapshot

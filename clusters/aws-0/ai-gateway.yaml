@@ -8,12 +8,14 @@
 # models with zero GPUs, which is impossible while these controllers live in
 # the GPU umbrella.
 #
-# Default: spec.suspend = true, so a default deploy stays LLM-free and needs
-# neither the Z.ai key nor the rate-limit password. `llm-platform` and
-# `agent-platform` depend on this one: resume it first.
+# Live on aws-0 (owner, 2026-10-16): the agent factory runs here. A suspended
+# umbrella froze its children's own specs at the revision it last applied while
+# their content followed main, so a child-spec change (phase H's agent-router
+# health check) never landed. gcp-0's twin stays suspended. `llm-platform` and
+# `agent-platform` depend on this one.
 #
-# Enable on this cluster:
-#   flux resume kustomization ai-gateway -n flux-system
+# Pause it on this cluster (Git sets it back on the next flux-system sync):
+#   flux suspend kustomization ai-gateway -n flux-system
 #
 # deletionPolicy Orphan: removing this object (a revert, a rename) must not
 # cascade into uninstalling Envoy Gateway and every Gateway on the cluster.
@@ -24,7 +26,7 @@ metadata:
   name: ai-gateway
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   prune: true
   deletionPolicy: Orphan
   interval: 5m0s

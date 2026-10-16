@@ -44,10 +44,8 @@ Kubernetes command must run before the third:
 # and exits 0).
 TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
-# Gate 2 — Kubernetes side, gateway layer. llm-platform depends on this
-# umbrella, so it must resume first or llm-platform stalls on
-# "dependency 'flux-system/ai-gateway' is not ready".
-flux resume kustomization ai-gateway -n flux-system
+# Gate 2 — Kubernetes side, gateway layer: live on aws-0 already
+# (clusters/aws-0/ai-gateway.yaml, spec.suspend: false). llm-platform depends on it.
 
 # Gate 3 — Kubernetes side, GPU models. The umbrella Flux Kustomization ships
 # suspended (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
@@ -67,8 +65,8 @@ The umbrella aggregates **5** child Flux Kustomizations under
 
 The gateway layer these children attach to (Envoy Gateway, the Envoy AI Gateway, the Semantic
 Router and the `ai-gateway` Gateway) is a separate umbrella, `ai-gateway`, under
-`clusters/aws-0-ai-gateway/`. It is CPU only and suspended by default: resume it before
-`llm-platform`, which depends on it.
+`clusters/aws-0-ai-gateway/`. It is CPU only and live on aws-0 (suspended on gcp-0);
+`llm-platform` depends on it.
 
 That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested

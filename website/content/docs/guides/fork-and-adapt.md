@@ -58,7 +58,7 @@ None of these are required for a working platform:
 | Component | Where | Note |
 |---|---|---|
 | Self-hosted LLM platform | `clusters/aws-0-llm-platform/`, `opentofu/aws/llm-platform/` | Already off by default behind three gates (its own two, plus the AI gateway umbrella below) — leave it alone rather than deleting it |
-| AI gateway (frontier routing) | `clusters/aws-0-ai-gateway/` | Suspended by default (OD-3), CPU only. Resume it before `llm-platform`; it needs the secrets in `clusters/aws-0-ai-gateway/README.md`, or the Gateway serves errors |
+| AI gateway (frontier routing) | `clusters/aws-0-ai-gateway/` | Live on aws-0 (the agent factory runs there), suspended on gcp-0; CPU only. It needs the secrets in `clusters/aws-0-ai-gateway/README.md`, or the Gateway serves errors. A fork that wants it off sets `spec.suspend: true` in `clusters/aws-0/ai-gateway.yaml` |
 | App Wizard | `apps/platform/app-wizard/` | Self-service UI; the `App` claim works without it |
 | RunLore | `observability/base/runlore/`, `observability/gcp-0/runlore/` (wired via `observability/gcp-0/kustomization.yaml`), `security/base/epis/runlore.yaml`, `observability/base/grafana-operator/{dashboards,folders}/runlore.yaml`, `observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml` | SRE agent; needs its own credentials |
 | Demo applications | `apps/demo/` | Reference claims |
