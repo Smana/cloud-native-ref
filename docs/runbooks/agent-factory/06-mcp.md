@@ -42,7 +42,7 @@ continuing.
 ### Step 2 — SC-08 (no API route from a run), quick recheck
 
 ```bash
-RUN=$(task agent:run -- --role implementer --class public --minutes 15 --task "Run 'sleep 300' in the terminal, then finish. Change nothing." | tail -1)
+RUN=$(task agent:run -- --role implementer --class public --task "Run 'sleep 300' in the terminal, then finish. Change nothing." | tail -1)
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 kubectl exec -n agents $RUN -c harness -- ls /var/run/secrets/kubernetes.io ; echo "exit=$?"
 kubectl delete agentrun -n agents $RUN --wait

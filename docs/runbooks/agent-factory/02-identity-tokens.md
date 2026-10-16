@@ -108,12 +108,14 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 ## Part B — R2 (token TTL) and SC-07 (revocation timings)
 
 Uses a short, real run so its tokens' TTL is small enough to observe expiry within this session
-(`expirationSeconds = max(600, maxMinutes × 60)`, R2).
+(`expirationSeconds = max(600, maxMinutes × 60)`, R2). The factory now sizes every run: a run started
+with `task agent:run` belongs to no task, carries no tier, and gets a fixed 120-minute limit
+(SP3 §R47), which the R2 floor of 600 s keeps observable.
 
-### Step 1 — start a 10-minute run and capture a token of each kind
+### Step 1 — start a run and capture a token of each kind
 
 ```bash
-REV=$(task agent:run -- --role implementer --class public --minutes 10 --task "Run 'sleep 500' in the terminal, then finish. Change nothing." | tail -1); echo "$REV"
+REV=$(task agent:run -- --role implementer --class public --task "Run 'sleep 500' in the terminal, then finish. Change nothing." | tail -1); echo "$REV"
 kubectl wait -n agents agentrun/$REV --for=jsonpath='{.status.phase}'=Running --timeout=15m
 GHT=$(kubectl exec -n agents $REV -c harness -- /usr/local/bin/git-credential-agent token)
 GWT=$(kubectl create token $REV -n agents --audience agent-router.implementer.public --duration 10m); ISSUED=$(date +%s)

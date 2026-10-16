@@ -15,7 +15,7 @@ than merely dropped at L4. See [README.md](README.md) for prerequisites; run
 ### Step 1 — start a run
 
 ```bash
-RUN=$(task agent:run -- --role implementer --class public --minutes 20 --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
+RUN=$(task agent:run -- --role implementer --class public --task "Run 'sleep 900' in the terminal, then finish. Change nothing." | tail -1); echo "$RUN"
 kubectl wait -n agents agentrun/$RUN --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
 
