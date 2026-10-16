@@ -42,10 +42,12 @@ thing that actually reaches the cluster:
 4. **Five gates on `.bundle/`**: `flux schema validate` (structure and
    `x-kubernetes-validations` CEL rules), `polaris audit` (workload
    best practices — privilege escalation, capabilities, resource limits,
-   image tags), `assert-ai-gateway.py` (cross-object AI-gateway invariants),
-   `assert-cloud-shape.py` (gcp-0's agent and AI-gateway renders are
+   image tags), `assert-cloud-shape.py` (gcp-0's agent and AI-gateway renders are
    GKE-shaped: the render fixtures once gave both clusters AWS values, so a
-   GCP-only break rendered clean), then the Alertmanager Slack template render.
+   GCP-only break rendered clean), `assert-zitadel-floor.py`, then the
+   Alertmanager Slack template render. The AI platform's own invariants run in
+   `ai-native-ref`; here its pinned artifact is overlaid first
+   (`scripts/ci/ai-overlay.sh`), so the render still covers the whole cluster.
 
 ## The two properties that make this gate real
 
