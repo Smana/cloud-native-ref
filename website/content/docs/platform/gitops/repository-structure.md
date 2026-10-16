@@ -47,10 +47,9 @@ Every domain Kustomization then points `sourceRef` at its own slice —
 Three kinds of Kustomization are the exception, necessarily: `flux-artifact-generators`
 (which applies the `ArtifactGenerator` above, so it has to read the
 `GitRepository` directly — the `ExternalArtifact`s don't exist until it
-runs) and the opt-in `ai-gateway` and
-`llm-platform` umbrellas, whose paths (`clusters/aws-0-ai-gateway/`,
-`clusters/aws-0-llm-platform/`, `clusters/gcp-0-llm-platform/`) fall outside
-every `copy.from` glob above.
+runs) and the three AI umbrellas (`ai-gateway`, `agent-platform`,
+`llm-platform`), which read the `ai-native-ref` `OCIRepository` rather than
+this repository at all.
 
 The `from: "@repo/<dir>/**"` / `to: "@artifact/<dir>/"` shape matters: a
 trailing `/` on the source instead of `/**` copies `<dir>/` into
@@ -69,7 +68,7 @@ sharding:
     - "apps"
 ```
 
-Three Kustomizations — `tooling`, `apps`, and the opt-in `apps-llm` — carry
+Two Kustomizations — `tooling` and `apps` (plus the AI platform's opt-in `apps-llm`) — carry
 `labels: sharding.fluxcd.io/key: apps` and propagate it to what they create
 via `spec.commonMetadata.labels`; everything else reconciles on the default,
 unsharded controller set. The isolation has one sharp edge: a `GitRepository`

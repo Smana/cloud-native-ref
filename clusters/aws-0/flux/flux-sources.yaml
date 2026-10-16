@@ -14,3 +14,10 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-aws-0-vars
+  # The AI platform source ships suspended (split design H1); aws-0's AI umbrellas are live, so
+  # its source must be too. In Git, not a manual resume, so a rebuild comes up the same (S3 D1).
+  patches:
+    - target:
+        kind: OCIRepository
+        name: ai-native-ref
+      patch: '[{"op":"replace","path":"/spec/suspend","value":false}]'

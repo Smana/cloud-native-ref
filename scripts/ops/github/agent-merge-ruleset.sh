@@ -6,15 +6,17 @@
 #
 # Idempotent: updates the ruleset carrying the JSON source's name when it exists.
 # usage: MERGER_APP_SLUG=<slug> agent-merge-ruleset.sh <owner/repo>
+#    or: MERGER_APP_ID=<id> agent-merge-ruleset.sh <owner/repo>
+# A private App answers 404 on /apps/<slug> to a user token: pass its id (App settings page).
 set -euo pipefail
 
-REPO="${1:?usage: MERGER_APP_SLUG=<slug> agent-merge-ruleset.sh <owner/repo>}"
+REPO="${1:?usage: MERGER_APP_SLUG=<slug> or MERGER_APP_ID=<id> agent-merge-ruleset.sh <owner/repo>}"
 # No apostrophe in this message: an unmatched ' inside ${VAR:?…} breaks bash's parsing.
-: "${MERGER_APP_SLUG:?set MERGER_APP_SLUG to the merger App slug}"
+[ -n "${MERGER_APP_ID:-}" ] || : "${MERGER_APP_SLUG:?set MERGER_APP_SLUG or MERGER_APP_ID for the merger App}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-merge.json"
 name="$(jq -er .name "$SOURCE")"
-merger="$(gh api "/apps/$MERGER_APP_SLUG" --jq .id)"
+merger="${MERGER_APP_ID:-$(gh api "/apps/$MERGER_APP_SLUG" --jq .id)}"
 renovate="$(gh api /apps/renovate --jq .id)"
 # 5, 2, 4 are GitHub's built-in admin, maintain and write RepositoryRoles: the humans who can push.
 body="$(jq --argjson m "$merger" --argjson rn "$renovate" '

@@ -46,6 +46,11 @@ spec:
     - apiVersion: pkg.crossplane.io/v1
       kind: Configuration
       name: crossplane-configuration-aws
+    # The XRDs themselves ship in -core, so the race above is closed only once
+    # it is Healthy too.
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      name: smana-crossplane-configuration-core
   healthCheckExprs:
     - apiVersion: pkg.crossplane.io/v1
       kind: Configuration

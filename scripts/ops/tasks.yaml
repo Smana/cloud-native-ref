@@ -56,9 +56,6 @@ tasks:
   github:agent-merge-gate-ruleset:
     desc: "POLICY_BOT_APP_SLUG=<slug>: apply the merge-gate ruleset (policy-bot: main from policy-bot's App) to one repository"
     cmds: ["{{.TASKFILE_DIR}}/github/agent-merge-gate-ruleset.sh {{.CLI_ARGS}}"]
-  github:factory-walkthrough:
-    desc: "Drive the dark factory's developer journey live (issue, label, review, close) and write the transcript the docs journey page is built from"
-    cmds: ["{{.TASKFILE_DIR}}/github/factory-walkthrough.sh {{.CLI_ARGS}}"]
   demo:load:
     desc: Run an image-gallery load-generator scenario in-cluster
     cmds: ["{{.TASKFILE_DIR}}/demo/load.sh {{.CLI_ARGS}}"]

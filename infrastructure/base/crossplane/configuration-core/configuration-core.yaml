@@ -1,0 +1,29 @@
+# The -core package, pinned here rather than left to the cloud packages'
+# `dependsOn` range (#2275). Crossplane v2.4 installs a missing dependency once
+# and never upgrades it: after a cloud pin moves past the installed core, the
+# cloud package goes Healthy=False with "existing package ...core@<old> is
+# incompatible with constraint >=<new>" until core is patched by hand. A range
+# also lets a fresh install resolve a newer core than the one tested.
+#
+# Same tag as the -aws and -gcp pins; scripts/ci/tests/test-crossplane-configuration-pins.sh
+# fails the build otherwise.
+#
+# The name is load-bearing. Crossplane's dependency resolver finds an installed
+# dependency by spec.package, whatever the object is called, and creates a
+# missing one as smana-crossplane-configuration-core (the registry path as a DNS
+# label), ignoring AlreadyExists. Using that exact name makes Flux adopt the
+# object Crossplane already created; any other name gives two Configurations for
+# one package.
+#
+# prune: disabled because this object owns, through its revision, every XRD the
+# platform's claims are instances of. Deleting it cascades to the XRDs, their
+# CRDs, and every claim (#1774 / #1778). Removing it from Git, or moving it
+# between Kustomizations, must leave it on the cluster.
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: smana-crossplane-configuration-core
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  package: ghcr.io/smana/crossplane-configuration-core:v0.9.13

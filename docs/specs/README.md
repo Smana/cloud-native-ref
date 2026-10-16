@@ -10,7 +10,7 @@ top.
 
 It was retired on **2026-08-18** in favour of the
 [Superpowers](https://github.com/obra/superpowers) plugin, which had been the workflow in
-practice for several months. See [`CLAUDE.md`](../../CLAUDE.md) → *Development Workflow* for the
+practice for several months. See [`docs/superpowers/AGENTS.md`](../superpowers/AGENTS.md) for the
 current flow, and [`docs/superpowers/`](../superpowers/) for its artifacts.
 
 ## What is here

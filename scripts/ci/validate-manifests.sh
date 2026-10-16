@@ -6,10 +6,11 @@
 #   1. check every Flux Kustomization that applies ${vars} declares postBuild, and
 #      that no reference crosses the host/AI boundary outside the host contract
 #   2. parse the PromQL inside every repo-authored VMRule
-#   3. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
+#   3. generate the schema catalog (XRDs, Envoy AI Gateway and agentgateway CRDs, ...)
 #   4. render the repo into a bundle (kustomize + envsubst + helm template)
-#   5. gate the bundle: flux schema validate, polaris audit, AI-gateway invariants,
-#      gcp-0 cloud shape, ZITADEL version floor
+#   5. gate the bundle: flux schema validate, polaris audit, gcp-0 cloud shape,
+#      ZITADEL version floor (the AI-gateway and agentgateway invariants run in
+#      ai-native-ref since AI split S3; run scripts/ci/ai-overlay.sh first)
 #   6. render the Alertmanager Slack notification templates against fixtures
 set -euo pipefail
 
@@ -71,17 +72,14 @@ polaris audit \
   --set-exit-code-on-danger \
   --only-show-failed-tests
 
-echo "==> [5/6] Gate 3 — AI gateway invariants (budget rules, identity-header strip, agent-router listener pinning, MCP token, /v1/models guard)"
-python3 scripts/ci/flux-schema/assert-ai-gateway.py "${BUNDLE_DIR}"
-
-echo "==> [5/6] Gate 4 — gcp-0 cloud shape"
+echo "==> [5/6] Gate 3 — gcp-0 cloud shape"
 # gcp-0's agent and AI-gateway renders must be GKE-shaped (GCP parity GP-14).
 python3 scripts/ci/flux-schema/assert-cloud-shape.py "${BUNDLE_DIR}"
 
-echo "==> [5/6] Gate 5 — ZITADEL version floor (ADR-0056)"
+echo "==> [5/6] Gate 4 — ZITADEL version floor (ADR-0056)"
 python3 scripts/ci/flux-schema/assert-zitadel-floor.py "${BUNDLE_DIR}"
 
-echo "==> [6/6] Gate 6 — Alertmanager Slack templates render"
+echo "==> [6/6] Gate 5 — Alertmanager Slack templates render"
 ./scripts/ci/validate-alertmanager-templates.sh
 
 echo "==> All gates passed"

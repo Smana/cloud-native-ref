@@ -119,7 +119,8 @@ Not one of the three prerequisites above — **only needed if the LLM platform i
 (`clusters/gcp-0/llm-platform.yaml`, `spec.suspend: true` by default). A plain `gcp-0` deploy never
 reads this secret.
 
-`apps/base/ai/llm/hf-token-externalsecret.yaml` extracts a HuggingFace access token from GCP
+[`apps/base/ai/llm/hf-token-externalsecret.yaml`](https://github.com/Smana/ai-native-ref/blob/main/apps/base/ai/llm/hf-token-externalsecret.yaml)
+(in ai-native-ref) extracts a HuggingFace access token from GCP
 Secret Manager, at the key each cluster's vars ConfigMap supplies
 (`llm_hf_token_secret` in `opentofu/gcp/gke/configure/kubernetes.tf`). Like the token on `aws-0`,
 it is **not created by OpenTofu on either cloud** — grepping all of `opentofu/` for `hf_token`

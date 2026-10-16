@@ -29,13 +29,14 @@ The wizard clones **two** repositories at startup: this one (for the `App`
 schema, stacks, and its own config) and
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
-`fetch-crossplane-configuration` init container — currently `v0.9.8`, the
+`fetch-crossplane-configuration` init container — currently `v0.9.13`, the
 same tag pinned in
 `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
 from the package the cluster actually serves, the form and its live
-validation describe a schema the cluster doesn't run. **Bump both together**
-whenever the Configuration package pin changes.
+validation describe a schema the cluster doesn't run.
+`scripts/ci/tests/test-crossplane-configuration-pins.sh` fails the build when
+the wizard's tag and the three package pins disagree.
 {{< /callout >}}
 
 ## Option A — App Wizard (assisted)
