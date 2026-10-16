@@ -76,8 +76,14 @@ block below.
 
 ```bash
 openssl ecparam -genkey -name secp384r1 -out root-ca-key.pem
-openssl req -x509 -new -nodes -key root-ca-key.pem -sha384 -days 3653 -out root-ca.pem
+openssl req -x509 -new -nodes -key root-ca-key.pem -sha384 -days 3653 \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" -out root-ca.pem
 ```
+
+RFC 5280 requires `keyUsage` on a CA that signs certificates, and strict clients
+(Python ≥ 3.13, `openssl verify -x509_strict`) reject a root without it. The
+current root predates this flag and lacks it; its rotation is tracked in
+[#2350](https://github.com/Smana/cloud-native-ref/issues/2350).
 
 Its private key never leaves that medium. A **new intermediate per lineage** is
 signed there too, and only the intermediate's own certificate and key come
