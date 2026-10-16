@@ -35,7 +35,7 @@ Expected: `Ready`.
 ### Step 2 — the 401/403 matrix and header-forgery attribution (SC-05)
 
 ```bash
-R=http://agent-router.envoy-gateway-system.svc.cluster.local
+R=http://agent-router.agent-gateway.svc.cluster.local
 p() { kubectl exec -n agents agent-probe -c probe -- sh -c "$1"; }
 p "curl -s -o /dev/null -w 'none→public %{http_code}\n' $R:8080/v1/models"
 p "curl -s -o /dev/null -w 'sts→public %{http_code}\n' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/sts/token)\" $R:8080/v1/models"
@@ -51,27 +51,30 @@ p "curl -s -o /dev/null -w 'self-signed→public %{http_code}\n' -H 'Authorizati
 p "curl -s -o /dev/null -w 'forged-header %{http_code}\n' -H 'x-ar-agent: agent:forged' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/public/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}]}' $R:8080/v1/chat/completions"
 ```
 
-Expected: `none→public 401`, `sts→public 403`, `internal→public 403`, `public→internal 404`,
-`public→public 404`, `self-signed→public 401`, `forged-header 200`.
+Expected on agentgateway: `none→public 401`, `sts→public 401`, `internal→public 401`,
+`public→internal 401` (verify on next run: not yet recorded on the real Gateway), `public→public 404`,
+`self-signed→public 401`, `forged-header 200`.
 
-A valid token gets `404` on `/v1/models`: the list route attaches only to the `public` listener and
-answers 404 behind its JWT policy (#2108), and the `internal` listener has no such route. The
-round-2 auth bypass on this path is history (README, Platform findings).
+A wrong audience is now a `401`, not Envoy's `403`: each listener's `jwtAuthentication` lists only
+its own audiences (`infrastructure/base/agent-gateway/policies-identity.yaml`). The `403` is kept for
+a correct-audience token whose `sub` is outside namespace `agents` (the listener's `authorization`
+rule), which the probe cannot mint; `scripts/ops/k8s/agentgateway-poc-live-check.sh --gateway real`
+proves it (L8). A valid token gets `404` on `/v1/models` with the body
+`{"error":"model listing is not served on agent-router"}` (`agentgateway-models-list` in
+`infrastructure/base/agent-gateway/llm.yaml`).
 
-Then confirm the forged `x-ar-agent` header never survives (it is stripped before authentication and
-re-set from the verified `sub`):
+Then confirm the forged `x-ar-agent` header never survives (`strip-identity-headers` removes it
+before routing, and each listener policy re-sets it from the verified `jwt.sub`):
 
 ```bash
 curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
-  'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.path:~"chat/completions" | fields log.path, log.x_ar_agent, log.response_code, log.upstream_cluster'
+  'query=kubernetes.pod_namespace:"agent-gateway" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:"agent-router" _time:15m | unpack_json | log.http.path:~"chat/completions" | fields log.http.path, log.x_ar_agent, log.http.status, log.reason, log.route'
 ```
 
-The access log records the post-rewrite path: rejected calls log `/v1/chat/completions`, the accepted
-one `/api/paas/v4/chat/completions`. Hence the regex match.
-
 Expected: the accepted row's `log.x_ar_agent` is exactly `system:serviceaccount:agents:agent-probe`,
-never `agent:forged`; rejected rows carry no `x_ar_agent`. `log.upstream_cluster` names the route
-that backs Z.ai, `httproute/agent-system/agent-models/rule/0`.
+never `agent:forged`; rejected rows carry `log.reason` `JwtAuth` and no `x_ar_agent`. `log.route`
+names the Z.ai route, `agentgateway-models` in `agent-system` (verify on next run: the exact value
+format of the log field is not recorded).
 
 **What this proves:** SC-05 — 401 for missing/self-signed tokens, 403 for a valid token of the wrong
 audience, and the identity header is always server-derived, never client-supplied.
@@ -141,7 +144,7 @@ until ! kubectl get pod -n agents $REV >/dev/null 2>&1; do sleep 2; done
 echo "pod gone after $(( $(date +%s) - T0 )) s"
 until [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHT" https://api.github.com/installation/repositories)" = 401 ]; do sleep 5; done
 echo "GitHub token dead after $(( $(date +%s) - T0 )) s"
-until [ "$(kubectl exec -n agents agent-probe -c probe -- curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GWT" http://agent-router.envoy-gateway-system.svc.cluster.local:8080/v1/models)" = 401 ]; do sleep 15; done
+until [ "$(kubectl exec -n agents agent-probe -c probe -- curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GWT" http://agent-router.agent-gateway.svc.cluster.local:8080/v1/models)" = 401 ]; do sleep 15; done
 echo "copied gateway token dead $(( $(date +%s) - ISSUED )) s after issue"
 unset GHT GWT
 ```
@@ -163,6 +166,9 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 ```
 
 ## Results
+
+> Every round below predates phase H (#2429): it ran against Envoy's agent-router in
+> `envoy-gateway-system`, which answered a wrong audience with `403` and logged `log.response_code`.
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 

@@ -116,6 +116,10 @@ structural, using controllers the platform already runs.
 `infrastructure/base/agent-router/`, `infrastructure/base/agent-runtime/identity-proxy-configmap.yaml`,
 Kyverno `agent-audience-reservation`. Secrets through `security/base/agent-secrets/` only.
 
+2026-10-16: the agent router runs on agentgateway (ADR-0053); the listeners and identity rules now live
+in `infrastructure/base/agent-gateway/gateway.yaml` and `policies-identity.yaml`, and Envoy's router
+was removed in #2429.
+
 ---
 
 ## Re-check trigger (2026-10-01)

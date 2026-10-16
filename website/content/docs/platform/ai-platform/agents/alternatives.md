@@ -48,7 +48,7 @@ flowchart TB
     K4["kagent sessions: single owner"]
   end
   subgraph L3["Gateway: models, tools, per-run identity and budgets"]
-    F3["agentgateway (chosen) · Agent Router (today)"]
+    F3["agentgateway (chosen, live since 2026-10-16)"]
   end
   subgraph L2["Harness: the agent loop"]
     F2["OpenHands (chosen)"]
@@ -68,7 +68,7 @@ flowchart TB
 |---|---|---|---|
 | **Runtime** | [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) + [gVisor](https://gvisor.dev), one pod per run | Agent Substrate (with google/ax or kagent), Kata/Firecracker, OpenHands Enterprise, Coder, E2B/Daytona | Open source; runs on EKS and GKE, on spot nodes; each run gets its own ServiceAccount and Cilium policy, so the constitution's rules apply per run. Kata/Firecracker needs bare-metal hosts or nested virtualisation: the smallest AWS metal host has 128 vCPU, about $1.5/h spot or $5.4/h on demand ([Vantage](https://instances.vantage.sh/aws/ec2/c6i.metal)), against a few cents an hour for a run's spot node. An agent step mostly waits on the model (about 11 s a reply), so gVisor's system-call overhead does not show |
 | **Harness** | [OpenHands](https://github.com/OpenHands/software-agent-sdk) agent-server | Headless Claude Code, kagent's harnesses, ax's Antigravity agent | Open source, headless (an HTTP API), works with any OpenAI-compatible model, supports MCP. Claude Code is proprietary; Antigravity is Gemini-only |
-| **Gateway** | [agentgateway](https://agentgateway.dev) (decided 2026-10-01; [Agent Router](https://theagentrouter.ai) runs today) | Agent Router 1.1 on Envoy Gateway | See [gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}}) |
+| **Gateway** | [agentgateway](https://agentgateway.dev) (decided 2026-10-01, live since 2026-10-16) | Agent Router 1.1 on Envoy Gateway | See [gateways]({{< relref "/docs/platform/ai-platform/gateways.md" >}}) |
 | **Rooms** | A log we own: room-broker on PostgreSQL | OpenHands shared conversations, ACP, A2A through a gateway, Valkey Streams, NATS JetStream, ax or Substrate as the session layer, kagent sessions | Two different questions. **Protocols** (OpenHands shared conversations, ACP, A2A, ax or Substrate, kagent sessions): none records who said what among several people and agents, or who may approve. **Brokers** (Valkey Streams, NATS JetStream): an event is written to Postgres first, which fixes its place in the log, then announced with `LISTEN/NOTIFY`. At a few events per second a second stateful system adds nothing, and delivering live before the write would let watchers see events the audit log never records |
 | **Factory** | A small custom controller + [Kueue](https://kueue.sigs.k8s.io) | Argo Workflows, Tekton, Temporal, a Crossplane `Task` composition, gh-aw, OpenAI's Symphony specification ([below](#openai-symphony)) | The factory's state lives in Kubernetes objects and GitHub. Waiting hours on CI or a review is a periodic re-check of that state, so a restart loses nothing. Budgets and the kill switch are domain logic any engine would still need. Argo has no budget concept and a Crossplane composition has no timers. Temporal suits workflows whose state lives in code, and is the one to watch ([below](#temporal)) |
 | **Merge gate** | [policy-bot](https://github.com/palantir/policy-bot) behind a repository ruleset | Required reviews, rulesets alone, a custom check, Prow/tide, Mergify, Kodiak | The policy lives in the repository and is reviewable, and the right to merge sits with one dedicated App |
