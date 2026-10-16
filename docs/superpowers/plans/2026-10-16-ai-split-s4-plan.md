@@ -5,13 +5,13 @@
 > syntax for tracking.
 
 **Goal:** the AI docs (section, ADRs, runbooks, specs, plans, diagrams) live in `Smana/ai-native-ref`
-with their history and publish on `ainref.ogenki.io`; `cnref.ogenki.io` keeps one AI overview page and
+with their history and publish on `airef.ogenki.io`; `cnref.ogenki.io` keeps one AI overview page and
 an index row per moved ADR, and both sites link to each other.
 
 **Conclusion first:** S4 is three PRs and two owner clicks. The ai-native-ref PR (history import,
 site, CI, a deploy workflow that stays off) merges on green. The 👤 steps (a DNS record, the Pages
 source, one repository variable) switch the deploy on. Only then does the cnref cleanup PR merge:
-it removes published pages from the live site, so it waits for `ainref.ogenki.io` to answer.
+it removes published pages from the live site, so it waits for `airef.ogenki.io` to answer.
 
 **Spec:** `docs/superpowers/specs/2026-10-12-ai-platform-split-design.md` §1 (docs rows), §5, §6 S4,
 §8 defaults. **Follows:** S2 plan D4, S3 plan D4 (overlay). ADR-0057.
@@ -30,7 +30,7 @@ it removes published pages from the live site, so it waits for `ainref.ogenki.io
 
 | # | Decision | Recommended default | Why |
 |---|---|---|---|
-| D1 | URL layout on `ainref.ogenki.io` | **Same paths** (`/docs/platform/ai-platform/…`, `/docs/decisions/00NN-…/`) | `filter-repo` keeps paths, so no relref changes inside the moved set and cnref's link-outs are a host swap |
+| D1 | URL layout on `airef.ogenki.io` | **Same paths** (`/docs/platform/ai-platform/…`, `/docs/decisions/00NN-…/`) | `filter-repo` keeps paths, so no relref changes inside the moved set and cnref's link-outs are a host swap |
 | D2 | Which specs and plans move | **AI-only ones** (47); the split design and the S0–S4 plans **stay** | The split changes cnref and owns the host contract; ai-native-ref's `HOST-CONTRACT.md` is the copy |
 | D3 | ADR-0057 | **Moves** (design §1), its cnref row links out | The decision record of the AI repository; ai-native-ref continues numbering from 0057 |
 | D4 | Doc paths naming host files | ai-native-ref's `verify-doc-paths.sh` accepts a path present in its tree **or** in `.host/` (`HOST_REF`) | The moved pages name ~host paths (`opentofu/…`, `security/…`); `.host` is already checked out by CI |
@@ -61,7 +61,7 @@ Cross-references measured at `DOCS_FROM`:
 |---|---|---|
 | Moved page `relref` → host page | 9 in 6 pages | Absolute `https://cnref.ogenki.io/…` (ai-native-ref PR) |
 | Moved doc link → host file | 12 in 8 files | Absolute `https://github.com/Smana/cloud-native-ref/blob/main/…` |
-| Host `relref` → moved page | 21 in 2 pages (`decisions/_index.md`, `gitops/_index.md`) | Absolute `https://ainref.ogenki.io/…` (cleanup PR) |
+| Host `relref` → moved page | 21 in 2 pages (`decisions/_index.md`, `gitops/_index.md`) | Absolute `https://airef.ogenki.io/…` (cleanup PR) |
 | Host link → moved file | 18 in 7 files (`docs/architecture/README.md` 10, `cloud-support.md`, `gcp.md`, `clusters/AGENTS.md`, `clusters/CLAUDE.md`, split design 2) | Absolute URL to the AI site or ai-native-ref on GitHub |
 
 ---
@@ -86,8 +86,8 @@ Cross-references measured at `DOCS_FROM`:
 |---|---|---|
 | `website/{go.mod,go.sum,i18n,data,layouts,assets}` | copied once from cnref `DOCS_FROM` | `go.mod` module `github.com/Smana/ai-native-ref/website`; `data/{stack,repo-tree}.yaml` trimmed to AI |
 | `website/assets/css/custom.css` | copied | `--primary-hue: 320deg` (both themes), nothing else |
-| `website/static/{favicons,images/ogenki-mark*.svg,CNAME}` | copied | `CNAME` = `ainref.ogenki.io` |
-| `website/hugo.yaml` | copied | `baseURL: https://ainref.ogenki.io/`, title "AI Native Reference", menu: AI platform, Decisions, **Cloud Native Ref ↗**, GitHub, Search; `editURL` to ai-native-ref; no constitution mount (links to cnref's page) |
+| `website/static/{favicons,images/ogenki-mark*.svg,CNAME}` | copied | `CNAME` = `airef.ogenki.io` |
+| `website/hugo.yaml` | copied | `baseURL: https://airef.ogenki.io/`, title "AI Native Reference", menu: AI platform, Decisions, **Cloud Native Ref ↗**, GitHub, Search; `editURL` to ai-native-ref; no constitution mount (links to cnref's page) |
 | `website/content/{_index.md,docs/_index.md,docs/decisions/_index.md,docs/platform/_index.md}` | new | Home, the AI ADR index (17 rows, numbering continues at 0058), a platform stub pointing at the AI section |
 | `website/content/docs/host-contract.md` | new | Links to `HOST-CONTRACT.md` and back to `cnref.ogenki.io` (a cross-site link) |
 | Moved pages | imported | relrefs to host pages → absolute cnref URLs (9) |
@@ -110,11 +110,11 @@ Cross-references measured at `DOCS_FROM`:
 
 ### Task S4.5 👤: hosting and DNS
 
-- [ ] **Step 1 👤 DNS (Namecheap, `ogenki.io` Advanced DNS):** `CNAME  ainref  smana.github.io.`, TTL automatic. Check: `dig +short ainref.ogenki.io` → `smana.github.io.` then the four `185.199.10{8..11}.153`.
-- [ ] **Step 2 👤 Pages source:** `gh api -X POST repos/Smana/ai-native-ref/pages -f build_type=workflow` (or Settings → Pages → Source: GitHub Actions); then `gh api -X PUT repos/Smana/ai-native-ref/pages -f cname=ainref.ogenki.io`.
+- [ ] **Step 1 👤 DNS (Namecheap, `ogenki.io` Advanced DNS):** `CNAME  airef  smana.github.io.`, TTL automatic. Check: `dig +short airef.ogenki.io` → `smana.github.io.` then the four `185.199.10{8..11}.153`.
+- [ ] **Step 2 👤 Pages source:** `gh api -X POST repos/Smana/ai-native-ref/pages -f build_type=workflow` (or Settings → Pages → Source: GitHub Actions); then `gh api -X PUT repos/Smana/ai-native-ref/pages -f cname=airef.ogenki.io`.
 - [ ] **Step 3 👤 switch on:** `gh variable set PAGES_ENABLED --repo Smana/ai-native-ref --body true`, then `gh workflow run docs.yml --repo Smana/ai-native-ref`.
 - [ ] **Step 4 👤 HTTPS:** once the certificate is issued (minutes to an hour): `gh api -X PUT repos/Smana/ai-native-ref/pages -F https_enforced=true`.
-  Check: `curl -sI https://ainref.ogenki.io/ | head -1` → `HTTP/2 200`.
+  Check: `curl -sI https://airef.ogenki.io/ | head -1` → `HTTP/2 200`.
 
 No token is needed: Pages deploys with the workflow's `id-token` and `pages: write`.
 
@@ -123,7 +123,7 @@ No token is needed: Pages deploys with the workflow's `id-token` and `pages: wri
 | Where | Change |
 |---|---|
 | `website/content/docs/platform/ai-platform/` | 13 pages removed; `_index.md` rewritten: what the AI platform is, the four `flux resume` commands, links out |
-| 17 AI ADRs | Removed; `decisions/_index.md` keeps each row, linked to `https://ainref.ogenki.io/docs/decisions/<slug>/` |
+| 17 AI ADRs | Removed; `decisions/_index.md` keeps each row, linked to `https://airef.ogenki.io/docs/decisions/<slug>/` |
 | `docs/platform/_index.md`, `gitops/_index.md` | Cards and relrefs into moved pages → absolute URLs |
 | `hugo.yaml` menu | "AI platform ↗" beside GitHub |
 | 10 SVGs, 4 drawio, runbooks, 47 specs and plans | Removed; host links to them → ai-native-ref URLs |
@@ -131,19 +131,19 @@ No token is needed: Pages deploys with the workflow's `id-token` and `pages: wri
 | `docs-check.yml` overlay step | **Kept only if** host pages still backtick AI manifest paths after the move (`verify-doc-paths.sh` without the overlay tells); the manifest overlay in `ci.yaml` stays (render) |
 
 - [ ] **Step 1:** `hugo --gc --minify` rc 0, `validate-links.sh` rc 0, `verify-doc-paths.sh` rc 0 (after `task ai:overlay`).
-- [ ] **Step 2:** PR body opens with **DO NOT MERGE until ainref.ogenki.io serves and the cross-site links answer 200**; CI green; 👤 merges after S4.7.
+- [ ] **Step 2:** PR body opens with **DO NOT MERGE until airef.ogenki.io serves and the cross-site links answer 200**; CI green; 👤 merges after S4.7.
 
 ### Task S4.7 🤖: cross-site link check — the S4 gate
 
 ```bash
 # every absolute link from one site to the other, from both built trees
-grep -rhoE 'https://(ainref|cnref)\.ogenki\.io/[^")# ]*' <cnref>/website/content <anr>/website/content \
+grep -rhoE 'https://(airef|cnref)\.ogenki\.io/[^")# ]*' <cnref>/website/content <anr>/website/content \
   <cnref>/website/hugo.yaml <anr>/website/hugo.yaml | sort -u > xlinks.txt
 while read -r u; do printf '%s %s\n' "$(curl -s -o /dev/null -w '%{http_code}' -L "$u")" "$u"; done < xlinks.txt | grep -v '^200 '
 ```
 
-Expected: no output (every link 200). Run after S4.5 (ainref live) for cnref → ainref links, and
-after the cleanup PR merges and `docs.yml` deploys for ainref → cnref links into the overview page.
+Expected: no output (every link 200). Run after S4.5 (airef live) for cnref → airef links, and
+after the cleanup PR merges and `docs.yml` deploys for airef → cnref links into the overview page.
 
 | Gate | Both repositories |
 |---|---|
@@ -159,14 +159,14 @@ after the cleanup PR merges and `docs.yml` deploys for ainref → cnref links in
 | Stage | Undo |
 |---|---|
 | ai-native-ref PR merged, site off | Nothing live; `git revert -m 1 <merge>` removes the import |
-| ainref live, cleanup not merged | cnref still serves the full AI section: unset `PAGES_ENABLED`, delete the DNS record |
+| airef live, cleanup not merged | cnref still serves the full AI section: unset `PAGES_ENABLED`, delete the DNS record |
 | Cleanup merged | `git revert` the cleanup PR; `docs.yml` republishes the AI pages on cnref within one run |
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| cnref pages removed before ainref serves | Cleanup PR is DO NOT MERGE until S4.7's first half passes |
+| cnref pages removed before airef serves | Cleanup PR is DO NOT MERGE until S4.7's first half passes |
 | Cross-site links rot (no relref across sites) | Few, all absolute; S4.7 lists them from source, not by hand |
 | Moved pages name host paths that later move | ai-native-ref's `verify-doc-paths.sh` checks them against `HOST_REF`; each Renovate bump re-checks |
 | Docs edited on cnref between `DOCS_FROM` and the cleanup merge | `git log DOCS_FROM..origin/main -- <105 paths>` before merge; port with S2.7 step 4's recipe |

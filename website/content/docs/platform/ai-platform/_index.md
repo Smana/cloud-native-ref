@@ -1,7 +1,7 @@
 ---
 title: AI Platform
 weight: 50
-description: "Model serving and the agent factory, published on their own site: ainref.ogenki.io. This platform hosts them, off by default."
+description: "Model serving and the agent factory, published on their own site: airef.ogenki.io. This platform hosts them, off by default."
 ---
 
 Two halves, one platform. **Serving** runs open-weights models on the cluster's own GPUs behind an
@@ -11,8 +11,8 @@ run that opens a pull request, under its own identity.
 {{< callout type="info" >}}
 **The AI platform has its own repository and site.** Its manifests, ADRs, runbooks and docs live in
 [`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref) and publish on
-[ainref.ogenki.io](https://ainref.ogenki.io/docs/platform/ai-platform/). This platform pulls it as one
-signed, version-pinned Flux artifact ([ADR-0057](https://ainref.ogenki.io/docs/decisions/0057-ai-platform-own-repository/)).
+[airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/). This platform pulls it as one
+signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/)).
 {{< /callout >}}
 
 ## Turning it on
@@ -33,7 +33,7 @@ namespaces, OpenBao mounts) is the
 [host contract](https://github.com/Smana/ai-native-ref/blob/main/HOST-CONTRACT.md).
 
 {{< cards >}}
-  {{< card link="https://ainref.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the agent factory, status and roadmap." >}}
-  {{< card link="https://ainref.ogenki.io/docs/decisions/" title="AI decisions ↗" icon="external-link" subtitle="The AI ADRs, numbers unchanged." >}}
+  {{< card link="https://airef.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the agent factory, status and roadmap." >}}
+  {{< card link="https://airef.ogenki.io/docs/decisions/" title="AI decisions ↗" icon="external-link" subtitle="The AI ADRs, numbers unchanged." >}}
   {{< card link="https://github.com/Smana/ai-native-ref" title="ai-native-ref ↗" icon="github" subtitle="Manifests, runbooks, specs and plans." >}}
 {{< /cards >}}
