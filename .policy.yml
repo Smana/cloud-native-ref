@@ -50,6 +50,11 @@ approval_rules:
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^flux/sources/ocirepo-ai-native-ref\.yaml$'  # the AI platform pin (AI split S3, design §4)
+          - '^clusters/[^/]+/(ai-gateway|llm-platform)\.yaml$'  # the other two umbrellas: sourceRef and path pick what applies
+          - '^clusters/[^/]+/flux/flux-sources\.yaml$'  # aws-0 un-suspends the pin here
+          - '^\.gitignore$'  # keeps the AI paths out of this tree
+          - '^scripts/ci/ai-overlay\.sh$'  # what CI renders the AI paths from
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing|agentgateway|agent-gateway)/'
           - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agent-gateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'
@@ -96,6 +101,11 @@ approval_rules:
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^flux/sources/ocirepo-ai-native-ref\.yaml$'  # the AI platform pin (AI split S3, design §4)
+          - '^clusters/[^/]+/(ai-gateway|llm-platform)\.yaml$'  # the other two umbrellas: sourceRef and path pick what applies
+          - '^clusters/[^/]+/flux/flux-sources\.yaml$'  # aws-0 un-suspends the pin here
+          - '^\.gitignore$'  # keeps the AI paths out of this tree
+          - '^scripts/ci/ai-overlay\.sh$'  # what CI renders the AI paths from
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing|agentgateway|agent-gateway)/'
           - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agent-gateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'
@@ -138,6 +148,11 @@ approval_rules:
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
           - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^flux/sources/ocirepo-ai-native-ref\.yaml$'  # the AI platform pin (AI split S3, design §4)
+          - '^clusters/[^/]+/(ai-gateway|llm-platform)\.yaml$'  # the other two umbrellas: sourceRef and path pick what applies
+          - '^clusters/[^/]+/flux/flux-sources\.yaml$'  # aws-0 un-suspends the pin here
+          - '^\.gitignore$'  # keeps the AI paths out of this tree
+          - '^scripts/ci/ai-overlay\.sh$'  # what CI renders the AI paths from
           - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing|agentgateway|agent-gateway)/'
           - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agent-gateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
           - '^infrastructure/aws-0/agent-model-routing/'

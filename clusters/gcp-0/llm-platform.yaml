@@ -43,11 +43,8 @@ spec:
   # The GPU fleet attaches to the ai-gateway Gateway and its controllers.
   dependsOn:
     - name: ai-gateway
-  # MUST be a sibling of clusters/gcp-0/ (not a sub-path), otherwise the
-  # `flux-system` Kustomization that syncs `clusters/gcp-0/` recursively
-  # would auto-discover the child Flux Kustomizations and apply them
-  # directly — bypassing the umbrella's `spec.suspend: true` gate.
+  # The children's directory in the ai-native-ref artifact (ADR-0057, split design H1).
   path: ./clusters/gcp-0-llm-platform
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: OCIRepository
+    name: ai-native-ref
