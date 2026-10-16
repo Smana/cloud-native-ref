@@ -43,7 +43,10 @@ over, that reasoning is worth keeping.
 The wider practice this sits inside — how an AI coding agent is actually wired
 into a platform-engineering workflow, and where it earns its keep — is covered
 at length in [Agentic Coding: concepts and hands-on Platform Engineering use
-cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/).
+cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/). Part of
+that work now runs on the platform itself: the
+[agent factory](https://airef.ogenki.io/docs/platform/ai-platform/agents/factory/)
+turns a labelled issue into a pull request opened by sandboxed agents.
 
 ## The constitution
 
