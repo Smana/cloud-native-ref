@@ -67,17 +67,21 @@ What `cloud-native-ref` guarantees, and `ai-native-ref` may rely on. This sectio
 `HOST-CONTRACT.md` into `ai-native-ref` at the split. Changing an item is a breaking change for
 both repositories: it lands with a version bump of the pin and a note in both.
 
+**Contract version 2** (S3, 2026-10-16). Changes from 1: H1 Source names both signing identities,
+the aws-0 un-suspend patch and the children's sources; H1 Feature branches is a pin edit on the
+branch, not a variable; H3 drops `ai_native_ref_tag` (S3 plan D1–D3).
+
 ### H1 · Flux
 
 | Item | Contract |
 |---|---|
 | Namespace | Every Flux `Kustomization` lives in `flux-system`; most sources and every HelmRelease live in their consumer's namespace (`agent-system`, `llm`, `envoy-*-system`, …); a few sources stay in `flux-system` |
 | Shared sources | `HelmRepository/oauth2-proxy` (namespace `tooling`) |
-| Source | `cloud-native-ref` defines one `OCIRepository` `ai-native-ref` in `flux-system`, `suspend: true` by default, pinned by digest with a tag for Renovate, verified with cosign against `ai-native-ref`'s release workflow identity (the `ocirepo-agent-factory` pattern) |
+| Source | `cloud-native-ref` defines one `OCIRepository` `ai-native-ref` in `flux-system` (`flux/sources/ocirepo-ai-native-ref.yaml`), `suspend: true` by default, pinned by digest with a tag for Renovate, verified with cosign against `ai-native-ref`'s release workflow (`release.yaml@refs/tags/v*`) and same-repository PR pre-releases (`ci.yaml@refs/pull/<N>/merge`). A cluster whose umbrellas are live un-suspends it with a `spec.patches` entry on its `flux-sources` Kustomization (aws-0) |
 | Umbrellas | `ai-gateway`, `llm-platform`, `agent-platform`: names unchanged, `suspend: true` by default, `sourceRef` the `ai-native-ref` source, `path: ./clusters/<cluster>-<umbrella>`. `llm-platform` and `agent-platform` depend on `ai-gateway` |
-| Children | Use `sourceRef: {kind: OCIRepository, name: ai-native-ref}`, replacing today's `ExternalArtifact`s from the `monorepo-split` ArtifactGenerator |
+| Children | Use `sourceRef: {kind: OCIRepository, name: ai-native-ref}`, never an `ExternalArtifact` of the `monorepo-split` ArtifactGenerator or `GitRepository/flux-system`. The AI Flux sources are applied by the artifact's own `ai-sources` child, not by the host's `flux-sources` |
 | Default deploy | Does not fetch `ai-native-ref`: the source is suspended until the opt-in (§3), so an unreachable artifact can never block a default deploy |
-| Feature branches | `ai-native-ref` CI pushes a signed pre-release artifact per branch; the cluster variable `ai_native_ref_tag` (H3), set at deploy time like `TF_VAR_flux_git_ref`, makes the source follow that tag instead of the pinned digest |
+| Feature branches | `ai-native-ref` CI pushes a signed pre-release artifact per same-repository PR; a cnref feature branch pins it (tag and digest) in the source file, and the cluster tracks that branch with `TF_VAR_flux_git_ref`. Flux pulls the digest when both are set, so a tag variable alone would change nothing |
 
 ### H2 · Host Kustomizations children may depend on
 
@@ -111,7 +115,6 @@ Children use `postBuild.substituteFrom` the ConfigMap `<eks|gke>-<cluster>-vars`
 | `region` | Cloud region in backends and buckets |
 | `storage_class` | Persistent volumes |
 | `llm_hf_token_secret` | The model-download secret name |
-| `ai_native_ref_tag` (optional) | The feature-branch override (H1); unset on a default deploy |
 
 Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitutions.
 

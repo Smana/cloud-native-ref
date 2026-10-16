@@ -30,6 +30,8 @@ head_pid=$!
   mkdir -p "${HOME}/.cache/helm" /tmp/helm-cache-base
   cp -r "${HOME}/.cache/helm/." /tmp/helm-cache-base/
   cd /tmp/base
+  # A base from after AI split S3 gitignores the AI paths: render it with its own pin's artifact.
+  if [ -x scripts/ci/ai-overlay.sh ]; then scripts/ci/ai-overlay.sh; fi
   HELM_REPOSITORY_CACHE=/tmp/helm-cache-base/repository \
     python3 scripts/ci/flux-schema/render-bundle.py /tmp/base/.bundle-base
 ) &
