@@ -515,11 +515,14 @@ else
 
 		# Wait for the LBs to go. Their security groups cannot be deleted while
 		# they are attached, and Gateway deletion above only STARTS that teardown.
+		# Only this cluster's: OpenBao's NLB shares the VPC and never goes, so
+		# counting every LB in it held this loop to its 300s cap.
 		for _ in $(seq 1 30); do
+			[ ${#OWNED_LBS[@]} -eq 0 ] && break
 			LB_COUNT=$(${AWS_CMD} elbv2 describe-load-balancers \
-				--query "length(LoadBalancers[?VpcId=='${CLUSTER_VPC}'])" \
-				--output text 2>/dev/null || echo "0")
-			[ "${LB_COUNT}" = "0" ] && break
+				--query "LoadBalancers[?VpcId=='${CLUSTER_VPC}'].LoadBalancerArn" \
+				--output text 2>/dev/null | tr '\t' '\n' | grep -cFx -f <(printf '%s\n' "${OWNED_LBS[@]}") || true)
+			[ "${LB_COUNT:-0}" = "0" ] && break
 			echo "  waiting for ${LB_COUNT} load balancer(s) to finish deleting..."
 			sleep 10
 		done

@@ -4,14 +4,36 @@
 # is the first one: while the EKS cluster exists nothing is an orphan, so the
 # script must exit before it lists, let alone deletes, anything. Past it, a dry
 # run deletes nothing and --apply deletes exactly the load balancers, instances
-# and non-default security groups of the one VPC it scoped to.
+# and security groups a controller of THIS cluster created, in the one VPC it
+# scoped to. The VPC is shared: OpenBao's NLB, node and security group sit in it
+# too, and the 2026-10-16 teardown swept the first two (OpenTofu owns them).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SCRIPT="$ROOT/scripts/ops/aws/sweep-controller-orphans.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
-# Every call is logged; security groups live in a file so a delete is visible
-# to the next describe, which is what the multi-pass loop keys on.
+
+LB=arn:aws:elasticloadbalancing:eu-west-3:111111111111:loadbalancer/net
+cat >"$T/lb-tags.json" <<EOF
+{"TagDescriptions": [
+  {"ResourceArn": "$LB/gw-a/aaa", "Tags": [{"Key": "elbv2.k8s.aws/cluster", "Value": "aws-0"}, {"Key": "service.k8s.aws/stack", "Value": "infrastructure/cilium-gateway-platform"}]},
+  {"ResourceArn": "$LB/gw-b/bbb", "Tags": [{"Key": "elbv2.k8s.aws/cluster", "Value": "aws-0"}]},
+  {"ResourceArn": "$LB/eu-west-3-dev-ogenki-openbao/ccc", "Tags": [{"Key": "app", "Value": "openbao"}]},
+  {"ResourceArn": "$LB/gw-other/ddd", "Tags": [{"Key": "elbv2.k8s.aws/cluster", "Value": "aws-1"}]}
+]}
+EOF
+cat >"$T/instances.json" <<'EOF'
+[
+  {"id": "i-0aaa", "tags": [{"Key": "karpenter.sh/nodepool", "Value": "default"}, {"Key": "kubernetes.io/cluster/aws-0", "Value": "owned"}]},
+  {"id": "i-0bbb", "tags": [{"Key": "eks:cluster-name", "Value": "aws-0"}, {"Key": "aws:autoscaling:groupName", "Value": "eks-bootstrap-1234"}]},
+  {"id": "i-0bao", "tags": [{"Key": "OpenBaoInstance", "Value": "eu-west-3-dev-ogenki-openbao"}, {"Key": "app", "Value": "openbao"}, {"Key": "aws:autoscaling:groupName", "Value": "eu-west-3-dev-ogenki-openbao-2026"}]},
+  {"id": "i-0asg", "tags": [{"Key": "kubernetes.io/cluster/aws-0", "Value": "owned"}, {"Key": "aws:autoscaling:groupName", "Value": "self-managed"}]},
+  {"id": "i-0bare", "tags": null}
+]
+EOF
+# Every call is logged; security groups live in a file (id key value per line)
+# so a delete is visible to the next describe, which is what the multi-pass
+# loop keys on.
 cat >"$T/bin/aws" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >>"$T/calls"
@@ -19,23 +41,27 @@ case "\$*" in
   *"eks describe-cluster"*) [ -n "\${STUB_CLUSTER_ALIVE:-}" ] ;;
   *"ec2 describe-vpcs"*) if [ -n "\${STUB_NO_VPC:-}" ]; then echo None; else echo vpc-0sweep; fi ;;
   *"elbv2 describe-load-balancers"*"VpcId=='vpc-0sweep'"*)
-    printf '%s\t%s\n' arn:aws:elasticloadbalancing:eu-west-3:111111111111:loadbalancer/net/gw-a/aaa \\
-                      arn:aws:elasticloadbalancing:eu-west-3:111111111111:loadbalancer/net/gw-b/bbb ;;
-  *"ec2 describe-instances"*"Values=vpc-0sweep"*) printf 'i-0aaa\ti-0bbb\n' ;;
+    printf '%s\t%s\t%s\t%s\n' $LB/gw-a/aaa $LB/gw-b/bbb $LB/eu-west-3-dev-ogenki-openbao/ccc $LB/gw-other/ddd ;;
+  *"elbv2 describe-tags"*) cat "$T/lb-tags.json" ;;
+  *"ec2 describe-instances"*"Values=vpc-0sweep"*) cat "$T/instances.json" ;;
   *"ec2 describe-network-interfaces"*) echo 0 ;;
-  *"ec2 describe-security-groups"*"Values=vpc-0sweep"*"GroupName!=\\\`default\\\`"*) tr '\n' '\t' <"$T/sgs" ;;
+  *"ec2 describe-security-groups"*"Values=vpc-0sweep"*"GroupName!=\\\`default\\\`"*)
+    jq -Rn '[inputs | split(" ") | {id: .[0], tags: [{Key: .[1], Value: .[2]}]}]' "$T/sgs" ;;
   *"ec2 delete-security-group"*)
     [ -n "\${STUB_SG_STUCK:-}" ] && exit 1
-    id="\${*##* }"; grep -vx "\$id" "$T/sgs" >"$T/sgs.new"; mv "$T/sgs.new" "$T/sgs" ;;
+    id="\${@: -1}"; grep -v "^\$id " "$T/sgs" >"$T/sgs.new"; mv "$T/sgs.new" "$T/sgs" ;;
   *"elbv2 delete-load-balancer"*|*"ec2 terminate-instances"*) ;;
   *) echo "unexpected aws call: \$*" >&2; exit 1 ;;
 esac
 EOF
 chmod +x "$T/bin/aws"
 
-# Each run starts from the same cloud: two groups, an empty call log.
+# Each run starts from the same cloud: two cluster groups and OpenBao's, an
+# empty call log.
 sweep() {
-  : >"$T/calls"; printf '%s\n' sg-0one sg-0two >"$T/sgs"
+  : >"$T/calls"
+  printf '%s\n' "sg-0one elbv2.k8s.aws/cluster aws-0" "sg-0two kubernetes.io/cluster/aws-0 owned" \
+    "sg-0bao app openbao" >"$T/sgs"
   PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>&1
 }
 calls() { grep -c -- "$1" "$T/calls"; }
@@ -58,7 +84,7 @@ out_dry="$(sweep --cluster-name aws-0 --region eu-west-3 --profile ops)"; rc_dry
 calls_dry="$(cat "$T/calls")"
 
 out_apply="$(sweep --cluster-name aws-0 --region eu-west-3 --apply)"; rc_apply=$?
-calls_apply="$(cat "$T/calls")"; sgs_apply="$(cat "$T/sgs")"
+calls_apply="$(cat "$T/calls")"; sgs_apply="$(cut -d' ' -f1 "$T/sgs")"
 
 out_vpc="$(sweep --cluster-name aws-0 --region eu-west-3 --vpc-id vpc-0sweep)"; rc_vpc=$?
 calls_vpc="$(cat "$T/calls")"
@@ -88,15 +114,24 @@ check "dry run exits 0" '[ "$rc_dry" -eq 0 ]'
 check "  ...deletes nothing" '! grep -Eq "$deletes" <<<"$calls_dry"'
 check "  ...lists both load balancers by name" 'grep -q "would delete load balancer net/gw-a$" <<<"$out_dry" && grep -q "would delete load balancer net/gw-b$" <<<"$out_dry"'
 check "  ...lists both instances" 'grep -q "would delete instance i-0aaa" <<<"$out_dry" && grep -q "would delete instance i-0bbb" <<<"$out_dry"'
+check "  ...keeps OpenBao's NLB" 'grep -q "keep   \] load balancer net/eu-west-3-dev-ogenki-openbao " <<<"$out_dry" && ! grep -q "would delete load balancer net/eu-west-3-dev-ogenki-openbao" <<<"$out_dry"'
+check "  ...keeps another cluster's load balancer" 'grep -q "keep   \] load balancer net/gw-other " <<<"$out_dry"'
+check "  ...keeps OpenBao's node" 'grep -q "keep   \] instance i-0bao " <<<"$out_dry" && ! grep -q "would delete instance i-0bao" <<<"$out_dry"'
+check "  ...keeps a cluster-tagged instance of a non-EKS autoscaling group" 'grep -q "keep   \] instance i-0asg " <<<"$out_dry"'
+check "  ...keeps an untagged instance" 'grep -q "keep   \] instance i-0bare " <<<"$out_dry"'
+check "  ...never lists OpenBao's security group" '! grep -q sg-0bao <<<"$out_dry"'
 check "  ...lists both security groups" 'grep -q "would delete security group sg-0one" <<<"$out_dry" && grep -q "would delete security group sg-0two" <<<"$out_dry"'
 check "  ...counts six items" 'grep -q "dry-run: 6 item(s) would be swept" <<<"$out_dry"'
 check "  ...passes --profile to every call" '! grep -v -- "--profile ops" <<<"$calls_dry" | grep -q .'
 
 check "--apply exits 0" '[ "$rc_apply" -eq 0 ]'
 check "  ...deletes each load balancer by ARN" '[ "$(grep -c "elbv2 delete-load-balancer --load-balancer-arn arn:aws:elasticloadbalancing:.*loadbalancer/net/gw-[ab]/" <<<"$calls_apply")" -eq 2 ]'
+check "  ...and no other load balancer" '[ "$(grep -c "elbv2 delete-load-balancer" <<<"$calls_apply")" -eq 2 ]'
+check "  ...waits only on the swept ENIs" 'grep -q "describe-network-interfaces --filters Name=attachment.instance-id,Values=i-0aaa,i-0bbb " <<<"$calls_apply" && grep -q "Name=description,Values=ELB net/gw-a/aaa,ELB net/gw-b/bbb " <<<"$calls_apply"'
 check "  ...terminates both instances in one call" 'grep -q "ec2 terminate-instances --instance-ids i-0aaa i-0bbb$" <<<"$calls_apply"'
 check "  ...waits on ENIs before the security groups" '[ "$(grep -n -m1 describe-network-interfaces <<<"$calls_apply" | cut -d: -f1)" -lt "$(grep -n -m1 delete-security-group <<<"$calls_apply" | cut -d: -f1)" ]'
-check "  ...deletes both security groups" 'grep -q "delete-security-group --group-id sg-0one" <<<"$calls_apply" && grep -q "delete-security-group --group-id sg-0two" <<<"$calls_apply" && [ -z "$sgs_apply" ]'
+check "  ...deletes both cluster security groups, and OpenBao's survives" 'grep -q "delete-security-group --group-id sg-0one" <<<"$calls_apply" && grep -q "delete-security-group --group-id sg-0two" <<<"$calls_apply" && [ "$sgs_apply" = sg-0bao ]'
+check "  ...never asks to delete OpenBao's security group" '! grep -q "delete-security-group --group-id sg-0bao" <<<"$calls_apply"'
 check "  ...counts six swept" 'grep -q "swept 6 controller-created resource(s)" <<<"$out_apply"'
 
 check "--vpc-id skips the VPC lookup" '[ "$rc_vpc" -eq 0 ] && ! grep -q describe-vpcs <<<"$calls_vpc" && grep -q "scoping to vpc-0sweep" <<<"$out_vpc"'

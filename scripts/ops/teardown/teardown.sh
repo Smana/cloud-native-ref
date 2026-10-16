@@ -50,6 +50,19 @@ wants() { # $1 = lane
 
 destroy_rc=0
 retry=0
+openbao_left=""
+
+# OpenBao's nodes, found by the tag its launch templates stamp on every instance.
+# Its stack destroys after the cluster and before the network, so a node still
+# standing here means openbao/cluster's destroy failed -- and the network
+# destroy will fail on the VPC it sits in. Say so first, before that failure
+# (or a sweep) is the only sign.
+openbao_nodes() {
+  aws ec2 describe-instances --region "${AWS_REGION:-eu-west-3}" \
+    --filters Name=tag-key,Values=OpenBaoInstance \
+              Name=instance-state-name,Values=running,pending,stopping,stopped \
+    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null
+}
 if [ "$VERIFY_ONLY" -eq 0 ]; then
   echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
   # --continue-on-error is the point: one stack whose target is already gone must
@@ -83,6 +96,13 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   # already gone (the sweeps enforce that themselves), so this cannot touch live
   # infrastructure.
   if wants aws; then
+    openbao_left="$(openbao_nodes)"
+    if [ -n "${openbao_left//[[:space:]]/}" ]; then
+      echo "!!! openbao/cluster's destroy FAILED: OpenBao node(s) still running: ${openbao_left}"
+      echo "!!! The network destroy cannot finish around them. The sweeps below leave them alone;"
+      echo "!!! fix openbao/cluster's destroy (see its output above), then re-run teardown."
+      echo
+    fi
     _region="${AWS_REGION:-eu-west-3}"
     _left="$(aws ec2 describe-vpcs --region "$_region" \
       --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
@@ -202,6 +222,9 @@ else
     echo "  cloud:      ${leftovers} category(ies) still populated — NOT torn down"
   [ "$unverified" -gt 0 ] && \
     echo "  cloud:      ${unverified} cloud(s) COULD NOT BE CHECKED — status unknown, assume not torn down"
+fi
+if [ -n "${openbao_left//[[:space:]]/}" ]; then
+  echo "  openbao:    openbao/cluster's destroy FAILED (nodes after the first pass: ${openbao_left})"
 fi
 # Not auto-skipped: if the first pass never reached openbao/cluster, skipping
 # its pre-destroy snapshot would destroy a node without one.
