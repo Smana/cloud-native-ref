@@ -79,7 +79,7 @@ jobs:
       # tflint — the same file a contributor runs `mise install` against, so
       # this keeps the CI/local parity the Dagger image was there to provide.
       - name: Install tools
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
 
       - name: Validate Opentofu configuration
         run: pre-commit run --all-files --show-diff-on-failure
@@ -212,7 +212,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install tools
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
 
       # Pinned: preflight.sh only enforces a version floor (>=0.10), so an
       # unpinned install silently floats to whatever upstream released.
@@ -246,6 +246,12 @@ jobs:
           # suffix and a version bump in those must still bust the cache.
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
+
+      # Before every gate: the AI paths are gitignored since AI split S3, and the render,
+      # assert-cloud-shape.py and the gate-coverage check read them from the artifact the cluster
+      # pins. Called directly, not through `task`: the script is a gate path, the taskfile is not.
+      - name: Overlay the pinned ai-native-ref artifact
+        run: ./scripts/ci/ai-overlay.sh
 
       # Every suite run.sh discovers, before the render: some of them test the
       # scripts that DO the render, and a broken resolve_values does not fail
@@ -302,7 +308,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
 
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
@@ -313,6 +319,10 @@ jobs:
           path: ~/.cache/helm
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
+
+      # The head's AI paths come from its pin (AI split S3); render-both.sh overlays the base's.
+      - name: Overlay the pinned ai-native-ref artifact
+        run: ./scripts/ci/ai-overlay.sh
 
       # Orchestration (concurrent best-effort renders, worktree, helm cache
       # isolation) lives in the script so it is shellcheck-covered and
@@ -390,15 +400,27 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Only what the overlay needs: the full mise.toml pulls gcloud and the OpenTofu toolchain.
+      - name: Install flux and cosign
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        with:
+          install_args: flux2 cosign
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      # The docs link into and name AI paths until S4 moves them; since AI split S3 only the
+      # pinned artifact puts those paths in the tree.
+      - name: Overlay the pinned ai-native-ref artifact
+        run: ./scripts/ci/ai-overlay.sh
+
       - name: Resolve every relative Markdown link
         run: ./scripts/ci/validate-links.sh
 
       # Runs in this job rather than its own so the required-check list on
       # `main` does not have to change. The job name stays "documentation
       # links" for the same reason; it now gates documentation *claims* too.
-      - name: Install Python dependencies
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
-
       - name: Check documentation claims against configuration
         run: ./scripts/ci/validate-doc-claims.sh
 

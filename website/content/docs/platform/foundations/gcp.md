@@ -110,7 +110,7 @@ short version:
 - **Storage** — the default block class is `standard-rwo` (pd-balanced, despite
   the name — `standard` is the HDD tier). Object storage is Cloud Storage, and
   model weights mount through the Cloud Storage FUSE CSI driver
-  ([ADR-0021](../../decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)).
+  ([ADR-0021](https://airef.ogenki.io/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp/)).
 
 ## What is excluded here, and why
 

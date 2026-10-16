@@ -18,6 +18,9 @@
 #   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
 #      (the chart and its CRDs exist only in the git repository, SP1 S2)
 #   6. Room CRD -> agents.ogenki.io/* (vendored, SP2)
+#   7. agentgateway CRDs               -> agentgateway.dev/*
+#      (PRESENT in the hosted ecosystem catalog, but that tracks upstream daily,
+#      not our pin, and v1alpha1 breaks on every minor: the local copy must win)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #
@@ -156,6 +159,16 @@ if [[ -z "${AGENT_SANDBOX_URL}" || -z "${AGENT_SANDBOX_VERSION}" ]]; then
   exit 1
 fi
 
+# Same single-source-of-truth approach for agentgateway: the first document is the
+# CRD chart's OCIRepository (url ends in -crds), read like the AI Gateway's above.
+AGW_SOURCE="infrastructure/base/agentgateway/ocirepositories.yaml"
+AGW_CHART="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(oci://[^"[:space:]]+-crds)"?[[:space:]]*$#\1#p' "${AGW_SOURCE}" | head -n1 || true)"
+AGW_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AGW_SOURCE}" | head -n1 || true)"
+if [[ -z "${AGW_CHART}" || -z "${AGW_VERSION}" ]]; then
+  echo "error: could not read the agentgateway CRD chart url or tag from ${AGW_SOURCE}" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -224,6 +237,11 @@ chart="$(oci_chart "${KARPENTER_CHART}" "${KARPENTER_VERSION}")"
   --set settings.clusterName=catalog \
   > "${tmp}/karpenter-crds.yaml"
 
+echo "==> Rendering agentgateway CRDs (chart ${AGW_VERSION})"
+chart="$(oci_chart "${AGW_CHART}" "${AGW_VERSION}")"
+"${HELM_BIN}" template agw-crds "${chart}" --version "${AGW_VERSION}" --include-crds \
+  > "${tmp}/agentgateway-crds.yaml"
+
 echo "==> Fetching Barman Cloud plugin ObjectStore CRD (git ${BARMAN_PLUGIN_VERSION})"
 # The plugin ships no Helm chart (only manifest/Kustomize install), so its CRD
 # comes from a shallow clone of the pinned Git tag Flux installs from - not a
@@ -241,6 +259,7 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
+"${FLUX_BIN}" schema extract crd "${tmp}/agentgateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/agent-sandbox-crds.yaml" -d "${build_dir}"
 # GKE ComputeClass. Vendored rather than rendered: unlike every source above, GKE
 # installs this CRD itself and publishes no chart to render it from. See the
@@ -270,6 +289,13 @@ if [[ ! -s "${build_dir}/karpenter.k8s.aws/ec2nodeclass_v1.json" ]]; then
   echo "error: catalog build produced no karpenter.k8s.aws/ec2nodeclass_v1.json (chart ${KARPENTER_VERSION} rendered no CRDs?)" >&2
   exit 1
 fi
+
+for kind in agentgatewaybackend agentgatewaypolicy agentgatewayparameters agentgatewaymodel; do
+  if [[ ! -s "${build_dir}/agentgateway.dev/${kind}_v1alpha1.json" ]]; then
+    echo "error: catalog build produced no agentgateway.dev/${kind}_v1alpha1.json (chart ${AGW_VERSION} rendered no CRDs?)" >&2
+    exit 1
+  fi
+done
 
 # The ObjectStore CRD (barmancloud.cnpg.io/v1) is the reason the barman-cloud
 # source block exists; assert it specifically, not just "some barman schema landed".

@@ -20,8 +20,10 @@ side by side (Route 53 / Cloud DNS, ELB / Cloud Load Balancing, IAM via EKS Pod 
 Workload Identity, S3 / Cloud Storage, KMS / Cloud KMS), the **Kubernetes cluster** in the centre
 in four tiers (GitOps & composition, compute & networking, security & identity, observability),
 and **applications & data** on the right. Flux reconciles the repository; Tailscale provides
-private access; OpenBao holds the secrets and the PKI. The self-hosted LLM platform is opt-in and
-off by default.
+private access; OpenBao holds the secrets and the PKI. The AI platform — self-hosted LLMs, the AI
+gateway and the agent factory — lives in [Smana/ai-native-ref](https://github.com/Smana/ai-native-ref)
+([airef.ogenki.io](https://airef.ogenki.io/)); this repository hosts it as opt-in umbrellas pinned
+to its signed artifact.
 
 Every subsystem is explained at
 [cnref.ogenki.io/docs/platform](https://cnref.ogenki.io/docs/platform/).
@@ -94,7 +96,7 @@ The blog posts that explain several of these components in long form are collect
 │   │       └── configure/         # Stage 2: Cilium + Flux
 │   └── shared/                    # Owned by neither cloud (Tailscale tailnet, AWS↔GCP federation)
 ├── flux/                          # 🚀 Flux operator and configuration
-├── clusters/aws-0/          # Cluster-specific Kustomizations
+├── clusters/                      # Per-cluster Kustomizations (aws-0, gcp-0) and the AI umbrellas
 ├── infrastructure/                # 🏗️ Platform infrastructure
 ├── security/                      # 🔒 Security components
 ├── observability/                 # 👁️ Monitoring and logging

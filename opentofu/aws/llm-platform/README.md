@@ -63,38 +63,30 @@ Outputs:
 
 ```bash
 tofu output volume_handle
-# → "s3files:fs-xxxxxxxx::fsap-xxxxxxxx" — paste into the InferenceService
-#   composition's PV (or the Crossplane EnvironmentConfig at
-#   clusters/aws-0/environment-config.yaml).
+# → "s3files:fs-xxxxxxxx::fsap-xxxxxxxx"
 ```
 
 ## Wiring into the GitOps tree
 
-After apply, copy the outputs into:
+The consumer lives in [Smana/ai-native-ref](https://github.com/Smana/ai-native-ref) (ADR-0057):
+the static PV in
+[`apps/aws-0/llm/models-pvc.yaml`](https://github.com/Smana/ai-native-ref/blob/main/apps/aws-0/llm/models-pvc.yaml)
+carries `volume_handle` by hand. Every fresh apply regenerates it, so after a rebuild:
 
-1. `clusters/aws-0/environment-config.yaml` — the `llm` block:
-   ```yaml
-   llm:
-     fsId: <filesystem_id>
-     accessPointId: <access_point_id>
-     volumeHandle: <volume_handle>
-     csiDriverRoleArn: <csi_driver_role_arn>
-   ```
-2. `infrastructure/base/aws-efs-csi/helmrelease.yaml` — the EFS CSI driver
-   reads the role via EKS Pod Identity (no values change needed if the EPI
-   composition already wires `csiDriverRoleArn`).
+1. Paste `tofu output -raw volume_handle` into that file's `spec.csi.volumeHandle`, release
+   ai-native-ref, then bump the pin in `flux/sources/ocirepo-ai-native-ref.yaml` here.
+2. Delete the existing PV and PVC so Flux recreates them — `volumeHandle` is immutable.
 
-The `xinferenceservices` composition reads `fsId` + `accessPointId` from the
-EnvironmentConfig and renders a static PV per claim with subPath isolation
-under `/<claim-name>/`.
+The EFS CSI driver (`infrastructure/base/aws-efs-csi-driver/`) reads `csi_driver_role_arn` through
+EKS Pod Identity.
 
 ## Migration to Crossplane (T020f)
 
 When Upbound publishes `s3files.aws.m.upbound.io/v1beta1` CRDs:
 
 1. Add the resources to `infrastructure/base/crossplane/providers-aws/activation-policy.yaml`.
-2. Re-render the same resources as managed resources under
-   `infrastructure/base/llm-models-fs/` (or as a Crossplane composition).
-3. Remove this stack — the EnvironmentConfig keys stay the same.
+2. Re-render the same resources as managed resources (or a Crossplane composition) in
+   ai-native-ref.
+3. Remove this stack — the consumer PV keeps the same `volumeHandle` shape.
 4. Run `tofu state rm` then `tofu destroy` to delete the OpenTofu-tracked
    resources without disturbing the (now Crossplane-tracked) AWS state.

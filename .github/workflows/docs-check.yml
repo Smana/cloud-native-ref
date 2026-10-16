@@ -10,6 +10,9 @@ on:
       # site is never built against the new version before it reaches main.
       - "mise.toml"
       - "scripts/ci/verify-doc-paths.sh"
+      # A pin bump changes which AI manifest paths exist, and host pages still name some.
+      - "flux/sources/ocirepo-ai-native-ref.yaml"
+      - "scripts/ci/ai-overlay.sh"
       - ".github/workflows/docs-check.yml"
 
 permissions:
@@ -32,7 +35,7 @@ jobs:
           fetch-depth: 0 # enableGitInfo needs history
 
       - name: Install tools
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
 
       - name: Cache Hugo modules
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -46,6 +49,13 @@ jobs:
       - name: Build
         working-directory: website
         run: hugo --minify --gc
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      # Host pages name AI manifest paths (19 after S4); since AI split S3 only the pinned artifact puts them here.
+      - name: Overlay the pinned ai-native-ref artifact
+        run: ./scripts/ci/ai-overlay.sh
 
       - name: Verify every referenced repository path exists
         run: ./scripts/ci/verify-doc-paths.sh

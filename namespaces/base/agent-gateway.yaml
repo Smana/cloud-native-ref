@@ -1,0 +1,11 @@
+# The agent router's data plane (ADR-0053): agentgateway runs the proxies in
+# their Gateway's namespace, so the controller writes here and nowhere else
+# (rbac.gatewayNamespaces). Routes, backends and keys stay in agent-system.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-gateway
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

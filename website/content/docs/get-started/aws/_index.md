@@ -41,6 +41,17 @@ a stack expects is to read the file already sitting next to it.
    export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
    ```
 
+5. Decide on the AI layer. **aws-0 ships with `ai-gateway` and
+   `agent-platform` live**, and both read model-provider keys that a fork does
+   not have: `platform-llm-api-keys` in AWS Secrets Manager, plus keys in
+   OpenBao. Nothing fails at deploy time; the gateway serves errors and the
+   agent runs fail later. Either seed the keys
+   ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or
+   set `spec.suspend: true` in `clusters/aws-0/ai-gateway.yaml` and
+   `clusters/aws-0/agent-platform.yaml`. Set it in Git: a `flux suspend` is
+   undone by the next sync. GPU serving is already off, and gcp-0 ships the
+   whole layer suspended.
+
 ### Expiring old generation archives is not a manual step
 
 Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
