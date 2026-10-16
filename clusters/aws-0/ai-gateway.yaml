@@ -3,10 +3,9 @@
 #
 # The Envoy Gateway and Agent Router controllers, the Semantic Router, and the
 # human/system Gateway `ai-gateway`, with its frontier backends in namespace
-# llm-gateway. Both the GPU fleet (llm-platform) and the agents
-# (agent-platform) route through it. Agents run on frontier
-# models with zero GPUs, which is impossible while these controllers live in
-# the GPU umbrella.
+# llm-gateway. The GPU fleet (llm-platform) routes through it. The agents do not:
+# since ADR-0053 they call agentgateway, which ships in the agent-platform
+# umbrella. agent-platform still depends on this one for the shared controllers.
 #
 # Live on aws-0 (owner, 2026-10-16): the agent factory runs here. A suspended
 # umbrella froze its children's own specs at the revision it last applied while
