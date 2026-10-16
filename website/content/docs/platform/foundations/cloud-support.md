@@ -66,7 +66,7 @@ where a cloud's own service is unavoidable, and what stands in for what.
 |---|---|---|---|
 | Block storage class | `gp3` (EBS) | `standard-rwo` (pd-balanced) | Supplied to manifests as `${storage_class}` — no PVC hardcodes either |
 | Object storage | S3 | Cloud Storage | |
-| Model weights (LLM) | Amazon S3 Files | Cloud Storage FUSE CSI | ([ADR-0004](../../decisions/0004-amazon-s3-files-for-model-weights-storage.md), [ADR-0021](../../decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)) |
+| Model weights (LLM) | Amazon S3 Files | Cloud Storage FUSE CSI | ([ADR-0004](https://ainref.ogenki.io/docs/decisions/0004-amazon-s3-files-for-model-weights-storage/), [ADR-0021](https://ainref.ogenki.io/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp/)) |
 | Registry storage | Harbor → S3 driver | Harbor → GCS driver | Harbor itself is self-hosted on both ([ADR-0020](../../decisions/0020-harbor-gcs-workload-identity.md)) |
 | OpenTofu state | S3 bucket | GCS bucket, dedicated project | Deliberately *not* shared ([ADR-0018](../../decisions/0018-per-cloud-opentofu-state.md)) |
 

@@ -1,9 +1,9 @@
 # AI platform split: `ai-native-ref` and its host contract
 
 **Date:** 2026-10-12 · **Status:** accepted (ADR-0057) ·
-**ADR:** [0057](../../../website/content/docs/decisions/0057-ai-platform-own-repository.md) ·
+**ADR:** [0057](https://ainref.ogenki.io/docs/decisions/0057-ai-platform-own-repository/) ·
 **Part of:** the v2 roadmap on the
-[status page](../../../website/content/docs/platform/ai-platform/status.md#v2-roadmap)
+[status page](https://ainref.ogenki.io/docs/platform/ai-platform/status/#v2-roadmap)
 
 ## Outcome
 

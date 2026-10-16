@@ -41,12 +41,17 @@ single-file fixes never need one.
 
 ## The records
 
+The AI platform's records (0003, 0004, 0021, 0041 onwards marked ↗) moved with it to
+[ainref.ogenki.io](https://ainref.ogenki.io/docs/decisions/), numbers unchanged
+([ADR-0057](https://ainref.ogenki.io/docs/decisions/0057-ai-platform-own-repository/)). New AI records
+are numbered there.
+
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [0001]({{< relref "/docs/decisions/0001-use-kcl-for-crossplane-compositions.md" >}}) | Use KCL for Crossplane Compositions | Accepted | 2024-09-29 |
 | [0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}}) | Use EKS Pod Identity over IRSA | Accepted | 2024-04-15 |
-| [0003]({{< relref "/docs/decisions/0003-vllm-production-stack-over-kserve.md" >}}) | Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform | Accepted | 2026-04-30 |
-| [0004]({{< relref "/docs/decisions/0004-amazon-s3-files-for-model-weights-storage.md" >}}) | Use Amazon S3 Files for LLM Model Weights Storage | Accepted | 2026-05-01 |
+| [0003 ↗](https://ainref.ogenki.io/docs/decisions/0003-vllm-production-stack-over-kserve/) | Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform | Accepted | 2026-04-30 |
+| [0004 ↗](https://ainref.ogenki.io/docs/decisions/0004-amazon-s3-files-for-model-weights-storage/) | Use Amazon S3 Files for LLM Model Weights Storage | Accepted | 2026-05-01 |
 | [0005]({{< relref "/docs/decisions/0005-gke-standard-self-managed-cilium.md" >}}) | GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot) | Accepted | 2026-08-18 |
 | [0006]({{< relref "/docs/decisions/0006-nap-computeclass-over-karpenter.md" >}}) | GKE node auto-provisioning (ComputeClass) over Karpenter on GCP | Accepted | 2026-08-18 |
 | [0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}) | Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs | Accepted | 2026-08-18 |
@@ -63,7 +68,7 @@ single-file fixes never need one.
 | [0018]({{< relref "/docs/decisions/0018-per-cloud-opentofu-state.md" >}}) | Per-cloud OpenTofu state — GCP state in GCS, AWS state in S3 | Accepted | 2026-08-25 |
 | [0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}}) | Cross-cloud DNS federation — GKE workloads assume an AWS role for Route53 | Accepted | 2026-08-25 |
 | [0020]({{< relref "/docs/decisions/0020-harbor-gcs-workload-identity.md" >}}) | Harbor on GCS — native driver with Workload Identity, not S3-compatible HMAC | Accepted | 2026-08-26 |
-| [0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}}) | Cloud Storage FUSE for LLM model weights on GCP | Accepted | 2026-08-26 |
+| [0021 ↗](https://ainref.ogenki.io/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp/) | Cloud Storage FUSE for LLM model weights on GCP | Accepted | 2026-08-26 |
 | [0022]({{< relref "/docs/decisions/0022-single-identity-provider-across-clouds.md" >}}) | One identity provider across both clouds, hosted on AWS and named by a variable | Superseded by [0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}}) | 2026-08-27 |
 | [0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}) | Secret store keys use a name grammar both clouds accept | Accepted | 2026-08-27 |
 | [0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}}) | The identity provider is deployable on either cloud, defaulting to AWS | Accepted | 2026-08-27 |
@@ -83,20 +88,20 @@ single-file fixes never need one.
 | [0038]({{< relref "/docs/decisions/0038-agent-instructions-in-agents-md.md" >}}) | Agent instructions and skills are authored once in the open formats, with the Claude-specific paths as symlinks | Accepted | 2026-09-17 |
 | [0039]({{< relref "/docs/decisions/0039-go-task-as-the-entry-point.md" >}}) | go-task is the entry point to the scripts, locally and in CI, and no script depends on it | Accepted | 2026-09-17 |
 | [0040]({{< relref "/docs/decisions/0040-vendor-kubernetes-event-exporter-manifests.md" >}}) | Vendor kubernetes-event-exporter as plain manifests instead of a Helm chart | Accepted | 2026-09-21 |
-| [0041]({{< relref "/docs/decisions/0041-agent-sandbox-gvisor-al2023.md" >}}) | Coding agents run in agent-sandbox Sandboxes under gVisor, on a dedicated spot pool per cloud, with OpenHands as the harness profile | Accepted | 2026-09-26 |
-| [0042]({{< relref "/docs/decisions/0042-agent-router-identity-gateway.md" >}}) | Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens | Partly superseded by [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}): Option 1, agent router only | 2026-09-26 |
-| [0043]({{< relref "/docs/decisions/0043-octo-sts-for-agent-github-tokens.md" >}}) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags | Accepted | 2026-09-26 |
-| [0044]({{< relref "/docs/decisions/0044-room-session-protocol.md" >}}) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
-| [0045]({{< relref "/docs/decisions/0045-merge-policy-gate.md" >}}) | palantir/policy-bot, required through a repository ruleset, decides which agent PRs merge | Accepted | 2026-09-27 |
-| [0046]({{< relref "/docs/decisions/0046-frontier-providers-zai-and-bedrock.md" >}}) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Partly superseded by [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}): internal-data provider only | 2026-09-25 |
+| [0041 ↗](https://ainref.ogenki.io/docs/decisions/0041-agent-sandbox-gvisor-al2023/) | Coding agents run in agent-sandbox Sandboxes under gVisor, on a dedicated spot pool per cloud, with OpenHands as the harness profile | Accepted | 2026-09-26 |
+| [0042 ↗](https://ainref.ogenki.io/docs/decisions/0042-agent-router-identity-gateway/) | Agent Router is the agents' identity gateway, with role and data class encoded in the token audience and an in-pod proxy holding the tokens | Partly superseded by [0053](https://ainref.ogenki.io/docs/decisions/0053-agent-router-on-agentgateway/): Option 1, agent router only | 2026-09-26 |
+| [0043 ↗](https://ainref.ogenki.io/docs/decisions/0043-octo-sts-for-agent-github-tokens/) | Agents get GitHub tokens from a self-hosted octo-sts, scoped per repository and role, and two rulesets confine their App to agent branches and no tags | Accepted | 2026-09-26 |
+| [0044 ↗](https://ainref.ogenki.io/docs/decisions/0044-room-session-protocol/) | Rooms are an AHP-shaped log we own, stored in CNPG, fanned out with Postgres LISTEN/NOTIFY | Accepted | 2026-09-27 |
+| [0045 ↗](https://ainref.ogenki.io/docs/decisions/0045-merge-policy-gate/) | palantir/policy-bot, required through a repository ruleset, decides which agent PRs merge | Accepted | 2026-09-27 |
+| [0046 ↗](https://ainref.ogenki.io/docs/decisions/0046-frontier-providers-zai-and-bedrock/) | Frontier models through Z.ai and keyless Anthropic per cloud (Bedrock on aws-0, Vertex on gcp-0) | Partly superseded by [0054](https://ainref.ogenki.io/docs/decisions/0054-agent-model-providers-anthropic-direct/): internal-data provider only | 2026-09-25 |
 | 0047 | Reserved, not yet written: how a request's complexity is classified for routing (SP4) | Reserved | — |
-| [0048]({{< relref "/docs/decisions/0048-agent-factory-orchestrator.md" >}}) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
-| [0049]({{< relref "/docs/decisions/0049-room-client-and-human-auth.md" >}}) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
-| [0050]({{< relref "/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit.md" >}}) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Partly superseded by [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}): Option 1, agent router only | 2026-09-25 |
-| [0051]({{< relref "/docs/decisions/0051-otel-collector-agent-trace-gate.md" >}}) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
-| [0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}}) | The agent router runs on agentgateway, pinned to a minor that passes our live gate; ai-gateway stays on Envoy Gateway | Accepted | 2026-10-01 |
-| [0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}}) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
-| [0056]({{< relref "/docs/decisions/0056-local-first-factory-ux.md" >}}) | The factory is driven from the developer's local agent through a skill and roomctl, and a room is as visible as its repo on GitHub | Accepted | 2026-10-08 |
-| [0057]({{< relref "/docs/decisions/0057-ai-platform-own-repository.md" >}}) | The AI platform moves to its own repository, consumed by cloud-native-ref as a pinned artifact | Accepted | 2026-10-12 |
+| [0048 ↗](https://ainref.ogenki.io/docs/decisions/0048-agent-factory-orchestrator/) | A custom Task controller with Kueue admission orchestrates the agent factory | Accepted | 2026-09-27 |
+| [0049 ↗](https://ainref.ogenki.io/docs/decisions/0049-room-client-and-human-auth/) | Humans reach rooms through a web UI the broker serves, behind oauth2-proxy | Accepted | 2026-09-27 |
+| [0050 ↗](https://ainref.ogenki.io/docs/decisions/0050-token-budgets-envoy-gateway-rate-limit/) | Token budgets on Envoy Gateway's global rate limit, costed from response metadata | Partly superseded by [0053](https://ainref.ogenki.io/docs/decisions/0053-agent-router-on-agentgateway/): Option 1, agent router only | 2026-09-25 |
+| [0051 ↗](https://ainref.ogenki.io/docs/decisions/0051-otel-collector-agent-trace-gate/) | An OpenTelemetry Collector is the agent trace gate | Accepted | 2026-09-27 |
+| [0053 ↗](https://ainref.ogenki.io/docs/decisions/0053-agent-router-on-agentgateway/) | The agent router runs on agentgateway, pinned to a minor that passes our live gate; ai-gateway stays on Envoy Gateway | Accepted | 2026-10-01 |
+| [0054 ↗](https://ainref.ogenki.io/docs/decisions/0054-agent-model-providers-anthropic-direct/) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
+| [0056 ↗](https://ainref.ogenki.io/docs/decisions/0056-local-first-factory-ux/) | The factory is driven from the developer's local agent through a skill and roomctl, and a room is as visible as its repo on GitHub | Accepted | 2026-10-08 |
+| [0057 ↗](https://ainref.ogenki.io/docs/decisions/0057-ai-platform-own-repository/) | The AI platform moves to its own repository, consumed by cloud-native-ref as a pinned artifact | Accepted | 2026-10-12 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

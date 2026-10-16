@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One row of the v2 hard-task cohort sheet (docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md §5).
+"""One row of the v2 hard-task cohort sheet (ai-native-ref docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md §5).
 
 Fetches what it can (gh, the Task, the gateway meter, the action's execution log) and takes the
 maintainer's judgements as flags. Appends to the CSV; never rewrites earlier rows.

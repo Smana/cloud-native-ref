@@ -10,7 +10,7 @@ on:
       # site is never built against the new version before it reaches main.
       - "mise.toml"
       - "scripts/ci/verify-doc-paths.sh"
-      # A pin bump changes which AI paths exist, and the docs name them until S4.
+      # A pin bump changes which AI manifest paths exist, and host pages still name some.
       - "flux/sources/ocirepo-ai-native-ref.yaml"
       - "scripts/ci/ai-overlay.sh"
       - ".github/workflows/docs-check.yml"
@@ -53,7 +53,7 @@ jobs:
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
-      # The docs name AI paths until S4; since AI split S3 only the pinned artifact puts them here.
+      # Host pages name AI manifest paths (19 after S4); since AI split S3 only the pinned artifact puts them here.
       - name: Overlay the pinned ai-native-ref artifact
         run: ./scripts/ci/ai-overlay.sh
 

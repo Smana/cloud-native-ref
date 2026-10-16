@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The v2 cohort's decision inputs (docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md §6).
+"""The v2 cohort's decision inputs (ai-native-ref docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-design.md §6).
 
 Reads the results sheet that cohort-row.py appends to and prints, per arm, what the §6 rules need.
 """
@@ -16,7 +16,6 @@ _cr = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_cr)
 ENDED = sorted(_cr.ENDED)
 ACCEPTED = {"merged-as-is", "merged-after-edits"}
-DEFAULT_CSV = pathlib.Path(__file__).resolve().parents[3] / "docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-results.csv"
 
 
 def summarize(rows):
@@ -62,7 +61,8 @@ def render(s):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("csv", nargs="?", default=str(DEFAULT_CSV))
+    # The sheet moved to ai-native-ref with the cohort design (AI split S4).
+    p.add_argument("csv", help="docs/superpowers/specs/2026-10-12-v2-hard-task-cohort-results.csv in ai-native-ref")
     a = p.parse_args(argv)
     with open(a.csv, newline="") as fh:
         rows = list(csv.DictReader(fh))

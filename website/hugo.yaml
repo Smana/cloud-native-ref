@@ -55,13 +55,17 @@ menu:
     - name: Decisions
       pageRef: /docs/decisions
       weight: 6
-    - name: GitHub
+    # The AI platform publishes its own site (split design §5); a relref cannot cross sites.
+    - name: AI platform ↗
       weight: 7
+      url: "https://ainref.ogenki.io/"
+    - name: GitHub
+      weight: 8
       url: "https://github.com/Smana/cloud-native-ref"
       params:
         icon: github
     - name: Search
-      weight: 8
+      weight: 9
       params:
         type: search
 

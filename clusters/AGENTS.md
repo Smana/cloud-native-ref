@@ -88,7 +88,7 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
   `runtimeclass-nvidia` — that exists on AWS only because Bottlerocket's NVIDIA AMI crashloops the
   upstream device plugin; GKE manages GPU drivers itself.
 - **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
-  mount. [ADR-0021](../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
+  mount. [ADR-0021](https://ainref.ogenki.io/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp/)
   covers what that gives up. The mount needs the `gke-gcsfuse/volumes` annotation — without it
   there is no FUSE sidecar and the failure reads as a misleading `PermissionDenied` while IAM is
   in fact fine.
