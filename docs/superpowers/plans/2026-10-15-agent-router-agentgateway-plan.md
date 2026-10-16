@@ -212,11 +212,11 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | H.1 | valid | crossplane-configuration | Base CC-AGW1 merged on `main` |
 | H.2–H.4 | valid | cnref | The listed Envoy files all exist on `main`. A5–A7 retire from `assert-ai-gateway.py` |
 | H.5 | valid | cnref | `agent-platform` still `dependsOn: ai-gateway`; the audit stands |
-| I.1 | valid | cnref | — |
-| I.2 | changed | cnref | Live on either cloud (was gcp-0 only). P5 first. The built-in catalog already prices `claude-opus-5-5` and `claude-sonnet-5-5` |
-| I.3 | changed | cnref | `AgentgatewayModel` is on by default in 1.6; a backend with priority groups now evicts failing targets by default |
-| I.4, I.5 | valid | cnref | `infrastructure/base/agent-model-routing/` does not exist yet: I.4 creates it, as planned |
-| I.6 | changed | cnref | The SP4 cross-edit targets [`2026-09-25-llm-frontier-backends-plan.md`](2026-09-25-llm-frontier-backends-plan.md) on `main`. Real `internal` runs need P6 |
+| I.1 | done (ai-native-ref#6) | ai-native-ref | Gate: AG5 holds Anthropic to `internal` and refuses a split rule; new AG12 holds one provider and listed models per backend. The spike was not run (live-only). Ruling: `policies.ai.modelAliases` with a `*` catch-all, no `AgentgatewayModel`; an unknown name gets `agent-default`, not a refusal |
+| I.2 | done offline (ai-native-ref#6) | ai-native-ref | Native Anthropic provider, key from P5, no auth `location` (the provider moves Bearer to `x-api-key`). Live step pending a release on aws-0 |
+| I.3 | done offline (ai-native-ref#6) | ai-native-ref | Tiers: `glm-5.3-flash`, `glm-5.3-flashx`, `glm-5.3` on `public`; `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` on `internal`; `agent-default` = frontier |
+| I.4, I.5 | done offline (ai-native-ref#6) | ai-native-ref | B6 is a descriptor in the Gateway-wide `token-budgets`, keyed on the verified `aud`: a listener-scoped policy could replace B1–B2 there. Only `AnthropicFleetNearCap` and the price rows were added; the existing run and fleet alerts cover the rest. No `agent-model-routing/` |
+| I.6 | step 1 done; live and rotation pending | cnref | SP4 cross-edit done. Real `internal` runs need P6 and phase J's meter price first |
 | J0 | done | agent-platform, cnref | agent-platform#100, #2379 |
 | J.1 | changed | cnref | Shrinks to an overlay, below |
 | J.2 | valid | cnref | Its acceptance is J-AC1 below |
