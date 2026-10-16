@@ -47,9 +47,16 @@ aws-0 the gateway layer is live, for the agent factory.
 | Kubernetes, gateway layer | `aws-0/ai-gateway.yaml`, `spec.suspend: false` on aws-0 since 2026-10-16 | already live |
 | Kubernetes, GPU models | `aws-0/llm-platform.yaml`, `spec.suspend: true` | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella aggregates 5 children under `aws-0-llm-platform/`, kept a **sibling** of `aws-0/` so
-that `flux-system`'s recursive sync cannot auto-apply the children and bypass the umbrella suspend.
-See `aws-0-llm-platform/README.md` for the child manifests and the teardown procedure.
+**The children are not in this repository** (ADR-0057, split S3). The three umbrellas on each
+cluster read `OCIRepository/ai-native-ref` (`flux/sources/ocirepo-ai-native-ref.yaml`: suspended by
+default, digest-pinned, cosign-verified; aws-0 un-suspends it with a patch in
+`aws-0/flux/flux-sources.yaml`). The `*-ai-gateway/`, `*-llm-platform/` and `*-agent-platform/`
+directories, and every other AI path, are gitignored: `task ai:overlay` lays the pinned artifact
+over them so the gates and the docs see them. Changing an AI manifest is a PR to
+`Smana/ai-native-ref`, a release, then a pin bump here.
+
+The umbrella aggregates 5 children under `aws-0-llm-platform/`.
+See `aws-0-llm-platform/README.md` (overlaid) for the child manifests and the teardown procedure.
 
 The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
 `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` → `aws-0-ai-gateway/`, OD-3), CPU
@@ -60,8 +67,8 @@ Its children kept their names when they moved, so
 `dependsOn` edges from `llm-platform` children still resolve. Read that README before resuming
 `llm-platform` on a cluster that ran it before the move.
 
-**A suspended umbrella freezes its children's own specs.** Their content follows `main` (their
-source is the `ExternalArtifact`), but the child Kustomization objects (`dependsOn`, health
+**A suspended umbrella freezes its children's own specs.** Their content follows the pinned
+artifact, but the child Kustomization objects (`dependsOn`, health
 checks, paths) stay at the revision the umbrella last applied. That is why aws-0's two agent
 umbrellas went live: #2429 changed a child's health check that never reached the cluster.
 
@@ -95,8 +102,8 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
 ## The agent platform — one gate on AWS
 
-`aws-0/agent-platform.yaml`, children in `aws-0-agent-platform/` (a sibling, for the same reason
-as `llm-platform`). **Live on aws-0** (`spec.suspend: false`, owner, 2026-10-16); gcp-0's twin
+`aws-0/agent-platform.yaml`, children in `aws-0-agent-platform/` (in the artifact, like
+`llm-platform`'s). **Live on aws-0** (`spec.suspend: false`, owner, 2026-10-16); gcp-0's twin
 ships suspended. It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
 start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves

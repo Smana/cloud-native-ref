@@ -25,6 +25,8 @@ tasks:
   check:
     desc: Every scripts/ci gate CI runs, in one command
     cmds:
+      # First: the gates below read the AI paths, which only the overlay puts in the tree.
+      - {task: "ai:overlay"}
       - {task: "ci:validate"}
       - {task: "ci:test"}
       - {task: "ci:links"}
@@ -34,6 +36,10 @@ tasks:
       - {task: "ci:workflow-secrets"}
       - {task: "ci:openbao-policies"}
       - {task: "ci:doc-paths"}
+
+  ai:overlay:
+    desc: Verify and lay the pinned ai-native-ref artifact over the (gitignored) AI paths
+    cmds: ["{{.ROOT_DIR}}/scripts/ci/ai-overlay.sh"]
 
   # The design names this `task agent:run` (SP1 §Implementation outline): the
   # owner's way to start a run until SP3's factory is the only creator (C3).

@@ -89,6 +89,7 @@ bootstrap. Read it before running anything destructive.
 
 ```bash
 task check                              # every scripts/ci gate CI runs, in one command
+task ai:overlay                         # first, before any gate run alone: the AI paths come from the pinned ai-native-ref artifact
 ./scripts/ci/validate-manifests.sh      # renders the repo as Flux would, then gates it
 ./scripts/ci/validate-vmrules.sh        # promtool over every repo-authored VMRule
 ./scripts/ci/validate-links.sh          # every relative Markdown link

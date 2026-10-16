@@ -24,9 +24,8 @@ spec:
   deletionPolicy: Orphan
   interval: 5m0s
   timeout: 5m0s
-  # A sibling of clusters/gcp-0/, never a sub-path: flux-system syncs that tree
-  # recursively and would apply the children around this suspend.
+  # The children's directory in the ai-native-ref artifact (ADR-0057, split design H1).
   path: ./clusters/gcp-0-ai-gateway
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: OCIRepository
+    name: ai-native-ref

@@ -17,5 +17,7 @@ check() {
 check "Merge-gate invariants" '^[[:space:]]+run: \./scripts/ci/check-policy-gate-coverage\.sh && \./scripts/ci/check-workflow-secrets\.sh$'
 check "pre-release XRD CRDs" '^[[:space:]]+f="\$\(\./scripts/ci/fetch-xrd-crds\.sh\)"$'
 check "XRD_CRDS_FILE export" '^[[:space:]]+\[ -z "\$f" \] \|\| echo "XRD_CRDS_FILE=\$f" >> "\$GITHUB_ENV"$'
+# AI split S3: without it the AI paths are absent and the render covers only the host.
+check "ai-native-ref overlay" '^[[:space:]]+run: \./scripts/ci/ai-overlay\.sh$'
 [ "$fail" -eq 0 ] && echo "PASS"
 exit "$fail"
