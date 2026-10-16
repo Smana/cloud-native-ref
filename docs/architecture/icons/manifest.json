@@ -4,15 +4,9 @@
   "aliases": {
     "envoy": "envoy-ai-gateway",
     "victorialogs": "victoriametrics",
-    "victoriatraces": "victoriametrics",
-    "z.ai": "zai"
+    "victoriatraces": "victoriametrics"
   },
   "icons": {
-    "agentgateway": {
-      "file": "agentgateway.png",
-      "bytes": 3231,
-      "label": "agentgateway"
-    },
     "bottlerocket": {
       "file": "bottlerocket.png",
       "bytes": 4123,
@@ -27,11 +21,6 @@
       "file": "cilium.png",
       "bytes": 4240,
       "label": "Cilium"
-    },
-    "claude": {
-      "file": "claude.png",
-      "bytes": 3638,
-      "label": "Claude"
     },
     "cloudnativepg": {
       "file": "cloudnativepg.png",
@@ -83,20 +72,10 @@
       "bytes": 2676,
       "label": "Grafana \u2014 dashboards"
     },
-    "gvisor": {
-      "file": "gvisor.png",
-      "bytes": 3419,
-      "label": "gVisor"
-    },
     "harbor": {
       "file": "harbor.png",
       "bytes": 4856,
       "label": "Harbor \u2014 container &amp; Helm registry"
-    },
-    "huggingface": {
-      "file": "huggingface.png",
-      "bytes": 3481,
-      "label": "Hugging Face"
     },
     "iam": {
       "file": "iam.png",
@@ -123,35 +102,15 @@
       "bytes": 3269,
       "label": "Kyverno"
     },
-    "mcp": {
-      "file": "mcp.png",
-      "bytes": 1776,
-      "label": "Model Context Protocol"
-    },
-    "octo-sts": {
-      "file": "octo-sts.png",
-      "bytes": 1303,
-      "label": "octo-sts"
-    },
     "openbao": {
       "file": "openbao.png",
       "bytes": 2026,
       "label": "OpenBao"
     },
-    "openhands": {
-      "file": "openhands.png",
-      "bytes": 2770,
-      "label": "OpenHands"
-    },
     "opentofu": {
       "file": "opentofu.png",
       "bytes": 3368,
       "label": "OpenTofu"
-    },
-    "openwebui": {
-      "file": "openwebui.png",
-      "bytes": 1026,
-      "label": "Open WebUI"
     },
     "s3": {
       "file": "s3.png",
@@ -182,11 +141,6 @@
       "file": "vpc.png",
       "bytes": 3821,
       "label": "Amazon VPC"
-    },
-    "zai": {
-      "file": "zai.png",
-      "bytes": 706,
-      "label": "Z.ai"
     },
     "zitadel": {
       "file": "zitadel.png",
