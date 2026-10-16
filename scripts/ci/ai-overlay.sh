@@ -27,6 +27,9 @@ mapfile -t pin < <(python3 - "$PIN" <<'EOF'
 import sys, yaml
 spec = yaml.safe_load(open(sys.argv[1]))["spec"]
 ids = spec["verify"]["matchOIDCIdentity"]
+if len(ids) != 1:
+    # source-controller's cosign keyless refuses more ("multiple identities are not supported").
+    sys.exit(f"expected one matchOIDCIdentity entry, got {len(ids)}: put the signers in one subject regex")
 issuers = {i["issuer"] for i in ids}
 if len(issuers) != 1:
     sys.exit(f"expected one issuer, got {sorted(issuers)}")
