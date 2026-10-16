@@ -53,23 +53,24 @@ that have no series here, because gcp-0's `agents-gvisor` pool is a GKE node poo
 NodePool. On aws-0 the same alert is the pool's real near-limit signal. On gcp-0 a full pool instead
 surfaces as `AgentSandboxPodPending` — the check above is the direct substitute.
 
-### Step 3 — the two log-based alert expressions evaluate
+### Step 3 — the refusal-burst and octo-sts alert expressions evaluate
 
-The expressions are the rules' own, from `observability/base/agent-platform/vmrule-logs.yaml`,
-prefixed with the rules' 5-minute window.
+The agent router's 401/403 burst is a metric alert since phase H: `AgentGatewayUnauthorizedBurst` in
+`observability/base/agent-platform/vmrule.yaml` counts refusals by `reason` (`JwtAuth`: bad or
+foreign token; `Authorization`: a `sub` outside `agents`). `OctoStsExchangeFailures` stays LogsQL, in
+`vmrule-logs.yaml`. Both expressions are the rules' own.
 
 ```bash
-curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
-  'query=_time:5m kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:"agent-system" | unpack_json | log.response_code:~"(401|403)" | stats count() as rejected | filter rejected:>20'
+kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=$(jq -rn --arg q 'sum(increase(agentgateway_requests_total{namespace="agent-gateway", reason=~"JwtAuth|Authorization"}[5m])) > 20' '$q|@uri')" | jq '.status, .data.result'
 curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
   'query=_time:5m kubernetes.pod_labels.app.kubernetes.io/name:"octo-sts" AND _msg:~"(?i)(error|denied|failed)" | stats count() as failures | filter failures:>5'
 ```
 
-Expected: both queries run without a syntax error (an empty result means the 5-minute window has
-fewer than the threshold — that's a pass, not a failure of the rule).
+Expected: `"success"` and the LogsQL query without a syntax error (an empty result means the
+5-minute window is under the threshold — a pass, not a failure of the rule).
 
-**What this proves:** `AgentRouterUnauthorizedBurst` and `OctoStsExchangeFailures` are valid LogsQL
-against this cluster's actual log fields.
+**What this proves:** `AgentGatewayUnauthorizedBurst` is valid MetricsQL against agentgateway's
+series, and `OctoStsExchangeFailures` valid LogsQL against this cluster's log fields.
 
 ### Step 4 — the dashboard renders
 
@@ -88,7 +89,7 @@ error:
 | Sandbox pods by phase | `sum by (phase) (kube_pod_status_phase{namespace="agents"})` | A line per phase seen during this session |
 | Tokens per run through agent-router | `sum by (ar_agent) (rate(gen_ai_client_token_usage_sum{ar_agent=~"system:serviceaccount:agents:.*"}[5m]))` | Non-empty only while/after a run made model calls (runbooks 01, 02, 07) |
 | agents-gvisor usage / limit | `karpenter_nodepools_usage / karpenter_nodepools_limit` for `agents-gvisor` | Empty on gcp-0: Karpenter-only metric, no series on a GKE node pool. Non-empty on aws-0, may be near-zero if the pool scaled to zero |
-| agent-router 4xx | LogsQL, `log.response_code:4*` | Entries corresponding to the 401/403 checks in runbooks 02 and 04 |
+| agent-router 4xx | LogsQL, `kubernetes.pod_namespace:"agent-gateway" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:"agent-router" \| unpack_json \| filter log.http.status:4*` | Entries corresponding to the 401/403 checks in runbooks 02 and 04 |
 
 The "Tokens per run" panel is empty only if no run made model calls in the window. Record "no data"
 as a fail only if a run from an earlier runbook definitely made model calls in the last 24h.
@@ -128,12 +129,12 @@ R=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
 ```bash
 kubectl get deploy -n observability agent-traces-collector -o jsonpath='{.status.readyReplicas}'; echo
 kubectl logs -n observability deploy/agent-traces-collector | grep -ciE 'forbidden|cannot list'
-POD=$(kubectl get pod -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router -o jsonpath='{.items[0].metadata.name}')
-kubectl port-forward -n envoy-gateway-system "pod/$POD" 19000:19000 >/dev/null & PF=$!; sleep 2
-curl -s localhost:19000/config_dump | grep -c 'envoy.tracers.opentelemetry'; kill $PF
+kubectl get agentgatewaypolicy -n agent-gateway frontend -o jsonpath='{.spec.frontend.tracing.backendRef.namespace}/{.spec.frontend.tracing.backendRef.name}:{.spec.frontend.tracing.backendRef.port}{"\n"}'
 ```
 
-Expected: `1`; `0`; a positive count.
+Expected: `1`; `0`; `observability/agent-traces-collector:4317`. The tracer is the `frontend`
+policy in `infrastructure/base/agent-gateway/policy-frontend.yaml`; agentgateway has no Envoy
+`config_dump` to grep.
 
 A `forbidden` line means the collector's Role is too narrow for `k8s_attributes`. Record it, and widen
 the Role to the chart preset's `pods` and `namespaces` `get/list/watch`, as a ClusterRole.
@@ -299,6 +300,9 @@ Tear down: `kubectl delete agentrun -n agents xplane-run-$A xplane-run-$B; rm -r
 nothing from a run beside it.
 
 ## Results
+
+> Every round below predates phase H (#2429): Step 3's router check, the 4xx panel and Step 6's
+> tracer check read Envoy's agent-router.
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 

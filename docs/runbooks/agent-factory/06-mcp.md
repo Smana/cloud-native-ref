@@ -1,11 +1,13 @@
 # 06 — MCP tools
 
-Proves that the two `MCPRoute`s (`public`, `internal`) expose exactly the tools each role/class
+Proves that agentgateway's MCP federation (one `AgentgatewayBackend`, `agent-mcp`, behind a route
+and an `Allow` list per listener, `public` and `internal`, in `infrastructure/base/agent-gateway/mcp.yaml`)
+exposes exactly the tools each role/class
 combination should see — `public` carries no cluster-read tool for any role (documentation plus the
 role's `room_*` tools), `internal` adds real cluster-read tools but keeps logs off-limits to the
 implementer role — and that the backing
 `flux-operator-mcp` ServiceAccount's own Kubernetes RBAC excludes secrets, independent of what the
-MCPRoute authorization allows. See [README.md](README.md) for prerequisites; run
+gateway's `Allow` lists permit. See [README.md](README.md) for prerequisites; run
 [00](README.md#runbook-00-one-time-cluster-setup) first.
 
 ## Prerequisites
@@ -15,6 +17,10 @@ MCPRoute authorization allows. See [README.md](README.md) for prerequisites; run
 ## Steps
 
 ### Step 0 — the MCP session seed is the generated one
+
+This guards the Envoy AI Gateway controller, which no longer serves any agent MCP traffic since phase H
+(#2429); agentgateway federates with `sessionRouting: Stateless`. Keep it while that controller runs
+`ai-gateway`.
 
 ```bash
 kubectl get pods -n envoy-ai-gateway-system -l app.kubernetes.io/instance=envoy-ai-gateway,app.kubernetes.io/name=ai-gateway-helm -o json \
@@ -32,11 +38,12 @@ generator's. An empty output means the flag moved: read the pod's args by hand.
 ### Step 1 — the routes are accepted
 
 ```bash
-flux get kustomizations -n flux-system agent-mcp
-kubectl get mcproute -n agent-system -o custom-columns=NAME:.metadata.name,ACCEPTED:'.status.conditions[?(@.type=="Accepted")].status'
+flux get kustomizations -n flux-system agent-mcp agent-gateway
+kubectl get httproute -n agent-system agentgateway-mcp-public agentgateway-mcp-internal \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.parents[*].conditions[?(@.type=="Accepted")].status}{"\n"}{end}'
 ```
 
-Expected: `Ready=True`; both MCPRoutes `True`. If one is not, read its condition message before
+Expected: both Kustomizations `Ready=True`; both routes `True`. If one is not, read its condition message before
 continuing.
 
 ### Step 2 — SC-08 (no API route from a run), quick recheck
@@ -60,16 +67,15 @@ kubectl cp scripts/ops/k8s/agent-probe-mcp.sh agents/agent-probe:/tmp/mcp.sh -c 
 kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh public tools/list | grep -o '"name":"[^"]*"'
 ```
 
-Expected: the three documentation tools `flux-operator-mcp__search_flux_docs`,
-`mcp-victoriametrics__documentation` and `mcp-victorialogs__documentation`, plus the implementer's
-room tools `room-broker__room_read`, `room-broker__room_post`, `room-broker__room_progress` and `room-broker__room_handoff` (on both
-routes since c6a56f78). No `get_kubernetes_*`, no `query`, no other tool. Tool names are namespaced by
-backend: `server__tool` on Envoy's agent-router, which the probe calls, and `server_tool` on
-agentgateway, which runs call since AGW-6 (`room-broker_room_read`). The room bridge accepts both
-forms since agent-platform v0.12.0.
+Expected: exactly the three documentation tools `flux-operator-mcp_search_flux_docs`,
+`mcp-victoriametrics_documentation` and `mcp-victorialogs_documentation`. No `get_kubernetes_*`, no
+`query`, no other tool. agentgateway names every tool `<target>_<tool>` (`prefixMode: Always`), the
+target being the server's name in `agent-mcp`.
 
-Not yet observed live: whether the room broker lists its tools for a caller with no room, such as
-`agent-probe`. Three documentation tools and no `room_*` tool is also a pass; record which you saw.
+No `room-broker_*` tool for the probe: the broker answers only a live run's `sub` (403 otherwise), and
+`failureMode: FailOpen` drops a refusing target from the list. A real implementer run also sees
+`room-broker_room_read`, `room-broker_room_post`, `room-broker_room_progress` and
+`room-broker_room_handoff`. `scripts/ops/k8s/agentgateway-poc-checks.py` asserts the same set (L3).
 
 ### Step 4 — `internal` adds real read tools, gated by role
 
@@ -84,17 +90,18 @@ Expected (the probe is an `implementer`):
 | `flux-operator-mcp` | `search_flux_docs`, `get_flux_instance`, `get_kubernetes_api_versions`, `get_kubernetes_metrics` | `get_kubernetes_logs`, `get_kubernetes_resources` |
 | `mcp-victoriametrics` | 13 tools | `tsdb_status`, `active_queries`, `top_queries` |
 | `mcp-victorialogs` | `documentation` only | the query tools |
-| `room-broker` | `room_read`, `room_post`, `room_progress`, `room_handoff` (same caveat as Step 3) | `room_verdict` |
+| `room-broker` | `room_read`, `room_post`, `room_progress`, `room_handoff` (a live run only, as in Step 3) | `room_verdict` |
 
 Other roles, from `infrastructure/base/agent-gateway/mcp.yaml` (its Allow lists): reviewer, tester and triager also
 get `get_kubernetes_resources`, `get_kubernetes_logs` and the VictoriaLogs query tools. Room tools:
 reviewer `room_read`, `room_post`, `room_progress`, `room_verdict`; tester all five; triager `room_read`, `room_post`, `room_progress`,
 `room_handoff`.
 
-### Step 5 — SC-12: an implementer is denied the logs tool by the MCPRoute, and the backend SA has no secrets access
+### Step 5 — SC-12: an implementer is denied the logs tool by the gateway, and the backend SA has no secrets access
 
 ```bash
-kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"flux-operator-mcp__get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
+kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal tools/call '{"name":"flux-operator-mcp_get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
+kubectl exec -n agents agent-probe -c probe -- sh /tmp/mcp.sh internal-reviewer tools/call '{"name":"flux-operator-mcp_get_kubernetes_logs","arguments":{"name":"octo-sts","namespace":"agent-system"}}'
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -A
 kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
 kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:agent-system:flux-operator-mcp -n security
@@ -103,20 +110,23 @@ kubectl auth can-i list nodes --as=system:serviceaccount:agent-system:flux-opera
 kubectl auth can-i get secrets --as=system:serviceaccount:agent-system:flux-operator-mcp -n flux-system
 ```
 
-The tool name must be the namespaced form: a bare `get_kubernetes_logs` fails with a generic
-`400 invalid tool name` before authorization is evaluated, which looks like a pass but proves
-nothing. `kubectl auth can-i get pods/log` would check a pod *named* `log`; `--subresource=log` asks
-the real question.
+A denied call answers like a typo: agentgateway returns `Unknown tool`, not a permission error
+(ADR-0053; agentgateway#3710). The second call is the control that tells them apart: the reviewer's
+`Allow` list grants the same name, so its call must reach the server. `kubectl auth can-i get
+pods/log` would check a pod *named* `log`; `--subresource=log` asks the real question.
 
-Expected: the call is refused (HTTP 403, or a JSON-RPC error naming authorization — the MCPRoute's
-`defaultAction: Deny` plus per-role rules never grant `implementer` this tool on `internal`); `no`;
+Expected: the implementer's call is refused with `Unknown tool` (a JSON-RPC error or an `isError`
+result; verify on next run: the exact reply is not yet recorded on the real Gateway). No
+`matchExpressions` entry in `agentgateway-mcp-internal` grants `implementer` this tool. The reviewer's
+call is not `Unknown tool`: it reaches `flux-operator-mcp`, whose RBAC then refuses `pods/log` in
+`agent-system` (the floor below); `no`;
 `yes` for `pods/log` in `flux-system`, `no` for `pods/log` in `security`, `no` for `configmaps` in
 `security`, `no` for `list nodes` (cluster-scoped, no namespace), `no` for `secrets` in `flux-system`
 too (the `flux-system` Role grants only `configmaps` and `pods/log`, in that namespace alone; the
 cluster-wide `agent-mcp-flux-read` ClusterRole grants neither `pods/log` nor `configmaps` any more,
 and never granted `secrets`).
 
-**What this proves:** SC-12 — an implementer calling `get_kubernetes_logs` is denied at the MCPRoute
+**What this proves:** SC-12 — an implementer calling `get_kubernetes_logs` is denied at the gateway
 layer, and the backend's own RBAC is a second, independent, namespace-scoped floor: `pods/log` and
 `configmaps` are readable only in `flux-system`, nowhere else, and `secrets` fails everywhere for
 every role.
@@ -131,6 +141,9 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 ```
 
 ## Results
+
+> Every round below predates phase H (#2429): it ran against Envoy's MCPRoutes, whose tool names
+> read `<server>__<tool>` and whose denial was `access denied`, HTTP 403.
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 

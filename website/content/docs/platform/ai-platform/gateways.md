@@ -2,14 +2,14 @@
 title: Gateways
 weight: 30
 description: "Two gateways, one per kind of caller: ai-gateway for humans and coding clients, the agent gateway for agent runs — identity, routing, and what they share."
-lastVerified: 2026-10-01
+lastVerified: 2026-10-16
 aliases:
   - /docs/platform/ai-platform/gateway-and-routing/
 ---
 
 Every model call on this platform crosses one of two gateways, chosen by who is calling. Both speak
 the OpenAI API; they differ in how they know the caller and in what they let it do. What runs
-today, and the planned move to agentgateway, is on the
+today is on the
 [status page]({{< relref "/docs/platform/ai-platform/status.md#v2-roadmap" >}}).
 
 | | `ai-gateway` | Agent gateway |
@@ -18,7 +18,7 @@ today, and the planned move to agentgateway, is on the
 | **Identity** | An API key per client, from AWS Secrets Manager | A projected token per run (JWT), verified on every call |
 | **Model choice** | Named by the client, or picked from the prompt by the Semantic Router (`model: MoM`) | An alias, mapped statically to one backend; nothing selects per request |
 | **Also carries** | — | MCP tool calls, the room tools, and the token exchange (`sts`) with octo-sts |
-| **Software** | Envoy Gateway + Envoy AI Gateway (Agent Router) `1.1.0` | Agent Router `1.1.0` on Envoy Gateway; [agentgateway](https://agentgateway.dev) selected to replace it |
+| **Software** | Envoy Gateway + Envoy AI Gateway (Agent Router) `1.1.0` | [agentgateway](https://agentgateway.dev) `v1.6.0` ([ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})) |
 
 ![The two gateways side by side. Top: humans and coding clients reach ai-gateway over the tailnet with an API key; the Semantic Router may pick the model, and the request lands on a vLLM model in the serving fleet. Bottom: an agent run's identity-proxy sidecar attaches the run's own token; the agent gateway verifies it, meters the run's tokens and routes the model alias to a frontier provider (Z.ai GLM, Claude), the MCP tools, or octo-sts for a GitHub token. Both gateways write access logs and gen_ai metrics to the Victoria stack](/images/diagrams/ai-platform-2.svg)
 
@@ -163,24 +163,90 @@ counted in **shadow mode**: nothing is rejected yet
 
 ## The agent gateway: agent runs
 
-Every call an agent makes, to a model, a tool or the token exchange, goes through this gateway
-under the run's own identity. The harness never sees that token: the run's identity-proxy sidecar
-attaches it (see [Agent runtime]({{< relref "/docs/platform/ai-platform/agents/runtime.md" >}})).
+Every call an agent makes, to a model, a tool or the token exchange, crosses
+[agentgateway](https://agentgateway.dev)'s Gateway `agent-router` in namespace `agent-gateway` under
+the run's own identity. Runs moved to it on 2026-10-16 (#2408), Envoy's agent router was removed the
+same day (#2429), and the human `ai-gateway` stays on Envoy Gateway
+([ADR-0053]({{< relref "/docs/decisions/0053-agent-router-on-agentgateway.md" >}})). The harness
+never sees the run's token: its identity-proxy sidecar attaches it (see
+[Agent runtime]({{< relref "/docs/platform/ai-platform/agents/runtime.md" >}})). Manifests:
+`infrastructure/base/agent-gateway/`.
 
-| Component | Software | What it does | Why this software |
+```mermaid
+flowchart LR
+  subgraph run["Run pod, gVisor"]
+    H["OpenHands harness"] --> P["identity-proxy<br/>127.0.0.1:4000 · 4002 · 4001"]
+  end
+  subgraph agw["agentgateway · Gateway agent-router · ns agent-gateway"]
+    LP["public :8080"]
+    LI["internal :8081"]
+    LS["sts :8082"]
+  end
+  P -->|".public JWT"| LP
+  P -->|".internal JWT"| LI
+  P -->|"octo-sts JWT"| LS
+  LP -->|"/v1, /anthropic"| Z["Z.ai GLM-5.3<br/>backends zai, zai-anthropic"]
+  LP -->|"/mcp"| M["agent-mcp<br/>MCP federation"]
+  LI -->|"/mcp"| M
+  LS -->|"/sts/exchange"| O["octo-sts"]
+  M --> T["flux-operator-mcp · mcp-victoriametrics<br/>mcp-victorialogs · room-broker"]
+  agw -.->|"B1, B2 in shadow"| RL["agent-ratelimit"] --> V[("Valkey<br/>xplane-agent-ratelimit")]
+```
+
+### Listeners and data classes
+
+| Listener | Port | Audiences | Routes |
 |---|---|---|---|
-| Gateway | [Agent Router](https://theagentrouter.ai) 1.1.0 (Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) | Verifies each run's token (JWT), attributes and meters every request to its run, routes the model alias to a provider. Per-run and fleet token budgets, and routing by tier | One gateway for models, tools and token exchange, with per-run identity in every access-log line |
-| Models | Z.ai GLM-5.3 for `public` runs; Anthropic Claude for `internal` runs, through the Anthropic API (Bedrock or Vertex optional per cloud; ADR-0054, accepted on the programme branches) | The providers the router sends model calls to. Agents ask for an alias, never for a provider | Swapping or adding a provider changes the router, not the agents |
-| Tool servers | [MCP](https://modelcontextprotocol.io) servers for Flux Operator, VictoriaMetrics and VictoriaLogs, read-only, and the room-broker's `room_*` tools | `public` runs get documentation tools only; cluster, metric and log reads are for `internal` runs. The room tools are routed per role | Agents investigate with the data humans use, under the same identity checks |
+| `public` | 8080 | `agent-router.<role>.public` | `/v1` and `/anthropic` to Z.ai; `/v1/models` answers a 404 body, not a model list; `/mcp` with documentation and room tools |
+| `internal` | 8081 | `agent-router.<role>.internal` | `/mcp` with cluster, metric and log reads per role. No model route yet: `internal` runs will reach Claude through the Anthropic API (Bedrock or Vertex optional per cloud; ADR-0054), with the tier routes |
+| `sts` | 8082 | `octo-sts/Smana/cloud-native-ref/<role>` | `/sts/exchange` to octo-sts, with the bearer forwarded (`preserveToken`) |
+
+### Identity
+
+| Check | Where | A failure answers |
+|---|---|---|
+| Signature, issuer, the listener's own audiences, `exp` and `sub` present | `jwtAuthentication`, `mode: Strict`, one policy per listener | 401 |
+| `sub` starts with `system:serviceaccount:agents:` | the listener's `authorization` rule | 403 |
+| No client-set `x-ar-agent`, `x-ar-human`, `x-ai-gateway-client-id` or `agent-session-id` | `strip-identity-headers`, before routing | — (removed) |
+
+Each listener then sets `x-ar-agent` from the verified `jwt.sub`, and the same `sub` labels every
+signal: `x_ar_agent` in the access log, `ar_agent` on metrics, `agent.principal` on spans
+(`policies-identity.yaml`, `policy-frontend.yaml`).
+
+### MCP federation
+
+One `AgentgatewayBackend`, `agent-mcp` (`mcp.yaml`), federates the four servers with stateless
+sessions and names every tool `<target>_<tool>`: `flux-operator-mcp_search_flux_docs`,
+`mcp-victoriametrics_query`, `room-broker_room_read`. Each listener's route carries an `Allow` list,
+one expression per role and target, so a role sees only its tools in `tools/list` and a denied call
+answers `Unknown tool`. A target that fails is dropped from the list rather than failing the session
+(`failureMode: FailOpen`). No run bearer reaches a server; the room-broker gets its own key in
+`x-room-mcp-key`.
+
+| Role | `public` | `internal` adds |
+|---|---|---|
+| implementer | documentation tools; `room_read`, `room_post`, `room_progress`, `room_handoff` | Flux instance, API versions and metrics; every VictoriaMetrics read tool |
+| reviewer, tester, triager | documentation tools; their `room_*` tools (`room_verdict` for reviewer and tester) | also `get_kubernetes_resources`, `get_kubernetes_logs` and the VictoriaLogs query tools |
+
+### Budgets
+
+ADR-0050's agent budgets, on a rate-limit server of their own so they never share a bucket with the
+human ones (`policy-budgets.yaml`, `ratelimit.yaml`, `kvstore.yaml`):
+
+| Budget | Bucket | Limit per day |
+|---|---|---|
+| B1 | per run (the verified `sub`) | 5M reference tokens |
+| B2 | the whole fleet | 40M reference tokens |
+
+Both run in **shadow mode**: every descriptor sets `shadow_mode` and the server runs with
+`SHADOW_MODE=true`, so nothing answers 429 yet. The server is `envoyproxy/ratelimit`
+(`agent-ratelimit`) on the Valkey `KVStore` `xplane-agent-ratelimit`; if it is down the router fails
+open and `AgentRateLimitDown` fires. Only a per-replica backstop of 30M raw tokens per hour per `sub`
+enforces, sized so that only a runaway the run meter failed to revoke reaches it. The run's exact
+cap is still the factory's run meter.
 
 The token-exchange listener names each repository's audiences, at most eight per listener; adding
 a repository is described on the [agents overview]({{< relref "/docs/platform/ai-platform/agents/_index.md#one-repository-at-first" >}}).
-
-*Decided 2026-10-01:* [agentgateway](https://agentgateway.dev) was selected after its proof of
-concept on `gcp-0` to replace Agent Router as the agents' gateway (models, MCP and the `sts`
-listener). An ADR superseding programme ADR-0042 and ADR-0050's Option 1 (on the programme
-branches, not yet on main) for the agent router follows. The `ai-gateway` stays on Envoy Gateway
-and Agent Router.
 
 ## What the two share, and what they keep apart
 
@@ -192,4 +258,4 @@ From the [model routing and budgets design](https://github.com/Smana/cloud-nativ
 | Semantic Router | On `ai-gateway` only; agents use their own Gateway | The router can be neither a single point of failure nor a prompt reader for agents |
 | Agent model choice | Every agent alias maps to one backend: no weights, canaries or fallback | Nothing re-routes a trajectory mid-run; escalation is a new run at the next tier |
 | Backends | One set per gateway, each with its own provider key | Revoking the agents' key never breaks chat or RunLore, and provider spend splits by key |
-| Budgets | Token budgets at both gateways, in token units, through one global rate limit backed by Valkey | One mechanism for every principal; the factory still revokes a run at its exact cap |
+| Budgets | Token budgets at both gateways, in token units, each through its own `envoyproxy/ratelimit` and Valkey (ADR-0053) | One mechanism for every principal, no shared bucket; the factory still revokes a run at its exact cap |

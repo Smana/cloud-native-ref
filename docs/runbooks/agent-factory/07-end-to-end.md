@@ -69,7 +69,7 @@ Q="rate(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:$L
 ENC=$(python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$Q")
 kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=$ENC" | jq .
 curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
-  "query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.response_code) count() n"
+  "query=kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" _time:1h | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:$LONG\" | stats by (log.http.status) count() n"
 ```
 
 Expected: the VM query confirms the run is actually making calls; the LogsQL result shows no `401`
@@ -138,6 +138,9 @@ Nothing further — every run this runbook created is already deleted except `$R
 which stays open for owner review.
 
 ## Results
+
+> Every round below predates phase H (#2429): gateway lines were read on Envoy's agent-router
+> (`log.response_code`).
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 

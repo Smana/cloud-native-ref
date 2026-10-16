@@ -3,7 +3,8 @@
 Two independent gateways are in scope here. **Part A (SP1)** proves that no provider key ever lands
 in namespace `agents`, and that the `agents-secrets` OpenBao role reads the `agents` mount and
 nothing else — plus the `internal`-listener half of SC-17 (an `internal` run has no route to Z.ai
-at all). **Part B (SP4 PR 1)** proves the human/system Gateway's frontier route answers real chat
+at all), and that the agents' budgets B1–B2 count on agentgateway's own rate-limit server, in shadow.
+**Part B (SP4 PR 1)** proves the human/system Gateway's frontier route answers real chat
 requests, its token usage is counted (in shadow mode, nothing is rejected on the real route), and a
 route-level rate-limit policy actually fires a 429 when its bucket is exhausted — the mechanism
 SP4's real budgets (still shadow-only) will use once enforcement ships. See [README.md](README.md)
@@ -34,15 +35,18 @@ Expected: both `Ready=True`; `True`; `SecretSynced` (needs owner action 2).
 
 ### Step 2 — the gateway-name label exists (both data-plane CNPs depend on it)
 
-The risk checked here: the CNPs select Envoy Gateway's proxy pods by a label Envoy Gateway sets, not
-one this repo controls.
+The risk checked here: each CNP selects its proxy pods by a label the gateway controller sets, not
+one this repo controls: `gateway.networking.k8s.io/gateway-name` for agentgateway
+(`agent-router-data-plane` in `infrastructure/base/agent-gateway/network-policy.yaml`), Envoy
+Gateway's `owning-gateway-name` for `ai-gateway`.
 
 ```bash
-kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=agent-router,gateway.envoyproxy.io/owning-gateway-namespace=agent-system -o name
+kubectl get pods -n agent-gateway -l gateway.networking.k8s.io/gateway-name=agent-router -o name
 kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-gateway -o name
 ```
 
-Expected: two `agent-router` pods (2 replicas) and one `ai-gateway` pod. If either is empty, **stop** — the data-plane CNP for that Gateway selects
+Expected: two `agent-router` pods (`replicas: 2` in `infrastructure/base/agent-gateway/parameters.yaml`)
+and one `ai-gateway` pod. If either is empty, **stop** — the data-plane CNP for that Gateway selects
 no proxy pod, Cilium then allows everything on the unselected side, and every 401/403 check in this
 session is meaningless until it's fixed.
 
@@ -89,19 +93,41 @@ kubectl apply -f scripts/ops/k8s/agent-probe.yaml
 kubectl wait -n agents sandbox/agent-probe --for=condition=Ready --timeout=10m
 # The token substitution ($(cat ...)) runs INSIDE the pod's shell, so it never
 # appears in this host's process list or shell history.
-kubectl exec -n agents agent-probe -c probe -- sh -c "curl -s -o /dev/null -w 'internal chat %{http_code}\n' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/internal/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' http://agent-router.envoy-gateway-system.svc.cluster.local:8081/v1/chat/completions"
+kubectl exec -n agents agent-probe -c probe -- sh -c "curl -s -o /dev/null -w 'internal chat %{http_code}\n' -H \"Authorization: Bearer \$(cat /var/run/secrets/probe/internal/token)\" -H 'content-type: application/json' -d '{\"model\":\"agent-default\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' http://agent-router.agent-gateway.svc.cluster.local:8081/v1/chat/completions"
 curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv.$CLOUD.ogenki.io/select/logsql/query --data-urlencode \
-  'query=kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:"agent-router" _time:15m | unpack_json | log.listener_port:8081 | stats by (log.upstream_cluster) count() hits'
+  'query=kubernetes.pod_namespace:"agent-gateway" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:"agent-router" _time:15m | unpack_json | log.x_ar_agent:"system:serviceaccount:agents:agent-probe" AND log.http.path:~"chat/completions" | stats by (log.http.status, log.route) count() hits'
 ```
 
-Expected: `internal chat 404` — SP1 seeds only the `public`-listener Z.ai route
-(`agent-models`); `internal` is served by the direct Anthropic API (key in OpenBao,
+Expected: `internal chat 404` — the Z.ai route (`agentgateway-models` in
+`infrastructure/base/agent-gateway/llm.yaml`) attaches to the `public` listener only; `internal` is served by the direct Anthropic API (key in OpenBao,
 gateway-injected; ADR-0054) once the agentgateway migration's phase I lands, with Bedrock/Vertex
-optional per cloud. The internal route does not exist on this cluster yet. No `upstream_cluster`
-containing `zai` among the 8081 lines.
+optional per cloud. The internal route does not exist on this cluster yet. In
+VictoriaLogs, a `404` row with an empty `log.route` and no row naming `agentgateway-models` (verify on
+next run: the empty-route form is not yet recorded on agentgateway).
 
 **What this proves:** SC-17 (listener half) — an `internal`-class run has no path to Z.ai whatsoever,
 structurally (the route doesn't exist on that listener), not just by audience mismatch.
+
+### Step 5 — the agents' budgets B1–B2 count, in shadow, on their own server
+
+Agent budgets are not on `ai-gateway`'s rate limit (Part B): agentgateway's `token-budgets` policy
+sends them to its own `agent-ratelimit` (`infrastructure/base/agent-gateway/ratelimit.yaml`), backed
+by the Valkey `KVStore` `xplane-agent-ratelimit` (`kvstore.yaml`).
+
+```bash
+kubectl get kvstore -n agent-gateway xplane-agent-ratelimit
+kubectl get pods -n agent-gateway -l app.kubernetes.io/name=agent-ratelimit
+kubectl get deploy -n agent-gateway agent-ratelimit -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SHADOW_MODE")].value}{"\n"}'
+kubectl get --raw "/api/v1/namespaces/observability/services/vmsingle-victoria-metrics-k8s-stack:8428/proxy/api/v1/query?query=sum%20by%20(key1)%20(ratelimit_service_rate_limit_total_hits%7Bnamespace%3D%22agent-gateway%22%7D)" | jq -c '.data.result[] | [.metric.key1, .value[1]]'
+```
+
+Expected: `READY True`; `Running 1/1`; `true`; a `total_hits` series for `agent` (B1, per run) and
+`fleet_agents` (B2) once a run has made model calls. Nothing answers `429`: every descriptor sets
+`shadow_mode` and `SHADOW_MODE=true` overrides the server. `AgentRateLimitDown` fires if the pod is
+gone; the router then fails open (`failureMode: FailOpen` in `policy-budgets.yaml`).
+
+**What this proves:** B1–B2 are metered per verified `sub` and fleet-wide, apart from the human
+budgets B3–B5.
 
 ### Cleanup
 
@@ -231,6 +257,9 @@ kubectl delete btp -n llm-gateway zz-budget-marker-probe --ignore-not-found
 ```
 
 ## Results
+
+> Every round below predates phase H (#2429): the agent rows ran on Envoy's agent-router in
+> `envoy-gateway-system` and use its log fields. Part A Step 5 has no recorded round yet.
 
 ### Round 7 — gcp-0, 2026-09-30 (`integration/agent-factory` @ `a2c645ba`)
 

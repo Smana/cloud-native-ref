@@ -106,6 +106,9 @@ make it both correct and safe to roll out.
 B3, the per-human budget, counts nothing until PR 2's oidc listener sets `x-ar-human`: today that
 header is only stripped from client requests.
 
+2026-10-16: B1–B2 run on agentgateway (ADR-0053): `infrastructure/base/agent-gateway/policy-budgets.yaml`,
+`ratelimit.yaml` and `kvstore.yaml`. B3–B5 stay on `ai-gateway`.
+
 ---
 
 ## References
