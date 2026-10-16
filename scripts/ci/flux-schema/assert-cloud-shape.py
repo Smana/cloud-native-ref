@@ -24,7 +24,7 @@ import yaml
 
 SCOPED = re.compile(r"^overlay-(infrastructure|security|observability|tooling)-gcp-0-(agent-[a-z-]+|agentgateway|room-broker|octo-sts|envoy-ai-gateway|envoy-gateway|vllm-semantic-router)\.yaml$")
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
-RUN_TOKEN = re.compile(r"-gcp-0-agent-(router|mcp|gateway)\.yaml$")
+RUN_TOKEN = re.compile(r"-gcp-0-agent-gateway\.yaml$")
 # By name, so a renamed overlay directory fails instead of silently leaving scope.
 EXPECTED = (
     "overlay-infrastructure-gcp-0-agent-router.yaml",

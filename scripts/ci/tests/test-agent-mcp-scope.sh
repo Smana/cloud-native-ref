@@ -25,7 +25,7 @@ SA_NAME = "flux-operator-mcp"
 SA_NS = "agent-system"
 FORBIDDEN = {"secrets", "*"}
 
-# --- MCPRoutes: exact tool sets, not a denylist of three introspection names ---
+# --- Exact tool sets per role, not a denylist of three introspection names ---
 
 VM_TOOLS = {"documentation", "query", "query_range", "metrics", "metrics_metadata", "labels",
             "label_values", "series", "alerts", "rules", "explain_query", "prettify_query",
@@ -96,47 +96,7 @@ EXPECTED_ROLE_TOOLS = {
     },
 }
 
-for route in yaml.safe_load_all(open(os.path.join(base, "mcproutes.yaml"))):
-    if not route or route.get("kind") != "MCPRoute":
-        continue
-    name = route["metadata"]["name"]
-
-    backend_expected = EXPECTED_BACKEND_TOOLS.get(name, {})
-    seen_backends = set()
-    for backend in route["spec"]["backendRefs"]:
-        bname = backend["name"]
-        seen_backends.add(bname)
-        got = set((backend.get("toolSelector") or {}).get("include") or [])
-        want = backend_expected.get(bname)
-        if want is None:
-            errors.append(f"{name}: unexpected backend {bname}")
-        elif got != want:
-            errors.append(f"{name}: backend {bname} toolSelector is {sorted(got)}, expected {sorted(want)}")
-    if set(backend_expected) - seen_backends:
-        errors.append(f"{name}: missing expected backend(s) {sorted(set(backend_expected) - seen_backends)}")
-
-    got_role_tools = {}
-    for rule in route["spec"]["securityPolicy"]["authorization"]["rules"]:
-        auds = {v for c in rule["source"]["jwt"]["claims"] for v in c["values"]}
-        for aud in auds:
-            for t in rule["target"]["tools"]:
-                got_role_tools.setdefault(aud, {}).setdefault(t["backend"], set()).add(t["tool"])
-
-    role_expected = EXPECTED_ROLE_TOOLS.get(name, {})
-    for aud, backends_expected in role_expected.items():
-        got_backends = got_role_tools.get(aud, {})
-        for bname, want in backends_expected.items():
-            got = got_backends.get(bname, set())
-            if got != want:
-                errors.append(f"{name}: {aud} backend {bname} tools are {sorted(got)}, expected {sorted(want)}")
-        extra = set(got_backends) - set(backends_expected)
-        if extra:
-            errors.append(f"{name}: {aud} grants unexpected backend(s) {sorted(extra)}")
-    extra_auds = set(got_role_tools) - set(role_expected)
-    if extra_auds:
-        errors.append(f"{name}: unexpected audience(s) with grants {sorted(extra_auds)}")
-
-# --- agentgateway: the same per-role sets, read from its Allow lists (ADR-0053) ---
+# --- agentgateway's Allow lists (ADR-0053) must grant exactly these sets ---
 # Each expression must be one alternative in the gate's grammar (AG6), so the grants can
 # be recomputed exactly; one outside it is an error here too.
 import importlib.util, re

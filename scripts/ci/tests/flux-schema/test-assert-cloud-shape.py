@@ -41,7 +41,6 @@ def bundle(files):
     return d
 
 
-ROUTER, MCPF = "overlay-infrastructure-gcp-0-agent-router.yaml", "overlay-infrastructure-gcp-0-agent-mcp.yaml"
 AGW, AGWC = "overlay-infrastructure-gcp-0-agent-gateway.yaml", "overlay-infrastructure-gcp-0-agentgateway.yaml"
 AGW_GOOD = f"""apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
@@ -55,8 +54,8 @@ spec:
             remote:
               url: {GKE}/jwks
 """
-RUN = {ROUTER: GOOD, MCPF: GOOD.replace("kind: SecurityPolicy", "kind: MCPRoute").replace("agent-router-public", "agent-mcp"),
-       AGW: AGW_GOOD}
+# Since phase H only agentgateway's overlay carries run-token issuers.
+RUN = {AGW: AGW_GOOD}
 # Every expected overlay present, so a case isolates the one thing it changes.
 FULL = {**{name: "" for name in acs.EXPECTED}, **RUN}
 
@@ -66,9 +65,7 @@ def full(changes):
 
 
 if acs.check_bundle(full({})):
-    fails.append("a GKE-shaped gcp-0 agent-router must pass")
-if not acs.check_bundle(full({ROUTER: GOOD.replace("/jwks", "/keys")})):
-    fails.append("an EKS-shaped JWKS path on gcp-0 must fail")
+    fails.append("a GKE-shaped gcp-0 agent gateway must pass")
 if not acs.check_bundle(full({AGW: AGW_GOOD.replace("/jwks", "/keys")})):
     fails.append("an EKS-shaped JWKS url in an agentgateway policy on gcp-0 must fail")
 if not acs.check_bundle(full({AGW: AGW_GOOD.replace(GKE + "\n", "https://oidc.eks.x/id/Y\n", 1)})):
@@ -77,8 +74,6 @@ if not acs.check_bundle(full({AGWC: "toFQDNs:\n  - matchName: oidc.eks.europe-we
     fails.append("an amazonaws.com host in gcp-0's agentgateway controller overlay must fail")
 if not acs.check_bundle(full({"overlay-security-gcp-0-octo-sts.yaml": "toFQDNs:\n  - matchName: oidc.eks.europe-west4.amazonaws.com\n"})):
     fails.append("an amazonaws.com host in a gcp-0 agent overlay must fail")
-if not acs.check_bundle(full({ROUTER: GOOD.replace(GKE + "\n", "https://oidc.eks.x/id/Y\n", 1)})):
-    fails.append("an EKS issuer on gcp-0 must fail")
 if not acs.check_bundle(bundle({"overlay-infrastructure-aws-0-agent-router.yaml": GOOD})):
     fails.append("a bundle with no gcp-0 agent overlay is vacuous and must fail")
 if acs.check_bundle(full({"overlay-security-gcp-0-cert-manager-public.yaml": "region: eu-west-3\nrole: arn:aws:iam::1:role/x\nsts.amazonaws.com\n"})):

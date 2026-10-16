@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 # requires: python3
-"""The identity proxy's upstreams must match an agent router that exists.
+"""The identity proxy's upstreams must match the agentgateway Gateway.
 
 The ConfigMap's envoy.yaml names its three upstream clusters by hand, so a
 rename of the Gateway, its namespace or a listener port renders fine and passes
 every manifest gate, then breaks each new run at its first model call: Envoy
 resolves a dead hostname and nothing retries elsewhere. Nothing derives one
 side from the other (the Envoy composition predates the Gateway, ADR-0053),
-which is why the equality has to be pinned by a test rather than a template.
-
-Until phase H deletes Envoy's agent-router, either router is a valid target, so
-that rolling back the cutover is a plain revert (G.4's drill). All three
-upstreams must name the same router."""
+which is why the equality has to be pinned by a test rather than a template."""
 import pathlib
 import sys
 
@@ -24,10 +20,6 @@ except ImportError:
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CONFIGMAP = ROOT / "infrastructure/base/agent-runtime/identity-proxy-configmap.yaml"
 AGW_GATEWAY = ROOT / "infrastructure/base/agent-gateway/gateway.yaml"
-# Envoy Gateway puts every data-plane Service in its own namespace, named by the EnvoyProxy.
-ENVOY_GATEWAY = ROOT / "infrastructure/base/agent-router/gateway.yaml"
-ENVOY_PROXY = ROOT / "infrastructure/base/agent-router/envoyproxy.yaml"
-ENVOY_NAMESPACE = "envoy-gateway-system"
 CLUSTERS = ("agent_router_public", "agent_router_internal", "agent_router_sts")
 
 fails = []
@@ -56,18 +48,6 @@ if agw:
     meta = agw["metadata"]
     address = f"{meta['name']}.{meta.get('namespace', 'default')}.svc.cluster.local"
     routers[address] = (f"agentgateway Gateway {meta.get('namespace')}/{meta['name']}", ports(agw))
-if ENVOY_GATEWAY.exists():
-    eg = gateway_of_class(ENVOY_GATEWAY, "envoy-ai-gateway")
-    services = [
-        d["spec"]["provider"]["kubernetes"]["envoyService"].get("name")
-        for d in load_docs(ENVOY_PROXY)
-        if d.get("kind") == "EnvoyProxy"
-    ]
-    if eg and len(services) == 1 and services[0]:
-        address = f"{services[0]}.{ENVOY_NAMESPACE}.svc.cluster.local"
-        routers[address] = (f"Envoy Gateway {eg['metadata'].get('namespace')}/{eg['metadata']['name']}", ports(eg))
-    elif eg:
-        fails.append(f"{ENVOY_PROXY.relative_to(ROOT)}: expected 1 EnvoyProxy naming its envoyService")
 
 configmaps = [
     d for d in load_docs(CONFIGMAP) if d.get("kind") == "ConfigMap" and "envoy.yaml" in d.get("data", {})
