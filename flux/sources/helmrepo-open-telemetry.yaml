@@ -1,6 +1,9 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
+  annotations:
+    # S3 handover (AI split S3.0): the object changes owner, so neither side may prune it.
+    kustomize.toolkit.fluxcd.io/prune: disabled
   name: open-telemetry
   namespace: observability
 spec:

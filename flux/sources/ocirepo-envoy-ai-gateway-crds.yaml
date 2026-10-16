@@ -1,6 +1,9 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
+  annotations:
+    # S3 handover (AI split S3.0): the object changes owner, so neither side may prune it.
+    kustomize.toolkit.fluxcd.io/prune: disabled
   name: envoy-ai-gateway-crds
   namespace: envoy-ai-gateway-system
 spec:
