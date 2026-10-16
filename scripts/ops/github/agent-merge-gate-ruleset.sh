@@ -6,15 +6,17 @@
 #
 # Idempotent: updates the ruleset carrying the JSON source's name when it exists.
 # usage: POLICY_BOT_APP_SLUG=<slug> agent-merge-gate-ruleset.sh <owner/repo>
+#    or: POLICY_BOT_APP_ID=<id> agent-merge-gate-ruleset.sh <owner/repo>
+# A private App answers 404 on /apps/<slug> to a user token: pass its id (App settings page).
 set -euo pipefail
 
-REPO="${1:?usage: POLICY_BOT_APP_SLUG=<slug> agent-merge-gate-ruleset.sh <owner/repo>}"
+REPO="${1:?usage: POLICY_BOT_APP_SLUG=<slug> or POLICY_BOT_APP_ID=<id> agent-merge-gate-ruleset.sh <owner/repo>}"
 # No apostrophe in this message: an unmatched ' inside ${VAR:?…} breaks bash's parsing.
-: "${POLICY_BOT_APP_SLUG:?set POLICY_BOT_APP_SLUG to the policy-bot App slug}"
+[ -n "${POLICY_BOT_APP_ID:-}" ] || : "${POLICY_BOT_APP_SLUG:?set POLICY_BOT_APP_SLUG or POLICY_BOT_APP_ID for the policy-bot App}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$HERE/../../../.github/rulesets/agent-merge-gate.json"
 name="$(jq -er .name "$SOURCE")"
-policybot="$(gh api "/apps/$POLICY_BOT_APP_SLUG" --jq .id)"
+policybot="${POLICY_BOT_APP_ID:-$(gh api "/apps/$POLICY_BOT_APP_SLUG" --jq .id)}"
 renovate="$(gh api /apps/renovate --jq .id)"
 # 5 is GitHub's built-in admin RepositoryRole: the owner of a user repository.
 body="$(jq --argjson pb "$policybot" --argjson rn "$renovate" '
