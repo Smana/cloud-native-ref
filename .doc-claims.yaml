@@ -618,3 +618,20 @@ claims:
     pages:
       - path: clusters/gcp-0-agent-platform/README.md
         must_contain: 'suspended by default'
+
+  - id: crossplane-configuration-pin
+    why: >-
+      Three developer-platform pages quote the crossplane-configuration release
+      a reader's App renders against. Pin bumps are manual (Renovate is off for
+      our own Configuration packages) and went stale twice on 2026-10-16:
+      v0.9.8 while v0.9.12 ran, then v0.9.12 after the v0.9.13 rollout.
+    source:
+      file: infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
+      pattern: 'crossplane-configuration-aws:(v[0-9]+\.[0-9]+\.[0-9]+)'
+    pages:
+      - path: website/content/docs/platform/developer-platform/_index.md
+        must_contain: 'crossplane-configuration-aws:{value}'
+      - path: website/content/docs/platform/developer-platform/app-field-reference.md
+        must_contain: 'crossplane-configuration-aws:{value}'
+      - path: website/content/docs/platform/developer-platform/app-wizard.md
+        must_contain: 'currently `{value}`'
