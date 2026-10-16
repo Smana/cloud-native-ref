@@ -208,7 +208,7 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | F.3 | done (#2408), live 2026-10-16 | cnref | `identity-proxy-configmap.yaml` L225, L236, L247. Merged on `main` without a feature-branch deploy (owner): the ConfigMap is read at run start, so rollback is a revert |
 | F.4 | steps 1–2 done | cnref | The query matches either gateway; the real Gateway's log fields re-read live. Step 3 is live, at G |
 | G.0 | new, read-only part done 2026-10-16 | cnref | **agent-platform v0.12.0** ([below](#task-g0-agent-platform-v0120-new)), deployed by #2405 and #2406 |
-| G.1–G.5 | changed, in progress | cnref | Live on aws-0 on v1.6.0 (OD-2; v1.7.0 is a later re-test, not a gate). G.1 passed 2026-10-16. G.3's runs start from `factory/ready` issues (pair: implementer, reviewer, room); tester, triager and `internal` need `task agent:run` (owner's `roomctl login`). G.3 also re-runs #2282's F10/F12/F15 reproductions after the switch |
+| G.1–G.5 | changed, in progress | cnref | Live on aws-0 on v1.6.0 (OD-2; v1.7.0 is a later re-test, not a gate). G.1 passed 2026-10-16; G.3 and G.4's rollback drill [below](#live-evidence-2026-10-16). G.3's runs start from `factory/ready` issues (pair: implementer, reviewer, room); tester, triager and `internal` need `task agent:run` (owner's `roomctl login`). G.3 also re-runs #2282's F10/F12/F15 reproductions after the switch |
 | H.1 | valid | crossplane-configuration | Base CC-AGW1 merged on `main` |
 | H.2–H.4 | valid | cnref | The listed Envoy files all exist on `main`. A5–A7 retire from `assert-ai-gateway.py` |
 | H.5 | valid | cnref | `agent-platform` still `dependsOn: ai-gateway`; the audit stands |
@@ -425,6 +425,39 @@ kill-switch drill: label the control issue (#2188) `factory/stop`, expect the Co
 Open: `system:factory`'s principal budget read 4.1 M of 25 M remaining at 05:20 UTC with no run since
 09:08 UTC the day before, so the daily window did not reset at 00:00 UTC. Shadow only
 (`enforcePrincipal: false`); explain before enforcement.
+
+### Live evidence, 2026-10-16
+
+Seven `pair` tasks from `factory/ready` issues (#2409, #2410, #2414, #2415, #2416, #2421, #2422),
+05:24–06:40 UTC, on agent-platform v0.12.0 and crossplane-configuration v0.9.9. **16 runs** (8
+implementer, 8 reviewer; #2416 took two review rounds), **all `Succeeded`**; seven PRs, all merged.
+LogsQL and MetricsQL over the 3 h window:
+
+| # | Check | Result |
+|---|---|---|
+| PC1 | gateway lines per run | 15 runs on agentgateway only (583 lines: 553 `200`, 30 `202`, **0 non-2xx**); Envoy's router saw only the rollback drill's run |
+| PC3 | `/sts/exchange` | 13 exchanges, all `200` (7 `agent-implementer`, 6 `agent-reviewer`); every implementer pushed and opened its PR |
+| PC4 | room events (`rooms_events_appended_total`, `rooms_verdict_posts_total`) | 8 `handoff`, 8 verdicts `posted`: one per review round |
+| PC6 | `ratelimit_service_rate_limit_total_hits{key1="agent"}` vs `gen_ai_client_token_usage_sum{input,output}` | 8,727,296 vs 8,726,879: the 417 apart are B.6's live check, before these runs (N2 holds) |
+| PC9 | the run's trace (`xplane-run-ixer3zrc`) | one trace with the harness spans and agentgateway's MCP spans; every named `tools/call` span's parent is in it. 4 unnamed `tools/call` spans point at a parent outside the trace (`traceparent` is per run, not per step). Evidence on #2283 |
+| PC11 | approvals | 0 requested, 0 pending, over 429 tool calls; no bridge `deny` or `mcp.write` line |
+| E.4 | does `input` include cache reads | yes: `cached_input` 8.14 M of `input` 8.62 M |
+| PC2, PC8 | internal run's tool set; dashboards | not run: an `internal` run needs `task agent:run` (owner); PC8 is the owner's look |
+
+Room broker refusals in the window: 25 `rate_limited` and 10 `invalid_arguments`, causes not yet
+read; no run failed on them.
+
+**G.4 step 3, the rollback drill (PC10), passed.** #2424 reverted #2408: the ConfigMap named Envoy 3/3
+at 06:17, and #2421's implementer (`xplane-run-a7n5cl3h`) logged 74 lines on Envoy and 0 on
+agentgateway. #2425 reverted the revert: agentgateway 3/3 at 06:24, and #2422's implementer
+(`xplane-run-ixer3zrc`) logged on agentgateway only. Each switch reached aws-0 about 2 minutes after
+its merge. The drill first found that #2419's test pinned the upstreams to agentgateway, so the revert
+failed CI; #2420 accepts either router until phase H.
+
+**Still open in G:** G.4 steps 1 and 2 (a long stream across a proxy restart; the rate-limit server
+at zero replicas, fail-open) are scripted but the session may not mutate aws-0 that way, so the owner
+runs them; P5 (a proxy pod deleted under a live run); the tester, triager and `internal` runs, which
+need `task agent:run` (owner's `roomctl login`).
 
 ## Phase J — cache-aware accounting
 
