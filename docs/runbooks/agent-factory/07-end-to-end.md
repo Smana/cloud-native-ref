@@ -57,9 +57,9 @@ LONG=$(task agent:run -- --role implementer --class public \
 kubectl wait -n agents agentrun/$LONG --for=jsonpath='{.status.phase}'=Running --timeout=15m
 ```
 
-The factory now sets the run's limit from its tier (`runMinutes` in
-`tooling/base/agent-factory/helm-values-configmap.yaml`: 20, 45 or 90 minutes) — the standard tier's
-45 minutes is what bounds this run, not a requested duration, so time Step 3's checks against that.
+The factory now sizes the run: a run started with `task agent:run` belongs to no task, carries no
+tier, and runs for a fixed 120 minutes (SP3 §R47) — not a requested duration, so time Step 3's
+checks against that.
 
 At minute 45 or later (or at the run's end if it finishes sooner — record actual duration either
 way):
@@ -73,10 +73,10 @@ curl -sS --cacert opentofu/$CLOUD/openbao/management/.tls/ca.pem https://vl.priv
 ```
 
 Expected: the VM query confirms the run is actually making calls; the LogsQL result shows no `401`
-bucket for this run's `x_ar_agent` at any point in its lifetime. Its tokens live until its 60-minute
+bucket for this run's `x_ar_agent` at any point in its lifetime. Its tokens live until its 120-minute
 deadline (R2, runbook 02) — nothing has to rotate, and a rotated token would not reach the proxy
-under gVisor anyway. The `sleep 110` pacing keeps the run making calls for most of the hour; a run
-that finishes early still counts, so record its actual duration.
+under gVisor anyway. The `sleep 110` pacing keeps the run making calls for most of the session; a
+run that finishes early still counts, so record its actual duration.
 
 ```bash
 kubectl delete agentrun -n agents $LONG --wait

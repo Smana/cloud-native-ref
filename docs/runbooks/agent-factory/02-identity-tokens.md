@@ -108,9 +108,9 @@ kubectl delete -f scripts/ops/k8s/agent-probe.yaml
 ## Part B — R2 (token TTL) and SC-07 (revocation timings)
 
 Uses a short, real run so its tokens' TTL is small enough to observe expiry within this session
-(`expirationSeconds = max(600, maxMinutes × 60)`, R2). The factory now sets the run's limit from its
-tier (`runMinutes` in `tooling/base/agent-factory/helm-values-configmap.yaml`: 20, 45 or 90 minutes),
-so this step relies on the light tier's 20 minutes rather than a requested duration.
+(`expirationSeconds = max(600, maxMinutes × 60)`, R2). The factory now sizes every run: a run started
+with `task agent:run` belongs to no task, carries no tier, and gets a fixed 120-minute limit
+(SP3 §R47), which the R2 floor of 600 s keeps observable.
 
 ### Step 1 — start a run and capture a token of each kind
 
