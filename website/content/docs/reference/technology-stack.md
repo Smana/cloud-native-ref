@@ -53,6 +53,13 @@ pinned once in `opentofu/config.tm.hcl`.
 
 {{< stack-table group="tooling" >}}
 
+## AI platform
+
+Envoy Gateway, Envoy AI Gateway, agentgateway, vLLM and the agent factory are
+pinned in [ai-native-ref](https://github.com/Smana/ai-native-ref), not here —
+see its [gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)
+and [serving](https://airef.ogenki.io/docs/platform/ai-platform/serving/) pages.
+
 ## Managed cloud services
 
 Not in the table above because there is nothing to install or upgrade: Route

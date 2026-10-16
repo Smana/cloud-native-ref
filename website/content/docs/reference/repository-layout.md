@@ -71,21 +71,18 @@ independently of the base/overlay mechanism above:
 
 - **`opentofu/aws/llm-platform/`** — a Terramate stack tagged `opt-in`; its
   scripts no-op unless `TM_LLM_PLATFORM_ENABLED=true`.
-- **`clusters/aws-0-llm-platform/`** — an umbrella Flux `Kustomization`
-  (`clusters/aws-0/llm-platform.yaml`) with `spec.suspend: true`, kept a
-  sibling of `clusters/aws-0/` specifically so `flux-system`'s recursive
-  sync does not pick up its children and bypass the suspend.
-- **`clusters/aws-0-ai-gateway/`** — the gateway layer `llm-platform` depends
-  on: Envoy Gateway, the Envoy AI Gateway, the Semantic Router and the
-  `ai-gateway` Gateway, gated the same way by `clusters/aws-0/ai-gateway.yaml`.
-- **`clusters/gcp-0-llm-platform/`** — the same suspended-umbrella pattern
-  for `gcp-0`, gated by `clusters/gcp-0/llm-platform.yaml`.
+- **The AI umbrellas** — `clusters/<cluster>/{ai-gateway,agent-platform,llm-platform}.yaml`,
+  three Flux `Kustomization`s over the `ai-native-ref` artifact. Their child
+  directories (`clusters/<cluster>-ai-gateway/` and siblings) are not in this
+  repository: `task ai:overlay` lays them over a checkout for CI, and
+  `.gitignore` keeps them out. What runs where is on
+  [AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}).
 - **`opentofu/<lane>/**`** — the directory *is* the cloud selector. Stacks
   under `aws/` and `gcp/` run only when `TM_CLOUD` names their lane (it defaults
   to `aws`); anything under `shared/` is owned by neither cloud and always runs.
   So an AWS deploy from `opentofu/` never builds GCP as a side effect, and a GCP
   one never rebuilds `aws-0`.
 
-On `aws-0` all three LLM gates have to be released for an end-to-end deploy, the AI gateway one
-first; on `gcp-0` the umbrella is the only LLM gate — see the
+GPU serving on `aws-0` needs both the Terramate gate and the `llm-platform` umbrella released; on
+`gcp-0` the umbrella is the only gate — see
 [`clusters/AGENTS.md`](https://github.com/Smana/cloud-native-ref/blob/main/clusters/AGENTS.md).

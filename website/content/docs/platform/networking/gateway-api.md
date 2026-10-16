@@ -20,9 +20,9 @@ Three roles, three resources:
   platform: `cilium`, created automatically once `gatewayAPI.enabled: true`
   is set in the Cilium Helm values (no manifest for it in-repo), and
   `cilium-tailscale`, hand-authored in `infrastructure/base/gapi/tailscale-gatewayclass.yaml`
-  because it needs a `parametersRef` to a `CiliumGatewayClassConfig`. A third
-  class, `envoy-ai-gateway`, coexists for the opt-in LLM platform's own
-  data plane and is out of scope here.
+  because it needs a `parametersRef` to a `CiliumGatewayClassConfig`. The opt-in
+  AI platform brings its own, `envoy-ai-gateway` and `agentgateway`,
+  documented on [airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/gateways/).
 - **`Gateway`** — listeners, hostnames, and TLS, owned by the platform.
   Every Gateway lives in the `infrastructure` namespace. The two Tailscale
   Gateways — with the `GatewayClass` and its config, the shared private

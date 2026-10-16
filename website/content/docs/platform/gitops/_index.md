@@ -208,14 +208,11 @@ the mechanism, that branch reports nothing — a green run today looks like this
 ### Escaping `${...}` that Flux must not touch
 
 Anything in an applied manifest that legitimately contains `${...}` has to be
-written `$${...}`, which Flux renders back to a single `$`. Nine files need it,
-and they are not all Grafana:
-
-- Grafana dashboard and datasource JSON, where `${var}` is Grafana's own
-  template syntax — `$${__value.raw}`, `$${service}`.
-- `tooling/base/promptfoo/cronjob.yaml`, where an inline Node script builds
-  Prometheus exposition lines with JavaScript template literals:
-  ``out.push(`promptfoo_test_total{category="$${c}"} $${x.total}`)``.
+written `$${...}`, which Flux renders back to a single `$`. Eight files need it,
+all Grafana dashboard and datasource JSON, where `${var}` is Grafana's own
+template syntax — `$${__value.raw}`, `$${service}`. The AI platform's
+`promptfoo` CronJob, which builds Prometheus lines with JavaScript template
+literals, is the one non-Grafana case; it lives in ai-native-ref.
 
 `check-substitution.py` strips the escaped form before it looks for the
 unescaped one — otherwise every dashboard in the repository would be a false
@@ -374,11 +371,11 @@ Four things about the graph are not obvious from that line:
   directly — it has to, since it is what creates the `ExternalArtifact`s
   everything else sources from. Both still run first in practice, because
   Flux waits for a Kustomization's `sourceRef` artifact to exist.
-- **The `llm-platform` and `ai-gateway` umbrellas sit outside this
-  graph** (`llm-platform` suspended by default, `ai-gateway` live on aws-0), sourcing from the `GitRepository`
-  directly — their paths fall outside every `ArtifactGenerator` glob. They do
-  have a `dependsOn` edge of their own, `llm-platform` → `ai-gateway`, but
-  neither depends on anything shown above.
+- **The three AI umbrellas sit outside this graph** — `ai-gateway`,
+  `agent-platform` and `llm-platform` source from the `ai-native-ref`
+  `OCIRepository`, not from this repository
+  ([AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}})). Their
+  only edges are their own: `agent-platform` and `llm-platform` → `ai-gateway`.
 
 `security` is where the graph forks. Five Kustomizations become eligible once
 it is healthy, though not all at the same hop: two depend on `security`
@@ -430,8 +427,8 @@ flux resume kustomization tooling
 
 `flux suspend` is the one command that breaks the GitOps contract on purpose:
 while a Kustomization is suspended the cluster can drift from Git and nothing
-will correct it. That is also exactly how the opt-in LLM platform ships —
-suspended by default, see
+will correct it. The opt-in AI umbrellas use `spec.suspend: true` in Git
+instead, which the next sync does not undo — see
 [AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}).
 
 ### Two web UIs, and why both

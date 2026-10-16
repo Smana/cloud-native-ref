@@ -33,7 +33,9 @@ tiers: GitOps and composition (Flux, Crossplane), compute and networking
 
 **Applications and data.** The workloads a developer actually ships, plus
 the PostgreSQL, Valkey and object storage (S3 or GCS) the compositions
-provision for them. The self-hosted LLM platform lives here too, and is off by default.
+provision for them. The opt-in AI platform — model serving and the agent factory —
+sits here too, deployed from its own repository and documented on
+[airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/).
 
 ## Why it is shaped this way
 
