@@ -72,7 +72,7 @@ and **the alert silently never fires**.
 
 A group is checked when its `type` is unset, empty, or `prometheus`. Today that skips two `type:
 vlogs` groups — `loggen` in `base/loggen/demo-vmrule.yaml` and `agent-platform-logs` in
-`base/agent-platform/vmrule-logs.yaml`, both LogsQL — and neither **must be made to pass**. Rules
+`base/agent-platform/vmrule-logs.yaml` (overlaid from ai-native-ref), both LogsQL — and neither **must be made to pass**. Rules
 written inline in a HelmRelease `values:` block are repo-authored but not seen by the script; there
 are none today.
 
