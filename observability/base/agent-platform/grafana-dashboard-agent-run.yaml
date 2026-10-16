@@ -3,8 +3,7 @@
 # - kube-state-metrics' agentrun_* series (run_id);
 # - the run pod's step log (xplane-run-<runId>);
 # - agent-router's access log and gen_ai metrics (x_ar_agent / ar_agent = the run's ServiceAccount), on
-#   Envoy or agentgateway (ADR-0053): a run uses one, the log panels select both, and the
-#   agentgateway scrape relabels to the same gen_ai_* names (error_type included);
+#   agentgateway (ADR-0053), whose scrape relabels to the gen_ai_* names (error_type included);
 # - the run's spans in VictoriaTraces (agent.run_id; agent.principal on agent-router's).
 # Tokens read the gateway counter on SP1; status.usage joins once a meter writes it (O7).
 # A step line's trace_id becomes log.trace_id, which the VictoriaLogs datasource links to
@@ -84,17 +83,17 @@ spec:
         {"id": 6, "type": "logs", "title": "Model calls through agent-router",
          "gridPos": {"x": 0, "y": 19, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "queryType": "instant", "expr": "((kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\") OR (kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\")) | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND (log.path:~\"chat/completions\" OR log.http.path:~\"chat/completions\")"}]},
+         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND log.http.path:~\"chat/completions\""}]},
         {"id": 7, "type": "logs", "title": "MCP calls",
          "gridPos": {"x": 12, "y": 19, "w": 12, "h": 8},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-         "targets": [{"refId": "A", "queryType": "instant", "expr": "((kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\") OR (kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\")) | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND (log.path:~\"mcp\" OR log.http.path:~\"mcp\")"}]},
+         "targets": [{"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND log.http.path:~\"mcp\""}]},
         {"id": 8, "type": "logs", "title": "Errors",
          "gridPos": {"x": 0, "y": 27, "w": 24, "h": 6},
          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
          "targets": [
            {"refId": "A", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$${run}\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run error\""},
-           {"refId": "B", "queryType": "instant", "expr": "((kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" AND kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-namespace:\"agent-system\") OR (kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\")) | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND (log.response_code:~\"^[45]\" OR log.http.status:~\"^[45]\")"}
+           {"refId": "B", "queryType": "instant", "expr": "kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$${run}\" AND log.http.status:~\"^[45]\""}
          ]},
         {"id": 9, "type": "timeseries", "title": "Tokens in / out",
          "gridPos": {"x": 0, "y": 33, "w": 8, "h": 8},

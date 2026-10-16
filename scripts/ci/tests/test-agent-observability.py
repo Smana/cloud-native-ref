@@ -66,11 +66,8 @@ CNP_INGRESS = [
     {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "agents"},
                         "matchExpressions": [{"key": "agents.ogenki.io/run-id", "operator": "Exists"}]}],
      "toPorts": tcp("4318")},
-    # agent-router's data plane, then SP3's factory (O20). No sandbox reaches :4317 (O5).
-    {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "envoy-gateway-system",
-                                        "gateway.envoyproxy.io/owning-gateway-name": "agent-router",
-                                        "gateway.envoyproxy.io/owning-gateway-namespace": "agent-system"}},
-                       {"matchLabels": {"io.kubernetes.pod.namespace": "agent-gateway",
+    # agent-router (agentgateway), then SP3's factory (O20). No sandbox reaches :4317 (O5).
+    {"fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "agent-gateway",
                                         "gateway.networking.k8s.io/gateway-name": "agent-router"}},
                        {"matchLabels": {"io.kubernetes.pod.namespace": "agent-system",
                                         "app.kubernetes.io/name": "agent-factory"}}],
@@ -188,12 +185,6 @@ def check_collector():
 
 
 def check_reference_grant():
-    grant = find(GRANT, "ReferenceGrant", "agent-router-traces")
-    spec = grant.get("spec", {})
-    check(grant.get("metadata", {}).get("namespace") == "observability"
-          and spec.get("from") == [{"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "namespace": "agent-system"}]
-          and spec.get("to") == [{"group": "", "kind": "Service", "name": "agent-traces-collector"}],
-          "agent-system's EnvoyProxy may reference the collector Service and nothing else (EG 1.9 backendRefs)")
     agw = find(GRANT, "ReferenceGrant", "agent-gateway-traces")
     spec = agw.get("spec", {})
     check(agw.get("metadata", {}).get("namespace") == "observability"
@@ -203,26 +194,6 @@ def check_reference_grant():
     resources = yaml.safe_load((ROOT / PLATFORM / "kustomization.yaml").read_text()).get("resources", [])
     for rel in (COLLECTOR, GRANT):
         check(pathlib.PurePath(rel).name in resources, f"{PLATFORM}/kustomization.yaml lists {pathlib.PurePath(rel).name}")
-
-
-ROUTER = "infrastructure/base/agent-router"
-
-
-def check_router():
-    spec = find(f"{ROUTER}/envoyproxy.yaml", "EnvoyProxy", "agent-router-proxy").get("spec", {})
-    tracing = spec.get("telemetry", {}).get("tracing", {})
-    provider = tracing.get("provider", {})
-    check(provider.get("type") == "OpenTelemetry" and provider.get("serviceName") == "agent-router",
-          "agent-router exports OpenTelemetry spans as service agent-router")
-    check(provider.get("backendRefs") == [{"name": "agent-traces-collector", "namespace": "observability", "port": 4317}],
-          "agent-router's spans go to the collector's gRPC port (EG 1.9 exports gRPC only)")
-    check(tracing.get("tags", {}).get("agent.principal") == "%REQ(X-AR-AGENT)%", "every span names the run's verified principal")
-    check(tracing.get("samplingRate") == 100, "every request is sampled")
-    egress = find(f"{ROUTER}/network-policy-data-plane.yaml", "CiliumNetworkPolicy", "agent-router-data-plane").get("spec", {}).get("egress", [])
-    check(any((r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("app.kubernetes.io/name") == "agent-traces-collector"
-              and (r.get("toEndpoints") or [{}])[0].get("matchLabels", {}).get("io.kubernetes.pod.namespace") == "observability"
-              and r["toPorts"][0]["ports"] == [{"port": "4317", "protocol": "TCP"}] for r in egress),
-          "the data plane may reach the collector's :4317")
 
 
 AGW = "infrastructure/base/agent-gateway"
@@ -450,7 +421,7 @@ def check_factory_resumes():
           "the factory page counts automatic resumes by reason (disruption design §6)")
 
 
-CHECKS = [check_collector, check_reference_grant, check_router, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier,
+CHECKS = [check_collector, check_reference_grant, check_ksm, check_run_dashboard, check_run_trace_link, check_fleet_dashboard, check_fleet_tier,
           check_task_runs, check_factory_resumes, check_agent_gateway, check_agentgateway_dashboards]
 
 for run in CHECKS:

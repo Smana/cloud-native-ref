@@ -10,10 +10,8 @@ case "$CLASS" in
   *) PORT=8081 ;;
 esac
 PORT=${4:-$PORT}
-# AGENT_ROUTER_HOST picks the gateway during the cutover (ADR-0053):
-#   AGENT_ROUTER_HOST=agent-router.agent-gateway.svc.cluster.local
-# There, tools read <target>_<tool> (room-broker_room_read), not <backend>__<tool>.
-HOST=${AGENT_ROUTER_HOST:-agent-router.envoy-gateway-system.svc.cluster.local}
+# agentgateway's agent router (ADR-0053): tools read <target>_<tool> (room-broker_room_read).
+HOST=${AGENT_ROUTER_HOST:-agent-router.agent-gateway.svc.cluster.local}
 URL=http://$HOST:$PORT/mcp
 
 # mktemp, not a fixed path: two classes probed in parallel must not clobber

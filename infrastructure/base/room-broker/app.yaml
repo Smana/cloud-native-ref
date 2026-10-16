@@ -26,7 +26,7 @@ spec:
         port: 9090
       - name: human
         port: 8080
-      # Agents' room_* tools, reached only through agent-router's MCPRoutes (§3).
+      # Agents' room_* tools, reached only through agent-router's MCP route (agentgateway, §3).
       - name: mcp
         port: 8090
   automountServiceAccountToken: true # the Room and AgentRun watches, the leader lease

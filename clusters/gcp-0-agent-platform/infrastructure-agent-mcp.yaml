@@ -1,5 +1,5 @@
 ---
-# Read-only MCP servers and the two MCPRoutes on agent-router (SP1 §6).
+# Read-only MCP servers (SP1 §6), routed by agentgateway (infrastructure/base/agent-gateway/mcp.yaml).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

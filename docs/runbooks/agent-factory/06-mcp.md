@@ -86,7 +86,7 @@ Expected (the probe is an `implementer`):
 | `mcp-victorialogs` | `documentation` only | the query tools |
 | `room-broker` | `room_read`, `room_post`, `room_progress`, `room_handoff` (same caveat as Step 3) | `room_verdict` |
 
-Other roles, from `infrastructure/base/agent-mcp/mcproutes.yaml`: reviewer, tester and triager also
+Other roles, from `infrastructure/base/agent-gateway/mcp.yaml` (its Allow lists): reviewer, tester and triager also
 get `get_kubernetes_resources`, `get_kubernetes_logs` and the VictoriaLogs query tools. Room tools:
 reviewer `room_read`, `room_post`, `room_progress`, `room_verdict`; tester all five; triager `room_read`, `room_post`, `room_progress`,
 `room_handoff`.
