@@ -13,11 +13,26 @@ changing anything there.
 | `infrastructure/` | Crossplane claims and traps, Cilium, Gateway API, Tailscale |
 | `security/` | OpenBao, PKI, IAM, CiliumNetworkPolicy authoring |
 | `observability/` | VictoriaLogs LogsQL, VictoriaMetrics, Grafana dashboards |
-| `clusters/` | Flux dependency graph, variable substitution, the LLM-platform opt-in gates |
+| `clusters/` | Flux dependency graph, variable substitution, the AI umbrellas and their opt-in gates |
 | `apps/` | App claims, Atlas database migrations |
 | `scripts/` | What each validator actually checks, and what it cannot |
 | `docs/architecture/` | Diagram authoring and the icon library |
 | `docs/superpowers/` | Design and plan artifacts, and the gate at each phase |
+
+## The AI platform lives in Smana/ai-native-ref
+
+The LLM platform, the AI gateway and the agent factory — manifests, docs, runbooks, specs — live in
+[`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref), documented at
+[airef.ogenki.io](https://airef.ogenki.io/) (ADR-0057). This repository is their host.
+
+| Piece | Where |
+|---|---|
+| Pin | `flux/sources/ocirepo-ai-native-ref.yaml` — tag + digest, cosign-verified |
+| Umbrellas | `clusters/<cluster>/{ai-gateway,llm-platform,agent-platform}.yaml`; children come from the artifact |
+| Overlay | `task ai:overlay` lays the pinned artifact over the paths listed in `scripts/ci/flux-schema/ai-boundary.yaml`; all gitignored, never committed |
+| Host contract | [design §2](docs/superpowers/specs/2026-10-12-ai-platform-split-design.md#2-host-contract), copied to ai-native-ref's [`HOST-CONTRACT.md`](https://github.com/Smana/ai-native-ref/blob/main/HOST-CONTRACT.md); a change lands in both |
+
+To change an AI manifest: PR to ai-native-ref, release, then bump the pin here.
 
 ## How work gets done here
 

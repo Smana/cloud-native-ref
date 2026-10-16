@@ -53,16 +53,19 @@ default, digest-pinned, cosign-verified; aws-0 un-suspends it with a patch in
 `aws-0/flux/flux-sources.yaml`). The `*-ai-gateway/`, `*-llm-platform/` and `*-agent-platform/`
 directories, and every other AI path, are gitignored: `task ai:overlay` lays the pinned artifact
 over them so the gates and the docs see them. Changing an AI manifest is a PR to
-`Smana/ai-native-ref`, a release, then a pin bump here.
+[`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref), a release, then a pin bump here.
+The children's READMEs below are read there, or here after `task ai:overlay`.
 
-The umbrella aggregates 5 children under `aws-0-llm-platform/`.
-See `aws-0-llm-platform/README.md` (overlaid) for the child manifests and the teardown procedure.
+The umbrella aggregates 5 children under `aws-0-llm-platform/`. See
+[`aws-0-llm-platform/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-llm-platform/README.md)
+for the child manifests and the teardown procedure.
 
-The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
-`ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` → `aws-0-ai-gateway/`, OD-3), CPU
-only, and **live on aws-0** since 2026-10-16 (gcp-0's twin stays suspended): `llm-platform` and
-`agent-platform` depend on it. See `aws-0-ai-gateway/README.md` for what it reads — it needs no
-per-rebuild seeding step, only a one-time per-account secret.
+The gateway layer — Envoy Gateway, Agent Router (the `envoy-ai-gateway` chart), the Semantic Router
+and the human/system Gateway `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` →
+`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** since 2026-10-16 (gcp-0's twin stays suspended): `llm-platform` and
+`agent-platform` depend on it. See
+[`aws-0-ai-gateway/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-ai-gateway/README.md)
+for what it reads — it needs no per-rebuild seeding step, only a one-time per-account secret.
 Its children kept their names when they moved, so
 `dependsOn` edges from `llm-platform` children still resolve. Read that README before resuming
 `llm-platform` on a cluster that ran it before the move.
@@ -77,7 +80,11 @@ umbrellas went live: #2429 changed a child's health check that never reached the
 `kv_cache_usage_perc`. The legacy KEDA HTTP add-on, with a proxy in the data path and a lagging
 request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
-### On `gcp-0` — two Kubernetes gates, and do not resume them yet
+### On `gcp-0` — two Kubernetes gates, suspended until v2.1
+
+The live gcp-0 gates are scheduled for v2.1
+([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)); gcp-0 keeps
+rendering in CI so its copy cannot rot before then.
 
 - **Two gates, no OpenTofu one.** `gcp-0/ai-gateway.yaml` (children in `gcp-0-ai-gateway/`, the
   aws-0 twin) and `gcp-0/llm-platform.yaml`, which depends on it. There is no
@@ -95,10 +102,11 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
 > **Both known blockers are closed; the umbrella stays suspended on cost, not breakage.** The
 > per-claim read-only identity that serving pods need *is* rendered by the `InferenceService`
-> composition as of `crossplane-configuration` v0.4.6, the version already pinned here. KEDA on
+> composition since `crossplane-configuration` v0.4.6 (the pin is past it). KEDA on
 > `gcp-0` is also closed. **But none of it has run on a live GKE cluster** — that is a static read
 > of the pinned package's golden fixture, not a cluster result. Treat the first resume as a
-> validation run; `gcp-0-llm-platform/README.md` lists what to watch, in failure order.
+> validation run;
+> [`gcp-0-llm-platform/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/gcp-0-llm-platform/README.md) lists what to watch, in failure order.
 
 ## The agent platform — one gate on AWS
 
@@ -108,3 +116,7 @@ ships suspended. It `dependsOn` `ai-gateway`, never `llm-platform`: agents run o
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
 start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves
 `AgentRun`: before it, `agent-policies` targets an API nobody serves and still reports Ready.
+The agents' own Gateway runs on agentgateway (ADR-0053), not on Agent Router; the human-facing
+`ai-gateway` stays on Envoy. Runbooks:
+[`docs/runbooks/agent-factory/`](https://github.com/Smana/ai-native-ref/tree/main/docs/runbooks/agent-factory)
+in ai-native-ref.
