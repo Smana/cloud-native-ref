@@ -169,7 +169,7 @@ now=$(date +%s); tags=$(jq -rn --arg r "$A" '{"agent.run_id":$r}|tojson|@uri')
 curl -s --cacert $CA "$VT/select/jaeger/api/traces?service=agent-harness&tags=$tags&limit=200&start=$(( (now-7200)*1000000 ))&end=$(( now*1000000 ))" > $OUT/traces.json
 jq '[.data[].traceID] | unique | length' $OUT/traces.json
 jq '[.data[].spans[] | select(.operationName | startswith("llm."))] | length' $OUT/traces.json
-curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$A\" AND log.path:~\"chat/completions\" AND log.response_code:\"200\" | stats count() calls"
+curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$A\" AND log.http.path:~\"chat/completions\" AND log.http.status:\"200\" | stats count() calls"
 for m in PMARK TMARK CMARK; do printf '%s %s\n' $m "$(curl -s --cacert $CA "$VT/select/logsql/query" --data-urlencode "query=_time:2h \"$m-$R\"" | wc -l)"; done
 curl -s --cacert $CA "$VT/select/logsql/query" --data-urlencode "query=_time:2h \"span_attr:agent.run_id\":\"$A\" \"span_attr:redaction.redacted.count\":>0 | stats count() spans"
 curl -s --cacert $CA "$VT/select/logsql/field_names" --data-urlencode "query=_time:2h \"span_attr:agent.run_id\":\"$A\"" | jq -r '.values[].value' | grep 'attr:' | sed -E 's/^.*attr://' | sort -u > $OUT/keys
@@ -267,7 +267,7 @@ vmq "topk by (run_id) (1, tlast_over_time(agentrun_pull_request_info{run_id=\"$A
 vmq "sum(max_over_time(gen_ai_client_token_usage_sum{ar_agent=\"system:serviceaccount:agents:xplane-run-$A\", gen_ai_token_type=~\"input|output\"}[2h]))"
 vmq "max(agentrun_budget_max_tokens{run_id=\"$A\"})"
 curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_namespace:\"agents\" AND kubernetes.pod_name:\"xplane-run-$A\" AND kubernetes.container_name:\"harness\" AND _msg:~\"^agent-run\"" | jq -r '."kubernetes.pod_name"' | sort | uniq -c
-curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_labels.gateway.envoyproxy.io/owning-gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$A\"" | jq -r '."log.x_ar_agent"' | sort | uniq -c
+curl -s --cacert $CA $VL/select/logsql/query --data-urlencode "query=_time:2h kubernetes.pod_namespace:\"agent-gateway\" AND kubernetes.pod_labels.gateway.networking.k8s.io/gateway-name:\"agent-router\" | unpack_json | log.x_ar_agent:\"system:serviceaccount:agents:xplane-run-$A\"" | jq -r '."log.x_ar_agent"' | sort | uniq -c
 ```
 
 Expected:
