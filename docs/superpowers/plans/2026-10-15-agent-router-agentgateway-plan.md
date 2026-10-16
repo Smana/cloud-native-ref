@@ -203,11 +203,12 @@ listed · **moved**: same work, another repo or path · **done**: already true o
 | E.2 | done (AGW-5), live check after merge | cnref | Adds the proxy `VMPodScrape`. The relabel maps `input_cache_read` → `cached_input` and `input_cache_write` → `cache_creation_input`, which the meter reads. 1.6's `error_type` is `_OTHER` for every failure: an error ratio, not a per-status split. Only the token and request-duration families are renamed. Alerts land in a new `agent-gateway` group |
 | E.3 | done (AGW-5) | cnref | 1.6 has `error_type`, so the run page's error-rate panel reads both gateways unchanged; only the log panels change. Plus an `agent-gateway` dashboard |
 | E.4 | steps 1–2 live 2026-10-15 | cnref | Token types relabelled, with `ar_agent`; the five `agent-gateway` rules inactive. Step 3 (the span) needs AP-AGW1 and lands with #2283 at G.3. Whether `/anthropic`'s `input` includes cache reads needs a cached request |
-| F.1 | changed, moved | agent-platform | Base `main`, not `feat/room-approvals` (#11, merged). Also `images/agent-harness/agent_run.py:438` and its test (`__room_progress`), not only `internal/bridge/classify.go:93,102`. Both separators accepted until phase H. One release carries both |
-| F.2 | changed | crossplane-configuration | Base `main` (v0.9.7), not `chore/room-bridge-v0.4.0` (#35, merged). `main.k` L61 and L507; pins AP-AGW1's bridge (`_BRIDGE_IMAGE`, L68) and harness |
-| F.3 | valid | cnref | `identity-proxy-configmap.yaml` L225, L236, L247 |
+| F.1 | done (agent-platform#117, v0.12.0) | agent-platform | Base `main`, not `feat/room-approvals` (#11, merged). Also `images/agent-harness/agent_run.py:438` and its test (`__room_progress`), not only `internal/bridge/classify.go:93,102`. Both separators accepted until phase H. One release carries both |
+| F.2 | done (crossplane-configuration#44, v0.9.9, cnref #2406) | crossplane-configuration | Base `main` (v0.9.7), not `chore/room-bridge-v0.4.0` (#35, merged). `main.k` L61 and L507; pins AP-AGW1's bridge (`_BRIDGE_IMAGE`, L68) and harness |
+| F.3 | done (#2408), live 2026-10-16 | cnref | `identity-proxy-configmap.yaml` L225, L236, L247. Merged on `main` without a feature-branch deploy (owner): the ConfigMap is read at run start, so rollback is a revert |
 | F.4 | steps 1–2 done | cnref | The query matches either gateway; the real Gateway's log fields re-read live. Step 3 is live, at G |
-| G.1–G.5 | changed | cnref | Live on aws-0, on v1.7.0 if it passed L1–L8. G.3 also re-runs #2282's F10/F12/F15 reproductions after the switch |
+| G.0 | new, read-only part done 2026-10-16 | cnref | **agent-platform v0.12.0** ([below](#task-g0-agent-platform-v0120-new)), deployed by #2405 and #2406 |
+| G.1–G.5 | changed, in progress | cnref | Live on aws-0 on v1.6.0 (OD-2; v1.7.0 is a later re-test, not a gate). G.1 passed 2026-10-16. G.3's runs start from `factory/ready` issues (pair: implementer, reviewer, room); tester, triager and `internal` need `task agent:run` (owner's `roomctl login`). G.3 also re-runs #2282's F10/F12/F15 reproductions after the switch |
 | H.1 | valid | crossplane-configuration | Base CC-AGW1 merged on `main` |
 | H.2–H.4 | valid | cnref | The listed Envoy files all exist on `main`. A5–A7 retire from `assert-ai-gateway.py` |
 | H.5 | valid | cnref | `agent-platform` still `dependsOn: ai-gateway`; the audit stands |
@@ -383,6 +384,47 @@ fails loudly.
   and the query returns its `x_ar_agent` within 2 minutes.
 
 `meter.query` needs no change at cutover: E.2's relabel keeps `gen_ai_client_token_usage_sum{ar_agent}`.
+
+## Phase G — live gates on aws-0
+
+### Task G.0: agent-platform v0.12.0 (new)
+
+v0.12.0 (agent-platform #102–#117) ships AP-AGW1 and the 2026-10-15 review's fixes. On aws-0 the
+factory, broker and retention job moved from v0.11.0 (#2405), and the room bridge from v0.8.0 and
+the harness from v0.11.0 (crossplane-configuration v0.9.9, #2406). The review found that every new required
+key is already set: system grants (#104) still cover `system:factory`, `api.groups` (#106) defaults
+to our groups, and `MCP_READ_ONLY_TOOLS` is on the bridge.
+
+| Change | Operator impact | Proved by |
+|---|---|---|
+| #111 run-request API 8443 → 8082 | config, done in #2405 | R1–R3 |
+| #103 the meter revokes run caps when the ledger write fails; `input` includes cache tokens | safer; contract unchanged | R4, R6, PC6 |
+| #104 explicit system grants; a heredoc naming `git … push` is denied unattended | behaviour | PC3 (watch the bridge for a `forge` deny) |
+| #105 replayable approvals, lease waits for cache sync, fork copies the queue | behaviour | PC4 |
+| #106 the kill switch reads only the `agent-factory-stop` ConfigMap; the bridge reads `MCP_READ_ONLY_TOOLS` | behaviour; config set by #2406 | R5, PC11, kill-switch drill |
+| #107 purge `statement_timeout` 10 min per room | the CronJob's 900 s deadline stays above it | the 03:17 UTC run |
+| #116 `rooms_participants` now populated | aggregate with `max`, not `sum`; nothing reads it yet | R7 |
+| #117 bridge reads `server_tool`; harness sends `traceparent` | enables PC9, PC11 | PC9, PC11 |
+
+Read-only checks on aws-0, 2026-10-16 05:20 UTC:
+
+| # | Check | Result |
+|---|---|---|
+| R1 | factory, broker and retention images | all v0.12.0 |
+| R2–R3 | factory and broker warn/error lines since start | 0 and 0 |
+| R4 | meter last success; usage read errors over 1 h | 31 s ago; none |
+| R5 | `agent_factory_kill_switch_engaged`; `agent-factory-stop` ConfigMap | 0; NotFound |
+| R6 | `gen_ai_token_type` values | `input`, `cached_input`, `cache_creation_input`, `output`, plus Envoy-only `reasoning`, which the meter does not read |
+| R7 | `max by (kind)(rooms_participants)` | no series with no live room; re-read during G.3 |
+
+With a real run (G.3): the bridge logs `count=40` read-only tools and no "unset" warning; PC11's
+`room_read` raises no approval; `agent_factory_run_cost_usd` stays below `runUSD`. Then the
+kill-switch drill: label the control issue (#2188) `factory/stop`, expect the ConfigMap and
+`kill_switch_engaged=1` within a minute, remove the label, expect both gone.
+
+Open: `system:factory`'s principal budget read 4.1 M of 25 M remaining at 05:20 UTC with no run since
+09:08 UTC the day before, so the daily window did not reset at 00:00 UTC. Shadow only
+(`enforcePrincipal: false`); explain before enforcement.
 
 ## Phase J — cache-aware accounting
 
