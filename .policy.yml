@@ -46,6 +46,7 @@ approval_rules:
         paths:
           - '^\.policy\.yml$'
           - '^\.github/'
+          - '^\.github/agent-factory\.yaml$'  # the ownership fence: which factory acts here (agent-platform v0.14.0)
           - '(^|/)(AGENTS|CLAUDE)\.md$'
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
@@ -97,6 +98,7 @@ approval_rules:
         paths:
           - '^\.policy\.yml$'
           - '^\.github/'
+          - '^\.github/agent-factory\.yaml$'  # the ownership fence: which factory acts here (agent-platform v0.14.0)
           - '(^|/)(AGENTS|CLAUDE)\.md$'
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
@@ -144,6 +146,7 @@ approval_rules:
         paths:
           - '^\.policy\.yml$'
           - '^\.github/'
+          - '^\.github/agent-factory\.yaml$'  # the ownership fence: which factory acts here (agent-platform v0.14.0)
           - '(^|/)(AGENTS|CLAUDE)\.md$'
           - '^\.(agents|claude)/'
           - '^clusters/[^/]+-agent-platform/'
