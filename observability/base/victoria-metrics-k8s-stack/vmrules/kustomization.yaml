@@ -25,4 +25,5 @@ kind: Kustomization
 resources:
   - cert-manager.yaml
   - openbao.yaml
-  - runlore.yaml
+  # Off with RunLore during the agent factory's v2: RunloreAgentDown is absent()-based.
+  # - runlore.yaml

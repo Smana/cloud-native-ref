@@ -19,19 +19,30 @@ failures. Polaris on the rendered bundle catches them, but only after the fact.
 
 XRDs and Compositions live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship as a
-Configuration package. This repo pins a version in
-`base/crossplane/configuration-aws/configuration-packages.yaml`. Edit the KCL there, run
-`task check` there, cut a release, then bump the pin here.
+Configuration package. Edit the KCL there, run `task check` there, cut a release, then bump the
+pin here — **one PR, four places, one tag**:
+
+| File | Pin |
+|---|---|
+| `base/crossplane/configuration-core/configuration-core.yaml` | `-core` (the XRDs) |
+| `base/crossplane/configuration-aws/configuration-packages.yaml` | `-aws` |
+| `base/crossplane/configuration-gcp/configuration-packages.yaml` | `-gcp` |
+| `apps/platform/app-wizard/app.yaml` (`--branch=`) | the wizard's clone |
+
+`scripts/ci/tests/test-crossplane-configuration-pins.sh` fails the build if they disagree. `-core`
+is pinned rather than left to the cloud packages' `dependsOn` range because Crossplane installs a
+missing dependency once and never upgrades it (#2275). Its Git object is named
+`smana-crossplane-configuration-core` so Flux adopts the one Crossplane created, and carries
+`prune: disabled` because deleting it deletes every XRD and claim.
 
 Two things in this repo gate on that pin:
 
 - `./scripts/ci/validate-manifests.sh` validates every claim against the XRD schemas fetched from the
   pinned release, so a pin bump that changes a schema fails here if a claim no longer matches.
-- The App Wizard clones the same tag (see `apps/platform/app-wizard/app.yaml`). **Bump both
-  together.**
+- The App Wizard renders against its clone of the same tag.
 
-Still owned here: `functions.yaml` (version-pinned rather than resolved by the packages'
-`dependsOn`), `environmentconfig.yaml`, and the provider config.
+Still owned here: `functions.yaml` and `configuration-core.yaml` (version-pinned rather than
+resolved by the packages' `dependsOn`), `environmentconfig.yaml`, and the provider config.
 
 ## Crossplane v2 traps (provider-aws v2.x, `m.upbound.io` group)
 
@@ -52,8 +63,9 @@ Still owned here: `functions.yaml` (version-pinned rather than resolved by the p
    and if it returns `yes` while the timeout persists,
    `kubectl rollout restart deployment -n crossplane-system crossplane`.
 
-**Raise the cloud packages' `dependsOn` when bumping the Crossplane core**: Crossplane will not
-auto-upgrade an installed dependency.
+**Raise the cloud packages' `dependsOn` floor when a core XRD gains a field** (in
+crossplane-configuration): a stale floor lets a new Composition render against an old XRD. The
+core pin here is what upgrades the cluster.
 
 **Package adoption vs Flux prune**: packages adopt existing XRDs, but Flux prune then deletes them
 and destroys every claim. Migrate in two PRs.

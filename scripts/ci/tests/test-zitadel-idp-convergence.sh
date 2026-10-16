@@ -183,6 +183,12 @@ if [[ "$url" == https://bao.test/v1/* ]]; then
     esac
     exit 0
 fi
+# A fake GitHub users API: a login is known when $S/github/<login> holds its JSON.
+if [[ "$url" == https://gh.test/users/* ]]; then
+    f="$S/github/${url##*/}"
+    [ -f "$f" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
+    cat "$f"; exit 0
+fi
 path="${url#"$IDP_URL"}"
 echo "$method $path" >> "$S/calls.log"
 # FAIL_ON is a glob over "METHOD /path": that request answers a curl-style 500.
@@ -241,6 +247,15 @@ case "$method $path" in
         id="tok-$(next)"
         upd pats.json --argjson d "$data" --arg i "$id" '. + [{id:$i,expirationDate:$d.expirationDate}]'
         echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
+    "POST /v2/users")
+        jq -c --argjson d "$data" '{result: [.[] | select(.loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id}]}' "$S/humans.json" ;;
+    "POST /v2/users/"*"/links/_search")
+        u="${path#/v2/users/}"; u="${u%%/*}"
+        jq -c --arg u "$u" '{result: [.[] | select(.user == $u) | del(.user)]}' "$S/links.json" ;;
+    "POST /v2/users/"*"/links")
+        u="${path#/v2/users/}"; u="${u%%/*}"
+        upd links.json --argjson d "$data" --arg u "$u" '. + [$d.idpLink + {user: $u}]'
+        echo '{}' ;;
     *) echo "fake curl: unhandled $method $path" >&2; exit 22 ;;
 esac
 SHIM
@@ -251,10 +266,13 @@ reset_state() {
     echo '{"token":"bao-root"}' > "$S/store/bao-root-token"  # pragma: allowlist secret
     echo '[]' > "$S/idps.json"; echo '[]' > "$S/actions.json"; echo '[]' > "$S/policy.json"
     echo '[]' > "$S/users.json"; echo '[]' > "$S/members.json"; echo '[]' > "$S/pats.json"
+    echo '[]' > "$S/links.json"; echo '[{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
+    rm -rf "$S/github"; mkdir -p "$S/github"; echo '{"login":"Alice-GH","id":4242}' > "$S/github/alice-gh"
     echo '{"flow":{"triggerActions":[]}}' > "$S/flow2.json"
     echo '{"client_id":"google-id","client_secret":"gs"}' > "$S/store/zitadel-google-idp"
 }
-with_github_key() { echo '{"client_id":"gh-id","client_secret":"ghs"}' > "$S/store/zitadel-github-idp"; }
+GH_SECRET=0123456789abcdef0123456789abcdef01234567  # pragma: allowlist secret
+with_github_key() { printf '%s' "$GH_SECRET" | jq -Rc '{client_id: "gh-id", client_secret: .}' > "$S/store/zitadel-github-idp"; }
 sync() { # [--apply]; prints the script's output, last line is its exit status
     local out rc
     out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
@@ -457,5 +475,112 @@ check "unnamed GitHub: no github create" "0" "$(calls '^POST /admin/v1/idps/gith
 check "unnamed GitHub: renamed through the github PUT" "1" "$(calls '^PUT /admin/v1/idps/github/gh-hand$')"
 check "unnamed GitHub: PUT keeps the link-only options" '{"isLinkingAllowed":true,"isCreationAllowed":false,"isAutoCreation":false,"isAutoUpdate":false}' \
     "$(jq -c '.providerOptions' "$S/idp-put-body.json" 2>/dev/null)"
+
+# 17. A stored GitHub secret of the wrong shape is refused before anything is
+#     applied (#2278: a 20-character client id sat in the secret field).
+for bad in Ov23liAbCdEfGhIjKlMn gh-id; do
+    reset_state
+    jq -nc --arg s "$bad" '{client_id: "gh-id", client_secret: $s}' > "$S/store/zitadel-github-idp"
+    out="$(sync --apply)"
+    check "malformed stored secret '$bad': exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+    check "malformed stored secret '$bad': no GitHub IdP call" "0" "$(calls '/admin/v1/idps/github')"
+done
+check "malformed stored secret: names the rotation command" "1" "$(count 'rotate-github-secret --cluster aws-0 --cloud aws' "$out")"
+reset_state
+jq -nc '{client_id: "gh-id", client_secret: "Ov23liAbCdEfGhIjKlMn"}' > "$S/store/zitadel-github-idp"
+out="$(sync)"
+check "malformed stored secret: refused on a dry run too" "1" "$(count '^\[FAILED \] zitadel-github-idp: client_secret is 20 characters' "$out")"
+check "malformed stored secret: value never printed" "0" "$(count 'Ov23liAbCdEfGhIjKlMn' "$out")"
+
+# 18. rotate-github-secret: stdin -> ZITADEL and the store, in one command.
+NEW_GH_SECRET=fedcba9876543210fedcba9876543210fedcba98  # pragma: allowlist secret
+rotate() { # <secret> [args]; same output contract as sync()
+    local secret="$1" out rc
+    shift
+    out="$(printf '%s\n' "$secret" | PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" rotate-github-secret --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+GH_STORE="$S/store/zitadel-github-idp"
+converge
+out="$(rotate "$NEW_GH_SECRET")"
+check "rotate dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotate dry run: plans the IdP update" "1" "$(count "would update IdP 'GitHub' \(idp-github\)" "$out")"
+check "rotate dry run: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+check "rotate dry run: nothing written" "0" "$(grep -cvE '_search|^GET ' "$S/calls.log" || true)"
+out="$(rotate "$NEW_GH_SECRET" --apply)"
+check "rotate apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "rotate apply: one PUT to the GitHub IdP" "1" "$(calls '^PUT /admin/v1/idps/github/idp-github$')"
+check "rotate apply: PUT carries the new secret" "$NEW_GH_SECRET" "$(jq -r .clientSecret "$S/idp-put-body.json")"
+check "rotate apply: PUT keeps the client id, stays link-only" '["gh-id",false]' \
+    "$(jq -c '[.clientId, .providerOptions.isCreationAllowed]' "$S/idp-put-body.json")"
+check "rotate apply: store holds the new pair" "gh-id $NEW_GH_SECRET" "$(jq -r '"\(.client_id) \(.client_secret)"' "$GH_STORE")"
+check "rotate apply: secret never printed" "0" "$(count "$NEW_GH_SECRET" "$out")"
+out="$(sync)"
+check "rotate apply: sync accepts the rotated pair" "rc=0" "$(tail -1 <<< "$out")"
+rotate 00000000001111111111222222222233333333aa --client-id new-gh-id --apply > /dev/null
+check "rotate --client-id: store and IdP take the new id" '["new-gh-id","new-gh-id"]' \
+    "$(jq -sc '[.[0].client_id, .[1].clientId]' "$GH_STORE" "$S/idp-put-body.json")"
+
+# 19. A malformed rotation secret is refused before any call.
+converge
+out="$(rotate Ov23liAbCdEfGhIjKlMn --apply)"
+check "rotate malformed: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate malformed: says why" "1" "$(count 'refusing the new secret: client_secret is 20 characters' "$out")"
+check "rotate malformed: no ZITADEL call" "0" "$(calls '.')"
+check "rotate malformed: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+out="$(rotate "${GH_SECRET^^}" --apply)"
+check "rotate uppercase hex: refused" "1" "$(count 'refusing the new secret' "$out")"
+
+# 20. A refused PUT leaves the store alone; a refused store write says how to recover.
+converge
+out="$(FAIL_ON='PUT /admin/v1/idps/github/*' rotate "$NEW_GH_SECRET" --apply)"
+check "rotate PUT fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate PUT fails: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+out="$(FAIL_STORE=zitadel-github-idp rotate "$NEW_GH_SECRET" --apply)"
+check "rotate store fails: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate store fails: says re-run" "1" "$(count 're-run this command with the same secret' "$out")"
+
+# 21. No GitHub IdP yet: rotation refuses rather than half-applying.
+reset_state; with_github_key
+out="$(rotate "$NEW_GH_SECRET" --apply)"
+check "rotate without IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "rotate without IdP: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
+
+# 22. link-github: an admin links a Google-only user's GitHub account (#2269).
+link() { # <loginName> <githubLogin> [args]; same output contract as sync()
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" link-github "$1" "$2" --cluster aws-0 --cloud aws "${@:3}" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+converge
+out="$(link alice@ogenki.io alice-gh)"
+check "link dry run: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "link dry run: plans the link with the numeric id" "1" "$(count 'would link alice@ogenki.io \(u-alice\) to GitHub Alice-GH \(4242\)' "$out")"
+check "link dry run: nothing written" "0" "$(grep -cvE '_search|^GET |^POST /v2/users$' "$S/calls.log" || true)"
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link apply: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "link apply: the link the broker reads" '[{"idpId":"idp-github","userId":"4242","userName":"Alice-GH","user":"u-alice"}]' "$(jq -c . "$S/links.json")"
+: > "$S/calls.log"
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link converged: reported ok" "1" "$(count '^\[ok     \] alice@ogenki.io' "$out")"
+check "link converged: no second POST" "0" "$(calls '/links$')"
+echo '{"login":"mallory","id":666}' > "$S/github/mallory"
+out="$(link alice@ogenki.io mallory --apply)"
+check "link to another account: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link to another account: existing link kept" '["4242"]' "$(jq -c '[.[].userId]' "$S/links.json")"
+out="$(link bob@ogenki.io alice-gh --apply)"
+check "link unknown ZITADEL user: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+: > "$S/calls.log"
+out="$(link alice@ogenki.io nobody-here --apply)"
+check "link unknown GitHub login: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link unknown GitHub login: no ZITADEL user lookup" "0" "$(calls '^POST /v2/users$')"
+out="$(link alice@ogenki.io '../orgs' --apply)"
+check "link malformed GitHub login: refused" "rc=2" "$(tail -1 <<< "$out")"
+reset_state
+out="$(link alice@ogenki.io alice-gh --apply)"
+check "link without a GitHub IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
+check "link without a GitHub IdP: names sync" "1" "$(count 'run sync first' "$out")"
 
 exit "$fail"

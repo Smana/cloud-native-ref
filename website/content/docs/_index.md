@@ -26,3 +26,5 @@ differ, and what is still missing on GCP.
   technology stack, commands, CI, the platform constitution.
 - **[Decisions]({{< relref "/docs/decisions/_index.md" >}})** — the architecture
   decision records, including what each choice was made *over*.
+- **[AI platform ↗](https://airef.ogenki.io/)** — model serving and the agent
+  factory, an opt-in layer on this platform with its own repository and site.

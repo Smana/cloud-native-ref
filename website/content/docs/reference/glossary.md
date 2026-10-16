@@ -68,10 +68,11 @@ cluster-scoped equivalents.
 
 **Configuration package** — a Crossplane package (an OCI artifact) that
 ships a set of XRDs and Compositions together, installed via a `Configuration`
-object. This repository consumes two pinned packages, one per cloud
+object. This repository pins three packages at one tag: one per cloud
 (`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
-and its `configuration-gcp` sibling), each pulling the shared `-core` package
-through its own `dependsOn` — built and released from
+and its `configuration-gcp` sibling) and the shared `-core` they depend on
+(`infrastructure/base/crossplane/configuration-core/configuration-core.yaml`)
+— built and released from
 `Smana/crossplane-configuration`, rather than authoring compositions in-tree.
 
 **Shard** — a Flux controller partition; this repository runs two (default and

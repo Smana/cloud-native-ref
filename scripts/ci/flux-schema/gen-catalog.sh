@@ -18,6 +18,9 @@
 #   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
 #      (the chart and its CRDs exist only in the git repository, SP1 S2)
 #   6. Room CRD -> agents.ogenki.io/* (vendored, SP2)
+#   7. agentgateway CRDs               -> agentgateway.dev/*
+#      (PRESENT in the hosted ecosystem catalog, but that tracks upstream daily,
+#      not our pin, and v1alpha1 breaks on every minor: the local copy must win)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #
@@ -41,6 +44,37 @@ cd "$REPO_ROOT"
 source "${REPO_ROOT}/scripts/ci/flux-schema/preflight.sh"
 
 SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
+
+# An exactly pinned OCI chart, from the cache render-bundle.py shares (same dir, same key), so a
+# cached run sends no request to a registry that rations anonymous pulls per runner IP (#2356).
+# Prints the chart to hand to `helm template`: the cached .tgz, or the URL for a range pin.
+OCI_CHART_CACHE="${HELM_CACHE_HOME:-${HOME}/.cache/helm}/oci-charts"
+oci_chart() {
+  local url="$1" version="$2" tgz dest delay err
+  if ! [[ "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+    echo "${url}"
+    return
+  fi
+  tgz="${OCI_CHART_CACHE}/$(printf '%s' "${url#oci://}@${version}" | tr -c 'A-Za-z0-9._-' '_').tgz"
+  if [[ ! -f "${tgz}" ]]; then
+    mkdir -p "${OCI_CHART_CACHE}"
+    dest="$(mktemp -d)"
+    for delay in 20 60 0; do
+      if err="$("${HELM_BIN}" pull "${url}" --version "${version}" --destination "${dest}" 2>&1)"; then
+        mv "${dest}"/*.tgz "${tgz}"
+        break
+      fi
+      if [[ "${delay}" -eq 0 || "${err}" != *429* && "${err}" != *toomanyrequests* ]]; then
+        echo "${err}" >&2
+        rm -rf "${dest}"
+        return 1
+      fi
+      sleep "${delay}"
+    done
+    rm -rf "${dest}"
+  fi
+  echo "${tgz}"
+}
 
 # Single source of truth: the same OCIRepository pin Flux uses to install the
 # CRDs on the cluster. Renovate bumps that file; this script follows it.
@@ -125,6 +159,16 @@ if [[ -z "${AGENT_SANDBOX_URL}" || -z "${AGENT_SANDBOX_VERSION}" ]]; then
   exit 1
 fi
 
+# Same single-source-of-truth approach for agentgateway: the first document is the
+# CRD chart's OCIRepository (url ends in -crds), read like the AI Gateway's above.
+AGW_SOURCE="infrastructure/base/agentgateway/ocirepositories.yaml"
+AGW_CHART="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(oci://[^"[:space:]]+-crds)"?[[:space:]]*$#\1#p' "${AGW_SOURCE}" | head -n1 || true)"
+AGW_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AGW_SOURCE}" | head -n1 || true)"
+if [[ -z "${AGW_CHART}" || -z "${AGW_VERSION}" ]]; then
+  echo "error: could not read the agentgateway CRD chart url or tag from ${AGW_SOURCE}" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -177,7 +221,8 @@ echo "==> Rendering Envoy AI Gateway CRDs (chart ${AI_GATEWAY_VERSION})"
 # --include-crds: Helm skips a chart's crds/ directory by default. Without
 # this flag a chart that packages its CRDs there (rather than as regular
 # templates) renders zero CRDs, and helm still exits 0.
-"${HELM_BIN}" template aigw-crds "${AI_GATEWAY_CHART}" --version "${AI_GATEWAY_VERSION}" --include-crds \
+chart="$(oci_chart "${AI_GATEWAY_CHART}" "${AI_GATEWAY_VERSION}")"
+"${HELM_BIN}" template aigw-crds "${chart}" --version "${AI_GATEWAY_VERSION}" --include-crds \
   > "${tmp}/aigateway-crds.yaml"
 
 echo "==> Rendering Karpenter CRDs (chart ${KARPENTER_VERSION})"
@@ -187,9 +232,15 @@ echo "==> Rendering Karpenter CRDs (chart ${KARPENTER_VERSION})"
 # ("Chart cannot be installed without a valid settings.clusterName!"). The value
 # is render-only: `flux schema extract crd` below picks out ONLY the CRDs, so
 # this throwaway name never reaches the catalog.
-"${HELM_BIN}" template karpenter "${KARPENTER_CHART}" --version "${KARPENTER_VERSION}" --include-crds \
+chart="$(oci_chart "${KARPENTER_CHART}" "${KARPENTER_VERSION}")"
+"${HELM_BIN}" template karpenter "${chart}" --version "${KARPENTER_VERSION}" --include-crds \
   --set settings.clusterName=catalog \
   > "${tmp}/karpenter-crds.yaml"
+
+echo "==> Rendering agentgateway CRDs (chart ${AGW_VERSION})"
+chart="$(oci_chart "${AGW_CHART}" "${AGW_VERSION}")"
+"${HELM_BIN}" template agw-crds "${chart}" --version "${AGW_VERSION}" --include-crds \
+  > "${tmp}/agentgateway-crds.yaml"
 
 echo "==> Fetching Barman Cloud plugin ObjectStore CRD (git ${BARMAN_PLUGIN_VERSION})"
 # The plugin ships no Helm chart (only manifest/Kustomize install), so its CRD
@@ -208,6 +259,7 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
+"${FLUX_BIN}" schema extract crd "${tmp}/agentgateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/agent-sandbox-crds.yaml" -d "${build_dir}"
 # GKE ComputeClass. Vendored rather than rendered: unlike every source above, GKE
 # installs this CRD itself and publishes no chart to render it from. See the
@@ -237,6 +289,13 @@ if [[ ! -s "${build_dir}/karpenter.k8s.aws/ec2nodeclass_v1.json" ]]; then
   echo "error: catalog build produced no karpenter.k8s.aws/ec2nodeclass_v1.json (chart ${KARPENTER_VERSION} rendered no CRDs?)" >&2
   exit 1
 fi
+
+for kind in agentgatewaybackend agentgatewaypolicy agentgatewayparameters agentgatewaymodel; do
+  if [[ ! -s "${build_dir}/agentgateway.dev/${kind}_v1alpha1.json" ]]; then
+    echo "error: catalog build produced no agentgateway.dev/${kind}_v1alpha1.json (chart ${AGW_VERSION} rendered no CRDs?)" >&2
+    exit 1
+  fi
+done
 
 # The ObjectStore CRD (barmancloud.cnpg.io/v1) is the reason the barman-cloud
 # source block exists; assert it specifically, not just "some barman schema landed".

@@ -43,8 +43,11 @@ spec:
       # -- deprecated. will be removed with 0.7.0, use serviceMonitor instead.
       enabled: true
       # -- will be used when we'll deploy the prometheus-operator
+    # Feeds grafana-dashboard.yaml. honorLabels keeps the ExternalSecret's own
+    # `namespace` label instead of renaming it to `exported_namespace`.
     serviceMonitor:
-      enabled: false
+      enabled: true
+      honorLabels: true
       additionalLabels: {}
 
     podDisruptionBudget:

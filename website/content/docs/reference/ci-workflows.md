@@ -151,9 +151,13 @@ through `helm template` with its own values and `postRenderers`), then applies
 five gates to the *rendered* output:
 `flux schema validate` with `skipMissingSchemas: false`, so an unknown Kind
 fails the build rather than being skipped, `polaris audit`,
-`assert-ai-gateway.py` (cross-object AI-gateway invariants),
 `assert-cloud-shape.py` (gcp-0's agent and AI-gateway renders carry GKE-shaped
-values, not AWS ones), and the Alertmanager Slack template render. See
+values, not AWS ones), `assert-zitadel-floor.py` (every ZITADEL image is a
+release at or above v4.17.3, which ADR-0056's identity choice needs), and the
+Alertmanager Slack template render. `scripts/ci/ai-overlay.sh` runs first: it
+verifies the pinned `ai-native-ref` artifact and lays it over the gitignored AI
+paths. The AI invariants (`assert-ai-gateway.py`, `assert-agent-gateway.py`)
+run in that repository's CI. See
 [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}) for why
 the first two properties are load-bearing.
 

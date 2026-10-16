@@ -70,6 +70,12 @@ to one cluster, not both). The exact split is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) —
 worth a look before you choose, if you are evaluating rather than just trying it.
 
+The AI platform — model serving and the agent factory — is an opt-in layer on
+top, deployed from its own repository: see
+[AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}) for what
+runs where, and [airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/)
+for the platform itself.
+
 ## When you are done
 
 Tearing down matters more than usual here, because the expensive resources are

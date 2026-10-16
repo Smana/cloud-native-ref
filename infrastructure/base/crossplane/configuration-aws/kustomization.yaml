@@ -11,10 +11,12 @@ namespace: crossplane-system
 #                               packages' `dependsOn`, so a package bump cannot
 #                               silently move a function version. Shared with
 #                               GCP — see that directory for why.
+#   - ../configuration-core     the -core package, pinned for the same reason.
 #   - environmentconfig.yaml    per-cluster values the Compositions read
 #   - cluster-providerconfig    provider credentials wiring
 resources:
   - ../functions
+  - ../configuration-core
   - cluster-providerconfig-aws.yaml
   - configuration-packages.yaml
   - environmentconfig.yaml

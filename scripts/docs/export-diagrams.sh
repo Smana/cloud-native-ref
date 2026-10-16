@@ -77,8 +77,6 @@ SINGLE_PAGE=(
     observability-flow
     authentication-chain
     openbao-architecture
-    agent-factory
-    agent-factory-overview
 )
 
 # --embed-svg-fonts false is load-bearing, not a micro-optimisation. drawio
@@ -107,31 +105,13 @@ echo "==> platform-overview (svg + png)"
 drawio "${SVGOPTS[@]}" -o "$OUT/platform-overview.svg" "$SRC/platform-overview.drawio"
 drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
 
-# --page-index is 1-based in this drawio CLI (`-p, --page-index <pageIndex>
-# selects a specific page (1-based)`), despite looking like it should be
-# 0-based. Looping 0 1 2 here silently exported page 1 twice and dropped page
-# 3 (page-index=0 falls back to "not specified" -> first page). Loop 1 2 3
-# instead, with the file suffix matching page-index directly.
-for i in 1 2 3; do
-    echo "==> llm-platform page $i"
-    drawio "${SVGOPTS[@]}" --page-index "$i" \
-        -o "$OUT/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
-done
-
 # openbao-lineage is two pages: the lineage itself, then the cross-cloud
-# fallback and the drill. Same 1-based indexing caveat as above.
+# fallback and the drill. --page-index is 1-based in this drawio CLI despite
+# looking 0-based (page-index=0 falls back to the first page), so loop from 1.
 for i in 1 2; do
     echo "==> openbao-lineage page $i"
     drawio "${SVGOPTS[@]}" --page-index "$i" \
         -o "$OUT/openbao-lineage-$i.svg" "$SRC/openbao-lineage.drawio"
-done
-
-# ai-platform is five pages, one per role page of the AI Platform section:
-# overview, gateways, agent runtime, rooms, factory. Same 1-based indexing.
-for i in 1 2 3 4 5; do
-    echo "==> ai-platform page $i"
-    drawio "${SVGOPTS[@]}" --page-index "$i" \
-        -o "$OUT/ai-platform-$i.svg" "$SRC/ai-platform.drawio"
 done
 
 # drawio ends its SVG output without a trailing newline; pre-commit's

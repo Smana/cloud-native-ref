@@ -39,6 +39,10 @@ Apply it:
 kubectl apply -f hello.yaml
 ```
 
+That is the quick way to try it. On this platform an application lands by
+committing its claim to Git for Flux to reconcile — see
+[Add an application]({{< relref "/docs/guides/add-an-application.md" >}}).
+
 ## Check its status
 
 The App reports `Ready` once its underlying resources are actually
