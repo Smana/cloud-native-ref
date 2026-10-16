@@ -2061,6 +2061,8 @@ are counted in **shadow mode**: nothing is rejected yet
 
 ## PR 2 — agent tiers, Bedrock EU, B1–B2 in shadow, the `oidc` listener
 
+> **2026-10-16:** the agent half (Tasks 9, 12, 13 and 15's agent checks) moved to the [agentgateway plan](2026-10-15-agent-router-agentgateway-plan.md)'s phase I and shipped in [ai-native-ref#6](https://github.com/Smana/ai-native-ref/pull/6). It runs on agentgateway, with `internal` on the Anthropic API (ADR-0054), not Bedrock. The tier map is in that PR. Task 10's Bedrock EPIs are optional (that plan's appendix, OB.2). Task 11 targets the Anthropic API with a platform key. Task 14 is unchanged.
+
 ### Interfaces with SP1
 
 PR 2 builds on objects that SP1 phase 3 creates, named as in SP1's plan
