@@ -70,6 +70,11 @@ spec:
       # the 0.9.0 binary behind the 0.9.1 chart — none of that release's fixes were live,
       # and nothing failed to say so. Move the two together, always.
       #
+      # `repository` repeats the chart default on purpose: without it the
+      # helm-values manager sees a bare tag and Renovate moves only the chart, as
+      # #2087 did (chart v0.16.2, image left at 0.16.1). The `runlore` package
+      # rule in .github/renovate.json groups the two.
+      #
       # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
       # release image as `{{ .Version }}` — 0.13.0, not v0.13.0 — so a `v` prefix 404s
       # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
@@ -88,7 +93,7 @@ spec:
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
       # bump the v0.13.0 chart was rendered with these exact values and the resulting
       # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      # 0.16.1, in lockstep with the GitRepository's `tag: v0.16.1`.
+      # 0.16.2, in lockstep with the GitRepository's `tag: v0.16.2`.
       #
       # This was "0.13.0" while the source had already moved to a COMMIT pin far
       # past v0.13.0 -- exactly the drift the paragraphs above warn about, and it
@@ -96,7 +101,8 @@ spec:
       # torn down. The lockstep rule is not decoration: config parsing uses
       # KnownFields(true), so a chart newer than its binary fails closed on a key
       # the binary has never heard of.
-      tag: "0.16.1"
+      repository: ghcr.io/smana/runlore
+      tag: "0.16.2"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
