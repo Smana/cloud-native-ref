@@ -41,8 +41,11 @@ tasks:
     desc: Verify and lay the pinned ai-native-ref artifact over the (gitignored) AI paths
     cmds: ["{{.ROOT_DIR}}/scripts/ci/ai-overlay.sh"]
 
-  # The design names this `task agent:run` (SP1 §Implementation outline): the
-  # owner's way to start a run until SP3's factory is the only creator (C3).
+  # agent-run.sh moved to Smana/ai-native-ref. This wrapper keeps the runbooks' `task agent:run`
+  # working from a host checkout, where the factory's CA is.
   agent:run:
-    desc: Ask the agent factory for one AgentRun (roomctl login first)
-    cmds: ["{{.ROOT_DIR}}/scripts/ops/k8s/agent-run.sh {{.CLI_ARGS}}"]
+    desc: "Ask the agent factory for one AgentRun (roomctl login first; AI_NATIVE_REF_DIR=<ai-native-ref checkout>)"
+    cmds:
+      - |
+        s="${AI_NATIVE_REF_DIR:?agent-run.sh moved to Smana/ai-native-ref: set AI_NATIVE_REF_DIR to a checkout of it}/scripts/ops/k8s/agent-run.sh"
+        AGENT_FACTORY_CA="${AGENT_FACTORY_CA:-{{.ROOT_DIR}}/opentofu/aws/openbao/management/.tls/ca.pem}" "$s" {{.CLI_ARGS}}

@@ -86,11 +86,7 @@ CATALOG = {
     # and Alertmanager is part of Prometheus rather than a project of its own.
     'valkey': 'brand', 'gateway api': 'brand', 'alertmanager': 'brand',
 
-    'zitadel': 'local', 'slack': 'local', 'huggingface': 'local',
-    'openwebui': 'local',
-
-    'agentgateway': 'local', 'claude': 'local', 'gvisor': 'local',
-    'mcp': 'local', 'octo-sts': 'local', 'openhands': 'local', 'z.ai': 'local',
+    'zitadel': 'local', 'slack': 'local',
 
     'terramate': 'brand', 'postgres': 'brand', 'atlas': 'brand',
     'renovate': 'brand', 'nvidia': 'brand', 'wireguard': 'brand',
