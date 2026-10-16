@@ -87,6 +87,7 @@ CATALOG = {
     'valkey': 'brand', 'gateway api': 'brand', 'alertmanager': 'brand',
 
     'zitadel': 'local', 'slack': 'local',
+    'agentgateway': 'local', 'gvisor': 'local',
 
     'terramate': 'brand', 'postgres': 'brand', 'atlas': 'brand',
     'renovate': 'brand', 'nvidia': 'brand', 'wireguard': 'brand',

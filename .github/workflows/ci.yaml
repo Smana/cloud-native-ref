@@ -133,7 +133,7 @@ jobs:
       # so it must not hold that scope itself.
       - name: Upload SARIF results for the upload job
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-results
           path: |
@@ -181,7 +181,7 @@ jobs:
       security-events: write
     steps:
       - name: Download SARIF results
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: sarif-results
 
@@ -191,14 +191,14 @@ jobs:
       # leaving PRs with no base analysis to compare against.
       - name: Upload Trivy scan results to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: trivy-results.sarif
           category: .github/workflows/ci.yaml:security-scan
 
       - name: Upload Checkov scan results
         if: always()
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: checkov-results.sarif
           category: .github/workflows/ci.yaml:security-scan
@@ -345,7 +345,7 @@ jobs:
       # it was when the comment step lived in this job.
       - name: Upload full diff artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: rendered-diff
           path: |
@@ -366,7 +366,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Download the rendered diff
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: rendered-diff
 

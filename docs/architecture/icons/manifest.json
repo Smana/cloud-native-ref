@@ -7,6 +7,11 @@
     "victoriatraces": "victoriametrics"
   },
   "icons": {
+    "agentgateway": {
+      "file": "agentgateway.png",
+      "bytes": 3231,
+      "label": "agentgateway"
+    },
     "bottlerocket": {
       "file": "bottlerocket.png",
       "bytes": 4123,
@@ -71,6 +76,11 @@
       "file": "grafana.png",
       "bytes": 2676,
       "label": "Grafana \u2014 dashboards"
+    },
+    "gvisor": {
+      "file": "gvisor.png",
+      "bytes": 3419,
+      "label": "gVisor"
     },
     "harbor": {
       "file": "harbor.png",
