@@ -16,8 +16,9 @@ spec:
     digest: sha256:888babe874a44c848da88fbacedd55991d2915343fcf19dd3d5a2a7bdb827a2a
   verify:
     provider: cosign
+    # One entry: Flux's cosign keyless refuses several ("multiple identities are not supported
+    # at this time", source-controller on aws-0, 2026-10-16), so one regex takes both signers:
+    # release.yaml on a tag, ci.yaml on a PR pre-release.
     matchOIDCIdentity:
       - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
-        subject: "^https://github\\.com/Smana/ai-native-ref/\\.github/workflows/release\\.yaml@refs/tags/v.*$"
-      - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
-        subject: "^https://github\\.com/Smana/ai-native-ref/\\.github/workflows/ci\\.yaml@refs/pull/[0-9]+/merge$"
+        subject: "^https://github\\.com/Smana/ai-native-ref/\\.github/workflows/(release\\.yaml@refs/tags/v.*|ci\\.yaml@refs/pull/[0-9]+/merge)$"
