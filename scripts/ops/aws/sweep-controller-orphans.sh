@@ -46,6 +46,14 @@
 # opentofu/aws/network/network.tf), discovered by tag rather than assumed. It
 # never touches the default VPC or its default security group.
 #
+# Within that VPC, only resources carrying a CONTROLLER'S OWN TAG for this
+# cluster are swept; everything else is listed as kept. The VPC is shared with
+# stacks OpenTofu still owns: on 2026-10-16 the openbao/cluster destroy failed,
+# and the sweep -- then VPC-wide -- deleted OpenBao's NLB and terminated its
+# node, which its autoscaling group replaced at once. An instance in an
+# autoscaling group is never swept unless EKS owns that group: terminating it
+# only makes the group launch another.
+#
 # Dry-run unless --apply.
 #
 # Usage:
@@ -94,43 +102,82 @@ fi
 echo "==> scoping to ${VPC_ID}"
 
 # ---- 1. load balancers (aws-load-balancer-controller) -----------------------
-# First, because their ENIs hold the subnets everything else needs freed.
+# First, because their ENIs hold the subnets everything else needs freed. The
+# controller tags everything it creates with `elbv2.k8s.aws/cluster`, the same
+# key eks-prepare-destroy.sh scopes on.
 echo
 echo "== Load balancers created from Gateway/Ingress resources"
-for arn in $($AWS elbv2 describe-load-balancers \
-        --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" --output text 2>/dev/null); do
-    name="${arn##*/}"; name="${arn#*loadbalancer/}"; name="${name%/*}"
-    say "load balancer ${name}"
-    SWEPT=$((SWEPT + 1))
-    [ "$APPLY" = "true" ] && $AWS elbv2 delete-load-balancer --load-balancer-arn "$arn" >/dev/null 2>&1
+mapfile -t VPC_LBS < <($AWS elbv2 describe-load-balancers \
+    --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" --output text 2>/dev/null \
+    | tr '\t' '\n' | grep -v '^[[:space:]]*$')
+OWNED_LBS=()
+# describe-tags accepts at most 20 ARNs per call.
+for ((i = 0; i < ${#VPC_LBS[@]}; i += 20)); do
+    mapfile -t -O "${#OWNED_LBS[@]}" OWNED_LBS < <($AWS elbv2 describe-tags \
+        --resource-arns "${VPC_LBS[@]:i:20}" --output json 2>/dev/null \
+        | jq -r --arg c "$CLUSTER_NAME" '.TagDescriptions[]
+            | select(any(.Tags[]?; .Key == "elbv2.k8s.aws/cluster" and .Value == $c))
+            | .ResourceArn')
+done
+for arn in "${VPC_LBS[@]}"; do
+    name="${arn#*loadbalancer/}"; name="${name%/*}"
+    if printf '%s\n' "${OWNED_LBS[@]}" | grep -Fxq -- "$arn"; then
+        say "load balancer ${name}"
+        SWEPT=$((SWEPT + 1))
+        [ "$APPLY" = "true" ] && $AWS elbv2 delete-load-balancer --load-balancer-arn "$arn" >/dev/null 2>&1
+    else
+        echo "  [keep   ] load balancer ${name} (no elbv2.k8s.aws/cluster=${CLUSTER_NAME} tag)"
+    fi
 done
 
 # ---- 2. instances (Karpenter, or node groups whose cluster is gone) ---------
 echo
 echo "== EC2 instances with no cluster behind them"
-orphans="$($AWS ec2 describe-instances \
+instances="$($AWS ec2 describe-instances \
     --filters "Name=vpc-id,Values=${VPC_ID}" \
               "Name=instance-state-name,Values=running,pending,stopping,stopped" \
-    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null)"
-if [ -n "$orphans" ]; then
-    for id in $orphans; do say "instance ${id}"; SWEPT=$((SWEPT + 1)); done
-    if [ "$APPLY" = "true" ]; then
-        # shellcheck disable=SC2086 # deliberate word splitting: takes a list
-        $AWS ec2 terminate-instances --instance-ids $orphans >/dev/null 2>&1
+    --query 'Reservations[].Instances[].{id:InstanceId,tags:Tags}' --output json 2>/dev/null)"
+orphans="$(jq -r --arg c "$CLUSTER_NAME" '.[]? | (.tags // [] | from_entries) as $t
+    | select($t["karpenter.sh/nodepool"] != null or $t["kubernetes.io/cluster/" + $c] != null
+             or $t["eks:cluster-name"] == $c or $t["eks:eks-cluster-name"] == $c)
+    | select($t["aws:autoscaling:groupName"] == null or $t["eks:cluster-name"] == $c)
+    | .id' <<<"${instances:-[]}" | tr '\n' ' ')"
+orphans="${orphans% }"
+for id in $(jq -r '.[]?.id' <<<"${instances:-[]}"); do
+    if [[ " ${orphans} " == *" ${id} "* ]]; then
+        say "instance ${id}"; SWEPT=$((SWEPT + 1))
+    else
+        echo "  [keep   ] instance ${id} (not a ${CLUSTER_NAME} node, or in a non-EKS autoscaling group)"
     fi
+done
+if [ -n "$orphans" ] && [ "$APPLY" = "true" ]; then
+    # shellcheck disable=SC2086 # deliberate word splitting: takes a list
+    $AWS ec2 terminate-instances --instance-ids $orphans >/dev/null 2>&1
 fi
 
 # ---- wait for ENIs, not for instance state ---------------------------------
 # They detach asynchronously. A destroy retried on instance state alone hits the
-# same DependencyViolation -- measured twice on 2026-09-03/04.
-if [ "$APPLY" = "true" ]; then
+# same DependencyViolation -- measured twice on 2026-09-03/04. Only the swept
+# resources' ENIs: the kept ones never go, and would hold this loop to its cap.
+if [ "$APPLY" = "true" ] && { [ ${#OWNED_LBS[@]} -gt 0 ] || [ -n "$orphans" ]; }; then
+    lb_descs=()
+    for arn in "${OWNED_LBS[@]}"; do lb_descs+=("ELB ${arn#*loadbalancer/}"); done
     echo
-    echo "== waiting for ENIs to release from ${VPC_ID} (up to 300s)"
+    echo "== waiting for the swept resources' ENIs to release (up to 300s)"
     for _ in $(seq 1 30); do
-        n="$($AWS ec2 describe-network-interfaces --filters "Name=vpc-id,Values=${VPC_ID}" \
-             --query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 0)"
+        n=0
+        if [ -n "$orphans" ]; then
+            n=$(( n + $($AWS ec2 describe-network-interfaces \
+                --filters "Name=attachment.instance-id,Values=${orphans// /,}" \
+                --query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 0) ))
+        fi
+        if [ ${#lb_descs[@]} -gt 0 ]; then
+            n=$(( n + $($AWS ec2 describe-network-interfaces \
+                --filters "Name=description,Values=$(IFS=,; echo "${lb_descs[*]}")" \
+                --query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 0) ))
+        fi
         echo "   ENIs remaining: ${n}"
-        [ "${n:-0}" = "0" ] && break
+        [ "$n" -eq 0 ] && break
         sleep 10
     done
 fi
@@ -138,11 +185,21 @@ fi
 # ---- 3. security groups ----------------------------------------------------
 # Last: they can only go once nothing references them. Several passes because
 # groups reference each other and a single ordering can fail on that alone.
+# Same scoping as above: a group OpenTofu owns (OpenBao's, the network's) is
+# left to its stack -- deleting OpenBao's would break the very next launch of its
+# autoscaling group.
+cluster_sgs() {
+    $AWS ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" \
+        --query 'SecurityGroups[?GroupName!=`default`].{id:GroupId,tags:Tags}' --output json 2>/dev/null \
+        | jq -r --arg c "$CLUSTER_NAME" '.[]? | (.tags // [] | from_entries) as $t
+            | select($t["elbv2.k8s.aws/cluster"] == $c or $t["kubernetes.io/cluster/" + $c] != null
+                     or $t["aws:eks:cluster-name"] == $c)
+            | .id' | tr '\n' ' ' | sed 's/ $//'
+}
 echo
-echo "== non-default security groups"
+echo "== security groups of cluster ${CLUSTER_NAME}"
 for pass in 1 2 3 4; do
-    ids="$($AWS ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" \
-           --query 'SecurityGroups[?GroupName!=`default`].GroupId' --output text 2>/dev/null)"
+    ids="$(cluster_sgs)"
     [ -z "$ids" ] && break
     if [ "$APPLY" != "true" ]; then
         for id in $ids; do say "security group ${id}"; SWEPT=$((SWEPT + 1)); done
@@ -154,8 +211,7 @@ for pass in 1 2 3 4; do
             SWEPT=$((SWEPT + 1))
         fi
     done
-    left="$($AWS ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" \
-            --query 'SecurityGroups[?GroupName!=`default`].GroupId' --output text 2>/dev/null)"
+    left="$(cluster_sgs)"
     [ "$ids" = "$left" ] && { echo "  [warn   ] no progress; still held: ${left}"; break; }
 done
 
