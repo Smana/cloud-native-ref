@@ -222,7 +222,7 @@ data:
               - lb_endpoints:
                   - endpoint:
                       address:
-                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8080}
+                        socket_address: {address: agent-router.agent-gateway.svc.cluster.local, port_value: 8080}
         - name: agent_router_internal
           type: STRICT_DNS
           connect_timeout: 5s
@@ -233,7 +233,7 @@ data:
               - lb_endpoints:
                   - endpoint:
                       address:
-                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8081}
+                        socket_address: {address: agent-router.agent-gateway.svc.cluster.local, port_value: 8081}
         - name: agent_router_sts
           type: STRICT_DNS
           connect_timeout: 5s
@@ -244,4 +244,4 @@ data:
               - lb_endpoints:
                   - endpoint:
                       address:
-                        socket_address: {address: agent-router.envoy-gateway-system.svc.cluster.local, port_value: 8082}
+                        socket_address: {address: agent-router.agent-gateway.svc.cluster.local, port_value: 8082}
