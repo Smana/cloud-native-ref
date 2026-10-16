@@ -1,6 +1,7 @@
-# aws-0 agent platform (opt-in)
+# aws-0 agent platform
 
-Children of the `agent-platform` umbrella (`../aws-0/agent-platform.yaml`, suspended by default).
+Children of the `agent-platform` umbrella (`../aws-0/agent-platform.yaml`), live on aws-0 since
+2026-10-16 (owner); gcp-0's twin stays suspended by default.
 Design: `docs/superpowers/specs/2026-09-23-agent-runtime-identity-design.md`.
 
 | Child Kustomization | Path | Holds |
@@ -42,9 +43,6 @@ key written to `github-app` on the `agents` mount. Without the key, `octo-sts` s
 From SP2 phase 3, the factory App `ogenki-agent-factory` (SP3's, created early) is installed on
 `Smana/cloud-native-ref` with its key at `factory-app` on the `agents` mount. Without it, the room broker
 still runs, and reviewers' verdicts stay in the room instead of reaching the pull request.
-
-    flux resume kustomization ai-gateway -n flux-system
-    flux resume kustomization agent-platform -n flux-system
 
 `--class internal` runs have no model route until SP4 PR 2, so such a run 404s on every model call;
 `agent-run.sh` still accepts it because the runbooks use it to test the internal listener.

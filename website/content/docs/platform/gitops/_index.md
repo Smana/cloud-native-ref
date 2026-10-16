@@ -374,8 +374,8 @@ Four things about the graph are not obvious from that line:
   directly — it has to, since it is what creates the `ExternalArtifact`s
   everything else sources from. Both still run first in practice, because
   Flux waits for a Kustomization's `sourceRef` artifact to exist.
-- **The opt-in `llm-platform` and `ai-gateway` umbrellas sit outside this
-  graph**, both suspended by default and sourcing from the `GitRepository`
+- **The `llm-platform` and `ai-gateway` umbrellas sit outside this
+  graph** (`llm-platform` suspended by default, `ai-gateway` live on aws-0), sourcing from the `GitRepository`
   directly — their paths fall outside every `ArtifactGenerator` glob. They do
   have a `dependsOn` edge of their own, `llm-platform` → `ai-gateway`, but
   neither depends on anything shown above.
