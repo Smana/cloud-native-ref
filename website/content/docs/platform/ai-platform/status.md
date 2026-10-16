@@ -245,7 +245,6 @@ flowchart LR
   gw -->|model route| internal["internal work"]
   hard -->|gate| merge["Live auto-merge"]
   hard -->|gate| caps["Per-person caps"]
-  repo -->|one owner per repo| cloud["A second active cloud"]
   v1 -->|proposed, now| cohort["Hard-task cohort"]
   cohort -->|proposed| loop["Continuation loop"]
   cohort -->|proposed| rev["Reviewer on another model"]
@@ -267,8 +266,17 @@ flowchart LR
 | `internal` work: RunLore investigations, cluster and log reads | A model route for `internal` runs, through the Anthropic API ([ADR-0054]({{< relref "/docs/decisions/0054-agent-model-providers-anthropic-direct.md" >}})): merged in [ai-native-ref#6](https://github.com/Smana/ai-native-ref/pull/6) with the agent tiers, not yet in a release on aws-0. Before an `internal` run reaches it, the run meter must price it at the gateway's price (agentgateway plan, phase J). The egress fence is shipped (crossplane-configuration v0.9.5, agent-platform#72; live proof pending). The gateway's read-only GitHub route and a harness that clones through it are now prerequisites of the `internal` model route (SP4 PR 2); without them `internal` runs move from 404-on-model to fail-at-clone. RunLore intake that recovers a half-created issue |
 | Live auto-merge of `docs-links` and `revert` | The merge breaker's state survives a rebuild; a head-pinned merge and its revert drilled on a live cluster; a PR handed to a human can return to the gate after a transient verdict (`verdict_stale`, `policy_*`, `head_unreported`) on a head the factory moved, never one a human was asked to judge — shipped in agent-platform#73; the 20 shadow decisions are counted after that fix, since today a CI-fixed PR logs `verdict_stale`; and, for `docs-links` only, 20 shadow "would merge" decisions that a human then merged unchanged. `revert` keeps the drill: reverts exist only after a real auto-merge |
 | Per-person spend caps | Label-triggered and API admission share one reservation; an exhausted ledger refuses both |
-| A second active cloud (`gcp-0`) | The factory reaches the identity provider over GKE's datapath, proven with Hubble; the single-owner fence above; the CPU quota ([F3](#live-findings)) |
 | **Attended rooms at scale** (gate met, 2026-10-16) | Shipped in agent-platform#119, released in agent-platform v0.13.0 and live on `aws-0` since 2026-10-16 (#2445): a decision past the approval's deadline is refused in the same transaction that would record it, with reason `approval_expired` (counted in `rooms_rejected_actions_total{reason="approval_expired"}`); the expiry sweep only cleans up |
+
+### v2.1: the second cloud
+
+Moved out of v2 on 2026-10-16 (owner): both gates need a live `gcp-0`, and nothing else in v2
+waits on them. `gcp-0` still renders in CI on every change (`assert-cloud-shape.py`, both clusters
+in `assert-agent-gateway.py`), so its copy cannot rot before v2.1 turns it on.
+
+| Capability | Gate: what must be proven first |
+|---|---|
+| A second active cloud (`gcp-0`) | The factory reaches the identity provider over GKE's datapath, proven with Hubble; the single-owner fence above; the CPU quota ([F3](#live-findings)) |
 | A different sandbox runtime | A two-day Substrate spike at the next `gcp-0` rebuild ([alternatives]({{< relref "/docs/platform/ai-platform/agents/alternatives.md" >}})), *proposed* as a comparison: agent-sandbox itself ships warm pools and disk-backed suspend, so the spike shows what Substrate adds over them |
 
 ### How v2 is judged
