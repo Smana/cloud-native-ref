@@ -58,3 +58,9 @@ for the side-by-side, and
 <a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
 for where the platform refuses to pretend they are the same.
 </p>
+
+<p class="cnref-strip-more">
+Self-hosted model serving and the agent factory run on this platform as an
+opt-in layer with its own repository and site:
+<a href="https://airef.ogenki.io/">airef.ogenki.io</a>.
+</p>

@@ -1,7 +1,7 @@
 ---
 title: AI Platform
 weight: 50
-description: "Model serving and the agent factory, published on their own site: airef.ogenki.io. This platform hosts them, off by default."
+description: "Model serving and the agent factory, published on their own site: airef.ogenki.io. This platform hosts them as an opt-in layer."
 ---
 
 Two halves, one platform. **Serving** runs open-weights models on the cluster's own GPUs behind an
@@ -15,22 +15,24 @@ run that opens a pull request, under its own identity.
 signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/)).
 {{< /callout >}}
 
-## Turning it on
+## What runs where
 
-A default deploy is AI-free: the `OCIRepository` `ai-native-ref` and the three umbrella
-Kustomizations are suspended. Resume the source, then the umbrellas (`ai-gateway` first, the other two
-depend on it):
+The source ships suspended (`flux/sources/ocirepo-ai-native-ref.yaml`); each cluster decides what to resume.
 
-```bash
-flux resume source oci ai-native-ref -n flux-system
-flux resume kustomization ai-gateway -n flux-system
-flux resume kustomization llm-platform -n flux-system
-flux resume kustomization agent-platform -n flux-system
-```
+| Umbrella | `aws-0` | `gcp-0` |
+|---|---|---|
+| `OCIRepository` `ai-native-ref` | live | suspended |
+| `ai-gateway` (CPU; the others depend on it) | live | suspended |
+| `agent-platform` (the agent factory) | live | suspended |
+| `llm-platform` (GPU serving) | suspended | suspended |
+
+To turn it on for a cluster, un-suspend the source with a patch in its
+`clusters/<cluster>/flux/flux-sources.yaml` (as `aws-0` does), then set `spec.suspend: false` in
+`clusters/<cluster>/<umbrella>.yaml`, `ai-gateway` first. A `flux resume` alone lasts only until the
+next sync sets Git's value back.
 
 What this platform guarantees the AI platform (Flux names, substitution variables, Gateways,
-namespaces, OpenBao mounts) is the
-[host contract](https://github.com/Smana/ai-native-ref/blob/main/HOST-CONTRACT.md).
+namespaces, OpenBao mounts) is the [host contract](https://airef.ogenki.io/docs/host-contract/).
 
 {{< cards >}}
   {{< card link="https://airef.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the agent factory, status and roadmap." >}}

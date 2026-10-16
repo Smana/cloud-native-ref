@@ -37,12 +37,11 @@ namespaces, all targeting the one Grafana in `observability`).
 
 ### Folder registry
 
-A repo-wide grep for `kind: GrafanaFolder` finds nine CRs. Eight reconcile onto
-the cluster by default, each defined in the namespace that owns its
-dashboards; the ninth (`llm`, `apps/base/ai/llm/grafana-folder.yaml`) only
-applies once the opt-in LLM platform's suspended umbrella Kustomization is
-resumed (see `clusters/AGENTS.md`) and is out of
-scope for this always-on page:
+A repo-wide grep for `kind: GrafanaFolder` finds eight CRs, each reconciled by
+default and defined in the namespace that owns its dashboards. The AI
+platform's `llm` folder ships from
+[ai-native-ref](https://airef.ogenki.io/docs/platform/ai-platform/observability/)
+and is out of scope here:
 
 | Folder | Defined in | Holds |
 |---|---|---|

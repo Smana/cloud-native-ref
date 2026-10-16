@@ -47,15 +47,16 @@ Flux is the thing that turns an empty cluster into the platform:
 flux get kustomizations
 ```
 
-29 Kustomizations, and on a healthy cluster every one reads `True` except the
-LLM umbrella:
+30 Kustomizations from this repository, plus the children of the live AI
+umbrellas (`ai-gateway`, `agent-platform`). On a healthy cluster every one reads
+`True` except the GPU-serving umbrella:
 
 ```
 llm-platform    True (suspended)   waiting to be reconciled
 ```
 
 That one is **suspended on purpose** — see
-[the LLM platform gate](https://github.com/Smana/cloud-native-ref/blob/main/clusters/AGENTS.md).
+[AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}).
 A suspended Kustomization is the expected steady state here, not a failure.
 
 {{< callout type="warning" >}}

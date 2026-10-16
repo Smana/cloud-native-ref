@@ -34,7 +34,7 @@ thing that actually reaches the cluster:
 2. **`gen-catalog.sh` → `.schemas/`** — builds a JSON Schema catalog from
    this repository's own Crossplane XRDs (there is no public schema for
    `cloud.ogenki.io` kinds), plus the Envoy AI Gateway CRDs rendered from the
-   exact chart version this repository pins.
+   exact chart version the overlaid `ai-native-ref` artifact pins.
 3. **`render-bundle.py` → `.bundle/`** — every top-level Kustomize overlay
    through `kustomize build` with Flux's `postBuild` substitutions applied,
    every `HelmRelease` through `helm template` with its own `spec.values`
