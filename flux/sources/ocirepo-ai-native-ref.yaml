@@ -1,0 +1,24 @@
+# The AI platform (ADR-0057, split design H1). Suspended by default: a default deploy never fetches
+# it. aws-0 un-suspends it in its flux-sources Kustomization (its umbrellas are live).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: ai-native-ref
+  namespace: flux-system
+spec:
+  suspend: true
+  interval: 10m
+  url: oci://ghcr.io/smana/ai-native-ref
+  # Flux pulls the digest. A feature-branch cluster pins a pre-release here, on its branch (D2).
+  # scripts/ci/ai-overlay.sh reads this pin: CI renders exactly what the cluster applies.
+  ref:
+    tag: "v0.1.6"
+    digest: sha256:c6cb6ac4bd5e90bbb2b9e2ace10109332de26dbf7457e36d76fd6017e9c84f39
+  verify:
+    provider: cosign
+    # One entry: Flux's cosign keyless refuses several ("multiple identities are not supported
+    # at this time", source-controller on aws-0, 2026-10-16), so one regex takes both signers:
+    # release.yaml on a tag, ci.yaml on a PR pre-release.
+    matchOIDCIdentity:
+      - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
+        subject: "^https://github\\.com/Smana/ai-native-ref/\\.github/workflows/(release\\.yaml@refs/tags/v.*|ci\\.yaml@refs/pull/[0-9]+/merge)$"

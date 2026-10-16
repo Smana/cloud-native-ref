@@ -321,7 +321,7 @@ was deleted before the new source was proven for that key. Where it stands:
 |---|---|
 | every platform component credential — Harbor, Grafana, Alertmanager, the Flux UI and Slack app, runlore, Tailscale, Headlamp | the bootstrap tier (CA chain, server cert, root token, recovery keys) — permanently |
 | ZITADEL's own envvars and masterkey | the three runtime-generated `cnpg/*` credentials |
-| the three application secrets | components not currently running (the suspended LLM platform, `gha-runners`, `promptfoo`) |
+| the three application secrets | components not currently running (the suspended LLM serving, `gha-runners`, the AI platform's `promptfoo`) |
 
 ZITADEL moved last and alone, deliberately: it is the IdP behind the OIDC login
 that reaches OpenBao itself, so it moved only once the break-glass path above was

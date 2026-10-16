@@ -211,24 +211,6 @@ groups:
         role: Watches HTTPRoutes and writes the matching Route 53 records
         url: https://kubernetes-sigs.github.io/external-dns/
         pin: "`infrastructure/base/external-dns/helmrelease.yaml`"
-      - name: Envoy Gateway
-        role: LLM platform's Gateway API implementation, delegating AI routing to its extension
-        logo: envoy
-        url: https://gateway.envoyproxy.io
-        pin: "`flux/sources/ocirepo-envoy-gateway.yaml`"
-        note: LLM platform, opt-in.
-      - name: Envoy AI Gateway
-        role: Authenticates and routes LLM requests directly to each model's vLLM Service
-        logo: envoy
-        url: https://aigateway.envoyproxy.io
-        pin: "`flux/sources/ocirepo-envoy-ai-gateway.yaml`"
-        note: LLM platform, opt-in.
-      - name: vLLM Semantic Router
-        role: "Classifies prompts sent as model: MoM onto the right vLLM model"
-        logo: vllm
-        url: https://github.com/vllm-project/semantic-router
-        pin: "`flux/sources/ocirepo-vllm-semantic-router.yaml`"
-        note: LLM platform, opt-in.
 
   - id: security
     title: Security

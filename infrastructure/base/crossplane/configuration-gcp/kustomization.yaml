@@ -13,6 +13,7 @@ namespace: crossplane-system
 # again the moment this package reaches a second cluster.
 resources:
   - ../functions
+  - ../configuration-core
   - cluster-providerconfig-gcp.yaml
   - configuration-packages.yaml
   - environmentconfig.yaml

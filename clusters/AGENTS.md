@@ -38,35 +38,53 @@ keys are created in-cluster at runtime so they cannot be checked here — those 
 ## The self-hosted LLM platform — three gates on AWS
 
 All three must be released for an end-to-end deploy, the gateway layer first. The default
-`terramate script run deploy` and the default Flux reconciliation leave the cluster entirely
-LLM-free.
+`terramate script run deploy` and the default Flux reconciliation leave the cluster GPU-free; on
+aws-0 the gateway layer is live, for the agent factory.
 
 | Layer | Gate | Release with |
 |---|---|---|
 | AWS (S3 Files filesystem + IAM) | `opentofu/aws/llm-platform/` tagged `opt-in` | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy` |
-| Kubernetes, gateway layer | `aws-0/ai-gateway.yaml`, `spec.suspend: true` | `flux resume kustomization ai-gateway -n flux-system` |
+| Kubernetes, gateway layer | `aws-0/ai-gateway.yaml`, `spec.suspend: false` on aws-0 since 2026-10-16 | already live |
 | Kubernetes, GPU models | `aws-0/llm-platform.yaml`, `spec.suspend: true` | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella aggregates 5 children under `aws-0-llm-platform/`, kept a **sibling** of `aws-0/` so
-that `flux-system`'s recursive sync cannot auto-apply the children and bypass the umbrella suspend.
-See `aws-0-llm-platform/README.md` for the child manifests and the teardown procedure.
+**The children are not in this repository** (ADR-0057, split S3). The three umbrellas on each
+cluster read `OCIRepository/ai-native-ref` (`flux/sources/ocirepo-ai-native-ref.yaml`: suspended by
+default, digest-pinned, cosign-verified; aws-0 un-suspends it with a patch in
+`aws-0/flux/flux-sources.yaml`). The `*-ai-gateway/`, `*-llm-platform/` and `*-agent-platform/`
+directories, and every other AI path, are gitignored: `task ai:overlay` lays the pinned artifact
+over them so the gates and the docs see them. Changing an AI manifest is a PR to
+[`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref), a release, then a pin bump here.
+The children's READMEs below are read there, or here after `task ai:overlay`.
 
-The gateway layer — Envoy Gateway, Agent Router, the Semantic Router and the human/system Gateway
-`ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` → `aws-0-ai-gateway/`, OD-3), CPU
-only and **suspended by default**. Resume it first with
-`flux resume kustomization ai-gateway -n flux-system`: `llm-platform` and `agent-platform` depend
-on it. See `aws-0-ai-gateway/README.md` for what it reads —
-resuming needs no per-rebuild seeding step, only a one-time per-account secret.
+The umbrella aggregates 5 children under `aws-0-llm-platform/`. See
+[`aws-0-llm-platform/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-llm-platform/README.md)
+for the child manifests and the teardown procedure.
+
+The gateway layer — Envoy Gateway, Agent Router (the `envoy-ai-gateway` chart), the Semantic Router
+and the human/system Gateway `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` →
+`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** since 2026-10-16 (gcp-0's twin stays suspended): `llm-platform` and
+`agent-platform` depend on it. See
+[`aws-0-ai-gateway/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-ai-gateway/README.md)
+for what it reads — it needs no per-rebuild seeding step, only a one-time per-account secret.
 Its children kept their names when they moved, so
 `dependsOn` edges from `llm-platform` children still resolve. Read that README before resuming
 `llm-platform` on a cluster that ran it before the move.
+
+**A suspended umbrella freezes its children's own specs.** Their content follows the pinned
+artifact, but the child Kustomization objects (`dependsOn`, health
+checks, paths) stay at the revision the umbrella last applied. That is why aws-0's two agent
+umbrellas went live: #2429 changed a child's health check that never reached the cluster.
 
 **Autoscaling** (composition v0.5.0+, SPEC-001): every model defaults `min=1` with a KEDA
 `ScaledObject` driven by leading vLLM saturation metrics — the `running/max-num-seqs` ratio plus
 `kv_cache_usage_perc`. The legacy KEDA HTTP add-on, with a proxy in the data path and a lagging
 request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
-### On `gcp-0` — two Kubernetes gates, and do not resume them yet
+### On `gcp-0` — two Kubernetes gates, suspended until v2.1
+
+The live gcp-0 gates are scheduled for v2.1
+([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)); gcp-0 keeps
+rendering in CI so its copy cannot rot before then.
 
 - **Two gates, no OpenTofu one.** `gcp-0/ai-gateway.yaml` (children in `gcp-0-ai-gateway/`, the
   aws-0 twin) and `gcp-0/llm-platform.yaml`, which depends on it. There is no
@@ -77,24 +95,28 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
   `runtimeclass-nvidia` — that exists on AWS only because Bottlerocket's NVIDIA AMI crashloops the
   upstream device plugin; GKE manages GPU drivers itself.
 - **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
-  mount. [ADR-0021](../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
+  mount. [ADR-0021](https://airef.ogenki.io/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp/)
   covers what that gives up. The mount needs the `gke-gcsfuse/volumes` annotation — without it
   there is no FUSE sidecar and the failure reads as a misleading `PermissionDenied` while IAM is
   in fact fine.
 
 > **Both known blockers are closed; the umbrella stays suspended on cost, not breakage.** The
 > per-claim read-only identity that serving pods need *is* rendered by the `InferenceService`
-> composition as of `crossplane-configuration` v0.4.6, the version already pinned here. KEDA on
+> composition since `crossplane-configuration` v0.4.6 (the pin is past it). KEDA on
 > `gcp-0` is also closed. **But none of it has run on a live GKE cluster** — that is a static read
 > of the pinned package's golden fixture, not a cluster result. Treat the first resume as a
-> validation run; `gcp-0-llm-platform/README.md` lists what to watch, in failure order.
+> validation run;
+> [`gcp-0-llm-platform/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/gcp-0-llm-platform/README.md) lists what to watch, in failure order.
 
 ## The agent platform — one gate on AWS
 
-`aws-0/agent-platform.yaml`, `spec.suspend: true`, children in `aws-0-agent-platform/` (a sibling, for
-the same reason as `llm-platform`). Release with `flux resume kustomization agent-platform -n
-flux-system`, after resuming `ai-gateway`, which is suspended by default too (OD-3, amended
-2026-09-26). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
+`aws-0/agent-platform.yaml`, children in `aws-0-agent-platform/` (in the artifact, like
+`llm-platform`'s). **Live on aws-0** (`spec.suspend: false`, owner, 2026-10-16); gcp-0's twin
+ships suspended. It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
-start. Resume only once the crossplane-configuration pin serves `AgentRun`: before it,
-`agent-policies` targets an API nobody serves and still reports Ready.
+start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves
+`AgentRun`: before it, `agent-policies` targets an API nobody serves and still reports Ready.
+The agents' own Gateway runs on agentgateway (ADR-0053), not on Agent Router; the human-facing
+`ai-gateway` stays on Envoy. Runbooks:
+[`docs/runbooks/agent-factory/`](https://github.com/Smana/ai-native-ref/tree/main/docs/runbooks/agent-factory)
+in ai-native-ref.

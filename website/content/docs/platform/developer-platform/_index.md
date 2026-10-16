@@ -14,13 +14,18 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.8
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.13
 ```
 
 `gcp-0` serves the same claims from its own package,
-`ghcr.io/smana/crossplane-configuration-gcp:v0.9.8`, pinned in
-`infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`
-— both clusters currently pin the same release.
+`ghcr.io/smana/crossplane-configuration-gcp:v0.9.13`, pinned in
+`infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`.
+Both depend on `ghcr.io/smana/crossplane-configuration-core`, the XRDs, pinned
+at the same tag in
+`infrastructure/base/crossplane/configuration-core/configuration-core.yaml`
+because Crossplane never upgrades an installed dependency. A bump moves all
+three pins, and the App Wizard's clone, in one PR; a CI test fails if they
+disagree.
 
 What stays here: `functions.yaml` (the KCL function runtime, version-pinned
 rather than resolved by the package's `dependsOn`), `environmentconfig.yaml`
