@@ -1,8 +1,8 @@
 ---
-# The agent router on agentgateway (ADR-0053): its proxies, budgets and MCP traffic,
-# beside Envoy's until phase H. Token and latency panels read the relabelled gen_ai_*
-# contract (infrastructure/base/agent-gateway/vmpodscrape.yaml), scoped to namespace
-# agent-gateway so Envoy's series stay out. 1.6's error_type is "_OTHER" for every
+# The agent router on agentgateway (ADR-0053): its proxies, budgets and MCP traffic.
+# Token and latency panels read the relabelled gen_ai_* contract
+# (infrastructure/base/agent-gateway/vmpodscrape.yaml), scoped to namespace
+# agent-gateway so the human ai-gateway's series stay out. 1.6's error_type is "_OTHER" for every
 # failure: causes come from agentgateway_requests_total's status and reason.
 # $${…} survives Flux's postBuild substitution; bare $__rate_interval does too.
 apiVersion: grafana.integreatly.org/v1beta1

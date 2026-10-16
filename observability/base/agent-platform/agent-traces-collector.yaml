@@ -288,11 +288,7 @@ spec:
             - port: "4318"
               protocol: TCP
     - fromEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: envoy-gateway-system
-            gateway.envoyproxy.io/owning-gateway-name: agent-router
-            gateway.envoyproxy.io/owning-gateway-namespace: agent-system
-        # The same router on agentgateway (ADR-0053), until phase H removes Envoy's.
+        # The agent router, on agentgateway (ADR-0053).
         - matchLabels:
             io.kubernetes.pod.namespace: agent-gateway
             gateway.networking.k8s.io/gateway-name: agent-router
