@@ -1,9 +1,9 @@
 # AI platform split: `ai-native-ref` and its host contract
 
 **Date:** 2026-10-12 · **Status:** accepted (ADR-0057) ·
-**ADR:** [0057](../../../website/content/docs/decisions/0057-ai-platform-own-repository.md) ·
+**ADR:** [0057](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/) ·
 **Part of:** the v2 roadmap on the
-[status page](../../../website/content/docs/platform/ai-platform/status.md#v2-roadmap)
+[status page](https://airef.ogenki.io/docs/platform/ai-platform/status/#v2-roadmap)
 
 ## Outcome
 
@@ -207,7 +207,7 @@ colour. `cnref.ogenki.io` drops its AI section, and the two sites link to each o
 
 | | `cloud-native-ref` | `ai-native-ref` |
 |---|---|---|
-| URL | `cnref.ogenki.io` | `ainref.ogenki.io` (§8) |
+| URL | `cnref.ogenki.io` | `airef.ogenki.io` (§8) |
 | Source | `website/` | `website/`, copied from the host's at S2 |
 | Theme | Hextra, primary hue 204° (ogenki navy) | Same Hextra pin, layouts, shortcodes and semantic colours; primary hue 320° (plum) |
 | Publish | GitHub Pages, `docs.yml` | GitHub Pages, the same workflow |
@@ -220,7 +220,7 @@ flowchart LR
     ov["Platform: AI overview page"]
     idx["ADR index: moved rows"]
   end
-  subgraph AI["ainref.ogenki.io"]
+  subgraph AI["airef.ogenki.io"]
     nav2["Navbar: Cloud Native Ref ↗"]
     host["Host contract page"]
     pages["Serving · agent factory · AI ADRs"]
@@ -266,7 +266,7 @@ flowchart LR
 | **S1** | A step of `validate-manifests.sh` (`scripts/ci/flux-schema/check-ai-boundary.py`, data `scripts/ci/flux-schema/ai-boundary.yaml`) reads the source tree and fails on any reference from a host path into an AI path, or the reverse, outside the contract (H8's ConfigMap is the one listed host-to-AI reference). Rendering against a host profile belongs to S2's CI | Passes on `main`; fails on a planted crossing in each direction (`scripts/ci/tests/flux-schema/test-check-ai-boundary.py`) |
 | **S2** | `ai-native-ref` created with `git filter-repo` over §1's paths; the children switched to the `OCIRepository` source; its CI (render against the host profile, `assert-ai-gateway.py`, the moved tests, links, doc claims, the site build); a release workflow pushing a signed OCI artifact | First tag released and verifiable with `cosign verify` |
 | **S3** | One `cloud-native-ref` PR: the suspended source, the umbrellas retargeted, the moved paths and tests deleted, `monorepo-split` unchanged (it copies whole top-level directories, so there are no AI entries to drop), `.policy.yml` gate paths updated | Rendered before and after, every object other than the new source and the umbrellas' and children's `sourceRef`s is identical; a rebuild of one cluster passes runbook 11 step 7 on release pins |
-| **S4** | Docs: the AI section, ADRs, runbooks, specs and plans live in `ai-native-ref`, published on `ainref.ogenki.io`; `cnref.ogenki.io` is cleaned up and both sites link to each other (§5) | `hugo --gc --minify`, `validate-links.sh` and `verify-doc-paths.sh` pass in both repositories; every cross-site link answers 200 |
+| **S4** | Docs: the AI section, ADRs, runbooks, specs and plans live in `ai-native-ref`, published on `airef.ogenki.io`; `cnref.ogenki.io` is cleaned up and both sites link to each other (§5) | `hugo --gc --minify`, `validate-links.sh` and `verify-doc-paths.sh` pass in both repositories; every cross-site link answers 200 |
 
 S2 waits for the v1 hardening milestone, so no hardening PR has to be rebased across the move.
 **The rest of v2 does not wait for the split.** The cohort needs no code. The continuation loop is
@@ -293,6 +293,6 @@ One docs site or two is decided: two (owner, 2026-10-12; §5).
 | Question | Default if unanswered |
 |---|---|
 | Does `opentofu/aws/llm-platform` (S3 Files) move? | Stays: all OpenTofu stays with the host and its Terramate gates |
-| The AI site's domain | `ainref.ogenki.io`, a sibling of `cnref.ogenki.io` |
+| The AI site's domain | `airef.ogenki.io`, a sibling of `cnref.ogenki.io` |
 | The AI site's primary hue | 320° (plum): clear of the navy and the semantic colours, contrast measured in §5 |
 | ADR numbering | Moved ADRs keep their numbers; `ai-native-ref` continues from the highest moved number |
