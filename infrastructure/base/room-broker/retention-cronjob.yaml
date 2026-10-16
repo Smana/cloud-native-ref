@@ -14,6 +14,8 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
+      # Above one room's 10 min purge statement_timeout (agent-platform#107), or a slow purge is
+      # killed by Kubernetes before Postgres can report it.
       activeDeadlineSeconds: 900
       template:
         metadata:
