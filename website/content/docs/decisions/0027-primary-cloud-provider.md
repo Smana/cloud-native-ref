@@ -1,14 +1,22 @@
 ---
-title: AWS is the primary cloud, and cross-cloud singletons live there
+title: One primary cloud hosts the cross-cloud singletons — AWS by default, GCP when it runs alone
 linkTitle: 0027 · Primary cloud
 weight: 270
-description: Some services cannot sensibly exist twice — one public DNS zone, one identity directory, one federation trust. Naming AWS the primary cloud gives those a defined home, and gives a GCP-only platform a defined way to take it over.
-lastVerified: 2026-09-02
+description: Some services cannot sensibly exist twice — one public DNS zone, one identity directory, one federation trust. Naming a primary cloud — AWS by default — gives those a defined home, and gives a GCP-only platform a defined way to take it over.
+lastVerified: 2026-10-17
 ---
 
 **Status**: Accepted
 **Date**: 2026-08-29
 **Deciders**: Platform Team
+
+{{< callout type="info" >}}
+**GCP is the primary cloud since 2026-10-17.** `aws-0` was torn down, so the
+GCP-only case below applied: `primary_cloud = "gcp"`, and `gcp-0` hosts ZITADEL,
+restored from the `zitadel-20260828` seed. The decision is unchanged; the title
+used to read "AWS is the primary cloud", which described the default rather
+than the rule.
+{{< /callout >}}
 
 ---
 
@@ -84,9 +92,10 @@ stack's presence in an AWS-only deploy stops looking like a mistake.
 
 **What it costs.** The primary cloud is a dependency for the other one. A GCP
 cluster with no AWS account still needs public DNS and the federation trust, so
-"GCP-only" means *relocating* the singletons, not doing without them. That
-relocation has never been performed end to end; until it has, treat the GCP-only
-path as designed rather than proven.
+"GCP-only" means *relocating* the singletons, not doing without them. ZITADEL's
+relocation was performed on 2026-10-17; public DNS and the federation trust stay
+in the AWS account by construction, so a GCP-only platform still needs that
+account.
 
 **What it does not change.** Nothing per-cloud. Both clusters keep their own
 secret store, state and backups, and neither depends on the other for them.

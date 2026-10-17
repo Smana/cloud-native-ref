@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: Deploy the platform on AWS — three sequential stages, about thirty minutes.
-lastVerified: 2026-09-02
+lastVerified: 2026-10-17
 ---
 
 AWS is one of two implemented cloud lanes — see
@@ -12,6 +12,17 @@ what each one runs. Every stage below is an OpenTofu stack orchestrated by
 [Terramate](https://terramate.io/); each stack declares the ones it depends on
 (`after` in its `stack.tm.hcl`), so Terramate always applies them in the right
 order even when you run one command that spans several stages.
+
+{{< callout type="warning" >}}
+**`aws-0` is torn down, and the committed configuration is GCP-primary.**
+`primary_cloud = "gcp"` in `opentofu/config.tm.hcl`, so `gcp-0` hosts ZITADEL
+and `clusters/aws-0/security/zitadel.yaml` is suspended; ADR-0027 does not
+support an AWS cluster beside a GCP primary. Rebuilding `aws-0` means moving the
+identity provider back first —
+[Migrate the identity provider]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}).
+The agent factory is fenced to `gcp-0` (`factory: gcp-0` in
+`.github/agent-factory.yaml`).
+{{< /callout >}}
 
 ## Configure before deploying
 
@@ -49,8 +60,7 @@ a stack expects is to read the file already sitting next to it.
    ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or
    set `spec.suspend: true` in `clusters/aws-0/ai-gateway.yaml` and
    `clusters/aws-0/agent-platform.yaml`. Set it in Git: a `flux suspend` is
-   undone by the next sync. GPU serving is already off, and gcp-0 ships the
-   whole layer suspended.
+   undone by the next sync. GPU serving is already off.
 
 ### Expiring old generation archives is not a manual step
 

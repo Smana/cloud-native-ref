@@ -1,8 +1,8 @@
 ---
 title: GCP
 weight: 30
-description: Deploy the platform on GKE — four prerequisites, three stages, two commands.
-lastVerified: 2026-08-30
+description: Deploy the platform on GKE — five prerequisites, three stages, two commands.
+lastVerified: 2026-10-17
 ---
 
 The GCP lane builds the same three-stage model as
@@ -30,9 +30,10 @@ how a stack's lane is decided.
 ## Prerequisites
 
 Read [Prerequisites]({{< relref "/docs/get-started/prerequisites.md" >}}) for the
-tools (`mise install`) and GitHub App, then do the four below. The first three
+tools (`mise install`) and GitHub App, then do the five below. The first three
 are hand-created because each is chicken-and-egg or destructive to recreate; the
-fourth is OpenTofu-managed but easy to skip and fails opaquely when you do.
+fourth is OpenTofu-managed but easy to skip and fails opaquely when you do; the
+fifth is a quota check.
 
 Substitute your own project IDs, organisation and billing account throughout.
 
@@ -130,6 +131,20 @@ Note that the OIDC provider trusts an issuer URL built from the project,
 location and cluster name. **Renaming or moving `gcp-0` breaks this stack** —
 re-apply it after any such change.
 
+### 5 · Regional `E2_CPUS` quota
+
+Every node the platform builds is E2: the static `e2-standard-4` pool, the
+`e2-standard-8` gVisor pool the agent factory scales from zero, and the
+Tailscale and OpenBao VMs. The regional `E2_CPUS` quota, not the generic `CPUS` one, binds:
+when it runs out, a scale-up fails while the cluster autoscaler's own ceiling
+(`autoscaling_max_cpu_cores`) still has room. Check it before the first deploy:
+
+```bash
+gcloud compute regions describe europe-west4 --project <your-project> \
+  --flatten=quotas --filter='quotas.metric=E2_CPUS' \
+  --format='value(quotas.usage,quotas.limit)'
+```
+
 ## Configure
 
 Every stack already ships a `variables.tfvars` in Git with values that deploy.
@@ -149,7 +164,17 @@ You are editing a working configuration, not writing one:
    the project ID and domains to yours.
 3. `opentofu/shared/tailscale/variables.tfvars` — `tailnet` and `admin_users`
    are the reference tailnet's identity, and this stack is the first thing the
-   root deploy applies; point them at your own tailnet.
+   root deploy applies; point them at your own tailnet. It and `gcp/network`
+   read the Tailscale API key from the environment:
+   `export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>`.
+4. Decide on the AI layer. **gcp-0 ships with `ai-gateway` and
+   `agent-platform` live** (the agent factory runs here), and both read
+   model-provider keys a fork does not have. Nothing fails at deploy time; the
+   gateway serves errors and agent runs fail later. Either seed the keys
+   ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or
+   set `spec.suspend: true` in `clusters/gcp-0/ai-gateway.yaml` and
+   `clusters/gcp-0/agent-platform.yaml`, in Git — a `flux suspend` is undone by
+   the next sync. GPU serving is off.
 
 ## Deploy
 
@@ -160,6 +185,14 @@ runs every stack in order.
 cd opentofu
 TM_CLOUD=gcp terramate script run deploy
 ```
+
+{{< callout type="warning" >}}
+**Run it from a shell whose kubeconfig points at `gcp-0`, or at nothing.**
+`scripts/provision/helm-release-present.sh` asks the *current* context whether
+flux-operator is installed. Pointed at another cluster it answers "absent", the
+deploy re-installs flux-operator, and Helm fails with `cannot re-use a name that
+is still in use`. Check `kubectl config current-context` first.
+{{< /callout >}}
 
 `TM_CLOUD=gcp` selects both directions at once — it turns the GCP stacks on
 *and* the AWS ones off, so there is no second flag to remember. That leaves
@@ -219,13 +252,13 @@ TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
 
 ## Single sign-on
 
-The deploy leaves ZITADEL running with **nothing configured in it** — no identity
-provider, no OIDC clients, no roles. Five ordered commands turn that into a
-working Google login for Grafana, Harbor, the Flux UI and Headlamp:
-[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
-
-Skipping this is not obvious from the cluster: every workload is healthy and
-every service simply asks for a password nobody has.
+`gcp-0` hosts ZITADEL (GCP is the primary cloud), restored from the
+`zitadel-20260828` seed, and the deploy's last job registers the Google IdP and
+the OIDC clients. What is left by hand — granting yourself admin, the Google
+redirect URI, and a re-run when the deploy printed `[warn] … re-run it by hand` —
+is in [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
+A restored directory may have no admin PAT, in which case every sync fails until
+you mint one; the recovery is on that page.
 
 ## Verify
 

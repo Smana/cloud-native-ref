@@ -1,8 +1,8 @@
 ---
 title: Migrate the identity provider
 weight: 50
-description: Move ZITADEL between clouds — the database seed, the admin PAT and the client secrets travel together, or the result authenticates nobody.
-lastVerified: 2026-09-06
+description: Move ZITADEL between clouds — the database seed, its masterkey, the admin PAT and the client secrets travel together, or the result authenticates nobody.
+lastVerified: 2026-10-17
 ---
 
 ZITADEL is a **primary-cloud singleton**
@@ -12,24 +12,29 @@ You need this page in one situation — you bootstrapped on one cloud and now wa
 the other to host the identity provider. It is not part of a normal deploy.
 
 {{< callout type="warning" >}}
-**Designed, not yet proven end to end.** ADR-0027 says so plainly. Every step
-below uses scripts verified in
-[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}) and
+**Designed, not yet proven end to end.** Every step below uses scripts verified
+in [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}) and
 [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}), but
-the sequence as a whole has not been run.
+the sequence as a whole has not been run. The 2026-10-17 switch to GCP did not
+run it either: `aws-0` was torn down, and `gcp-0` restored **its own** earlier
+directory from the `zitadel-20260828` seed rather than receiving `aws-0`'s. Users
+and grants made only in the AWS directory did not move, and with no PAT copied
+the owner minted one by hand (the recovery callout in
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}})).
 {{< /callout >}}
 
-## Three things move, not one
+## Four things move, not one
 
-This is the part worth reading. ZITADEL's state lives in three places, and
+This is the part worth reading. ZITADEL's state lives in four places, and
 copying only the obvious one produces a cluster that starts, looks healthy, and
 authenticates nobody:
 
 | # | What | Where it lives | Why the database is not enough |
 |---|---|---|---|
 | 1 | **Database seed** | CNPG backup | Holds users, IdP links, role grants, and OIDC app rows — but client secret **hashes**, not plaintext |
-| 2 | **Admin PAT** | the source cloud's secret store | Never in the database. Every setup script resolves it first |
-| 3 | **Five client secrets** | the source cloud's secret store | Written once at creation, because ZITADEL returns a client secret exactly once |
+| 2 | **Masterkey** | `ZITADEL_MASTERKEY` in OpenBao `platform/zitadel/envvars` | The seed is encrypted with it: under another masterkey the restore cannot read its own keys ([Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}})) |
+| 3 | **Admin PAT** | the source cloud's secret store | Never in the database. Every setup script resolves it first |
+| 4 | **Five client secrets** | the source cloud's secret store | Written once at creation, because ZITADEL returns a client secret exactly once |
 
 Move only the database and you get the compounding failure: the restored rows
 point every OIDC client at the **old** domain, and the one tool that fixes that —
@@ -73,6 +78,11 @@ CLOUD=gcp GCP_PROJECT=<gcp-project>
 store_write zitadel-iam-admin-pat <<< "$pat"
 ```
 
+**3b. Carry the masterkey.** The target OpenBao's `platform/zitadel/envvars`
+must hold the source's `ZITADEL_MASTERKEY` before ZITADEL first starts there.
+Compare the two values rather than assuming: a target that kept its own key
+restores a seed it cannot decrypt.
+
 **4. Copy the five consumer client secrets:**
 
 ```bash
@@ -93,13 +103,15 @@ do
 done
 ```
 
-**5. Flip the two gates**, in the same commit. Both live on the GCP side — AWS
-has no gate: whenever an `aws-0` cluster exists, it hosts ZITADEL.
+**5. Flip the gates**, in the same commit. OpenTofu has no AWS-side gate —
+`opentofu/aws/eks/configure` hosts whenever it applies — so GCP primary means no
+`aws-0` at all (ADR-0027), and only Flux suspends `aws-0`'s instance.
 
 | Gate | Where | For GCP-hosted |
 |---|---|---|
 | `primary_cloud` | `opentofu/config.tm.hcl` | `"gcp"` |
 | `spec.suspend` | `clusters/gcp-0/security/zitadel.yaml` | `false` |
+| `spec.suspend` | `clusters/aws-0/security/zitadel.yaml` | `true` |
 
 **Do not set `deploy_identity_provider` in `variables.tfvars`.** It is derived
 from `primary_cloud` and passed as a `-var`, which wins over the file — adding

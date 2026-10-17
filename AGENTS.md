@@ -85,14 +85,21 @@ designing anything under `infrastructure/`, `security/`, `observability/` or `to
 ## Deploying
 
 Three sequential stages — network, then OpenBao, then Kubernetes — orchestrated by Terramate.
+**gcp-0 is the only live cluster** (`primary_cloud = "gcp"`; aws-0 is torn down), and `TM_CLOUD`
+defaults to `aws`, so pass `TM_CLOUD=gcp`. Building aws-0 beside a GCP primary is unsupported
+(ADR-0027): move the identity provider back first.
 
 ```bash
-cd opentofu && terramate script run deploy     # the whole platform, both clouds gated by TM_CLOUD
-terramate script run preview                   # dry run
-terramate script run drift detect
+cd opentofu && TM_CLOUD=gcp terramate script run deploy   # the platform on gcp-0
+TM_CLOUD=gcp terramate script run preview                 # dry run
+TM_CLOUD=gcp terramate script run drift detect
 
-TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy   # feature-branch cluster
+TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy   # feature-branch cluster
 ```
+
+Run a deploy with `kubectl` pointed at the target cluster, or at nothing: a context on another
+cluster makes the flux-operator presence check answer "absent", and Helm then fails with
+`cannot re-use a name`.
 
 Tool versions come from `mise.toml`; run `mise install` first. Cilium, Flux and Gateway API
 versions are pinned in `opentofu/config.tm.hcl`.

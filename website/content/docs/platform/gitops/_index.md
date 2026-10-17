@@ -315,7 +315,7 @@ grants three resources and nothing else: `namespaces`, `gitrepositories`,
 content of a pull request is exactly where least privilege has to be real.
 
 Previews run on `aws-0` only — `clusters/gcp-0/flux/` has no `flux-previews`
-Kustomization.
+Kustomization — so while `aws-0` is torn down, a `preview` label deploys nothing.
 
 ## The repository, as Flux sees it
 

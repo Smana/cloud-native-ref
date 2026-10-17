@@ -2,7 +2,7 @@
 
 **_An opinionated, production-ready Kubernetes platform using GitOps principles._**
 
-A reference implementation of a complete cloud-native platform on AWS EKS: infrastructure as
+A reference implementation of a complete cloud-native platform on AWS EKS and GCP GKE: infrastructure as
 code with OpenTofu and Crossplane, continuous delivery with Flux, a private PKI and zero-trust
 networking, a full observability stack, and a developer-facing abstraction that turns one small
 YAML claim into a whole application.
@@ -31,34 +31,32 @@ Every subsystem is explained at
 ## Quickstart
 
 Roughly 45 minutes end to end, and almost all of it unattended: about 30 minutes of
-infrastructure, then Flux converging the platform while you do something else. You
-need an AWS account with admin permissions, a registered domain in Route53, a
-Tailscale account, and a GitHub App or token for Flux. Full prerequisites and the
-annotated walkthrough are in
+infrastructure, then Flux converging the platform while you do something else. The
+committed configuration is **GCP-primary** (`primary_cloud = "gcp"`): `gcp-0` is the live
+cluster and `aws-0` is torn down. You need a GCP project, an AWS account holding the public
+Route53 zone, a Tailscale account, and a GitHub App or token for Flux. Full prerequisites,
+the AWS lane and the annotated walkthrough are in
 [Get Started](https://cnref.ogenki.io/docs/get-started/).
 
 ```bash
 # 1. Point the platform at your environment
-$EDITOR opentofu/config.tm.hcl        # region, cluster name, domains, chart versions
+$EDITOR opentofu/config.tm.hcl        # region, chart versions, primary_cloud
 
-# 2. Provide the one secret that is not in AWS Secrets Manager
+# 2. Provide the one secret that is not in a cloud secret store
 export TF_VAR_tailscale_api_key=<your-tailscale-api-key>
 
-# 3. Network, then OpenBao (~15 min)
-cd opentofu && terramate script run deploy
+# 3. Network, then OpenBao, then GKE with Cilium and Flux (~30 min)
+cd opentofu && TM_CLOUD=gcp terramate script run deploy
 
-# 4. EKS — two stages: cluster on a temporary CNI, then Cilium + Flux (~15 min)
-cd aws/eks/init && terramate script run deploy
+# 4. Get a kubeconfig (the control plane is private: the tailnet must be up)
+gcloud container clusters get-credentials gcp-0 --zone europe-west4-a --project <your-project>
 
-# 5. Get a kubeconfig
-aws eks update-kubeconfig --region eu-west-3 --name aws-0
-
-# 6. Watch Flux build the rest of the platform
+# 5. Watch Flux build the rest of the platform
 flux get all
 ```
 
 Flux takes over from there: security (External Secrets, cert-manager, Kyverno), infrastructure
-(Cilium, Gateway API, ExternalDNS, Karpenter), observability (VictoriaMetrics, VictoriaLogs,
+(Cilium, Gateway API, ExternalDNS, ComputeClasses), observability (VictoriaMetrics, VictoriaLogs,
 Grafana) and tooling (Harbor, Headlamp, Homepage).
 
 ## Documentation

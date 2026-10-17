@@ -2,13 +2,16 @@
 title: Set up single sign-on
 weight: 30
 description: The ordered commands that give a fresh cluster working Google login, on either cloud, and the one step no script can do for you.
-lastVerified: 2026-08-29
+lastVerified: 2026-10-17
 ---
 
-A freshly deployed cluster has ZITADEL running and **nothing configured in it**.
-These are the steps that turn that into a working Google login for Grafana,
-Harbor, the Flux UI and Headlamp — the same steps on both clouds, with different
-values.
+These are the steps that turn a running ZITADEL into a working Google login for
+Grafana, Harbor, the Flux UI and Headlamp — the same steps on both clouds, with
+different values. **The deploy already runs steps 1–3** on the cluster that
+hosts the directory (the last job of `opentofu/aws/eks/init` and
+`opentofu/gcp/gke/init`), so on a healthy build you only grant yourself admin
+(step 4) and check the Google redirect URI. Re-run 1–3 by hand when the deploy
+printed `[warn] … re-run it by hand`, or after a restore.
 
 For what the resulting stack actually does — and why ZITADEL sits in the middle
 of it — see
@@ -93,7 +96,10 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
 #    With $OPENBAO, it also mirrors the room broker's ZITADEL link reader into
-#    OpenBao (non-admin room access stays off until it runs).
+#    OpenBao (non-admin room access stays off until it runs). That reader and
+#    the link-only GitHub IdP exist only when `zitadel-github-idp` (the GitHub
+#    OAuth App's client id and secret) is in this cloud's store; without it
+#    the sync skips both.
 IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL $OPENBAO --mirror-openbao --apply
 ```
 
@@ -137,8 +143,8 @@ The per-cloud verify pages cover the rest of the post-deploy checks:
 [gcp-0]({{< relref "/docs/get-started/gcp/verify.md" >}}).
 
 {{< callout type="warning" >}}
-**A restored ZITADEL can predate its own configuration.** `aws-0` bootstraps its
-database from a frozen backup, so a cluster rebuilt today comes back with
+**A restored ZITADEL can predate its own configuration.** The hosting cluster
+bootstraps its database from a frozen backup (`gcp-0`: `zitadel-20260828`), so a cluster rebuilt today comes back with
 whatever OIDC clients and roles existed when that seed was taken — not the ones
 this page creates. Re-run steps 1 and 3 after a restore; they are idempotent
 and will fill in whatever the seed is missing. Harbor needs no re-run — it
@@ -155,24 +161,25 @@ they differ, because a fresh `FirstInstance` minted a new token. The store is
 read only when the Secret is gone, after a restore. A cluster consuming another
 cloud's directory reads that cloud's store and never writes it. Run hosting
 syncs with `kubectl` pointed at the hosting cluster, since a leftover Secret
-elsewhere would overwrite the stored token. Nothing here needs a token minted
-by hand.
+elsewhere would overwrite the stored token. Only a restore with nothing stored
+needs a token minted by hand (below).
 {{< /callout >}}
 
 {{< callout type="warning" >}}
-**Recovery only: a cluster restored before this landed has no PAT anywhere.** If
-every script above fails with `no ZITADEL admin PAT available`, the store was
-never seeded — this cluster's seed predates the capture step above, or its store
-entry was deleted. Mint a PAT for the `iam-admin` machine user in the ZITADEL
-console, then:
+**A restore from a seed can leave no PAT anywhere.** `FirstInstance` does not
+run on a restored database, so the chart writes no Secret, and the store has a
+token only if this directory's first bootstrap captured one. `gcp-0`'s
+2026-10-17 restore of `zitadel-20260828` had none. When every script above fails
+with `no ZITADEL admin PAT available`, mint a PAT for the `iam-admin` machine
+user in the ZITADEL console, then:
 
 ```bash
 kubectl create secret generic iam-admin-pat \
   -n security --from-literal=pat=<token>
 ```
 
-and re-run step 1 — it persists the token into the store, so this is a one-time
-recovery rather than a routine step.
+The next deploy, or a re-run of step 1, persists it to the cloud store, so a
+later rebuild of the same seed finds it there.
 {{< /callout >}}
 
 ## Related

@@ -48,6 +48,14 @@ a restorable base backup rather than counting objects.
 
 On AWS the same command takes `--cloud aws --bucket <region>-ogenki-cnpg-backups`.
 
+{{< callout type="warning" >}}
+**A ZITADEL seed restores only under the masterkey that wrote it.** The key is
+`ZITADEL_MASTERKEY` in OpenBao `platform/zitadel/envvars`, outside the backup.
+Confirm the writing directory's key is in that lineage before you rely on a
+seed: the 2026-09-30 `gcp-0` directory's masterkey existed only in the cluster,
+so its archive cannot be restored. `gcp-0` restores `zitadel-20260828` instead.
+{{< /callout >}}
+
 Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
 
 ```yaml

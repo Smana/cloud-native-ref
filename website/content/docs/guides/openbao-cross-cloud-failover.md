@@ -449,9 +449,14 @@ The switch has five limits:
   relying on the standby. The previous versions remain in Secret Manager
   (`gcloud secrets versions list openbao-priv-gcp-recovery-keys --project ogenki-435905`).
 
-Every later boot restores the newest `-gcpckms` object. When a mirrored AWS
-object is newer, set `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, as the refusal
-message says.
+Every later boot restores the newest `-gcpckms` object — until the daily S3→GCS
+mirror makes an `-awskms` object the newest, which it does whenever the AWS
+lineage's last snapshot postdates GCP's, and the deploy then refuses on the seal. Name
+the object to restore with `OPENBAO_SNAPSHOT_KEY=<timestamp>-gcpckms.snap`; the
+name is checked against the listing before anything changes, and the gcp-0
+rebuild of 2026-10-17 restored this way. `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`,
+which the refusal message suggests, takes the newest `-gcpckms` object without
+naming it.
 
 ## Drill record
 
