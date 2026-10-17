@@ -75,7 +75,7 @@ endpoints. Most charts in this repo render their own via a
 `vmServiceScrape.enabled: true` value (`runlore`, `victoria-traces`,
 `victoria-logs`, `victoria-metrics-k8s-stack` itself); a few are authored
 directly, e.g. `observability/aws-0/victoria-metrics-k8s-stack/vmservicecrapes/karpenter.yaml`
-scrapes the `karpenter` namespace's `http-metrics` port (Karpenter isn't part
+scrapes the `karpenter` namespace's `http-metrics` port (Karpenter is not part
 of this stack, but its metrics land in the same VictoriaMetrics — the
 directory name carries an upstream typo, `vmservicecrapes`, not
 `vmservicescrapes`). KEDA is scraped the same way since 2026-08-30:
