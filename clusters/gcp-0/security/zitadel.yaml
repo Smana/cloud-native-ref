@@ -49,8 +49,8 @@ spec:
   #
   # Moving the directory back to AWS is a MIGRATION -- the database seed, the
   # admin credential and the OIDC clients travel together or the move
-  # half-works in silence. A GCP primary while AWS is also deployed is
-  # rejected: opentofu/aws/eks/configure hosts unconditionally. See
+  # half-works in silence. A GCP primary while AWS is also deployed does not
+  # exist: TM_CLOUD=gcp has no aws-0 (scripts/ci/validate-idp-topology.sh). See
   # website/content/docs/guides/migrate-the-identity-provider.md.
   suspend: false
   prune: true
