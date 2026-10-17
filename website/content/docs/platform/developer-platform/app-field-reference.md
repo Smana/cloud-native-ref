@@ -230,7 +230,7 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable the PostgreSQL instance. |
 | `size` | enum `small`\|`medium`\|`large` | `small` | Instance size. |
-| `storageSize` | string (e.g. `20Gi`) | — | Storage size. |
+| `storageSize` | string (for example `20Gi`) | — | Storage size. |
 | `instances` | integer | `3` | Number of instances (HA). |
 | `primaryUpdateStrategy` | string | `unsupervised` | Primary update strategy. |
 | `createSuperuser` | boolean | `false` | Create a superuser. |
