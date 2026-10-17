@@ -563,7 +563,7 @@ claims:
   - id: ai-gateway-umbrella-live-aws-0
     why: >-
       aws-0's ai-gateway umbrella ships `spec.suspend: false` (owner,
-      2026-10-16): the agent factory runs there, and a suspended umbrella froze
+      2026-10-16): the agent factory ran there until the teardown, and a suspended umbrella froze
       its children's own specs. A page still calling it suspended by default
       sends a reader to a resume step that no longer exists; flipping the
       source back must force a look at those pages.
@@ -572,7 +572,7 @@ claims:
       pattern: 'suspend:\s*(false)'
     pages:
       - path: clusters/aws-0-ai-gateway/README.md
-        must_contain: 'live on aws-0'
+        must_contain: 'released on aws-0'
       - path: website/data/repo-tree.yaml
         must_not_contain:
           - 'The suspended-by-default, CPU-only ai-gateway'
@@ -580,7 +580,7 @@ claims:
   - id: agent-platform-umbrella-live-aws-0
     why: >-
       aws-0's agent-platform umbrella ships `spec.suspend: false` (owner,
-      2026-10-16): the agent factory runs there, and a suspended umbrella froze
+      2026-10-16): the agent factory ran there until the teardown, and a suspended umbrella froze
       its children's own specs (#2429's agent-router health check never
       landed). gcp-0's twin keeps its own claim.
     source:
@@ -588,7 +588,7 @@ claims:
       pattern: 'suspend:\s*(false)'
     pages:
       - path: clusters/aws-0-agent-platform/README.md
-        must_contain: 'live on aws-0'
+        must_contain: 'released on aws-0'
 
   - id: gcp-0-ai-gateway-umbrella-live
     why: >-
