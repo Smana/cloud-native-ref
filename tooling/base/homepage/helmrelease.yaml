@@ -217,6 +217,13 @@ spec:
                 namespace: apps
                 app: xplane-openwebui
 
+            - Rooms:
+                href: https://rooms.${private_domain_name}
+                description: "Agent rooms: follow, steer and approve agent runs"
+                icon: mdi-forum
+                namespace: agent-system
+                app: room-broker
+
         - Demo Apps:
             - Podinfo:
                 href: https://podinfo.${private_domain_name}
