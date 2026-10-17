@@ -122,8 +122,9 @@ suite**; if a change stops that being true, it has regressed to testing nothing.
 | `ops/aws/eks-prepare-destroy.sh` | **deletes every PVC.** Must carry a cloud gate |
 | `provision/tm-provisioner.sh` | the `TM_CLOUD` lane enforcement every stack routes through |
 
-**`validate-idp-topology.sh` only checks the repo.** `gcp-0` runs its own ZITADEL while the
-committed `zitadel_project_id` is the AWS one — that is not drift, and the script cannot see it.
+**`validate-idp-topology.sh` only checks the repo.** It cannot see whether the committed
+`zitadel_project_id` is the live directory's: a restored directory keeps the seed's id, an empty
+bootstrap gets a new one, which the sync publishes through Secret Manager `zitadel-project-id`.
 
 **EKS teardown leaks CSI EBS volumes.** Sweep `status=available` volumes after a rebuild; the
 proper fix belongs in `eks-prepare-destroy.sh`.
