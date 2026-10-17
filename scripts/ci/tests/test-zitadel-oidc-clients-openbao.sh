@@ -636,7 +636,7 @@ echo "== reconcile: openbao_oidc_config_payload / reconcile_openbao_oidc =="
 # Lifted verbatim, as the other test-zitadel-* suites do: the script parses
 # argv at the top and is not sourceable. A missing function becomes a stub
 # returning 127, so each case below still runs and reports its own failure.
-for f in openbao_oidc_config_payload reconcile_openbao_oidc; do
+for f in openbao_oidc_config_payload reconcile_openbao_oidc secret_sha; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$CONSUMERS_SRC")"
     if [ -n "$body" ]; then
         eval "$body"
@@ -981,6 +981,23 @@ unset OPENBAO_RETRY_SLEEP; recon "$KEY" "$NEW_ID"; OPENBAO_RETRY_SLEEP=0
 check "the store wait defaults to 5s"               "5" "$(sleeps)"
 
 echo
+echo "-- a secret rotated under an unchanged id (restore from a seed) --"
+CS_SHA="$(printf '%s' "$CS" | secret_sha)"
+world "$NEW_ID" "$NEW_ID"; recon "$KEY" "$NEW_ID"
+check "same id, nothing rotated: nothing written"    ""  "$(posts)"
+world "$NEW_ID" "$NEW_ID"; recon "$KEY" "$NEW_ID" "$CS_SHA"
+check "same id, rotated secret: returns 0"           "0" "$rc"
+check "same id, rotated secret: the config is written" "1" "$(n_req "$POST_CFG")"
+check "same id, rotated secret: it carries the new secret" "$CS" "$(rjq -r '.oidc_client_secret' <<< "$(last_body "$POST_CFG")")"
+check "same id, rotated secret: the role is left alone" "0" "$(n_req "$POST_ROLE")"
+world "$NEW_ID" "$NEW_ID"
+printf '{"client_id":"%s","client_secret":"%s"}' "$NEW_ID" "OLD-SECRET" > "$(store_file "$KEY").stale"
+echo 2 > "$(store_file "$KEY").stale_reads"
+recon "$KEY" "$NEW_ID" "$CS_SHA"
+check "a stale read of the old secret is waited out: 3 reads" "3" "$(n_reads)"
+check "a stale read of the old secret is waited out: writes the new one" "$CS" "$(rjq -r '.oidc_client_secret' <<< "$(last_body "$POST_CFG")")"
+
+echo
 echo "-- the caller's EXIT trap, and the token file --"
 world
 ( trap 'echo caller-trap-ran > "$WORK/trap-mark"' EXIT
@@ -1086,6 +1103,10 @@ mirror_to_openbao() {
     return "$MIRROR_RC"
 }
 mirror_read() { :; }   # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
+# The stored-secret probe has its own cases (test-zitadel-oidc-clients-convergence.sh):
+# here every stored secret is accepted, so nothing rotates.
+stored_client_secret() { cat >/dev/null; echo fixture-secret; }
+probe_client_secret() { cat >/dev/null; }
 
 RECONCILE_LOG="$WORK/reconcile-openbao-calls.log"
 RECONCILE_RC=0

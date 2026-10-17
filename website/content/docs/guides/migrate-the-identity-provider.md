@@ -34,7 +34,7 @@ authenticates nobody:
 | 1 | **Database seed** | CNPG backup | Holds users, IdP links, role grants, and OIDC app rows — but client secret **hashes**, not plaintext |
 | 2 | **Masterkey** | `ZITADEL_MASTERKEY` in OpenBao `platform/zitadel/envvars` | The seed is encrypted with it: under another masterkey the restore cannot read its own keys ([Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}})) |
 | 3 | **Admin PAT** | the source cloud's secret store | Never in the database. Every setup script resolves it first |
-| 4 | **Five client secrets** | the source cloud's secret store | Written once at creation, because ZITADEL returns a client secret exactly once |
+| 4 | **Five client secrets** | the source cloud's secret store | Written once at creation, because ZITADEL returns a client secret exactly once. One left behind is rotated by the next sync, at the cost of a consumer restart ([Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}})) |
 
 Move only the database and you get the compounding failure: the restored rows
 point every OIDC client at the **old** domain, and the one tool that fixes that —

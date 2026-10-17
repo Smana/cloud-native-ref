@@ -122,6 +122,12 @@ kubectl get cluster.postgresql.cnpg.io -n security \
 # {"recovery":{"database":"app","owner":"app","source":"zitadel-20260828"}}
 ```
 
+The restored directory's client secrets match the stores' copies only if both come
+from the same directory. They self-heal on the next deploy: `zitadel-oidc-clients.sh sync`
+probes each stored secret against ZITADEL's token endpoint, and with `--apply` rotates any it
+rejects (`[rotated]`), writes the new one to the store and OpenBao, and restarts its consumers.
+A dry run lists them as `[stale  ]`.
+
 ## 4. Verify against a baseline, not against a feeling
 
 A cluster reporting *"in healthy state"* only means Postgres started. Capture the
