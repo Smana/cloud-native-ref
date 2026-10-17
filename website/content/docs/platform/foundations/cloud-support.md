@@ -3,11 +3,12 @@ title: Cloud support
 linkTitle: Cloud support
 weight: 5
 description: What runs on AWS, what runs on GCP, which managed service stands in for which, and the decisions that made the two lanes differ.
-lastVerified: 2026-08-30
+lastVerified: 2026-10-17
 ---
 
 The platform runs on **two clouds**: `aws-0` on EKS and `gcp-0` on GKE Standard.
-They are not one abstraction with two backends. They are two implementations of
+**Only `gcp-0` is running today**: `aws-0` was torn down on 2026-10-17, so GCP is
+the primary cloud and hosts ZITADEL and the agent factory. They are not one abstraction with two backends. They are two implementations of
 the same three-stage model, sharing every Kubernetes-layer component and
 diverging exactly where the clouds themselves diverge.
 
@@ -34,7 +35,7 @@ and torn down afterwards.
 | Observability (VictoriaMetrics, Grafana, RunLore) | ✅ | ✅ same stack |
 | Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
 | Applications | ✅ | ✅ podinfo · basic · App Wizard · image-gallery (GCS through Workload Identity) |
-| [AI platform](https://airef.ogenki.io/docs/platform/ai-platform/): AI gateway, agent factory | ✅ live | ⏸️ opt-in, suspended |
+| [AI platform](https://airef.ogenki.io/docs/platform/ai-platform/): AI gateway, agent factory | ✅ | ✅ live — the factory runs here |
 | AI platform: GPU serving | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
 | Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
 
@@ -213,10 +214,10 @@ so there is no DNS collision either way.
 [ADR-0022](../../decisions/0022-single-identity-provider-across-clouds.md) first
 made ZITADEL a singleton on `aws-0`, reachable across the cloud boundary.
 [ADR-0024](../../decisions/0024-identity-provider-per-cloud.md) superseded it:
-the IdP is now a **per-cloud deployable component**, defaulting to AWS, so a
-GCP-only platform can authenticate without an AWS cluster running. The accepted
-cost is one user directory per cloud, with no federation between them. Only
-public DNS stays AWS-owned ([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
+the IdP is now a **per-cloud deployable component**, so a GCP-only platform can
+authenticate without an AWS cluster running. It is still one directory, hosted
+on the primary cloud. Only public DNS stays AWS-owned
+([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
 
 `gcp-0` takes that opt-out today: `aws-0` is torn down, so GCP is the primary
 cloud ([ADR-0027](../../decisions/0027-primary-cloud-provider.md)) and `gcp-0`

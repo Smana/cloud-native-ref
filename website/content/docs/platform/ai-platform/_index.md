@@ -18,16 +18,19 @@ signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/de
 ## What runs where
 
 The source ships suspended (`flux/sources/ocirepo-ai-native-ref.yaml`); each cluster decides what to resume.
+The agent factory runs on `gcp-0`, the one live cluster: `aws-0` is torn down, and the ownership
+fence `.github/agent-factory.yaml` (`factory: gcp-0`) names the only factory allowed to act on this
+repository.
 
-| Umbrella | `aws-0` | `gcp-0` |
+| Umbrella | `aws-0` (torn down; Git state) | `gcp-0` |
 |---|---|---|
-| `OCIRepository` `ai-native-ref` | live | suspended |
-| `ai-gateway` (CPU; the others depend on it) | live | suspended |
-| `agent-platform` (the agent factory) | live | suspended |
+| `OCIRepository` `ai-native-ref` | live | live |
+| `ai-gateway` (CPU; the others depend on it) | live | live |
+| `agent-platform` (the agent factory) | live, fenced out | live |
 | `llm-platform` (GPU serving) | suspended | suspended |
 
 To turn it on for a cluster, un-suspend the source with a patch in its
-`clusters/<cluster>/flux/flux-sources.yaml` (as `aws-0` does), then set `spec.suspend: false` in
+`clusters/<cluster>/flux/flux-sources.yaml` (as both clusters do), then set `spec.suspend: false` in
 `clusters/<cluster>/<umbrella>.yaml`, `ai-gateway` first. A `flux resume` alone lasts only until the
 next sync sets Git's value back.
 

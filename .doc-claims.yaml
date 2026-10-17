@@ -616,6 +616,30 @@ claims:
         must_not_contain:
           - "gcp-0's twin ships suspended"
           - "gcp-0's twin stays suspended"
+      - path: website/content/docs/platform/ai-platform/_index.md
+        must_contain: '\| `agent-platform` \(the agent factory\) \| live, fenced out \| live \|'
+      - path: website/content/docs/platform/foundations/cloud-support.md
+        must_contain: 'live — the factory runs here'
+
+  - id: primary-cloud-gcp-pages
+    why: >-
+      aws-0 was torn down on 2026-10-17 and primary_cloud became "gcp". The AWS
+      deploy page, the README quickstart and ADR-0027's banner tell a reader
+      which cloud to build; flipping primary_cloud back must force a look at
+      them, or the AWS page keeps warning against the configuration it ships.
+    source:
+      file: opentofu/config.tm.hcl
+      pattern: '\n\s*primary_cloud\s*=\s*"(gcp)"'
+    pages:
+      - path: website/content/docs/get-started/aws/_index.md
+        must_contain: 'primary_cloud = "{value}"'
+      - path: README.md
+        must_contain: 'primary_cloud = "{value}"'
+      - path: website/content/docs/decisions/0027-primary-cloud-provider.md
+        must_contain: 'primary_cloud = "{value}"'
+      - path: website/content/docs/decisions/_index.md
+        must_not_contain:
+          - 'AWS is the primary cloud, and cross-cloud singletons live there'
 
   - id: crossplane-configuration-pin
     why: >-
