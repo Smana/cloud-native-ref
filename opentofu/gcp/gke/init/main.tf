@@ -193,6 +193,14 @@ module "gke" {
   # `terramate script run destroy` fail rather than protect anything of value.
   deletion_protection = false
 
+  # The Substrate sandbox spike needs certificates.k8s.io PodCertificateRequest and
+  # ClusterTrustBundle, beta APIs GKE serves only when listed here. Off by default:
+  # GKE cannot disable a beta API once enabled without recreating the cluster.
+  enable_k8s_beta_apis = var.enable_pod_certificate_apis ? [
+    "certificates.k8s.io/v1beta1/clustertrustbundles",
+    "certificates.k8s.io/v1beta1/podcertificaterequests",
+  ] : []
+
   # ── 6. NODE AUTO-PROVISIONING (ADR-0006) ──────────────────────────────────
   # This is what makes a ComputeClass able to CREATE node pools rather than only
   # select among existing ones. Without it a ComputeClass with
