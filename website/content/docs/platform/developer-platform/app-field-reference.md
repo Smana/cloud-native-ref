@@ -320,7 +320,7 @@ today (every live claim goes through `externalSecrets[]` instead).
 |-------|------|---------|-------------|
 | `name` | string | — (**required**) | Kubernetes Secret name to create. |
 | `remoteRef` | string | — (**required**) | Path in AWS Secrets Manager. |
-| `refreshInterval` | string (e.g. `1h`) | `1h` | Sync interval. |
+| `refreshInterval` | string (for example `1h`) | `1h` | Sync interval. |
 
 ### `observability`
 
