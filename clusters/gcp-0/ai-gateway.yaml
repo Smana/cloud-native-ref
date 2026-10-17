@@ -4,7 +4,8 @@
 # frontier routes. agent-platform and llm-platform depend on it; the agents
 # themselves call agentgateway (ADR-0053), not this layer.
 #
-# Default: suspend: true. gcp-0's live gates are v2.1.
+# Live on gcp-0 (runbook 14 step 6): the agent factory runs here while aws-0 is
+# torn down. `llm-platform` stays suspended.
 #
 # deletionPolicy Orphan: removing this object must not uninstall Envoy Gateway
 # and every Gateway on the cluster.
@@ -19,7 +20,7 @@ metadata:
   name: ai-gateway
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   prune: true
   deletionPolicy: Orphan
   interval: 5m0s

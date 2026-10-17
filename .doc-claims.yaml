@@ -582,7 +582,7 @@ claims:
       aws-0's agent-platform umbrella ships `spec.suspend: false` (owner,
       2026-10-16): the agent factory runs there, and a suspended umbrella froze
       its children's own specs (#2429's agent-router health check never
-      landed). gcp-0's twin keeps its own claim, suspended.
+      landed). gcp-0's twin keeps its own claim.
     source:
       file: clusters/aws-0/agent-platform.yaml
       pattern: 'suspend:\s*(false)'
@@ -590,34 +590,32 @@ claims:
       - path: clusters/aws-0-agent-platform/README.md
         must_contain: 'live on aws-0'
 
-  - id: gcp-0-ai-gateway-umbrella-suspended
+  - id: gcp-0-ai-gateway-umbrella-live
     why: >-
-      gcp-0's ai-gateway umbrella ships `spec.suspend: true`, the aws-0 twin
-      (GCP parity). A page calling it "always-on" sends a reader straight past
-      the resume step it has to run before the gateway answers anything, and a
-      rewording of the source away from `true` should force a look at every
-      page that describes it as off by default.
+      gcp-0's ai-gateway umbrella ships `spec.suspend: false` (runbook 14 step
+      6): with aws-0 torn down, the agent factory runs on gcp-0. A page still
+      calling it suspended sends a reader to a resume step that Git undoes at
+      the next reconcile; flipping the source back must force a look at it.
     source:
       file: clusters/gcp-0/ai-gateway.yaml
-      pattern: 'suspend:\s*(true)'
+      pattern: 'suspend:\s*(false)'
     pages:
-      - path: website/data/repo-tree.yaml
-        must_not_contain:
-          - 'always-on'
+      - path: clusters/AGENTS.md
+        must_contain: 'live on gcp-0'
 
-  - id: gcp-0-agent-platform-umbrella-suspended
+  - id: gcp-0-agent-platform-umbrella-live
     why: >-
-      gcp-0's agent-platform umbrella ships `spec.suspend: true`, the aws-0
-      twin (GCP parity, programme C1): a default deploy runs no sandbox
-      controller, agent-router or octo-sts. Only the integration branch's
-      test-only commit unsuspends it. Pinning the source makes that flip fail
-      a gate.
+      gcp-0's agent-platform umbrella ships `spec.suspend: false` (runbook 14
+      step 6), and the ownership fence names gcp-0 as the one factory that acts
+      on this repository. A flip back must fail a gate until the pages follow.
     source:
       file: clusters/gcp-0/agent-platform.yaml
-      pattern: 'suspend:\s*(true)'
+      pattern: 'suspend:\s*(false)'
     pages:
-      - path: clusters/gcp-0-agent-platform/README.md
-        must_contain: 'suspended by default'
+      - path: clusters/AGENTS.md
+        must_not_contain:
+          - "gcp-0's twin ships suspended"
+          - "gcp-0's twin stays suspended"
 
   - id: crossplane-configuration-pin
     why: >-

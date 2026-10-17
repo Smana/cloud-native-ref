@@ -10,7 +10,7 @@
 # Live on aws-0 (owner, 2026-10-16): the agent factory runs here. A suspended
 # umbrella froze its children's own specs at the revision it last applied while
 # their content followed main, so a child-spec change (phase H's agent-router
-# health check) never landed. gcp-0's twin stays suspended. `llm-platform` and
+# health check) never landed. gcp-0's twin is live too. `llm-platform` and
 # `agent-platform` depend on this one.
 #
 # Pause it on this cluster (Git sets it back on the next flux-system sync):

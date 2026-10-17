@@ -3,7 +3,7 @@
 #
 # Live on aws-0 (owner, 2026-10-16), as ai-gateway is: a suspended umbrella froze
 # its children's own specs (dependsOn, health checks) while their content followed
-# main. gcp-0's twin stays suspended. The AgentRun XRD ships in the always-on
+# main. gcp-0's twin is live too. The AgentRun XRD ships in the always-on
 # Crossplane package; without this umbrella a claim has no RuntimeClass to run on.
 #
 # Teardown: see clusters/aws-0-agent-platform/README.md
