@@ -50,39 +50,49 @@ wants() { # $1 = lane
 
 destroy_rc=0
 retry=0
-openbao_left=""
+declare -A openbao_left=() # lane -> OpenBao nodes still standing after the last walk
 
-# OpenBao's nodes, found by the tag its launch templates stamp on every instance.
-# Its stack destroys after the cluster and before the network, so a node still
-# standing means openbao/cluster's destroy failed. A failed lookup prints
-# "unknown": it must block the network like a standing node does.
-openbao_nodes() {
+# OpenBao's nodes per lane: on AWS by the tag its launch templates stamp on every
+# instance, on GCP by the label its instance template sets (gcp/openbao/cluster
+# compute.tf). Its stack destroys after the cluster and before the network, so a
+# node still standing means openbao/cluster's destroy failed. A failed lookup
+# prints "unknown": it must block the network like a standing node does.
+aws_openbao_nodes() {
   aws ec2 describe-instances --region "${AWS_REGION:-eu-west-3}" \
     --filters Name=tag-key,Values=OpenBaoInstance \
               Name=instance-state-name,Values=running,pending,stopping,stopped \
     --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || echo unknown
 }
+gcp_openbao_nodes() {
+  gcloud compute instances list --project "${GCP_PROJECT:-ogenki-435905}" \
+    --filter='labels.app=openbao' --format='value(name)' 2>/dev/null || echo unknown
+}
 
 # The walk in two phases: every stack but the network ones, then the network
-# stacks only once AWS OpenBao is gone. On 2026-10-16 openbao/cluster's destroy
-# failed, --continue-on-error carried on into aws/network, which deleted the
-# private Route53 zone and then failed on the VPC OpenBao still sat in -- and
+# stacks only once that lane's OpenBao is gone. On 2026-10-16 openbao/cluster's
+# destroy failed, --continue-on-error carried on into aws/network, which deleted
+# the private Route53 zone and then failed on the VPC OpenBao still sat in -- and
 # without the zone, openbao/cluster's next destroy could not even plan.
 destroy_walk() {
-  local rc=0 network=(--tags=network)
+  local rc=0 network=(--tags=network) skip=() lane left
   # --continue-on-error is the point: one stack whose target is already gone must
   # not strand the stacks that still own billable resources.
   ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error --no-tags=network destroy ) || rc=$?
-  if wants aws; then
-    openbao_left="$(openbao_nodes)"
-    if [ -n "${openbao_left//[[:space:]]/}" ]; then
-      echo "!!! openbao/cluster's destroy FAILED: OpenBao node(s) still standing: ${openbao_left}"
-      echo "!!! Skipping aws/network (and the tailnet it routes through): its destroy would delete"
-      echo "!!! the Route53 zone and then fail on the VPC. Fix openbao/cluster (output above), then re-run."
-      echo
-      network+=("--no-tags=aws,tailscale")
-      rc=1
-    fi
+  openbao_left=()
+  for lane in aws gcp; do
+    wants "$lane" || continue
+    left="$("${lane}_openbao_nodes")"
+    [ -n "${left//[[:space:]]/}" ] || continue
+    echo "!!! ${lane}/openbao/cluster's destroy FAILED: OpenBao node(s) still standing: ${left}"
+    echo "!!! Skipping ${lane}/network (and the tailnet it routes through): its destroy would delete"
+    echo "!!! the private DNS zone and then fail on the VPC. Fix ${lane}/openbao/cluster (output above), then re-run."
+    echo
+    openbao_left[$lane]="$left"
+    skip+=("$lane")
+    rc=1
+  done
+  if [ "${#skip[@]}" -gt 0 ]; then
+    network+=("--no-tags=$(IFS=,; echo "${skip[*]}"),tailscale")
   fi
   ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error "${network[@]}" destroy ) || rc=$?
   return "$rc"
@@ -131,10 +141,6 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
       bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
       retry=1
-    else
-      # Target groups outlive their VPC, so they get a sweep of their own.
-      bash "${ROOT}/scripts/ops/aws/sweep-controller-orphans.sh" \
-        --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
     fi
   fi
 
@@ -161,6 +167,14 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
     destroy_rc=$?
     echo "=== terramate exit after retry: ${destroy_rc} ==="
     echo
+  fi
+
+  # Target groups outlive their VPC, so they get a sweep of their own, after any
+  # retry: a VPC that only the retry deleted leaves groups the first sweep could
+  # not delete while their load balancer still listened.
+  if wants aws; then
+    bash "${ROOT}/scripts/ops/aws/sweep-controller-orphans.sh" \
+      --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "${AWS_REGION:-eu-west-3}" --apply || true
   fi
 fi
 
@@ -247,9 +261,9 @@ else
   [ "$unverified" -gt 0 ] && \
     echo "  cloud:      ${unverified} cloud(s) COULD NOT BE CHECKED — status unknown, assume not torn down"
 fi
-if [ -n "${openbao_left//[[:space:]]/}" ]; then
-  echo "  openbao:    openbao/cluster's destroy FAILED (nodes: ${openbao_left}); aws/network was NOT destroyed"
-fi
+for lane in "${!openbao_left[@]}"; do
+  echo "  openbao:    ${lane}/openbao/cluster's destroy FAILED (nodes: ${openbao_left[$lane]}); ${lane}/network was NOT destroyed"
+done
 # Not auto-skipped: if the first pass never reached openbao/cluster, skipping
 # its pre-destroy snapshot would destroy a node without one.
 if [ "$retry" -eq 1 ] && [ "$destroy_rc" -ne 0 ] && [ "$leftovers" -eq 0 ] && [ "$unverified" -eq 0 ]; then

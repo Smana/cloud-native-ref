@@ -613,6 +613,9 @@ claims:
       pattern: 'suspend:\s*(false)'
     pages:
       - path: clusters/AGENTS.md
+        # The agent-platform paragraph's own words: the bare 'live on gcp-0'
+        # is also in the ai-gateway paragraphs, so it would hold with this one deleted.
+        must_contain: '`spec\.suspend: false` on both clusters; it runs on\s+gcp-0'
         must_not_contain:
           - "gcp-0's twin ships suspended"
           - "gcp-0's twin stays suspended"
