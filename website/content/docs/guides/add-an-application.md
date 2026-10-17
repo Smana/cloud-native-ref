@@ -46,7 +46,7 @@ lists every field with its type and default.
 
 Two conventions the platform depends on:
 
-- **Name the claim plainly** (e.g. `myapp`) — do not prefix it yourself. The
+- **Name the claim plainly** (for example `myapp`) — do not prefix it yourself. The
   composition derives an `xplane-*` name for every managed resource it
   creates; the prefix is load-bearing for IAM scoping, and renaming one later
   is delete-and-create.
