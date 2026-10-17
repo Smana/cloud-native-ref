@@ -49,8 +49,8 @@ aws-0 the gateway layer is live, for the agent factory.
 
 **The children are not in this repository** (ADR-0057, split S3). The three umbrellas on each
 cluster read `OCIRepository/ai-native-ref` (`flux/sources/ocirepo-ai-native-ref.yaml`: suspended by
-default, digest-pinned, cosign-verified; aws-0 un-suspends it with a patch in
-`aws-0/flux/flux-sources.yaml`). The `*-ai-gateway/`, `*-llm-platform/` and `*-agent-platform/`
+default, digest-pinned, cosign-verified; each cluster that runs the factory un-suspends it with a
+patch in `<cluster>/flux/flux-sources.yaml`). The `*-ai-gateway/`, `*-llm-platform/` and `*-agent-platform/`
 directories, and every other AI path, are gitignored: `task ai:overlay` lays the pinned artifact
 over them so the gates and the docs see them. Changing an AI manifest is a PR to
 [`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref), a release, then a pin bump here.
@@ -62,7 +62,7 @@ for the child manifests and the teardown procedure.
 
 The gateway layer — Envoy Gateway, Agent Router (the `envoy-ai-gateway` chart), the Semantic Router
 and the human/system Gateway `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` →
-`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** since 2026-10-16 (gcp-0's twin stays suspended): `llm-platform` and
+`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** since 2026-10-16, and **live on gcp-0** since its go-live commit (runbook 14 step 6): `llm-platform` and
 `agent-platform` depend on it. See
 [`aws-0-ai-gateway/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-ai-gateway/README.md)
 for what it reads — it needs no per-rebuild seeding step, only a one-time per-account secret.
@@ -80,11 +80,11 @@ umbrellas went live: #2429 changed a child's health check that never reached the
 `kv_cache_usage_perc`. The legacy KEDA HTTP add-on, with a proxy in the data path and a lagging
 request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
-### On `gcp-0` — two Kubernetes gates, suspended until v2.1
+### On `gcp-0` — two Kubernetes gates, the gateway layer live
 
-The live gcp-0 gates are scheduled for v2.1
-([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)); gcp-0 keeps
-rendering in CI so its copy cannot rot before then.
+`gcp-0/ai-gateway.yaml` is live on gcp-0 for the agent factory (runbook 14 step 6);
+`gcp-0/llm-platform.yaml` stays suspended
+([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)).
 
 - **Two gates, no OpenTofu one.** `gcp-0/ai-gateway.yaml` (children in `gcp-0-ai-gateway/`, the
   aws-0 twin) and `gcp-0/llm-platform.yaml`, which depends on it. There is no
@@ -111,8 +111,8 @@ rendering in CI so its copy cannot rot before then.
 ## The agent platform — one gate on AWS
 
 `aws-0/agent-platform.yaml`, children in `aws-0-agent-platform/` (in the artifact, like
-`llm-platform`'s). **Live on aws-0** (`spec.suspend: false`, owner, 2026-10-16); gcp-0's twin
-ships suspended. It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
+`llm-platform`'s). **Live on aws-0** (`spec.suspend: false`, owner, 2026-10-16) and on gcp-0
+(runbook 14 step 6), which owns the repository through the ownership fence (`factory: gcp-0`). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
 start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves
 `AgentRun`: before it, `agent-policies` targets an API nobody serves and still reports Ready.
