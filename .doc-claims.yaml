@@ -325,7 +325,7 @@ claims:
       is now one derived and one verified.
     source:
       file: opentofu/config.tm.hcl
-      must_contain: 'primary_cloud\s*=\s*"aws"'
+      must_contain: 'primary_cloud\s*=\s*"gcp"'
     pages:
       - website/content/docs/platform/foundations/cloud-support.md
       - website/content/docs/guides/migrate-the-identity-provider.md

@@ -114,10 +114,9 @@ spec:
         #   time. DefaultInstance.Features is read at instance CREATION only, so
         #   aws-0 never consults it.
         #
-        #   gcp-0 drops objectStoreRecovery -- there is no GCS backup to restore
-        #   -- so it bootstraps empty and the defaults genuinely apply.
+        #   gcp-0 restores the same way, from zitadel-20260828 on GCS.
         #
-        # aws-0 would hit this the first time it bootstraps without that backup.
+        # Either cloud hits this the first time it bootstraps without a seed.
         # Setting it here protects both.
         #
         # Because DefaultInstance applies only at creation, an instance already

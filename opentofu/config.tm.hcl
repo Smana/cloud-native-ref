@@ -52,7 +52,11 @@ globals {
   # never derived from TM_CLOUD, whose value changes per invocation.
   #
   # Enforced by ./scripts/ci/validate-idp-topology.sh.
-  primary_cloud = "aws"
+  #
+  # "gcp" since 2026-10-17: aws-0 is torn down and gcp-0 runs alone, restoring
+  # its own directory from the zitadel-20260828 seed (ADR-0027: a GCP-only
+  # platform makes GCP primary).
+  primary_cloud = "gcp"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy

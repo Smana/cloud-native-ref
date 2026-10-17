@@ -218,19 +218,19 @@ GCP-only platform can authenticate without an AWS cluster running. The accepted
 cost is one user directory per cloud, with no federation between them. Only
 public DNS stays AWS-owned ([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
 
-`gcp-0` does **not** take that opt-out: AWS is the primary cloud
-([ADR-0027](../../decisions/0027-primary-cloud-provider.md)), so `aws-0` hosts
-the one instance and `gcp-0` consumes it. The opt-out exists for a GCP-only
-platform, where the singleton relocates rather than being duplicated — two
-clouds each running a directory is ruled out, since a grant means nothing
-without knowing which directory issued it.
+`gcp-0` takes that opt-out today: `aws-0` is torn down, so GCP is the primary
+cloud ([ADR-0027](../../decisions/0027-primary-cloud-provider.md)) and `gcp-0`
+hosts the one instance, restored from its `zitadel-20260828` seed. The singleton
+relocates rather than being duplicated — two clouds each running a directory is
+ruled out, since a grant means nothing without knowing which directory issued
+it.
 
 Placement has two halves, and only one of them is typed:
 
 | Gate | Where | Value today |
 |---|---|---|
-| 1 · which URL consumers read | `deploy_identity_provider`, **derived** from `primary_cloud` in `opentofu/config.tm.hcl` | `false` on `gcp-0` |
-| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `true` |
+| 1 · which URL consumers read | `deploy_identity_provider`, **derived** from `primary_cloud` in `opentofu/config.tm.hcl` | `true` on `gcp-0` |
+| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `false` (`aws-0`: `true`) |
 
 Gate 1 cannot disagree with the declaration, because it is the declaration.
 Gate 2 is committed Flux state — Flux never reads Terramate globals — so it is
