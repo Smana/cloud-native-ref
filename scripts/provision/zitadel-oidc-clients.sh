@@ -34,7 +34,8 @@
 #      one, or none is stored (probe_client_secret): a directory restored from
 #      a seed carries secrets the stores never saw.
 #   7. Restarts the Deployments that read a REPLACED client id or secret from
-#      env, once their Secret carries the new one (restart_rotated_consumers).
+#      env, once their Secret carries the new one (restart_rotated_consumers),
+#      and waits for a HelmRelease rendering it to roll (flux-ui).
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -127,6 +128,10 @@ ZITADEL_PROJECT_ROLES=(admin backend frontend data agents-admin agents-member)
 GRANT_ADMIN=""
 # --grant <role>=<email>, repeatable: any project role, same constraint. gcp-0
 # mints a fresh ZITADEL every build, so its grants are re-run after each one.
+# A RESTORED directory too: it carries the agents-* roles with nobody holding
+# them, and rooms answer "forbidden" until the owner re-runs the sync with
+#   --grant agents-admin=<email> --grant agents-member=<email>
+# The deploy passes no grant: who holds a role is the owner's call, not the repo's.
 GRANTS=()
 
 # Empty means reconcile_openbao_oidc is a no-op: the consumer call on a
@@ -979,8 +984,13 @@ secret_sha() {
 #
 # A token request with a code that cannot exist: ZITADEL authenticates the client
 # before it looks at the code (zitadel/oidc op's withClient wraps the code
-# exchange; VerifyClient answers invalid_client "invalid secret"), so a right
-# secret gets invalid_grant and a wrong one invalid_client. Nothing is issued.
+# exchange; VerifyClient answers invalid_client "invalid secret"), so a wrong
+# secret gets invalid_client and nothing is issued. A right one gets past it to
+# the code: ZITADEL v4 cannot decrypt `probe-invalid` and answers invalid_request
+# "Errors.User.Code.Invalid" (OIDC-ahLi2; every app on gcp-0, 2026-10-17), an
+# unknown code elsewhere is invalid_grant. Any OTHER invalid_request cannot tell:
+# withClient's parseClientCredentials emits that type BEFORE authenticating
+# (a form it cannot decode, two auth methods at once).
 #
 # A restore from a seed brings back a directory whose secrets differ from the
 # stores' copies (gcp-0, 2026-10-17): an existing app with a correct redirect
@@ -1009,11 +1019,12 @@ probe_client_secret() (
         exit 2
     fi
     err="$(jq -r '.error // empty' "$tmp/body" 2>/dev/null)" || err=""
-    case "$err" in
-        invalid_grant) exit 0 ;;
-        invalid_client) exit 1 ;;
+    desc="$(jq -r '.error_description // empty' "$tmp/body" 2>/dev/null)" || desc=""
+    case "${err}|${desc}" in
+        invalid_grant\|*|"invalid_request|Errors.User.Code.Invalid") exit 0 ;;
+        invalid_client\|*) exit 1 ;;
     esac
-    echo "token endpoint answered HTTP ${code}, error '${err:-none}'" >&2
+    echo "token endpoint answered HTTP ${code}, error '${err:-none}'${desc:+ (${desc})}" >&2
     exit 2
 )
 
@@ -1062,6 +1073,77 @@ secret_carries() {
             return 1 ;;
         *) jq -e --arg id "$3" '.data // {} | any(.[]; @base64d == $id)' <<< "$json" >/dev/null 2>&1 ;;
     esac
+}
+
+# 0 when the deployed Helm release $2 (storage namespace $1) was rendered with
+# the value $3, matched like secret_carries, against every string in its values.
+# The release carries every secret its chart was given, so it only feeds pipes.
+helm_release_carries() {
+    local rel v
+    rel="$(kubectl get secret -n "$1" -l "owner=helm,name=$2,status=deployed" -o json 2>/dev/null \
+        | jq -r '.items | sort_by(.metadata.labels.version | tonumber) | last | .data.release // empty' 2>/dev/null)" || return 1
+    [ -n "$rel" ] || return 1
+    case "$3" in
+        sha256:*)
+            while read -r v; do
+                [ "$(printf '%s' "$v" | secret_sha)" = "${3#sha256:}" ] && return 0
+            done < <(printf '%s' "$rel" | base64 -d | base64 -d | gunzip | jq -r '.config // {} | .. | strings' 2>/dev/null)
+            return 1 ;;
+        *) printf '%s' "$rel" | base64 -d | base64 -d | gunzip \
+               | jq -e --arg id "$3" 'any(.config // {} | .. | strings; . == $id)' >/dev/null 2>&1 ;;
+    esac
+}
+
+# The HelmReleases that render Secret $2 (namespace $1) through valuesFrom. The
+# flux-operator web server reads its config once at start, from a Secret its
+# chart renders out of flux-ui-oidc, so no Deployment names the rotated Secret
+# and the env search in restart_rotated_consumers finds nothing to restart: the
+# Flux UI kept the dead client secret after a rotation (2026-10-17).
+#
+# The Secret's reconcile.fluxcd.io/watch label already makes helm-controller
+# upgrade on the change; the requestedAt is for a cluster whose ExternalSecret
+# predates the label. Waits until the deployed release carries $3, then for the
+# release's Deployments to finish rolling: the chart's checksum annotation is
+# what rolls them, so a chart without one leaves its pods on the old value and
+# says so here as an unchanged rollout. One extra reconcile is one extra upgrade
+# under the flux-operator adoption loop (helm-controller re-upgrading a release
+# OpenTofu installed), nothing more.
+roll_rotated_helm_releases() {
+    local ns="$1" obj="$2" id="$3" what="$4" deadline="$5" hrs hr sns rel tns deploys d left
+    if ! hrs="$(kubectl get helmreleases.helm.toolkit.fluxcd.io -n "$ns" -o json 2>/dev/null | jq -r --arg s "$obj" '.items[]
+            | select(any(.spec.valuesFrom[]?; .kind == "Secret" and .name == $s))
+            | (.spec.targetNamespace // .metadata.namespace) as $tns
+            | "\(.metadata.name) \(.spec.storageNamespace // .metadata.namespace) \(.spec.releaseName
+                 // (if .spec.targetNamespace then "\(.spec.targetNamespace)-\(.metadata.name)" else .metadata.name end)) \($tns)"')"; then
+        echo "WARN: could not list HelmReleases in ${ns}; reconcile any rendering ${obj} by hand" >&2
+        return 0
+    fi
+    while read -r hr sns rel tns; do
+        [ -n "$hr" ] || continue
+        kubectl annotate helmrelease "$hr" -n "$ns" "reconcile.fluxcd.io/requestedAt=$(date +%s)" --overwrite >/dev/null 2>&1 \
+            || echo "WARN: could not request a reconcile of helmrelease ${ns}/${hr}" >&2
+        until helm_release_carries "$sns" "$rel" "$id"; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "WARN: helmrelease ${ns}/${hr} has not rendered ${what} yet; its pods keep the old one." >&2
+                echo "      flux reconcile helmrelease ${hr} -n ${ns}, then check its Deployments rolled" >&2
+                continue 2
+            fi
+            sleep "${OIDC_CONSUMER_POLL_SECONDS:-5}"
+        done
+        if ! deploys="$(kubectl get deployments -n "$tns" -o json 2>/dev/null | jq -r --arg r "$rel" '.items[]
+                | select(.metadata.annotations["meta.helm.sh/release-name"]? == $r) | .metadata.name')"; then
+            echo "WARN: could not list Deployments in ${tns}; check release ${rel}'s pods rolled" >&2
+            continue
+        fi
+        for d in $deploys; do
+            left=$(( deadline - $(date +%s) )); [ "$left" -gt 0 ] || left=1
+            if kubectl rollout status deployment "$d" -n "$tns" --timeout="${left}s" >/dev/null 2>&1; then
+                echo "[rolled ] deployment ${tns}/${d} -- helmrelease ${ns}/${hr} renders ${what}"
+            else
+                echo "WARN: deployment ${tns}/${d} has not finished rolling onto ${what}" >&2
+            fi
+        done
+    done <<< "$hrs"
 }
 
 # Restart the Deployments that read a ROTATED client from env. They resolve it
@@ -1145,6 +1227,7 @@ restart_rotated_consumers() {
                 echo "WARN: could not restart deployment ${ns}/${d}; it keeps the old client id" >&2
             fi
         done
+        roll_rotated_helm_releases "$ns" "$obj" "$id" "$what" "$deadline"
     done
 }
 

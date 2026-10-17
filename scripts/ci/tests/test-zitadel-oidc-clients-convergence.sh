@@ -334,6 +334,16 @@ check "probe: the secret is not on argv"                no "$(grep -qF 'we!rd' "
 check "probe: a code that cannot exist"                 yes "$(grep -qx 'code=probe-invalid' "$STORE_DIR/.curl-argv" && echo yes || echo no)"
 CURL_BODY='{"error":"invalid_client","error_description":"invalid secret"}'; probe s
 check "probe: invalid_client means the secret is wrong" 1 "$rc"
+# ZITADEL v4.19.4 on gcp-0, 2026-10-17: what every app with a good secret got
+# (grafana's SSO worked), and what the five rotated ones got before rotating.
+CURL_BODY='{"error":"invalid_request","error_description":"Errors.User.Code.Invalid"}'; probe s
+check "probe: v4's undecryptable code means the secret is right" "0 " "$rc $reason"
+CURL_BODY='{"error":"invalid_client","error_description":"invalid secret"}'; probe s
+check "probe: v4's invalid secret means the secret is wrong" 1 "$rc"
+# parseClientCredentials answers invalid_request before it authenticates anyone.
+CURL_BODY='{"error":"invalid_request","error_description":"error decoding form"}'; probe s
+check "probe: a pre-authentication invalid_request cannot tell" "2 yes" \
+    "$rc $(grep -qF "error 'invalid_request' (error decoding form)" <<< "$reason" && echo yes || echo no)"
 CURL_BODY='{"error":"server_error"}'; probe s
 check "probe: any other answer cannot tell"             "2 yes" "$rc $(grep -q "HTTP 400, error 'server_error'" <<< "$reason" && echo yes || echo no)"
 CURL_RC=7; probe s; CURL_RC=0
