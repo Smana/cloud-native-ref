@@ -113,14 +113,15 @@ refuses "the named cluster alive" CLUSTERS=gcp-0
 refuses "another cluster alive" CLUSTERS=gcp-1
 refuses "a failed cluster list" CLUSTERS_FAIL=1
 
-# teardown (GP-22): the destroy is retried only while the network stands.
-destroys() { # $1 = expected terramate runs, $2 = case, then env assignments
+# teardown (GP-22): the destroy is retried only while the network stands. Each
+# walk is two terramate runs (the network stacks last), so count the first.
+destroys() { # $1 = expected walks, $2 = case, then env assignments
   local want="$1" what="$2"; shift 2
   : >"$T/destroys"
   require_stubs
   env "$@" TM_CLOUD=gcp TM_DESTROY_CONFIRMED=true bash "$ROOT/scripts/ops/teardown/teardown.sh" >/dev/null 2>&1
-  [ "$(wc -l <"$T/destroys")" -eq "$want" ] \
-    || f "$what: expected $want destroy run(s), got $(wc -l <"$T/destroys")"
+  [ "$(grep -c -- '--no-tags=network destroy' "$T/destroys")" -eq "$want" ] \
+    || f "$what: expected $want destroy walk(s), got: $(cat "$T/destroys")"
 }
 destroys 1 "a clean teardown with the network gone" EMPTY=1
 destroys 2 "a teardown with the network still standing" NETWORK_UP=1

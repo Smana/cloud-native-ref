@@ -59,7 +59,13 @@ script "destroy" {
       BASH
       ],
       [global.provisioner, "init", "-lock-timeout=5m"],
-      [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
+      # -refresh=false, as on the GCP twin: the data sources here (the private
+      # Route53 zone, the VPC, its subnets, Tailscale's security group) belong
+      # to the network stack. Once that has gone, refreshing fails with "no
+      # matching Route 53 Hosted Zone" before anything is destroyed, which
+      # strands the node and its NLB (2026-10-17). A destroy needs only this
+      # stack's own state.
+      [global.provisioner, "destroy", "-refresh=false", "-auto-approve", "-var-file=variables.tfvars"],
     ]
   }
 }
