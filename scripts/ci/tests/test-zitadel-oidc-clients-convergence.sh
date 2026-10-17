@@ -53,6 +53,7 @@ load_function() { # $1: function name, $2: source file. Missing is tolerated.
     # here, silently, the exact first time this ran against the pre-fix
     # script (converge_secret legitimately absent there). The explicit `if`
     # is exempt from errexit by design, which is what "tolerated" requires.
+    [ -n "$body" ] || body="$(sed -n "/^${1}() (/,/^)/p" "$2")"   # a subshell function
     if [ -n "$body" ]; then
         eval "$body"
     fi
@@ -122,8 +123,17 @@ load_function publish_project_id "$SRC"   # a no-op here: CLOUD=aws
 mirror_to_openbao() { cat >/dev/null; }
 force_sync_mirrored() { :; }   # its own suite; no kubectl here
 load_function stored_client_id "$SRC"
+load_function stored_client_secret "$SRC"
+load_function secret_sha "$SRC"
+load_function merge_secret "$SRC"   # the rotation's write
 # Its kubectl side has its own suite; here only WHICH keys reach it matters.
 restart_rotated_consumers() { printf '%s\n' "$@" > "$STORE_DIR/.rotated"; }
+# What ZITADEL says of the stored secret: 0 accepted, 1 invalid_client, 2 cannot
+# tell. The real probe has its own cases at the end of this file.
+PROBE_RC=0
+probe_client_secret() { cat > "$STORE_DIR/.probed"; return "$PROBE_RC"; }
+# Only the rotation calls the API from this path.
+api_or_fail() { printf '%s %s\n' "$1" "$2" >> "$STORE_DIR/.api"; printf '{"clientSecret":"fresh-secret"}'; }  # pragma: allowlist secret
 
 # ── globals cmd_sync / converge_secret read ─────────────────────────────────
 CLUSTER="aws-0"
@@ -211,14 +221,17 @@ case "$out3" in
 esac
 check "store unreadable: the payload is untouched" "$after" "$(store_read headlamp-envvars)"
 
-rm -f "$STORE_DIR/headlamp-envvars"
-rc=0
-( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1 || rc=$?
-check "secret truly absent: cmd_sync exits 1" "1" "$rc"
-case "$(cat "$OUT_FILE")" in
-    *"delete the app"*) printf '  ok   secret truly absent: still gives the restore-or-recreate advice\n' ;;
-    *) printf '  FAIL secret truly absent: the restore-or-recreate advice is gone\n'; fail=1 ;;
-esac
+check "store unreadable: no rotation" "" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+
+# A key with no secret is not unrecoverable any more: ZITADEL rotates one in.
+rm -f "$STORE_DIR/headlamp-envvars" "$STORE_DIR/.rotated" "$STORE_DIR/.api" "$STORE_DIR/.probed"
+( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1
+check "secret truly absent: cmd_sync exits 0" "0" "$?"
+check "secret truly absent: rotated" "POST /management/v1/projects/proj-1/apps/app-1/oidc_config/_generate_client_secret" \
+    "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+check "secret truly absent: the new secret written" "fresh-secret existing-client-id profile,email,groups" \
+    "$(jq -r '"\(.OIDC_CLIENT_SECRET) \(.OIDC_CLIENT_ID) \(.OIDC_SCOPES)"' "$STORE_DIR/headlamp-envvars")"
+check "secret truly absent: never probed" "absent" "$([ -e "$STORE_DIR/.probed" ] && echo probed || echo absent)"
 
 # ── the store holds a client ZITADEL no longer knows: a rotation ──────────
 jq -c '.OIDC_CLIENT_ID = "dead-client-id"' <<< "$after" > "$STORE_DIR/headlamp-envvars"
@@ -227,5 +240,103 @@ rm -f "$STORE_DIR/.rotated"
 check "rotation: cmd_sync exits 0 under errexit" "0" "$?"
 check "rotation: the key and its new client id reach the restart" \
     "headlamp-envvars=existing-client-id" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
+
+# ── a directory restored from a seed: the stored secret is another's ──────
+# gcp-0, 2026-10-17: the redirect was right, so every run printed [ok] while
+# every login failed "invalid_client" "invalid secret".
+reset_store() {
+    jq -c '. + {UNRELATED_KEY: "keep-me"}' <<< "$after" > "$STORE_DIR/headlamp-envvars"
+    rm -f "$STORE_DIR/.rotated" "$STORE_DIR/.api" "$STORE_DIR/.probed"
+}
+sync_rc() { rc=0; ( set -o errexit -o nounset -o pipefail; cmd_sync ) > "$OUT_FILE" 2>&1 || rc=$?; out="$(cat "$OUT_FILE")"; }
+stored() { jq -r "$1" "$STORE_DIR/headlamp-envvars"; }
+has_line() { grep -qF -- "$1" <<< "$out" && echo yes || echo no; }
+probe_client_secret() {
+    cat > "$STORE_DIR/.probed"
+    [ "$PROBE_RC" -ne 2 ] || echo "token endpoint unreachable: curl: (7) Failed to connect" >&2
+    return "$PROBE_RC"
+}
+
+reset_store; PROBE_RC=0; sync_rc
+check "valid secret: exits 0"                          0 "$rc"
+check "valid secret: probed with the stored secret"    do-not-touch-me "$(cat "$STORE_DIR/.probed" 2>/dev/null)"
+check "valid secret: no rotation"                      "" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+check "valid secret: nothing restarted"                "" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
+check "valid secret: the secret untouched"             do-not-touch-me "$(stored .OIDC_CLIENT_SECRET)"
+
+reset_store; PROBE_RC=1; APPLY=false; sync_rc; APPLY=true
+check "rejected, dry run: exits 0"                     0 "$rc"
+check "rejected, dry run: reports it"                  yes "$(has_line '[stale  ] headlamp -- stored secret rejected, would rotate')"
+check "rejected, dry run: counted"                     yes "$(has_line 'rotated: 1')"
+check "rejected, dry run: no rotation"                 "" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+check "rejected, dry run: nothing written"             do-not-touch-me "$(stored .OIDC_CLIENT_SECRET)"
+
+reset_store; PROBE_RC=1; sync_rc
+check "rejected: exits 0"                              0 "$rc"
+check "rejected: rotated through the management API" \
+    "POST /management/v1/projects/proj-1/apps/app-1/oidc_config/_generate_client_secret" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+check "rejected: the new secret stored"                fresh-secret "$(stored .OIDC_CLIENT_SECRET)"
+check "rejected: every other field kept"               "keep-me existing-client-id" "$(stored '"\(.UNRELATED_KEY) \(.OIDC_CLIENT_ID)"')"
+check "rejected: its consumers restart, keyed on the secret's sha256" \
+    "headlamp-envvars=sha256:$(printf '%s' fresh-secret | secret_sha)" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
+check "rejected: reports [rotated]"                    yes "$(has_line '[rotated] headlamp -> headlamp-envvars (stored secret rejected')"
+check "rejected: the new secret is never printed"      no "$(has_line fresh-secret)"
+
+reset_store; jq -c 'del(.OIDC_CLIENT_SECRET)' "$STORE_DIR/headlamp-envvars" > "$STORE_DIR/x" && mv "$STORE_DIR/x" "$STORE_DIR/headlamp-envvars"
+PROBE_RC=0; sync_rc
+check "missing secret: exits 0"                        0 "$rc"
+check "missing secret: rotated without a probe"        "fresh-secret absent" \
+    "$(stored .OIDC_CLIENT_SECRET) $([ -e "$STORE_DIR/.probed" ] && echo probed || echo absent)"
+check "missing secret: reports why"                    yes "$(has_line '(no stored secret;')"
+
+reset_store; PROBE_RC=2; sync_rc
+check "probe fails: exits 0"                           0 "$rc"
+check "probe fails: warns, with the reason"            yes "$(has_line 'curl: (7) Failed to connect); not rotating')"
+check "probe fails: no rotation"                       "" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+check "probe fails: the secret untouched"              do-not-touch-me "$(stored .OIDC_CLIENT_SECRET)"
+PROBE_RC=0
+
+# --mirror-openbao: the consumers read OpenBao's copy, which a restored OpenBao
+# can hold apart from a valid store. The re-mirror fixes it; they must restart.
+# shellcheck source=scripts/lib/bao-map.sh
+. "$HERE/../../lib/bao-map.sh"
+MIRROR_OPENBAO=true
+mirror_read() { printf '{"OIDC_CLIENT_SECRET":"%s"}' "$MIRROR_SECRET"; }
+reset_store; MIRROR_SECRET=dead-secret sync_rc
+check "mirror stale: exits 0"                          0 "$rc"
+check "mirror stale: reported"                         yes "$(has_line "[stale  ] headlamp -- OpenBao's copy of headlamp-envvars holds another secret, re-mirroring")"
+check "mirror stale: consumers restart onto the store's secret" \
+    "headlamp-envvars=sha256:$(printf '%s' do-not-touch-me | secret_sha)" "$(cat "$STORE_DIR/.rotated" 2>/dev/null)"
+check "mirror stale: no rotation"                      "" "$(cat "$STORE_DIR/.api" 2>/dev/null)"
+reset_store; MIRROR_SECRET=do-not-touch-me sync_rc
+check "mirror agrees: nothing restarted"               "0 " "$rc $(cat "$STORE_DIR/.rotated" 2>/dev/null)"
+MIRROR_OPENBAO=false
+
+# ── the real probe: what ZITADEL's answer means, and the secret off argv ───
+load_function probe_client_secret "$SRC"
+CURL_RESOLVE=()
+CURL_RC=0 CURL_BODY=""
+curl() {
+    printf '%s\n' "$@" > "$STORE_DIR/.curl-argv"
+    local out="" cfg=""
+    while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; -K) cfg="$2"; shift 2 ;; *) shift ;; esac; done
+    cp "$cfg" "$STORE_DIR/.curl-cfg"
+    [ "$CURL_RC" -eq 0 ] || { echo "curl: (7) Failed to connect" >&2; return "$CURL_RC"; }
+    printf '%s' "$CURL_BODY" > "$out"
+    printf 400
+}
+probe() { rc=0; reason="$(printf "%s" "$1" | probe_client_secret existing-client-id https://headlamp.x/oidc-callback 2>&1)" || rc=$?; }
+CURL_BODY='{"error":"invalid_grant","error_description":"invalid code"}'; probe 'we!rd"s\ecret'
+check "probe: invalid_grant means the secret is right"  0 "$rc"
+check "probe: basic auth from the -K file, both halves form-encoded" \
+    'user = "existing-client-id:we%21rd%22s%5Cecret"' "$(cat "$STORE_DIR/.curl-cfg")"
+check "probe: the secret is not on argv"                no "$(grep -qF 'we!rd' "$STORE_DIR/.curl-argv" && echo yes || echo no)"
+check "probe: a code that cannot exist"                 yes "$(grep -qx 'code=probe-invalid' "$STORE_DIR/.curl-argv" && echo yes || echo no)"
+CURL_BODY='{"error":"invalid_client","error_description":"invalid secret"}'; probe s
+check "probe: invalid_client means the secret is wrong" 1 "$rc"
+CURL_BODY='{"error":"server_error"}'; probe s
+check "probe: any other answer cannot tell"             "2 yes" "$rc $(grep -q "HTTP 400, error 'server_error'" <<< "$reason" && echo yes || echo no)"
+CURL_RC=7; probe s; CURL_RC=0
+check "probe: a network failure cannot tell"            "2 yes" "$rc $(grep -q 'unreachable: curl: (7)' <<< "$reason" && echo yes || echo no)"
 
 exit "$fail"

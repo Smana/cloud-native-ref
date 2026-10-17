@@ -30,8 +30,11 @@
 #      a seed that predates the app, so its id is new every time and
 #      Terraform, which created the mount, ignores this field afterwards.
 #      No-op when --openbao-url is empty, which is every consumer call.
-#   6. Restarts the Deployments that read a REPLACED client id from env, once
-#      their Secret carries the new one (restart_rotated_consumers).
+#   6. Rotates an existing app's client secret when ZITADEL rejects the stored
+#      one, or none is stored (probe_client_secret): a directory restored from
+#      a seed carries secrets the stores never saw.
+#   7. Restarts the Deployments that read a REPLACED client id or secret from
+#      env, once their Secret carries the new one (restart_rotated_consumers).
 #
 # Step 4 MERGES rather than overwrites where a secret holds more than OIDC:
 # grafana-envvars also carries the generated admin credentials, and clobbering
@@ -56,8 +59,8 @@
 # leftover security/iam-admin-pat anywhere else would replace that cloud's PAT.
 #
 # Dry-run unless --apply. Client secrets are never printed: ZITADEL returns a
-# client secret exactly once, at creation, so it goes straight from the API
-# response into the secret store.
+# client secret only once, at creation or rotation, so it goes straight from the
+# API response into the secret store.
 
 set -o errexit
 set -o nounset
@@ -725,8 +728,8 @@ merge_secret() {
 # issuer URL are read back FROM ZITADEL itself, not guessed, so they can only
 # ever correct drift; the scopes string is this script's own literal, and
 # stale copies of it are exactly the bug being closed. NEVER converged: the
-# client secret (ZITADEL returns it exactly once, at creation, so this path
-# has no correct value to put there even if it wanted to) and, for
+# client secret (ZITADEL never returns an existing one; a rejected one is
+# ROTATED instead, in cmd_sync, through merge_secret) and, for
 # headlamp-proxy, the cookie secret (regenerating it on a routine sync would
 # silently log out every user). Both are simply absent from every branch's
 # overlay object below, so jq's `+` leaves whatever $existing already had.
@@ -957,6 +960,63 @@ stored_client_id() {
                  .client_id, ."client-id" | strings) // empty' 2>/dev/null || true
 }
 
+# The client secret a stored payload carries, the same way. It IS the secret:
+# stdin to stdout, into a pipe or a variable, never onto argv.
+stored_client_secret() {
+    jq -r 'first(.GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET, .OIDC_CLIENT_SECRET, .clientSecret,
+                 .client_secret, ."client-secret" | strings) // empty' 2>/dev/null || true
+}
+
+# sha256 of stdin, hex. Lets a rotated secret be compared without being passed.
+secret_sha() {
+    local h
+    h="$(sha256sum)" || return 1
+    printf '%s' "${h%% *}"
+}
+
+# Does ZITADEL accept the stored secret (stdin) for client $1? 0 yes, 1 no
+# (invalid_client), 2 cannot tell, with the reason on stderr.
+#
+# A token request with a code that cannot exist: ZITADEL authenticates the client
+# before it looks at the code (zitadel/oidc op's withClient wraps the code
+# exchange; VerifyClient answers invalid_client "invalid secret"), so a right
+# secret gets invalid_grant and a wrong one invalid_client. Nothing is issued.
+#
+# A restore from a seed brings back a directory whose secrets differ from the
+# stores' copies (gcp-0, 2026-10-17): an existing app with a correct redirect
+# then fails every login with "invalid_client", while every run printed [ok].
+#
+# Basic auth from a 0700-directory -K file: the secret never reaches argv.
+# client_secret_basic form-url-encodes both halves (RFC 6749 2.3.1), and @uri
+# leaves neither `"` nor `\` for curl's config syntax.
+probe_client_secret() (
+    set +x
+    client_id="$1" redirect="$2"
+    tmp="$(umask 077 && mktemp -d -t zitadel-probe.XXXXXX)" || exit 2
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    enc_secret="$(jq -Rsr @uri)" || exit 2
+    enc_id="$(printf '%s' "$client_id" | jq -Rsr @uri)" || exit 2
+    printf 'user = "%s:%s"\n' "$enc_id" "$enc_secret" > "$tmp/cfg" || exit 2
+    unset enc_secret
+    if ! code="$(curl -sS -o "$tmp/body" -w '%{http_code}' --max-time 20 \
+            -X POST "${IDP_URL}/oauth/v2/token" -K "$tmp/cfg" \
+            ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
+            --data-urlencode grant_type=authorization_code \
+            --data-urlencode code=probe-invalid \
+            --data-urlencode "redirect_uri=${redirect}" 2>"$tmp/err")"; then
+        echo "token endpoint unreachable: $(head -c 200 "$tmp/err")" >&2
+        exit 2
+    fi
+    err="$(jq -r '.error // empty' "$tmp/body" 2>/dev/null)" || err=""
+    case "$err" in
+        invalid_grant) exit 0 ;;
+        invalid_client) exit 1 ;;
+    esac
+    echo "token endpoint answered HTTP ${code}, error '${err:-none}'" >&2
+    exit 2
+)
+
 # The payload OpenBao holds at $1's mapped path, on stdout; nothing when unmapped,
 # absent or unreadable. A subshell, like mirror_to_openbao, so its temp files and
 # trap stay local; the payload holds the secret, so it only ever feeds a pipe.
@@ -988,13 +1048,30 @@ previous_client_id() {
     printf '%s' "$id"
 }
 
+# 0 when Secret $2 in namespace $1 holds the value $3: a client id, or
+# `sha256:<hex>` of a rotated client secret, which never has to be passed itself.
+secret_carries() {
+    local json v h
+    json="$(kubectl get secret "$2" -n "$1" -o json 2>/dev/null)" || return 1
+    case "$3" in
+        sha256:*)
+            while read -r v; do
+                h="$(printf '%s' "$v" | base64 -d 2>/dev/null | secret_sha)" || continue
+                [ "$h" = "${3#sha256:}" ] && return 0
+            done < <(jq -r '.data // {} | .[]' <<< "$json" 2>/dev/null)
+            return 1 ;;
+        *) jq -e --arg id "$3" '.data // {} | any(.[]; @base64d == $id)' <<< "$json" >/dev/null 2>&1 ;;
+    esac
+}
+
 # Restart the Deployments that read a ROTATED client from env. They resolve it
 # once, at start, so a refreshed Secret is not enough: after an OpenBao rebuild
 # headlamp-oauth2-proxy kept the dead directory's client id and answered "App
 # not found" until restarted by hand, while every resource reported healthy.
 #
 # Arguments are `<store key>=<new client id>`, only for keys whose stored client
-# id this run changed, so a re-run with nothing rotated restarts nothing. Warn-only
+# id this run changed, or `<store key>=sha256:<hex>` for a rotated client secret,
+# so a re-run with nothing rotated restarts nothing. Warn-only
 # like force_sync_mirrored: the clients are already written.
 #
 # kubectl must point at $CLUSTER. aws/eks/init's consuming sync for gcp-0 runs
@@ -1005,7 +1082,7 @@ previous_client_id() {
 # (one deadline for all of them) until its Secret does.
 restart_rotated_consumers() {
     [ "$APPLY" = "true" ] && [ $# -gt 0 ] || return 0
-    local pair store_name id target es_json ns es obj deploys d deadline now
+    local pair store_name id target es_json ns es obj deploys d deadline now what
     local matches=() restarted=()
     if ! kubectl get configmap -n flux-system -o name 2>/dev/null | grep -Eq -- "-${CLUSTER}-vars\$"; then
         echo "WARN: kubectl does not point at ${CLUSTER}. Rotated: ${*%%=*}." >&2
@@ -1041,10 +1118,11 @@ restart_rotated_consumers() {
     deadline=$(( $(date +%s) + ${OIDC_CONSUMER_WAIT_SECONDS:-180} ))
     for pair in "${matches[@]}"; do
         read -r ns obj id <<< "$pair"
-        until kubectl get secret "$obj" -n "$ns" -o json 2>/dev/null \
-                | jq -e --arg id "$id" '.data // {} | any(.[]; @base64d == $id)' >/dev/null 2>&1; do
+        what="client ${id}"
+        [[ "$id" != sha256:* ]] || what="the rotated client secret"
+        until secret_carries "$ns" "$obj" "$id"; do
             if [ "$(date +%s)" -ge "$deadline" ]; then
-                echo "WARN: ${ns}/${obj} does not carry client ${id} yet; its consumers keep the old one." >&2
+                echo "WARN: ${ns}/${obj} does not carry ${what} yet; its consumers keep the old one." >&2
                 echo "      Once it does: kubectl rollout restart deployment -n ${ns} <each Deployment reading it>" >&2
                 continue 2
             fi
@@ -1061,7 +1139,7 @@ restart_rotated_consumers() {
         for d in $deploys; do
             [[ " ${restarted[*]} " == *" ${ns}/${d} "* ]] && continue
             if kubectl rollout restart deployment "$d" -n "$ns" >/dev/null 2>&1; then
-                echo "[restart] deployment ${ns}/${d} -- ${obj} carries rotated client ${id}"
+                echo "[restart] deployment ${ns}/${d} -- ${obj} carries ${what}"
                 restarted+=("${ns}/${d}")
             else
                 echo "WARN: could not restart deployment ${ns}/${d}; it keeps the old client id" >&2
@@ -1107,7 +1185,9 @@ reconcile_openbao_oidc() {
     (
     # xtrace would print the stored payload, and the client secret with it.
     set +x
-    local key="${1:-}" want_id="${2:-}" role="default"
+    # $3: sha256 of a client secret this run rotated under an unchanged id. The
+    # config then needs writing even though its id already matches.
+    local key="${1:-}" want_id="${2:-}" want_sha="${3:-}" role="default"
     local stored stored_id attempt auth_json mount want_aud
     local cfg_json cfg have_id role_json have_aud need_cfg=false need_role=false
     local payload body out probe=0
@@ -1143,7 +1223,10 @@ reconcile_openbao_oidc() {
     while :; do
         stored="$(store_read "$key")" || stored=""
         stored_id="$(jq -r '.client_id // empty' <<< "$stored" 2>/dev/null)" || stored_id=""
-        [ "$stored_id" = "$want_id" ] && break
+        if [ "$stored_id" = "$want_id" ]; then
+            [ -z "$want_sha" ] && break
+            [ "$(jq -j '.client_secret // empty' <<< "$stored" 2>/dev/null | secret_sha)" = "$want_sha" ] && break
+        fi
         if [ "${APPLY:-false}" != "true" ]; then
             echo "[dry-run] openbao -- ${key} holds client ${stored_id:-<none>}; the sync converges it to ${want_id} first"
             break
@@ -1152,7 +1235,7 @@ reconcile_openbao_oidc() {
             if [ "$probe" -eq 1 ]; then
                 echo "[FAILED ] openbao -- ${key} is still not in the secret store after this run wrote it; ZITADEL issued ${want_id}" >&2
             else
-                echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}; ZITADEL issued ${want_id}" >&2
+                echo "[FAILED ] openbao -- ${key} still holds client ${stored_id:-<none>}${want_sha:+ or its previous secret}; ZITADEL issued ${want_id}" >&2
             fi
             exit 1
         fi
@@ -1200,7 +1283,7 @@ reconcile_openbao_oidc() {
         echo "[FAILED ] openbao -- cannot read auth/oidc/config or its ${role} role" >&2
         exit 1
     fi
-    [ "$have_id" = "$want_id" ] || need_cfg=true
+    [ "$have_id" = "$want_id" ] && [ -z "$want_sha" ] || need_cfg=true
     [ "$have_aud" = "$want_aud" ] || need_role=true
 
     if [ "$need_cfg" = false ] && [ "$need_role" = false ]; then
@@ -1288,7 +1371,7 @@ cmd_sync() {
         grant_role "${g%%=*}" "${g#*=}" "$project_id" || exit 1
     done
 
-    local created=0 skipped=0 updated=0 converged=0
+    local created=0 skipped=0 updated=0 converged=0 rotations=0
     # A failed mirror does not stop the loop, like openbao_failed below: the
     # other consumers and both reconciles still run, then the sync exits 1.
     local failed_mirrors="" wrc=0
@@ -1301,7 +1384,7 @@ cmd_sync() {
     # branches below for where each is set. Empty stays empty on a dry run
     # (reconcile_openbao_oidc treats that as its own skip) and on any topology
     # missing the "openbao" consumer entirely.
-    local openbao_key="" openbao_client_id=""
+    local openbao_key="" openbao_client_id="" openbao_secret_sha=""
     for entry in "${CONSUMERS[@]}"; do
         # TWO names, and conflating them is a bug this script has already made.
         #
@@ -1440,20 +1523,93 @@ cmd_sync() {
                 echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR}" >&2
                 exit 1
             fi
-            # A native app has no secret to lose: its id alone is the payload.
-            if [ "$probe" -eq 1 ] && [ "$token" != native ]; then
-                echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
-                echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
-                echo "           creation -- it cannot be recovered from here, so writing the" >&2
-                echo "           client id alone would leave a half payload, worse than the" >&2
-                echo "           missing one. Restore ${key} from a backup, or delete the app" >&2
-                echo "           in ZITADEL and re-run so it is created (and its secret" >&2
-                echo "           captured) fresh." >&2
-                exit 1
-            fi
-
             local existing_secret='{}' desired
             [ "$probe" -eq 1 ] || existing_secret="$(store_read "$key")"
+
+            # Is the stored secret still this app's? A restore from a seed brings
+            # back a directory whose secrets are not the stores' (gcp-0,
+            # 2026-10-17), and nothing else here would notice: the redirect is
+            # right, so every run said [ok] while every login failed
+            # "invalid_client". A native app has no secret to check.
+            local stored_secret="" secret_state=ok why="" pr=0 mirror_stale=false
+            if [ "$token" != native ]; then
+                stored_secret="$(stored_client_secret <<< "$existing_secret")"
+                if [ -z "$stored_secret" ]; then
+                    secret_state=missing why="no stored secret"
+                elif [ "$(jq -r '.app.oidcConfig.authMethodType // "OIDC_AUTH_METHOD_TYPE_BASIC"' <<< "$app_json")" \
+                       != OIDC_AUTH_METHOD_TYPE_BASIC ]; then
+                    # The probe speaks client_secret_basic only (ZITADEL omits
+                    # the enum's zero value, BASIC); any other app is not judged.
+                    echo "WARN: ${name}: not a client_secret_basic app; stored secret not checked" >&2
+                elif why="$(printf '%s' "$stored_secret" | probe_client_secret "$client_id" "${redirect%%,*}" 2>&1)"; then
+                    why=""
+                else
+                    pr=$?
+                    if [ "$pr" -eq 1 ]; then
+                        secret_state=rejected why="stored secret rejected"
+                    else
+                        # Unknown is not stale: rotating on a network error would
+                        # break a working consumer.
+                        echo "WARN: ${name}: cannot check the stored secret (${why}); not rotating" >&2
+                    fi
+                fi
+            fi
+            # The consumers of a mirrored key read OpenBao's copy, which a restored
+            # OpenBao can hold apart from a valid store. The re-mirror below fixes
+            # the copy; flagged here so its consumers restart onto it. An
+            # unreadable or absent copy says nothing, so it flags nothing.
+            local mirror_copy=""
+            if [ "$secret_state" = ok ] && [ -n "$stored_secret" ] && [ "${MIRROR_OPENBAO:-false}" = true ] \
+               && bao_target_for "$key" >/dev/null 2>&1; then
+                mirror_copy="$(mirror_read "$key")"
+                if [ -n "$mirror_copy" ] && [ "$(stored_client_secret <<< "$mirror_copy")" != "$stored_secret" ]; then
+                    mirror_stale=true
+                    if [ "$APPLY" = true ]; then
+                        echo "[stale  ] ${name} -- OpenBao's copy of ${key} holds another secret, re-mirroring"
+                    else
+                        echo "[stale  ] ${name} -- OpenBao's copy of ${key} holds another secret, would re-mirror"
+                    fi
+                fi
+                unset mirror_copy
+            fi
+
+            # Rotate: ZITADEL issues a new secret, written with merge_secret's
+            # merge, so grafana's admin credentials and the proxies' cookie
+            # secret survive. A failure after the rotation strands nothing: the
+            # next run's probe rejects the stored secret again and rotates again.
+            if [ "$secret_state" != ok ]; then
+                if [ "$APPLY" != "true" ]; then
+                    echo "[stale  ] ${name} -- ${why}, would rotate"
+                    rotations=$((rotations + 1))
+                    continue
+                fi
+                local resp client_secret merged
+                resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/${existing_id}/oidc_config/_generate_client_secret" -d '{}')" || exit 1
+                client_secret="$(jq -r '.clientSecret // empty' <<< "$resp")"
+                if [ -z "$client_secret" ]; then
+                    echo "[FAILED ] ${name}: ZITADEL returned no clientSecret on rotation" >&2
+                    exit 1
+                fi
+                merged="$(merge_secret "$key" "$consumer" "$client_id" "$client_secret" "$project_id")" || exit 1
+                wrc=0
+                printf '%s' "$merged" | store_write_and_mirror "$key" || wrc=$?
+                case "$wrc" in
+                    0) mirrored_keys+=("$key") ;;
+                    2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
+                    *) exit 1 ;;
+                esac
+                local new_sha
+                new_sha="$(printf '%s' "$client_secret" | secret_sha)"
+                unset client_secret
+                rotated+=("${key}=sha256:${new_sha}")
+                [ "$consumer" != "openbao" ] || openbao_secret_sha="$new_sha"
+                echo "[rotated] ${name} -> ${key} (${why}; client ${client_id})"
+                rotations=$((rotations + 1))
+                continue
+            fi
+            local stored_sha=""
+            [ "$mirror_stale" = false ] || stored_sha="$(printf '%s' "$stored_secret" | secret_sha)"
+            unset stored_secret
             desired="$(converge_secret "$consumer" "$client_id" "$existing_secret" "$project_id")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
@@ -1463,6 +1619,7 @@ cmd_sync() {
                 if [ "$APPLY" = "true" ]; then
                     if printf '%s' "$existing_secret" | mirror_to_openbao "$key"; then
                         mirrored_keys+=("$key")
+                        [ -z "$stored_sha" ] || rotated+=("${key}=sha256:${stored_sha}")
                     else
                         failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
                     fi
@@ -1475,7 +1632,7 @@ cmd_sync() {
                 wrc=0
                 printf '%s' "$desired" | store_write_and_mirror "$key" || wrc=$?
                 case "$wrc" in
-                    0) mirrored_keys+=("$key") ;;
+                    0) mirrored_keys+=("$key"); [ -z "$stored_sha" ] || rotated+=("${key}=sha256:${stored_sha}") ;;
                     2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
                     *) exit 1 ;;
                 esac
@@ -1557,12 +1714,12 @@ cmd_sync() {
     # prints -- the operator's dry-run habit is to read that line, and a
     # reconcile failure should not hide it.
     local openbao_failed=0
-    reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" || openbao_failed=1
+    reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" "$openbao_secret_sha" || openbao_failed=1
     force_sync_mirrored "${mirrored_keys[@]}"
     restart_rotated_consumers ${rotated[@]+"${rotated[@]}"}
 
     echo
-    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
+    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}, rotated: ${rotations}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
@@ -1582,7 +1739,7 @@ cmd_sync() {
 case "$COMMAND" in
     sync) cmd_sync ;;
     *)
-        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac

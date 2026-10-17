@@ -26,7 +26,8 @@ load_function() {
     eval "$body"
 }
 for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
-         mirror_to_openbao force_sync_mirrored stored_client_id previous_client_id cmd_sync; do
+         mirror_to_openbao force_sync_mirrored stored_client_id stored_client_secret secret_sha \
+         previous_client_id cmd_sync; do
     case "$f" in mirror_to_openbao|force_sync_mirrored) load_function "$f" "$REPO_ROOT/scripts/lib/openbao-mirror.sh" ;; *) load_function "$f" "$SRC" ;; esac
 done
 # shellcheck source=scripts/lib/bao-map.sh
@@ -37,6 +38,9 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 IDP_URL=https://auth.example; HEADLAMP_OIDC_SCOPES=profile; APPLY=true
 # Cases stub store_probe; like the real one, this is false for "absent" and "cannot tell" alike.
 store_exists() { store_probe "$1"; }
+# ZITADEL accepts every stored secret here; the probe's own cases are in
+# test-zitadel-oidc-clients-convergence.sh.
+probe_client_secret() { cat >/dev/null; }
 
 echo "== 1. JWT access tokens, on create AND on the redirect repair =="
 check "create: JWT" OIDC_TOKEN_TYPE_JWT "$(oidc_config_payload https://rooms.x/oauth2/callback rooms-proxy jwt | jq -r .accessTokenType)"
@@ -286,12 +290,17 @@ run_cmd_sync
 check "existing, no stored key: converged, not refused" 0 "$rc"
 check "existing, no stored key: the id written" '{"client-id":"RID"}' "$(jq -c . "$T/written-agents-roomctl" 2>/dev/null)"
 check "existing, JWT and redirect right: no PUT" absent "$([ -e "$T/put" ] && echo sent || echo absent)"
-# A web app with its key missing still fails: its secret cannot be recovered.
+# A web app with its key missing gets a new secret from ZITADEL (rotation).
 entry="$(grep -E '^[[:space:]]*"rooms-proxy\|' "$SRC" | head -1)"
 eval "CONSUMERS=(${entry})"
 app_get() { jq -n '{app: {oidcConfig: {redirectUris: ["https://rooms.priv.example/oauth2/callback"], clientId: "CID", accessTokenType: "OIDC_TOKEN_TYPE_JWT"}}}'; }
+api_or_fail() { printf '%s\n' "$2" > "$T/rotate"; printf '{"clientSecret":"ROTATED"}'; }  # pragma: allowlist secret
+rm -f "$T/written-agents-rooms-proxy"
 run_cmd_sync
-check "a web app with no stored secret still fails" 1 "$rc"
+check "a web app with no stored secret: rotated" "0 /management/v1/projects/p1/apps/app-9/oidc_config/_generate_client_secret" \
+    "$rc $(cat "$T/rotate" 2>/dev/null)"
+check "a web app with no stored secret: the new secret and the project id written" "ROTATED p1" \
+    "$(jq -r '"\(."client-secret") \(."project-id")"' "$T/written-agents-rooms-proxy" 2>/dev/null)"
 unset -f api
 
 [ "$fail" -eq 0 ] && echo "all checks passed"

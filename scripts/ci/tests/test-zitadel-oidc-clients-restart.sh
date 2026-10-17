@@ -16,7 +16,7 @@ fail=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; fail=1; }
 
-for f in stored_client_id restart_rotated_consumers; do
+for f in stored_client_id secret_sha secret_carries restart_rotated_consumers; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$S")"
     [ -n "$body" ] || { echo "could not extract ${f}() from $S" >&2; exit 1; }
     eval "$body"
@@ -57,12 +57,14 @@ jq '.items[3].spec.template.spec.volumes = [{secret: {secretName: "headlamp-oaut
 
 CM="gke-gcp-0-vars"
 SECRET_ID="new-id"
+SECRET_VAL="new-secret"  # pragma: allowlist secret
 kubectl() {
     printf '%s\n' "$*" >>"$T/calls"
     case "$1 $2" in
         "get configmap") printf 'configmap/%s\n' "$CM" ;;
         "get externalsecrets") cat "$T/es.json" ;;
-        "get secret") jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" '{data:{"client-id":$v,GF_AUTH_GENERIC_OAUTH_CLIENT_ID:$v}}' ;;
+        "get secret") jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" --arg s "$(printf '%s' "$SECRET_VAL" | base64)" \
+                          '{data:{"client-id":$v,GF_AUTH_GENERIC_OAUTH_CLIENT_ID:$v,"client-secret":$s}}' ;;
         "get deployments") cat "$T/deploy.json" ;;
         *) : ;;
     esac
@@ -104,6 +106,15 @@ CM="eks-aws-0-vars" run 'headlamp-oauth2-proxy=new-id'
 SECRET_ID="old-id" OIDC_CONSUMER_WAIT_SECONDS=0 run 'headlamp-oauth2-proxy=new-id'
 [ -z "$(restarts)" ] && grep -q 'does not carry client new-id' "$T/out" \
     && ok "Secret not refreshed: no restart onto the old id" || bad "stale Secret: $(restarts) $(cat "$T/out")"
+
+# A secret rotated under an unchanged id is waited for by its sha256, never by value.
+NEW_SHA="$(printf '%s' new-secret | secret_sha)"
+run "headlamp-oauth2-proxy=sha256:${NEW_SHA}"
+[ "$(restarts)" = "rollout restart deployment headlamp-oauth2-proxy -n tooling;" ] && grep -q 'carries the rotated client secret' "$T/out" \
+    && ok "rotated secret: its reader restarts once the Secret carries it" || bad "rotated secret restarts: $(restarts) $(cat "$T/out")"
+SECRET_VAL="old-secret" OIDC_CONSUMER_WAIT_SECONDS=0 run "headlamp-oauth2-proxy=sha256:${NEW_SHA}"  # pragma: allowlist secret
+[ -z "$(restarts)" ] && grep -q 'does not carry the rotated client secret' "$T/out" \
+    && ok "rotated secret not refreshed: no restart onto the old one" || bad "stale secret: $(restarts) $(cat "$T/out")"
 
 grep -A1 '^    force_sync_mirrored "' "$S" | grep -q 'restart_rotated_consumers' \
     && ok "cmd_sync restarts right after the force-sync" || bad "restart_rotated_consumers not wired after force_sync_mirrored"
