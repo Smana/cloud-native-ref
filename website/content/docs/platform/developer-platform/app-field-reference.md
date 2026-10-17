@@ -125,7 +125,7 @@ which a CronJob doesn't have.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Render a PVC. |
-| `size` | string (e.g. `10Gi`) | — (required when enabled) | Requested storage size. |
+| `size` | string (for example `10Gi`) | — (required when enabled) | Requested storage size. |
 | `mountPath` | string | — (required when enabled) | Mount path on the main container. |
 | `storageClass` | string | cluster default | StorageClass name. |
 | `accessModes` | []enum `ReadWriteOnce`\|`ReadWriteMany`\|`ReadOnlyMany` | `[ReadWriteOnce]` | PVC access modes. RWO forces `Recreate` on a Deployment and forbids autoscaling. |
