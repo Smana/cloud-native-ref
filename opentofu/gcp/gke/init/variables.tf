@@ -177,3 +177,12 @@ variable "agents_pool_max_nodes" {
   type        = number
   default     = 2
 }
+
+# Opt-in for the Substrate spike (main.tf). PodCertificateRequest is v1beta1 from
+# Kubernetes 1.35, so the channel's control plane must be at least that, or GKE
+# refuses the API name. Enabling it later is an in-place update; disabling it is not.
+variable "enable_pod_certificate_apis" {
+  description = "Serve the certificates.k8s.io/v1beta1 ClusterTrustBundle and PodCertificateRequest APIs (Substrate spike)"
+  type        = bool
+  default     = false
+}

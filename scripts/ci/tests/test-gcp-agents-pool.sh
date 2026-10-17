@@ -30,7 +30,9 @@ python3 - "$C" <<'PY' || fail "cilium.yaml: socketLB.hostNamespaceOnly must be t
 import re, sys
 sys.exit(0 if re.search(r'(?m)^socketLB:\n[ \t]+hostNamespaceOnly:[ \t]*true\b', open(sys.argv[1]).read()) else 1)
 PY
-grep -rqs 'runtimeclass-gvisor\|karpenter-nodepools-agents' "$ROOT"/clusters/gcp-0* \
+# Except headroom/: one warm pod and its PriorityClass, no pool. It lives under the
+# pool's directory in ai-native-ref, and gcp-0 applies it since v0.1.9.
+grep -rqsP 'runtimeclass-gvisor|karpenter-nodepools-agents(?!/headroom)' "$ROOT"/clusters/gcp-0* \
   && fail "gcp-0 must not apply aws-0's RuntimeClass or Karpenter pool: GKE ships both"
 while IFS= read -r f; do
   grep -q 'sandbox.gke.io/runtime' "$f" || fail "$f tolerates agents.ogenki.io/runtime but not sandbox.gke.io/runtime"

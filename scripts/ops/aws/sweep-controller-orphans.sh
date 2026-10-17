@@ -54,6 +54,11 @@
 # autoscaling group is never swept unless EKS owns that group: terminating it
 # only makes the group launch another.
 #
+# Target groups are the exception to the VPC scope: they outlive both their load
+# balancer and their VPC (on 2026-10-17 six k8s-* groups were left, four of them
+# in VPCs already deleted), so they are swept region-wide -- but still only those
+# tagged `elbv2.k8s.aws/cluster=<this cluster>`.
+#
 # Dry-run unless --apply.
 #
 # Usage:
@@ -89,6 +94,48 @@ if $AWS eks describe-cluster --name "$CLUSTER_NAME" >/dev/null 2>&1; then
 fi
 echo "==> EKS cluster ${CLUSTER_NAME} is gone; its controllers cannot be managing anything."
 
+# ---- target groups (aws-load-balancer-controller), region-wide ---------------
+# Run last, once the load balancers holding them are gone: a group still behind
+# a listener refuses the delete (ResourceInUse) and is not counted.
+sweep_target_groups() {
+    echo
+    echo "== target groups of cluster ${CLUSTER_NAME} (region-wide: they outlive their VPC)"
+    local tgs owned arn name i
+    mapfile -t tgs < <($AWS elbv2 describe-target-groups \
+        --query 'TargetGroups[].TargetGroupArn' --output text 2>/dev/null \
+        | tr '\t' '\n' | grep -v '^[[:space:]]*$')
+    owned=()
+    for ((i = 0; i < ${#tgs[@]}; i += 20)); do
+        mapfile -t -O "${#owned[@]}" owned < <($AWS elbv2 describe-tags \
+            --resource-arns "${tgs[@]:i:20}" --output json 2>/dev/null \
+            | jq -r --arg c "$CLUSTER_NAME" '.TagDescriptions[]
+                | select(any(.Tags[]?; .Key == "elbv2.k8s.aws/cluster" and .Value == $c))
+                | .ResourceArn')
+    done
+    for arn in "${tgs[@]}"; do
+        name="${arn#*targetgroup/}"; name="${name%/*}"
+        if ! printf '%s\n' "${owned[@]}" | grep -Fxq -- "$arn"; then
+            echo "  [keep   ] target group ${name} (no elbv2.k8s.aws/cluster=${CLUSTER_NAME} tag)"
+        elif [ "$APPLY" != "true" ]; then
+            say "target group ${name}"; SWEPT=$((SWEPT + 1))
+        elif $AWS elbv2 delete-target-group --target-group-arn "$arn" >/dev/null 2>&1; then
+            say "target group ${name}"; SWEPT=$((SWEPT + 1))
+        else
+            echo "  [warn   ] target group ${name} did not delete (still behind a listener?)"
+        fi
+    done
+}
+
+finish() {
+    echo
+    if [ "$APPLY" = "true" ]; then
+        echo "==> swept ${SWEPT} controller-created resource(s)."
+    else
+        echo "==> dry-run: ${SWEPT} item(s) would be swept. Re-run with --apply."
+    fi
+    exit 0
+}
+
 # ---- find the VPC -----------------------------------------------------------
 if [ -z "$VPC_ID" ]; then
     VPC_ID="$($AWS ec2 describe-vpcs \
@@ -96,8 +143,9 @@ if [ -z "$VPC_ID" ]; then
         --query 'Vpcs[0].VpcId' --output text 2>/dev/null)"
 fi
 if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
-    echo "==> no non-default VPC found — nothing to sweep."
-    exit 0
+    echo "==> no non-default VPC found — nothing VPC-scoped to sweep."
+    sweep_target_groups
+    finish
 fi
 echo "==> scoping to ${VPC_ID}"
 
@@ -215,9 +263,5 @@ for pass in 1 2 3 4; do
     [ "$ids" = "$left" ] && { echo "  [warn   ] no progress; still held: ${left}"; break; }
 done
 
-echo
-if [ "$APPLY" = "true" ]; then
-    echo "==> swept ${SWEPT} controller-created resource(s)."
-else
-    echo "==> dry-run: ${SWEPT} item(s) would be swept. Re-run with --apply."
-fi
+sweep_target_groups
+finish

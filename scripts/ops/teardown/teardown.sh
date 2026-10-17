@@ -54,20 +54,43 @@ openbao_left=""
 
 # OpenBao's nodes, found by the tag its launch templates stamp on every instance.
 # Its stack destroys after the cluster and before the network, so a node still
-# standing here means openbao/cluster's destroy failed -- and the network
-# destroy will fail on the VPC it sits in. Say so first, before that failure
-# (or a sweep) is the only sign.
+# standing means openbao/cluster's destroy failed. A failed lookup prints
+# "unknown": it must block the network like a standing node does.
 openbao_nodes() {
   aws ec2 describe-instances --region "${AWS_REGION:-eu-west-3}" \
     --filters Name=tag-key,Values=OpenBaoInstance \
               Name=instance-state-name,Values=running,pending,stopping,stopped \
-    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null
+    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || echo unknown
 }
-if [ "$VERIFY_ONLY" -eq 0 ]; then
-  echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
+
+# The walk in two phases: every stack but the network ones, then the network
+# stacks only once AWS OpenBao is gone. On 2026-10-16 openbao/cluster's destroy
+# failed, --continue-on-error carried on into aws/network, which deleted the
+# private Route53 zone and then failed on the VPC OpenBao still sat in -- and
+# without the zone, openbao/cluster's next destroy could not even plan.
+destroy_walk() {
+  local rc=0 network=(--tags=network)
   # --continue-on-error is the point: one stack whose target is already gone must
   # not strand the stacks that still own billable resources.
-  ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+  ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error --no-tags=network destroy ) || rc=$?
+  if wants aws; then
+    openbao_left="$(openbao_nodes)"
+    if [ -n "${openbao_left//[[:space:]]/}" ]; then
+      echo "!!! openbao/cluster's destroy FAILED: OpenBao node(s) still standing: ${openbao_left}"
+      echo "!!! Skipping aws/network (and the tailnet it routes through): its destroy would delete"
+      echo "!!! the Route53 zone and then fail on the VPC. Fix openbao/cluster (output above), then re-run."
+      echo
+      network+=("--no-tags=aws,tailscale")
+      rc=1
+    fi
+  fi
+  ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error "${network[@]}" destroy ) || rc=$?
+  return "$rc"
+}
+
+if [ "$VERIFY_ONLY" -eq 0 ]; then
+  echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
+  destroy_walk
   destroy_rc=$?
   echo "=== terramate exit: ${destroy_rc} ==="
   echo
@@ -96,13 +119,6 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   # already gone (the sweeps enforce that themselves), so this cannot touch live
   # infrastructure.
   if wants aws; then
-    openbao_left="$(openbao_nodes)"
-    if [ -n "${openbao_left//[[:space:]]/}" ]; then
-      echo "!!! openbao/cluster's destroy FAILED: OpenBao node(s) still running: ${openbao_left}"
-      echo "!!! The network destroy cannot finish around them. The sweeps below leave them alone;"
-      echo "!!! fix openbao/cluster's destroy (see its output above), then re-run teardown."
-      echo
-    fi
     _region="${AWS_REGION:-eu-west-3}"
     _left="$(aws ec2 describe-vpcs --region "$_region" \
       --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
@@ -115,6 +131,10 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
       bash "${ROOT}/scripts/ops/aws/sweep-orphaned-volumes.sh" \
         --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
       retry=1
+    else
+      # Target groups outlive their VPC, so they get a sweep of their own.
+      bash "${ROOT}/scripts/ops/aws/sweep-controller-orphans.sh" \
+        --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
     fi
   fi
 
@@ -137,7 +157,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   if [ "$retry" -eq 1 ]; then
     echo
     echo "=== retrying the destroy after the sweep ==="
-    ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+    destroy_walk
     destroy_rc=$?
     echo "=== terramate exit after retry: ${destroy_rc} ==="
     echo
@@ -176,6 +196,10 @@ if wants aws; then
     --query 'NatGateways[].NatGatewayId' --output text 2>/dev/null)"
   report "Load balancers" "$(aws elbv2 describe-load-balancers --region "$region" \
     --query 'LoadBalancers[].LoadBalancerName' --output text 2>/dev/null)"
+  # Outlive their load balancer and VPC; on 2026-10-17 six k8s-* groups and
+  # OpenBao's were left, and no row above showed them.
+  report "Target groups" "$(aws elbv2 describe-target-groups --region "$region" \
+    --query 'TargetGroups[].TargetGroupName' --output text 2>/dev/null)"
   report "Non-default VPCs" "$(aws ec2 describe-vpcs --region "$region" \
     --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
   report "Available EBS volumes" "$(aws ec2 describe-volumes --region "$region" \
@@ -224,7 +248,7 @@ else
     echo "  cloud:      ${unverified} cloud(s) COULD NOT BE CHECKED — status unknown, assume not torn down"
 fi
 if [ -n "${openbao_left//[[:space:]]/}" ]; then
-  echo "  openbao:    openbao/cluster's destroy FAILED (nodes after the first pass: ${openbao_left})"
+  echo "  openbao:    openbao/cluster's destroy FAILED (nodes: ${openbao_left}); aws/network was NOT destroyed"
 fi
 # Not auto-skipped: if the first pass never reached openbao/cluster, skipping
 # its pre-destroy snapshot would destroy a node without one.
