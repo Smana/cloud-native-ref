@@ -7,6 +7,8 @@
 # restart, or they keep the dead directory's client ("App not found" from
 # headlamp-oauth2-proxy). Restarts only the readers of a rotated key's Secret,
 # only once that Secret carries the new id, and only with kubectl on $CLUSTER.
+# A HelmRelease rendering the Secret through valuesFrom (flux-ui) is waited for
+# instead: its release must carry the new value and its Deployment finish rolling.
 # The functions are lifted out of the script, so this tests the code that ships.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -16,7 +18,7 @@ fail=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; fail=1; }
 
-for f in stored_client_id secret_sha secret_carries restart_rotated_consumers; do
+for f in stored_client_id secret_sha secret_carries helm_release_carries roll_rotated_helm_releases restart_rotated_consumers; do
     body="$(sed -n "/^${f}() {/,/^}/p" "$S")"
     [ -n "$body" ] || { echo "could not extract ${f}() from $S" >&2; exit 1; }
     eval "$body"
@@ -38,7 +40,21 @@ cat >"$T/es.json" <<'EOF'
  {"metadata":{"namespace":"observability","name":"grafana-es"},
   "spec":{"secretStoreRef":{"name":"openbao-platform"},
           "dataFrom":[{"extract":{"key":"victoria-metrics/grafana-envvars"}}],
-          "target":{"name":"grafana-envvars"}}}
+          "target":{"name":"grafana-envvars"}}},
+ {"metadata":{"namespace":"flux-system","name":"flux-ui-oidc"},
+  "spec":{"secretStoreRef":{"name":"openbao-platform"},
+          "dataFrom":[{"extract":{"key":"flux/ui-oidc"}}],
+          "target":{"name":"flux-ui-oidc"}}}
+]}
+EOF
+# The flux-operator release reads flux-ui-oidc through valuesFrom, and its pod
+# reads the rendered config from a volume: no Deployment names the Secret.
+cat >"$T/hr.json" <<'EOF'
+{"items":[
+ {"metadata":{"namespace":"flux-system","name":"flux-operator"},
+  "spec":{"releaseName":"flux-operator","valuesFrom":[
+    {"kind":"Secret","name":"flux-ui-oidc","valuesKey":"clientID"},
+    {"kind":"Secret","name":"flux-ui-oidc","valuesKey":"clientSecret"}]}}
 ]}
 EOF
 # Readers by env and by envFrom, a bystander, and a volume mount (not env).
@@ -50,7 +66,9 @@ cat >"$T/deploy.json" <<'EOF'
    {"envFrom":[{"secretRef":{"name":"grafana-envvars"}}]}]}}}},
  {"metadata":{"name":"headlamp"},"spec":{"template":{"spec":{"containers":[
    {"envFrom":[{"secretRef":{"name":"headlamp-envvars"}}]}]}}}},
- {"metadata":{"name":"mounts-it"},"spec":{"template":{"spec":{"containers":[{}]}}}}
+ {"metadata":{"name":"mounts-it"},"spec":{"template":{"spec":{"containers":[{}]}}}},
+ {"metadata":{"name":"flux-operator","annotations":{"meta.helm.sh/release-name":"flux-operator"}},
+  "spec":{"template":{"spec":{"containers":[{}]}}}}
 ]}
 EOF
 jq '.items[3].spec.template.spec.volumes = [{secret: {secretName: "headlamp-oauth2-proxy"}}]' "$T/deploy.json" > "$T/d.json" && mv "$T/d.json" "$T/deploy.json"  # pragma: allowlist secret
@@ -58,14 +76,28 @@ jq '.items[3].spec.template.spec.volumes = [{secret: {secretName: "headlamp-oaut
 CM="gke-gcp-0-vars"
 SECRET_ID="new-id"
 SECRET_VAL="new-secret"  # pragma: allowlist secret
+# What the deployed flux-operator release was rendered with: Helm stores it
+# gzipped and base64'd, and the Secret's data base64s it again.
+REL_ID="new-id"
+REL_SECRET="new-secret"  # pragma: allowlist secret
+ROLLOUT_RC=0
 kubectl() {
     printf '%s\n' "$*" >>"$T/calls"
     case "$1 $2" in
         "get configmap") printf 'configmap/%s\n' "$CM" ;;
         "get externalsecrets") cat "$T/es.json" ;;
-        "get secret") jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" --arg s "$(printf '%s' "$SECRET_VAL" | base64)" \
+        "get helmreleases.helm.toolkit.fluxcd.io") cat "$T/hr.json" ;;
+        "get secret") if [[ "$*" == *owner=helm* ]]; then
+                          jq -n --arg r "$(printf '%s' "$REL_SECRET" | jq -Rs --arg i "$REL_ID" \
+                              '{config: {web: {config: {authentication: {oauth2: {clientID: $i, clientSecret: .}}}}}}' \
+                              | gzip | base64 -w0 | base64 -w0)" \
+                              '{items: [{metadata: {labels: {version: "3"}}, data: {release: $r}}]}'
+                          return
+                      fi
+                      jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" --arg s "$(printf '%s' "$SECRET_VAL" | base64)" \
                           '{data:{"client-id":$v,GF_AUTH_GENERIC_OAUTH_CLIENT_ID:$v,"client-secret":$s}}' ;;
         "get deployments") cat "$T/deploy.json" ;;
+        "rollout status") return "$ROLLOUT_RC" ;;
         *) : ;;
     esac
 }
@@ -115,6 +147,24 @@ run "headlamp-oauth2-proxy=sha256:${NEW_SHA}"
 SECRET_VAL="old-secret" OIDC_CONSUMER_WAIT_SECONDS=0 run "headlamp-oauth2-proxy=sha256:${NEW_SHA}"  # pragma: allowlist secret
 [ -z "$(restarts)" ] && grep -q 'does not carry the rotated client secret' "$T/out" \
     && ok "rotated secret not refreshed: no restart onto the old one" || bad "stale secret: $(restarts) $(cat "$T/out")"
+
+# flux-ui: nothing to restart by env; the release re-renders and rolls its pod.
+run 'security-flux-ui-oidc=new-id'
+grep -q '^annotate helmrelease flux-operator -n flux-system reconcile.fluxcd.io/requestedAt=' "$T/calls" \
+    && ok "flux-ui: its HelmRelease is asked to reconcile" || bad "flux-ui: no reconcile request: $(cat "$T/calls")"
+grep -q '^rollout status deployment flux-operator -n flux-system --timeout=' "$T/calls" && [ -z "$(restarts)" ] \
+    && grep -q '^\[rolled \] deployment flux-system/flux-operator -- helmrelease flux-system/flux-operator renders client new-id' "$T/out" \
+    && ok "flux-ui: waits for the release's Deployment to roll, restarts nothing" || bad "flux-ui: $(restarts) $(cat "$T/out")"
+run "security-flux-ui-oidc=sha256:${NEW_SHA}"
+grep -q 'flux-operator renders the rotated client secret' "$T/out" \
+    && ok "flux-ui: a rotated secret is matched in the release values by sha256" || bad "flux-ui sha: $(cat "$T/out")"
+REL_SECRET="old-secret" OIDC_CONSUMER_WAIT_SECONDS=0 run "security-flux-ui-oidc=sha256:${NEW_SHA}"  # pragma: allowlist secret
+! grep -q '^rollout status' "$T/calls" && grep -q 'helmrelease flux-system/flux-operator has not rendered the rotated client secret yet' "$T/out" \
+    && ok "flux-ui: a release still on the old secret warns, waits for no rollout" || bad "flux-ui stale release: $(cat "$T/out")"
+ROLLOUT_RC=1 run 'security-flux-ui-oidc=new-id'
+grep -q 'flux-system/flux-operator has not finished rolling onto client new-id' "$T/out" \
+    && ok "flux-ui: an unfinished rollout warns" || bad "flux-ui rollout: $(cat "$T/out")"
+ROLLOUT_RC=0
 
 grep -A1 '^    force_sync_mirrored "' "$S" | grep -q 'restart_rotated_consumers' \
     && ok "cmd_sync restarts right after the force-sync" || bad "restart_rotated_consumers not wired after force_sync_mirrored"
