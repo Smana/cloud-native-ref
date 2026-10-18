@@ -148,7 +148,7 @@ Beyond a plain `PathPrefix` match, `HTTPRoute` supports header matching and
 weighted `backendRefs` for canary-style traffic splits — standard Gateway
 API capability, not something this repository extends. Nothing here is
 platform-specific enough to be worth its own example; see the
-[Gateway API HTTPRoute reference](https://gateway-api.sigs.k8s.io/api-types/httproute/)
+[Gateway API HTTPRoute reference](https://gateway-api.sigs.k8s.io/reference/api-types/httproute/)
 for the full matching and weighting syntax.
 
 ## Troubleshooting
