@@ -112,7 +112,7 @@ Use EKS Pod Identity for all AWS access from pods. Do NOT use IRSA.
 
 - All IAM policies MUST be scoped to `xplane-*` resource names
 - Crossplane controllers have NO deletion permissions for stateful services (S3, IAM, Route53)
-- Use resource-level permissions, not `*` wildcards where possible
+- Where possible, use resource-level permissions instead of `*` wildcards
 
 **Reference**: [ADR-0002: EKS Pod Identity](https://cnref.ogenki.io/docs/decisions/0002-eks-pod-identity-over-irsa/)
 
