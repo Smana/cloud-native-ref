@@ -59,13 +59,13 @@ and is out of scope here:
 | Dashboard | Folder | Source |
 |---|---|---|
 | `kubernetes-views-{global,namespaces,nodes,pods}` | `observability` | Imported — vendored by the `victoria-metrics-k8s-stack` chart |
-| `kubernetes-node-exporter-full` | `kubernetes` | Imported, [grafana.com dashboard 1860](https://grafana.com/grafana/dashboards/1860/) |
-| `kubernetes-karpenter` | `kubernetes` | Imported, [grafana.com dashboard 20398](https://grafana.com/grafana/dashboards/20398/) |
+| `kubernetes-node-exporter-full` | `kubernetes` | Imported, [grafana.com dashboard 1860](https://grafana.com/grafana/dashboards/1860-node-exporter-full/) |
+| `kubernetes-karpenter` | `kubernetes` | Imported, [grafana.com dashboard 20398](https://grafana.com/grafana/dashboards/20398-karpenter/) |
 | `app-all-in-one` | `apps` | Authored in-repo |
 | `runlore` | `runlore` | Authored in-repo |
 | `observability-victoria-logs-explorer` | `logs` | Authored in-repo |
-| `observability-victoria-logs-single` | `logs` | Imported, [dashboard 22084](https://grafana.com/grafana/dashboards/22084/) |
-| `observability-victoria-traces-single` | `traces` | Imported, [dashboard 24136](https://grafana.com/grafana/dashboards/24136/) |
+| `observability-victoria-logs-single` | `logs` | Imported, [dashboard 22084](https://grafana.com/grafana/dashboards/22084-victorialogs-single-node/) |
+| `observability-victoria-traces-single` | `traces` | Imported, [dashboard 24136](https://grafana.com/grafana/dashboards/24136-victoriatraces-single-node/) |
 | `databases-cnpg-query-performance` / `-query-plan-correlation` | `databases` | Authored in-repo — see [PostgreSQL]({{< relref "/docs/platform/observability/postgresql.md" >}}) |
 | `cilium-cilium`, `cilium-operator`, `cilium-hubble{,-dns-namespace,-l7-http-metrics,-network-overview-namespace}` (6 dashboards) | `cilium` | Imported, from the [cilium/cilium](https://github.com/cilium/cilium) upstream dashboard JSON |
 | `flux-cluster`, `flux-control-plane` | `flux` | Imported, from [fluxcd/flux2-monitoring-example](https://github.com/fluxcd/flux2-monitoring-example) — pinned to commit `7ab65dc8` since 2026-08-30; tracking `refs/heads/main` made them mutate whenever upstream moved |
