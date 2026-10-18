@@ -16,12 +16,12 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/nohelm"
 cat >"$T/bin/helm" <<EOF
 #!/usr/bin/env bash
-echo "\$*" >>"$T/helm-calls"
+echo "KUBECONFIG=\${KUBECONFIG:-} \$*" >>"$T/helm-calls"
 if [ -n "\${STUB_HELM_BROKEN:-}" ]; then
   echo "Error: Kubernetes cluster unreachable: invalid configuration" >&2
   exit 1
 fi
-[ "\$*" = "status flux-operator -n flux-system" ] && { echo "STATUS: deployed"; exit 0; }
+case "\$*" in "status flux-operator -n flux-system --kube-apiserver https://k8s.test "*) echo "STATUS: deployed"; exit 0 ;; esac
 echo "Error: release: not found" >&2
 exit 1
 EOF
@@ -40,16 +40,18 @@ probe() {
 }
 # run_cases SCRIPT: prints one line per case, returns the number that failed.
 run_cases() {
-  local s="$1" n=0 multi
-  multi="$(printf '{\n  "name": "flux-operator",\n  "namespace": "flux-system"\n}')"
+  local s="$1" n=0 multi conn='"host":"https://k8s.test","cluster_ca_certificate":"Y2E=","token":"tok"'
+  multi="$(printf '{\n  "name": "flux-operator",\n  "namespace": "flux-system",\n  %s\n}' "$conn")"
   # desc comes from each call's `desc=... c` prefix, which bash scopes to the call; the linter cannot follow it.
   # shellcheck disable=SC2154
   c() { if probe "$s" "$@"; then echo "  ok   $desc"; else echo "  FAIL $desc"; n=$((n + 1)); fi; }
-  desc="release present"                 c "$T/bin:$PATH" '{"name":"flux-operator","namespace":"flux-system"}' true
+  desc="release present"                 c "$T/bin:$PATH" "{\"name\":\"flux-operator\",\"namespace\":\"flux-system\",$conn}" true
   desc="release present, multi-line JSON" c "$T/bin:$PATH" "$multi" true
-  desc="release absent"                  c "$T/bin:$PATH" '{"name":"other","namespace":"flux-system"}' false
-  desc="helm missing from PATH"          c "$T/nohelm" '{"name":"flux-operator","namespace":"flux-system"}' false
-  desc="broken kubeconfig"               STUB_HELM_BROKEN=1 c "$T/bin:$PATH" '{"name":"flux-operator","namespace":"flux-system"}' false
+  desc="release absent"                  c "$T/bin:$PATH" "{\"name\":\"other\",\"namespace\":\"flux-system\",$conn}" false
+  desc="no connection: ambient kubeconfig is never asked" c "$T/bin:$PATH" '{"name":"flux-operator","namespace":"flux-system"}' false
+  desc="token missing"                   c "$T/bin:$PATH" '{"name":"flux-operator","namespace":"flux-system","host":"https://k8s.test"}' false
+  desc="helm missing from PATH"          c "$T/nohelm" "{\"name\":\"flux-operator\",\"namespace\":\"flux-system\",$conn}" false
+  desc="cluster unreachable"             STUB_HELM_BROKEN=1 c "$T/bin:$PATH" "{\"name\":\"flux-operator\",\"namespace\":\"flux-system\",$conn}" false
   desc="name missing"                    c "$T/bin:$PATH" '{"namespace":"flux-system"}' false
   desc="namespace missing"               c "$T/bin:$PATH" '{"name":"flux-operator"}' false
   desc="name empty"                      c "$T/bin:$PATH" '{"name":"","namespace":"flux-system"}' false
@@ -64,8 +66,9 @@ echo "helm-release-present.sh:"
 rm -f "$T/helm-calls"
 run_cases "$SCRIPT" || fails=1
 check() { if eval "$2"; then echo "  ok   $1"; else echo "  FAIL $1"; fails=1; fi; }
-check "helm is asked with the queried name and namespace" 'grep -qx "status flux-operator -n flux-system" "$T/helm-calls"'
-check "helm is never asked without a name and namespace" '! grep -qvE "^status (flux-operator|other) -n flux-system$" "$T/helm-calls"'
+check "helm is asked with the queried name and namespace" 'grep -q "^KUBECONFIG=/dev/null status flux-operator -n flux-system " "$T/helm-calls"'
+check "helm is only asked with a name, a namespace and the queried cluster, never the kubeconfig" \
+  '! grep -qvE "^KUBECONFIG=/dev/null status (flux-operator|other) -n flux-system --kube-apiserver https://k8s.test --kube-ca-file [^ ]+ --kube-token tok$" "$T/helm-calls"'
 
 # shellcheck disable=SC2016 # the literal line being mutated, not an expansion
 check "the script still reads stdin with \`input=\$(cat)\`" 'grep -qx '\''input=$(cat)'\'' "$SCRIPT"'

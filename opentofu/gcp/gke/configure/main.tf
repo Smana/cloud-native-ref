@@ -68,8 +68,11 @@ data "external" "flux_operator_release" {
   program = ["bash", "${path.module}/../../../../scripts/provision/helm-release-present.sh"]
 
   query = {
-    name      = "flux-operator"
-    namespace = "flux-system"
+    name                   = "flux-operator"
+    namespace              = "flux-system"
+    host                   = "https://${local.cluster_endpoint}"
+    cluster_ca_certificate = local.cluster_ca_certificate
+    token                  = data.google_client_config.default.access_token
   }
 }
 

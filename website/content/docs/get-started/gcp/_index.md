@@ -186,14 +186,6 @@ cd opentofu
 TM_CLOUD=gcp terramate script run deploy
 ```
 
-{{< callout type="warning" >}}
-**Run it from a shell whose kubeconfig points at `gcp-0`, or at nothing.**
-`scripts/provision/helm-release-present.sh` asks the *current* context whether
-flux-operator is installed. Pointed at another cluster it answers "absent", the
-deploy re-installs flux-operator, and Helm fails with `cannot re-use a name that
-is still in use`. Check `kubectl config current-context` first.
-{{< /callout >}}
-
 `TM_CLOUD=gcp` selects both directions at once — it turns the GCP stacks on
 *and* the AWS ones off, so there is no second flag to remember. That leaves
 exactly what a GCP deploy needs:
