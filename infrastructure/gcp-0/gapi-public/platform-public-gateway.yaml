@@ -55,3 +55,23 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: probe-public-tls
+    # policy-bot's webhook (SP3 §5.1, ADR-0045): routes from merge-gate only, one path
+    # and method, HMAC-verified against the App's webhook secret. Outside the
+    # agent-platform umbrella, because a listener cannot be gated with it (R19).
+    - name: policy-bot
+      hostname: "policy-bot.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - merge-gate
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: policy-bot-public-tls

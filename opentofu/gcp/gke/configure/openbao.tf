@@ -42,6 +42,12 @@ locals {
       # SP1 S9, SP2 P38: the agent-system SecretStore, the `agents` mount only.
       policies = ["default", "agents-secrets"]
     }
+    merge-gate-secrets = {
+      service_account = "merge-gate-secrets"
+      namespace       = "merge-gate"
+      # SP3: policy-bot's store, the merge-gate mount and nothing else (R44).
+      policies = ["default", "merge-gate-secrets"]
+    }
   }
 }
 
@@ -65,8 +71,8 @@ resource "vault_jwt_auth_backend_role" "cluster" {
   # client passing `token_type=batch` on login would get an unrevocable,
   # non-leased token and the enforcement this comment describes would not exist.
   # `service` refuses the request instead. This mount's clients are
-  # `cert-manager`, `external-secrets`, `openbao-snapshot` and `agents-secrets`
-  # -- a compromised ServiceAccount token for any of them could otherwise mint a
+  # `cert-manager`, `external-secrets`, `openbao-snapshot`, `agents-secrets` and
+  # `merge-gate-secrets` -- a compromised ServiceAccount token for any of them could otherwise mint a
   # token no operator can revoke. Same value, and the same reason, as the AWS
   # twin in opentofu/aws/eks/configure/openbao.tf -- the two must not drift.
   token_type = "service"

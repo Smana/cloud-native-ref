@@ -42,6 +42,13 @@ for f in opentofu/aws/openbao/management/policies/secrets-admin.hcl opentofu/sha
   grep -q '^path "agents/data/\*"' "$ROOT/$f" || fail "$f cannot write the agents mount (the owner's bao kv put)"
 done
 grep -q 'agents-secrets = {' "$ROOT/opentofu/gcp/gke/configure/openbao.tf" || fail "gcp: no agents-secrets role on jwt/gcp-0"
+# policy-bot's merge-gate mount (SP3 R44): the same parity, or gcp-0's gate answers policy_absent.
+for cloud in aws gcp; do
+  grep -Eq '^[[:space:]]*path[[:space:]]*=[[:space:]]*"merge-gate"' "$ROOT/opentofu/$cloud/openbao/management/mounts.tf" || fail "$cloud: no vault_mount with path merge-gate"
+done
+cmp -s "$ROOT/opentofu/aws/openbao/management/policies/merge-gate-secrets.hcl" "$ROOT/opentofu/gcp/openbao/management/policies/merge-gate-secrets.hcl" \
+  || fail "the aws and gcp merge-gate-secrets.hcl have diverged"
+grep -q 'merge-gate-secrets = {' "$ROOT/opentofu/gcp/gke/configure/openbao.tf" || fail "gcp: no merge-gate-secrets role on jwt/gcp-0"
 grep -q '^      path: "agents"$' "$ROOT/security/base/agent-secrets/secretstore.yaml" || fail "the agents-secrets SecretStore is not on the agents mount"
 grep -rq 'key: agents/' "$ROOT/security/base/octo-sts" "$ROOT/infrastructure/base/agent-router" && fail "an ExternalSecret still carries the old agents/ prefix"
 
