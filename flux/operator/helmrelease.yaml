@@ -44,13 +44,18 @@ spec:
             # validations:
             #   - expression: "claims.email.endsWith('@ogenki.io')"
             #     message: "Access denied: must use @ogenki.io email"
-  # Inject OIDC credentials from ExternalSecret
+  # Inject OIDC credentials from ExternalSecret.
+  # literal: without it `--set` parsing turns ZITADEL's 18-digit clientID into an
+  # int64, which Helm storage reads back as float64. The release digest never
+  # matches, so helm-controller re-adopts with an upgrade every interval (#2494).
   valuesFrom:
     - kind: Secret
       name: flux-ui-oidc
       valuesKey: clientID
       targetPath: web.config.authentication.oauth2.clientID
+      literal: true
     - kind: Secret
       name: flux-ui-oidc
       valuesKey: clientSecret
       targetPath: web.config.authentication.oauth2.clientSecret
+      literal: true

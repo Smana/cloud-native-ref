@@ -2,6 +2,11 @@ data "aws_eks_cluster" "this" {
   name = var.cluster_name
 }
 
+# For helm-release-present.sh, which runs outside the helm provider's exec auth.
+data "aws_eks_cluster_auth" "this" {
+  name = var.cluster_name
+}
+
 data "aws_caller_identity" "this" {}
 
 # Re-derived here (rather than read from eks/init remote state) to keep this

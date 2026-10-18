@@ -97,10 +97,6 @@ TM_CLOUD=gcp terramate script run drift detect
 TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy   # feature-branch cluster
 ```
 
-Run a deploy with `kubectl` pointed at the target cluster, or at nothing: a context on another
-cluster makes the flux-operator presence check answer "absent", and Helm then fails with
-`cannot re-use a name`.
-
 Tool versions come from `mise.toml`; run `mise install` first. Cilium, Flux and Gateway API
 versions are pinned in `opentofu/config.tm.hcl`.
 

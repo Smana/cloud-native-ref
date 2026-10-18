@@ -135,8 +135,11 @@ data "external" "flux_operator_release" {
   program = ["bash", "${path.module}/../../../../scripts/provision/helm-release-present.sh"]
 
   query = {
-    name      = "flux-operator"
-    namespace = "flux-system"
+    name                   = "flux-operator"
+    namespace              = "flux-system"
+    host                   = data.aws_eks_cluster.this.endpoint
+    cluster_ca_certificate = data.aws_eks_cluster.this.certificate_authority[0].data
+    token                  = data.aws_eks_cluster_auth.this.token
   }
 }
 

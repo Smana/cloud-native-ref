@@ -2,8 +2,8 @@
 #
 # helm-release-present.sh — a `data "external"` helper: is a Helm release installed?
 #
-# Reads {"name": "...", "namespace": "..."} on stdin, prints {"present":"true"}
-# or {"present":"false"}.
+# Reads {"name", "namespace", "host", "cluster_ca_certificate" (base64), "token"}
+# on stdin, prints {"present":"true"} or {"present":"false"}.
 #
 # Why this exists: terraform BOOTSTRAPS flux-operator on a bare cluster and then
 # hands the release to Flux, which re-manages it from flux/operator/. Terraform
@@ -38,8 +38,20 @@ if [ -z "$name" ] || [ -z "$namespace" ]; then
     exit 0
 fi
 
-if command -v helm >/dev/null 2>&1 && helm status "$name" -n "$namespace" >/dev/null 2>&1; then
-    printf '{"present":"true"}\n'
-else
-    printf '{"present":"false"}\n'
+host=$(printf '%s' "$input" | jq -r '.host // empty' 2>/dev/null)
+ca=$(printf '%s' "$input" | jq -r '.cluster_ca_certificate // empty' 2>/dev/null)
+token=$(printf '%s' "$input" | jq -r '.token // empty' 2>/dev/null)
+
+# Ask the cluster terraform targets, never the ambient kubeconfig: a context on
+# another cluster answered "false" for a release that existed, and the create
+# then died with "cannot re-use a name that is still in use" (2026-10-17, #2494).
+present=false
+if [ -n "$host" ] && [ -n "$token" ] && command -v helm >/dev/null 2>&1; then
+    ca_file=$(mktemp)
+    printf '%s' "$ca" | base64 -d >"$ca_file" 2>/dev/null
+    KUBECONFIG=/dev/null helm status "$name" -n "$namespace" \
+        --kube-apiserver "$host" --kube-ca-file "$ca_file" --kube-token "$token" \
+        >/dev/null 2>&1 && present=true
+    rm -f "$ca_file"
 fi
+printf '{"present":"%s"}\n' "$present"
