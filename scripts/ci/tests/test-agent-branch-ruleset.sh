@@ -79,6 +79,10 @@ run
 [ "$(posts)" -eq 2 ] || fail "creates both rulesets when absent"
 check_bodies create "$default_bypass"
 
+# A repository without Renovate: the human roles only.
+RENOVATE_BYPASS=false run
+check_bodies no-renovate "$roles"
+
 # Present: updates each in place, found by the name in its JSON source.
 echo '[{"id":7,"name":"other"},{"id":8,"name":"agent-merge"},{"id":42,"name":"agent-branches"},{"id":43,"name":"agent-tags"}]' >"$STUB_LIST"
 jq -n --argjson b "$default_bypass" '{bypass_actors: $b}' >"$STUB_CURRENT"

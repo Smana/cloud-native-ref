@@ -18,7 +18,7 @@
 # a separate ruleset.
 #
 # Idempotent: updates each ruleset carrying its JSON source's name when it exists.
-# usage: agent-branch-ruleset.sh <owner/repo>
+# usage: [RENOVATE_BYPASS=false] agent-branch-ruleset.sh <owner/repo>
 set -euo pipefail
 
 REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
@@ -29,8 +29,12 @@ RULESETS="$HERE/../../../.github/rulesets"
 # 2 maintain, 4 write.
 bypass="$(jq -c -n '[5, 2, 4] | map({"actor_id":., "actor_type":"RepositoryRole", "bypass_mode":"always"})')"
 # R16: Renovate is the only App on these lists; the merger's lives in agent-merge.
-renovate="$(gh api /apps/renovate --jq .id)"
-bypass="$(jq -c --argjson id "$renovate" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
+# RENOVATE_BYPASS=false: the repository has no Renovate installation, and GitHub refuses (422) an
+# Integration bypass actor that is not installed on it.
+if [ "${RENOVATE_BYPASS:-true}" != false ]; then
+  renovate="$(gh api /apps/renovate --jq .id)"
+  bypass="$(jq -c --argjson id "$renovate" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
+fi
 
 # includes_parents=false: an org-level ruleset of the same name is not ours to update.
 current="$(gh api "repos/$REPO/rulesets?includes_parents=false&per_page=100")"
@@ -51,10 +55,10 @@ for source in "$RULESETS/agent-branches.json" "$RULESETS/agent-tags.json"; do
     dropped="$(gh api "repos/$REPO/rulesets/$existing" |
       jq -c --argjson b "$bypass" '[.bypass_actors[]? | select(.actor_type == "Integration") | .actor_id] - [$b[] | select(.actor_type == "Integration") | .actor_id]')"
     [ "$dropped" = "[]" ] || echo "warning: updating $name removes App(s) $dropped from its bypass list (R16: only Renovate bypasses the agents' rulesets)" >&2
-    gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" >/dev/null
+    gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
     echo "updated ruleset $name ($existing) on $REPO"
   else
-    gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" >/dev/null
+    gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
     echo "created ruleset $name on $REPO"
   fi
 done
