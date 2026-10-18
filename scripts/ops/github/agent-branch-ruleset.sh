@@ -18,7 +18,7 @@
 # a separate ruleset.
 #
 # Idempotent: updates each ruleset carrying its JSON source's name when it exists.
-# usage: agent-branch-ruleset.sh <owner/repo>
+# usage: [RENOVATE_BYPASS=false] agent-branch-ruleset.sh <owner/repo>
 set -euo pipefail
 
 REPO="${1:?usage: agent-branch-ruleset.sh <owner/repo>}"
@@ -29,8 +29,12 @@ RULESETS="$HERE/../../../.github/rulesets"
 # 2 maintain, 4 write.
 bypass="$(jq -c -n '[5, 2, 4] | map({"actor_id":., "actor_type":"RepositoryRole", "bypass_mode":"always"})')"
 # R16: Renovate is the only App on these lists; the merger's lives in agent-merge.
-renovate="$(gh api /apps/renovate --jq .id)"
-bypass="$(jq -c --argjson id "$renovate" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
+# RENOVATE_BYPASS=false: the repository has no Renovate installation, and GitHub refuses (422) an
+# Integration bypass actor that is not installed on it.
+if [ "${RENOVATE_BYPASS:-true}" != false ]; then
+  renovate="$(gh api /apps/renovate --jq .id)"
+  bypass="$(jq -c --argjson id "$renovate" '. + [{"actor_id":$id,"actor_type":"Integration","bypass_mode":"always"}]' <<<"$bypass")"
+fi
 
 # includes_parents=false: an org-level ruleset of the same name is not ours to update.
 current="$(gh api "repos/$REPO/rulesets?includes_parents=false&per_page=100")"
