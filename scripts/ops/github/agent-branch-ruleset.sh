@@ -55,10 +55,10 @@ for source in "$RULESETS/agent-branches.json" "$RULESETS/agent-tags.json"; do
     dropped="$(gh api "repos/$REPO/rulesets/$existing" |
       jq -c --argjson b "$bypass" '[.bypass_actors[]? | select(.actor_type == "Integration") | .actor_id] - [$b[] | select(.actor_type == "Integration") | .actor_id]')"
     [ "$dropped" = "[]" ] || echo "warning: updating $name removes App(s) $dropped from its bypass list (R16: only Renovate bypasses the agents' rulesets)" >&2
-    gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" >/dev/null
+    gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
     echo "updated ruleset $name ($existing) on $REPO"
   else
-    gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" >/dev/null
+    gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
     echo "created ruleset $name on $REPO"
   fi
 done

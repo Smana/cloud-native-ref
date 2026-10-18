@@ -29,9 +29,9 @@ body="$(jq --argjson pb "$policybot" --argjson rn "$renovate" '
 existing="$(gh api "repos/$REPO/rulesets?includes_parents=false&per_page=100" |
   jq -r --arg n "$name" 'first(.[] | select(.name == $n) | .id) // empty')"
 if [ -n "$existing" ]; then
-  gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" >/dev/null
+  gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
   echo "updated ruleset $name ($existing) on $REPO"
 else
-  gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" >/dev/null
+  gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
   echo "created ruleset $name on $REPO"
 fi

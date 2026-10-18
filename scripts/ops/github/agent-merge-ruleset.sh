@@ -25,12 +25,13 @@ renovate="[]"
 body="$(jq --argjson m "$merger" --argjson rn "$renovate" '
   .bypass_actors = ([5, 2, 4] | map({"actor_id":., "actor_type":"RepositoryRole", "bypass_mode":"always"}))
     + ($rn + [$m] | map({"actor_id":., "actor_type":"Integration", "bypass_mode":"always"}))' "$SOURCE")"
+# A refusal (422) names its reason only in the response body: print it, not just the status.
 existing="$(gh api "repos/$REPO/rulesets?includes_parents=false&per_page=100" |
   jq -r --arg n "$name" 'first(.[] | select(.name == $n) | .id) // empty')"
 if [ -n "$existing" ]; then
-  gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" >/dev/null
+  gh api --method PUT "repos/$REPO/rulesets/$existing" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
   echo "updated ruleset $name ($existing) on $REPO"
 else
-  gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" >/dev/null
+  gh api --method POST "repos/$REPO/rulesets" --input - <<<"$body" | { jq -c "select(.errors)" >&2 || true; }
   echo "created ruleset $name on $REPO"
 fi
