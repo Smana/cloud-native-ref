@@ -30,3 +30,10 @@ resource "vault_policy" "agents_secrets" {
   name   = "agents-secrets"
   policy = file("${path.module}/policies/agents-secrets.hcl")
 }
+
+# The merge-gate SecretStore (SP3): the `merge-gate` mount only (R44). Attached to the
+# `merge-gate-secrets` role on jwt/gcp-0 by NAME, like `agents-secrets`.
+resource "vault_policy" "merge_gate_secrets" {
+  name   = "merge-gate-secrets"
+  policy = file("${path.module}/policies/merge-gate-secrets.hcl")
+}

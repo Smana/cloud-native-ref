@@ -122,7 +122,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 
 | Item | Contract |
 |---|---|
-| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet), Gateway API, in the namespaces their routes reference today |
+| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet, with a `policy-bot` listener for `merge-gate` on both clouds), Gateway API, in the namespaces their routes reference today |
 | Cilium | Default-deny CNP is the constitution's rule; `socketLB.hostNamespaceOnly: true` on both clouds (gVisor needs it) and the startup taint on every node pool (F2) |
 | DNS | Hostnames under `private_domain_name` resolve on the tailnet |
 
@@ -131,7 +131,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 | Item | Contract |
 |---|---|
 | Namespaces | The host creates `agents`, `agent-system`, `agent-gateway`, `llm`, `llm-gateway`, `envoy-ai-gateway-system`, `envoy-gateway-system` and `merge-gate`, with their PSA labels (`agents` is `restricted`) |
-| OpenBao | Mounts `agents` (both clouds) and `merge-gate` (aws), with the policies in `opentofu/<cloud>/openbao/management` and the JWT auth roles at `jwt/${cluster_name}` from `opentofu/<cloud>/{eks,gke}/configure/openbao.tf` that the `agents-secrets` and `merge-gate-secrets` stores log in with |
+| OpenBao | Mounts `agents` and `merge-gate` (both clouds), with the policies in `opentofu/<cloud>/openbao/management` and the JWT auth roles at `jwt/${cluster_name}` from `opentofu/<cloud>/{eks,gke}/configure/openbao.tf` that the `agents-secrets` and `merge-gate-secrets` stores log in with |
 | Stores | `ai-native-ref` creates its own namespaced stores (`agents-secrets`, `merge-gate-secrets`); it reads the cluster-wide `openbao-platform` store only where it does today, and the CA from `openbao-ca` |
 | ZITADEL | The rooms and `roomctl` OIDC clients and the link-only GitHub IdP, provisioned by the host's scripts |
 | PKI | The OpenBao PKI role signs certificates for the broker's in-cluster and private names (F7) |
