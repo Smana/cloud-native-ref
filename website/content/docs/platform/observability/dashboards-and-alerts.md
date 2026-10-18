@@ -197,7 +197,7 @@ noted:
   labels:
     severity: critical
   annotations:
-    runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreagentdown"
+    runbook_url: "https://github.com/Smana/runlore/blob/main/website/content/docs/operations/observability.md#runloreagentdown"
 ```
 
 ### Alertmanager routing
