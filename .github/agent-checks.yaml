@@ -17,7 +17,9 @@ steps:
   - {name: idp-topology, run: ./scripts/ci/validate-idp-topology.sh, ci: "Check the documentation links 🔗"}
   - {name: openbao-policies, run: ./scripts/ci/validate-openbao-policies.sh, ci: "Check the documentation links 🔗"}
   - {name: doc-paths, run: ./scripts/ci/verify-doc-paths.sh, ci: "Build the documentation site 📚"}
-  - {name: pre-commit, run: "SKIP=terraform_fmt,terraform_validate,terraform_tflint pre-commit run --all-files --show-diff-on-failure", ci: "Pre-commit checks 🛃"}
+  # pre-commit is a zipapp that unpacks its python under $HOME/.cache and execs it: the sandbox's HOME
+  # is a noexec tmpfs, so run it with the HOME of the toolchain's cache (the workspace, executable).
+  - {name: pre-commit, run: 'HOME="$(dirname "${XDG_CACHE_HOME:-$HOME/.cache}")" SKIP=terraform_fmt,terraform_validate,terraform_tflint pre-commit run --all-files --show-diff-on-failure', ci: "Pre-commit checks 🛃"}
 ciOnly:
   - {check: "Pre-commit checks 🛃", part: "the terraform hooks, the OpenBao module test", why: "OpenTofu provider and tflint plugin downloads beyond the egress"}
   - {check: "Kubernetes validation ☸", part: "task ci:validate (the render, flux schema, polaris)", why: "about 20 chart hosts beyond the egress"}
