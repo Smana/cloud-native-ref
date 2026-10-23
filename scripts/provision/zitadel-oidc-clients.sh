@@ -406,6 +406,22 @@ CONSUMERS=(
   "roomctl|http://localhost:8765/callback|agents-roomctl|native"
 )
 
+# ── the machine users ─────────────────────────────────────────────────────────
+#
+# name | secret key it lands in
+#
+# A sponsored principal of the agent factory (factory interfaces F4) authenticates
+# with client credentials. Its client id is not a secret, its client secret is.
+# gcp-0 mints a fresh directory each build, so the user and its secret are
+# re-created and stored here, never assumed. The user name carries ${APP_SUFFIX}
+# like the consumers, so two clusters never share (and rotate) one user; the key
+# does not, for the same reason as theirs.
+#
+# No project role is granted: a sponsored principal is not a human and must never
+# pass `Groups.Admitted`, and with no role its token carries no `groups`, which
+# keeps oauth2-proxy's `allowed-group` closed to it.
+MACHINE_USERS=("factory-slack-app|agents-factory-slack-principal")
+
 # The one non-secret OIDC field known to have drifted in practice: headlamp
 # needs `groups` in scope to get a groups claim at all, without which it can
 # authorize nobody. A single named source of truth for both merge_secret
@@ -1028,6 +1044,35 @@ probe_client_secret() (
     exit 2
 )
 
+# Does ZITADEL accept the stored secret (stdin) for machine user $1? 0 yes, 1 no
+# (invalid_client), 2 cannot tell, with the reason on stderr. A client-credentials
+# token request: only an authenticated client is issued a token. Basic auth from a
+# 0700-directory -K file, like probe_client_secret: the secret never reaches argv.
+probe_client_credentials() (
+    set +x
+    client_id="$1"
+    tmp="$(umask 077 && mktemp -d -t zitadel-probe.XXXXXX)" || exit 2
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    enc_secret="$(jq -Rsr @uri)" || exit 2
+    enc_id="$(printf '%s' "$client_id" | jq -Rsr @uri)" || exit 2
+    printf 'user = "%s:%s"\n' "$enc_id" "$enc_secret" > "$tmp/cfg" || exit 2
+    unset enc_secret
+    if ! code="$(curl -sS -o "$tmp/body" -w '%{http_code}' --max-time 20 \
+            -X POST "${IDP_URL}/oauth/v2/token" -K "$tmp/cfg" \
+            ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
+            --data-urlencode grant_type=client_credentials \
+            --data-urlencode scope=openid 2>"$tmp/err")"; then
+        echo "token endpoint unreachable: $(head -c 200 "$tmp/err")" >&2
+        exit 2
+    fi
+    err="$(jq -r '.error // empty' "$tmp/body" 2>/dev/null)" || err=""
+    if [ "$code" = 200 ] && jq -e '.access_token' "$tmp/body" >/dev/null 2>&1; then exit 0; fi
+    [ "$err" = invalid_client ] && exit 1
+    echo "token endpoint answered HTTP ${code}, error '${err:-none}'" >&2
+    exit 2
+)
+
 # The payload OpenBao holds at $1's mapped path, on stdout; nothing when unmapped,
 # absent or unreadable. A subshell, like mirror_to_openbao, so its temp files and
 # trap stay local; the payload holds the secret, so it only ever feeds a pipe.
@@ -1425,6 +1470,102 @@ reconcile_openbao_oidc() {
     )
 }
 
+# One machine user: found or created, its secret stored (and mirrored) under $2.
+# $project_id is cmd_sync's, like mirrored_keys and failed_mirrors, which this
+# appends to. Written when anything changed: a new secret, or a stored project id
+# that differs (gcp-0 mints a new project on every build). The client id stored
+# and probed is the one ZITADEL answered to the last PUT .../secret, never assumed
+# to be the user name: a stored id ZITADEL does not know is refused by the probe
+# and healed by the one rotation. A refused secret is rotated once; nothing
+# restarts, because the App re-reads its secret files at use (no Reloader runs in
+# either repository). An unreadable store stops it before ZITADEL mints a secret
+# it returns only once (#2086). Returns 1 on any failure: cmd_sync accumulates it.
+ensure_machine_user() {
+    local -
+    set +x
+    local name="${1}${APP_SUFFIX:-}" key="$2" id probe=0 stored='{}' secret="" cid="" rotate=false why="" pr=0 wrc=0
+    id="$(api_or_fail POST /management/v1/users/_search \
+        -d "$(jq -cn --arg n "$name" '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}')" \
+        | jq -r --arg n "$name" 'first(.result[]? | select(.userName == $n) | .userId) // empty')" || return 1
+
+    store_probe "$key" || probe=$?
+    if [ "$probe" -ge 2 ]; then
+        echo "[FAILED ] ${name}: cannot read ${key} from the secret store: ${STORE_PROBE_ERR:-the read failed}" >&2
+        return 1
+    fi
+    [ "$probe" -eq 1 ] || stored="$(store_read "$key")" || return 1
+    secret="$(stored_client_secret <<< "$stored")"
+    cid="$(stored_client_id <<< "$stored")"
+
+    if [ -z "$id" ]; then
+        rotate=true why="no such user"
+    elif [ -z "$secret" ] || [ -z "$cid" ]; then
+        # No client id to probe with, and none to store but ZITADEL's own answer.
+        rotate=true why="no stored secret or client id"
+    elif why="$(printf '%s' "$secret" | probe_client_credentials "$cid" 2>&1)"; then
+        why=""
+    else
+        pr=$?
+        if [ "$pr" -eq 1 ]; then
+            rotate=true why="stored secret rejected"
+        else
+            # Unknown is not stale: only the rotation is skipped.
+            echo "WARN: ${name}: cannot check the stored secret (${why}); not rotating" >&2
+            why=""
+        fi
+    fi
+
+    if [ "$rotate" = true ] && [ "$APPLY" != "true" ]; then
+        echo "[dry-run] ${name} -- ${why}, would $([ -n "$id" ] || printf 'create it and ')generate a secret into ${key}"
+        return 0
+    fi
+    if [ "$rotate" = false ] && [ -n "$cid" ] && [ -n "$secret" ] \
+       && [ "$(jq -r '."project-id" // empty' <<< "$stored")" = "$project_id" ]; then
+        echo "[ok     ] ${name} -- ${key} already converged"
+        if [ "$APPLY" = "true" ]; then
+            if printf '%s' "$stored" | mirror_to_openbao "$key"; then
+                mirrored_keys+=("$key")
+            else
+                failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+                return 1
+            fi
+        fi
+        return 0
+    fi
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] ${name} -- would converge the project id in ${key}"
+        return 0
+    fi
+
+    if [ "$rotate" = true ]; then
+        local resp
+        if [ -z "$id" ]; then
+            id="$(api_or_fail POST /management/v1/users/machine \
+                -d "$(jq -cn --arg n "$name" '{userName: $n, name: $n, accessTokenType: "ACCESS_TOKEN_TYPE_JWT"}')" \
+                | jq -r '.userId // empty')" || return 1
+            [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL returned no userId" >&2; return 1; }
+        fi
+        resp="$(api_or_fail PUT "/management/v1/users/${id}/secret" -d '{}')" || return 1
+        secret="$(jq -r '.clientSecret // empty' <<< "$resp")"
+        cid="$(jq -r '.clientId // empty' <<< "$resp")"
+        if [ -z "$secret" ] || [ -z "$cid" ]; then
+            echo "[FAILED ] ${name}: ZITADEL returned no clientId/clientSecret" >&2
+            return 1
+        fi
+    fi
+
+    printf '%s' "$secret" | jq -Rs --arg id "$cid" --arg proj "$project_id" \
+        '{"client-id": $id, "client-secret": ., "project-id": $proj}' \
+        | store_write_and_mirror "$key" || wrc=$?
+    unset secret
+    case "$wrc" in
+        0) mirrored_keys+=("$key") ;;
+        2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
+        *) return 1 ;;
+    esac
+    echo "[$([ "$rotate" = true ] && echo stored || echo converged)] ${name} -> ${key}${why:+ (${why})}"
+}
+
 cmd_sync() {
     echo "cluster:  ${CLUSTER} (${CLOUD})"
     echo "idp:      ${IDP_URL}"
@@ -1781,6 +1922,10 @@ cmd_sync() {
         created=$((created + 1))
     done
 
+    # Accumulated like publish_failed: the restarts below still run.
+    local machine_failed=0 u
+    for u in ${MACHINE_USERS[@]+"${MACHINE_USERS[@]}"}; do ensure_machine_user "${u%%|*}" "${u#*|}" || machine_failed=1; done
+
     # Only now is headlamp-proxy guaranteed to exist, so only now can the
     # workforce provider be pinned to its client id. Deliberately after the loop
     # and not before it -- see the function's header comment for why the audience
@@ -1817,6 +1962,7 @@ cmd_sync() {
     [ "$openbao_failed" -eq 0 ] || exit 1
     [ -z "$failed_mirrors" ] || exit 1
     [ "$publish_failed" -eq 0 ] || exit 1
+    [ "$machine_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in

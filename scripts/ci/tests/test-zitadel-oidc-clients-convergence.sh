@@ -127,6 +127,7 @@ load_function stored_client_secret "$SRC"
 load_function secret_sha "$SRC"
 load_function merge_secret "$SRC"   # the rotation's write
 # Its kubectl side has its own suite; here only WHICH keys reach it matters.
+ensure_machine_user() { :; }
 restart_rotated_consumers() { printf '%s\n' "$@" > "$STORE_DIR/.rotated"; }
 # What ZITADEL says of the stored secret: 0 accepted, 1 invalid_client, 2 cannot
 # tell. The real probe has its own cases at the end of this file.
