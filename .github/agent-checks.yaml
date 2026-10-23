@@ -28,6 +28,8 @@ ciOnly:
   - {check: "Rendered manifest diff 📝", part: all, why: "a render, and a diff against main"}
   - {check: "Post the rendered diff comment", part: all, why: "pull-requests: write, no checkout"}
   - {check: "Report a broken main 🚨", part: all, why: "runs on push to main only"}
+  - {check: "Scan external links 🕸", part: all, why: "runs on schedule and workflow_dispatch only; a nightly lychee scan of every external link"}
+  - {check: "External links 🔗", part: all, why: "fetches external sites, beyond the egress"}
   - {check: "Validate Vector Log Parsing Configuration", part: "both variants", why: "Docker"}
   - {check: "check-container-images/detect-changes", part: all, why: "builds container images: Docker"}
   - {check: "check-container-images/build", part: all, why: "builds container images: Docker"}
