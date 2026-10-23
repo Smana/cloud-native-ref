@@ -38,6 +38,14 @@ def fail(msg):
     fails.append(msg)
 
 
+def step_has_ci(step):
+    return isinstance(step.get("ci"), str) and bool(step["ci"].strip())
+
+
+# Self-test: a step without a non-empty `ci` must fail, as the harness's validate() has it.
+assert not step_has_ci({"name": "x", "run": "true"}) and not step_has_ci({"ci": " "}) and step_has_ci({"ci": "job"}), "step_has_ci"
+
+
 def pr_jobs():
     """{identifier: job key} for every job of a workflow triggered by pull_request, and the job keys."""
     ids, keys = {}, set()
@@ -104,6 +112,8 @@ for s in steps:
         fail("step %s: unknown keys %s" % (name, sorted(extra)))
     if not (isinstance(s.get("run"), str) and s["run"].strip()):
         fail("step %s: no run" % name)
+    if not step_has_ci(s):
+        fail("step %s: no ci, the CI job it mirrors" % name)
     t = s.get("timeoutMinutes", minutes)
     if not (isinstance(t, int) and 1 <= t <= minutes):
         fail("step %s: timeoutMinutes must be 1 to %d" % (name, minutes))

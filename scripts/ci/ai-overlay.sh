@@ -13,7 +13,7 @@
 #
 # --from-git lays the same paths from the pin's tag, cloned from GitHub and NOT verified: an agent's
 # sandbox reaches neither ghcr.io nor Sigstore (agent-platform v3 feature 3, the checks in the
-# sandbox). It is a feedback loop for the sandbox only, and refuses to run under CI=true: CI always
+# sandbox). It is a feedback loop for the sandbox only, and refuses to run under CI=true or GITHUB_ACTIONS: CI always
 # verifies the signed artifact. Needs git, python3 with PyYAML and rsync.
 set -euo pipefail
 
@@ -33,7 +33,7 @@ case "${1:-}" in
   --from-git) from_git=true ;;
   *) die "usage: $0 [--from-git]" ;;
 esac
-if $from_git && [ "${CI:-}" = true ]; then
+if $from_git && { [ "${CI:-}" = true ] || [ -n "${GITHUB_ACTIONS:-}" ]; }; then
   die "--from-git lays an unverified tree; CI verifies the signed artifact (run it without --from-git)"
 fi
 tools="cosign flux python3 rsync"
