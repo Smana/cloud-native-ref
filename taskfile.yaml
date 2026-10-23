@@ -29,6 +29,7 @@ tasks:
       - {task: "ai:overlay"}
       - {task: "ci:validate"}
       - {task: "ci:test"}
+      - {task: "ci:shellcheck"}
       - {task: "ci:links"}
       - {task: "ci:doc-claims"}
       - {task: "ci:idp-topology"}
