@@ -36,3 +36,10 @@ ciOnly:
   - {check: "check-container-images/detect-changes", part: all, why: "builds container images: Docker"}
   - {check: "check-container-images/build", part: all, why: "builds container images: Docker"}
   - {check: "check-container-images/build-summary", part: all, why: "builds container images: Docker"}
+  - {check: "Test contract 🧪", part: all, why: "judges a pull request's own tests at the base, the base plus the tests and the head; a tester's harness runs the same test-contract before it pushes"}
+tests:
+  paths: [scripts/ci/tests/]
+  select: ["scripts/ci/tests/test-*.sh", "scripts/ci/tests/test-*.py", "scripts/ci/tests/*/test-*.py"]
+  runner: [scripts/ci/tests/run.sh, scripts/ci/ai-overlay.sh]
+  run: ./scripts/ci/ai-overlay.sh $([ -n "${CI:-}" ] || echo --from-git) >/dev/null && scripts/ci/tests/run.sh "$@"
+  timeoutMinutes: 10

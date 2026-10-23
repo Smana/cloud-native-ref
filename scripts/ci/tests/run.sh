@@ -31,8 +31,21 @@ rm -f "$probe"
 
 pass=0 skip=0 fail=0 rc=0 failed=""
 
-for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
+# Suites named as arguments run alone: test-contract's selection (agent-platform v3 feature 4).
+# With AGENT_TEST_REPORT set, each suite is one JUnit testcase, its path from the repository root.
+ROOT="$(cd "$HERE/../../.." && pwd)"
+REPORT="${AGENT_TEST_REPORT:-}"
+cases=""
+junit() { # junit <id> [skipped|failure]
+  [ -n "$REPORT" ] || return 0
+  cases="$cases<testcase classname=\"$1\" name=\"$1\">${2:+<$2/>}</testcase>"
+}
+[ "$#" -gt 0 ] || set -- "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py
+
+for t in "$@"; do
   [ -e "$t" ] || continue
+  t="$(cd "$(dirname "$t")" && pwd)/$(basename "$t")"
+  id="${t#"$ROOT"/}"
   case "$t" in
     "$TESTS"/test-*.sh) name="$(basename "$t" .sh)"; interpreter=bash ;;
     "$TESTS"/test-*.py) name="$(basename "$t" .py)"; interpreter=python3 ;;
@@ -49,6 +62,7 @@ for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
   done
   if [ -n "$missing" ]; then
     printf 'SKIP  %-42s missing:%s\n' "$name" "$missing"
+    junit "$id" skipped
     skip=$((skip + 1))
     continue
   fi
@@ -58,13 +72,16 @@ for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
   code=$?
   if [ "$code" -eq 0 ]; then
     printf 'PASS  %-42s (%ds)\n' "$name" "$SECONDS"
+    junit "$id"
     pass=$((pass + 1))
   elif [ "$code" -eq 77 ]; then
     reason="${out##*$'\n'}"
     printf 'SKIP  %-42s %s\n' "$name" "${reason:-no reason given}"
+    junit "$id" skipped
     skip=$((skip + 1))
   else
     printf 'FAIL  %-42s (%ds)\n' "$name" "$SECONDS"
+    junit "$id" failure
     # The output, not just the name: a red check whose body is one word costs a
     # local re-run to learn anything from. Repeated at the end: a reader that
     # keeps only the tail (the agent checks' summary) loses it behind the PASS
@@ -80,6 +97,7 @@ done
 if [ -n "$failed" ]; then printf '\n%s' "$failed"; fi
 
 printf '%d passed, %d skipped, %d failed\n' "$pass" "$skip" "$fail"
+[ -z "$REPORT" ] || printf '<testsuite name="scripts/ci/tests">%s</testsuite>\n' "$cases" > "$REPORT"
 
 # Zero suites is a wrong TESTS path or a broken glob, never a pass.
 if [ $((pass + skip + fail)) -eq 0 ]; then

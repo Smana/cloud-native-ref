@@ -79,7 +79,7 @@ if not isinstance(doc, dict):
     sys.exit(1)
 
 # The schema the harness enforces (agent-platform images/agent-harness/agent_checks.py, validate).
-if extra := set(doc) - {"version", "timeoutMinutes", "tools", "definedBy", "steps", "ciOnly"}:
+if extra := set(doc) - {"version", "timeoutMinutes", "tools", "definedBy", "steps", "ciOnly", "tests"}:
     fail("unknown keys %s" % sorted(extra))
 if doc.get("version") != 1:
     fail("version must be 1")
@@ -123,6 +123,27 @@ ci_only = doc.get("ciOnly") or []
 for c in ci_only:
     if not (isinstance(c, dict) and set(c) == {"check", "part", "why"} and all(isinstance(v, str) and v for v in c.values())):
         fail("ciOnly entry %r: exactly check, part and why, each a string" % (c,))
+
+# test-contract's section (agent-platform v3 feature 4; images/agent-harness/test_contract.py, validate).
+tests = doc.get("tests")
+if tests is not None:
+    if not isinstance(tests, dict):
+        fail("tests must be a mapping")
+        tests = {}
+    if extra := set(tests) - {"paths", "select", "runner", "run", "timeoutMinutes"}:
+        fail("tests: unknown keys %s" % sorted(extra))
+    for key in ("paths", "select", "runner"):
+        v = tests.get(key)
+        if not (isinstance(v, list) and v and all(isinstance(p, str) and p and not p.startswith("/") for p in v)):
+            fail("tests: %s must be a non-empty list of relative paths" % key)
+    for p in [p for key in ("paths", "runner") for p in (tests.get(key) or []) if isinstance(p, str)]:
+        if not (ROOT / p).exists():
+            fail("tests: %s does not exist" % p)
+    if not (isinstance(tests.get("run"), str) and tests["run"].strip()):
+        fail("tests: no run")
+    t = tests.get("timeoutMinutes", 5)
+    if not (isinstance(t, int) and 1 <= t <= MAX_MINUTES):
+        fail("tests: timeoutMinutes must be 1 to %d" % MAX_MINUTES)
 
 # The coverage rule (RC3): every pull_request job is mirrored or listed, every name is a job.
 ids, keys = pr_jobs()

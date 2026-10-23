@@ -1,0 +1,42 @@
+# Test contract 🧪 (agent-platform v3 feature 4, TF7): on an agent's pull request, every test it adds
+# or changes fails on the base plus the tests and passes at the head. test-contract reads the tests'
+# declaration from the base (.github/agent-checks.yaml), never from the pull request.
+# Its own workflow, so a red here stays out of ci.yaml's conclusion, which policy-bot reads. The
+# factory requires it only on a task whose tester wrote a contract (merge.contractCheck); on any
+# other agent pull request it reports. A gate path (^\.github/).
+name: Test contract
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-contract:
+    name: Test contract 🧪
+    if: github.event.pull_request.user.login == 'ogenki-agents[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the base, the head and their merge base
+          persist-credentials: false
+
+      - name: Install tools
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: Judge the contract
+        uses: Smana/agent-platform/.github/actions/test-contract@108d23d38ac065bcbd3a0d8f1515b3364abd4440 # v0.19.0
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
