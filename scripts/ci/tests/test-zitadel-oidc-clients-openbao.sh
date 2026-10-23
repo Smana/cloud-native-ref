@@ -1076,6 +1076,7 @@ for f in cmd_sync oidc_config_payload store_write_and_mirror publish_project_id 
 done
 # Tested in test-zitadel-oidc-clients-mirror.sh; stubbed so no kubectl runs.
 force_sync_mirrored() { :; }
+ensure_machine_user() { :; }
 restart_rotated_consumers() { :; }   # test-zitadel-oidc-clients-restart.sh
 
 # Every OTHER thing cmd_sync calls, stubbed: this section is about the ONE new

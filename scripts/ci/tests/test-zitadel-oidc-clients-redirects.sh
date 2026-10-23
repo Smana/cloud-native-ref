@@ -79,6 +79,7 @@ reconcile_workforce_audience() { :; }
 # Same reasoning, for the OpenBao reconcile (#2045) cmd_sync now calls after
 # the loop: its own behaviour is covered by test-zitadel-oidc-clients-openbao.sh.
 reconcile_openbao_oidc() { :; }
+ensure_machine_user() { :; }
 
 # REGISTERED is what ZITADEL currently holds, one URI per line.
 REGISTERED=""
