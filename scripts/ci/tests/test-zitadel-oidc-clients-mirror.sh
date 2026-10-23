@@ -192,7 +192,7 @@ grep -q '^    force_sync_mirrored "\${mirrored_keys\[@\]}"' "$S" \
 
 grep -q -- '--mirror-openbao) MIRROR_OPENBAO="true"; shift ;;' "$S" && ok "--mirror-openbao is parsed" || bad "--mirror-openbao is not parsed"
 [ "$(grep -c 'store_write_and_mirror "\$key"' "$S")" -eq 4 ] \
-  && ok "all four writes (the consumers' create, converge, rotate; the machine user's) go through store_write_and_mirror" || bad "a consumer write bypasses the mirror"
+  && ok "all four writes (the consumers' create, converge, rotate; the machine user's) go through store_write_and_mirror" || bad "a consumer or machine-user write bypasses the mirror"
 
 # --mirror-openbao without --openbao-url is refused before any ZITADEL or cloud
 # call: every CLI the script could reach is a stub that records being called.

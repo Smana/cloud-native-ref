@@ -1472,15 +1472,18 @@ reconcile_openbao_oidc() {
 
 # One machine user: found or created, its secret stored (and mirrored) under $2.
 # $project_id is cmd_sync's, like mirrored_keys and failed_mirrors, which this
-# appends to. Written when anything changed: a new secret, or a stored client id
-# or project id that differs (gcp-0 mints a new project on every build). A
-# refused secret is rotated once; nothing restarts, because the App re-reads its
-# secret files at use (no Reloader runs in either repository). An unreadable
-# store stops it before ZITADEL mints a secret it returns only once (#2086).
+# appends to. Written when anything changed: a new secret, or a stored project id
+# that differs (gcp-0 mints a new project on every build). The client id stored
+# and probed is the one ZITADEL answered to the last PUT .../secret, never assumed
+# to be the user name: a stored id ZITADEL does not know is refused by the probe
+# and healed by the one rotation. A refused secret is rotated once; nothing
+# restarts, because the App re-reads its secret files at use (no Reloader runs in
+# either repository). An unreadable store stops it before ZITADEL mints a secret
+# it returns only once (#2086). Returns 1 on any failure: cmd_sync accumulates it.
 ensure_machine_user() {
     local -
     set +x
-    local name="${1}${APP_SUFFIX:-}" key="$2" id probe=0 stored='{}' secret="" rotate=false why="" pr=0 wrc=0
+    local name="${1}${APP_SUFFIX:-}" key="$2" id probe=0 stored='{}' secret="" cid="" rotate=false why="" pr=0 wrc=0
     id="$(api_or_fail POST /management/v1/users/_search \
         -d "$(jq -cn --arg n "$name" '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}')" \
         | jq -r --arg n "$name" 'first(.result[]? | select(.userName == $n) | .userId) // empty')" || return 1
@@ -1492,20 +1495,22 @@ ensure_machine_user() {
     fi
     [ "$probe" -eq 1 ] || stored="$(store_read "$key")" || return 1
     secret="$(stored_client_secret <<< "$stored")"
+    cid="$(stored_client_id <<< "$stored")"
 
     if [ -z "$id" ]; then
         rotate=true why="no such user"
     elif [ -z "$secret" ]; then
         rotate=true why="no stored secret"
-    elif why="$(printf '%s' "$secret" | probe_client_credentials "$name" 2>&1)"; then
+    elif why="$(printf '%s' "$secret" | probe_client_credentials "${cid:-$name}" 2>&1)"; then
         why=""
     else
         pr=$?
         if [ "$pr" -eq 1 ]; then
             rotate=true why="stored secret rejected"
         else
+            # Unknown is not stale: only the rotation is skipped.
             echo "WARN: ${name}: cannot check the stored secret (${why}); not rotating" >&2
-            return 0
+            why=""
         fi
     fi
 
@@ -1513,7 +1518,7 @@ ensure_machine_user() {
         echo "[dry-run] ${name} -- ${why}, would $([ -n "$id" ] || printf 'create it and ')generate a secret into ${key}"
         return 0
     fi
-    if [ "$rotate" = false ] && [ "$(stored_client_id <<< "$stored")" = "$name" ] \
+    if [ "$rotate" = false ] && [ -n "$cid" ] && [ -n "$secret" ] \
        && [ "$(jq -r '."project-id" // empty' <<< "$stored")" = "$project_id" ]; then
         echo "[ok     ] ${name} -- ${key} already converged"
         if [ "$APPLY" = "true" ]; then
@@ -1521,12 +1526,13 @@ ensure_machine_user() {
                 mirrored_keys+=("$key")
             else
                 failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+                return 1
             fi
         fi
         return 0
     fi
     if [ "$APPLY" != "true" ]; then
-        echo "[dry-run] ${name} -- would converge the client id and project id in ${key}"
+        echo "[dry-run] ${name} -- would converge the project id in ${key}"
         return 0
     fi
 
@@ -1540,10 +1546,14 @@ ensure_machine_user() {
         fi
         resp="$(api_or_fail PUT "/management/v1/users/${id}/secret" -d '{}')" || return 1
         secret="$(jq -r '.clientSecret // empty' <<< "$resp")"
-        [ -n "$secret" ] || { echo "[FAILED ] ${name}: ZITADEL returned no clientSecret" >&2; return 1; }
+        cid="$(jq -r '.clientId // empty' <<< "$resp")"
+        if [ -z "$secret" ] || [ -z "$cid" ]; then
+            echo "[FAILED ] ${name}: ZITADEL returned no clientId/clientSecret" >&2
+            return 1
+        fi
     fi
 
-    printf '%s' "$secret" | jq -Rs --arg id "$name" --arg proj "$project_id" \
+    printf '%s' "$secret" | jq -Rs --arg id "$cid" --arg proj "$project_id" \
         '{"client-id": $id, "client-secret": ., "project-id": $proj}' \
         | store_write_and_mirror "$key" || wrc=$?
     unset secret
@@ -1911,7 +1921,9 @@ cmd_sync() {
         created=$((created + 1))
     done
 
-    for u in ${MACHINE_USERS[@]+"${MACHINE_USERS[@]}"}; do ensure_machine_user "${u%%|*}" "${u#*|}"; done
+    # Accumulated like publish_failed: the restarts below still run.
+    local machine_failed=0 u
+    for u in ${MACHINE_USERS[@]+"${MACHINE_USERS[@]}"}; do ensure_machine_user "${u%%|*}" "${u#*|}" || machine_failed=1; done
 
     # Only now is headlamp-proxy guaranteed to exist, so only now can the
     # workforce provider be pinned to its client id. Deliberately after the loop
@@ -1949,6 +1961,7 @@ cmd_sync() {
     [ "$openbao_failed" -eq 0 ] || exit 1
     [ -z "$failed_mirrors" ] || exit 1
     [ "$publish_failed" -eq 0 ] || exit 1
+    [ "$machine_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in
