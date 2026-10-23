@@ -133,7 +133,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 | Namespaces | The host creates `agents`, `agent-system`, `agent-gateway`, `llm`, `llm-gateway`, `envoy-ai-gateway-system`, `envoy-gateway-system` and `merge-gate`, with their PSA labels (`agents` is `restricted`) |
 | OpenBao | Mounts `agents` and `merge-gate` (both clouds), with the policies in `opentofu/<cloud>/openbao/management` and the JWT auth roles at `jwt/${cluster_name}` from `opentofu/<cloud>/{eks,gke}/configure/openbao.tf` that the `agents-secrets` and `merge-gate-secrets` stores log in with |
 | Stores | `ai-native-ref` creates its own namespaced stores (`agents-secrets`, `merge-gate-secrets`); it reads the cluster-wide `openbao-platform` store only where it does today, and the CA from `openbao-ca` |
-| ZITADEL | The rooms and `roomctl` OIDC clients and the link-only GitHub IdP, provisioned by the host's scripts |
+| ZITADEL | The rooms and `roomctl` OIDC clients, the `factory-slack-app` machine user (client credentials, no project role; its client id, secret and project id at `agents/factory-slack-principal`), and the link-only GitHub IdP, provisioned by the host's scripts |
 | PKI | The OpenBao PKI role signs certificates for the broker's in-cluster and private names (F7) |
 | Workload identity | EKS Pod Identity (never IRSA) and GKE Workload Identity, through the `EPI` and `GCPWorkloadIdentity` compositions |
 
