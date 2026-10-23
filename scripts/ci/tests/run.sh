@@ -29,7 +29,7 @@ if ! "$probe" 2>/dev/null; then
 fi
 rm -f "$probe"
 
-pass=0 skip=0 fail=0 rc=0
+pass=0 skip=0 fail=0 rc=0 failed=""
 
 for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
   [ -e "$t" ] || continue
@@ -66,12 +66,18 @@ for t in "$TESTS"/test-*.sh "$TESTS"/test-*.py "$TESTS"/*/test-*.py; do
   else
     printf 'FAIL  %-42s (%ds)\n' "$name" "$SECONDS"
     # The output, not just the name: a red check whose body is one word costs a
-    # local re-run to learn anything from.
-    printf '%s\n' "$out" | sed 's/^/      /'
+    # local re-run to learn anything from. Repeated at the end: a reader that
+    # keeps only the tail (the agent checks' summary) loses it behind the PASS
+    # lines that follow.
+    block="$(printf '%s\n' "$out" | sed 's/^/      /')"
+    printf '%s\n' "$block"
+    failed="${failed}FAIL  $name"$'\n'"$block"$'\n'
     fail=$((fail + 1))
     rc=1
   fi
 done
+
+if [ -n "$failed" ]; then printf '\n%s' "$failed"; fi
 
 printf '%d passed, %d skipped, %d failed\n' "$pass" "$skip" "$fail"
 
