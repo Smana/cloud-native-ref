@@ -1,0 +1,67 @@
+# Dead external links (agent factory, merge gate classes MC4-MC6; a gate path, `^\.github/`).
+#
+# Nightly on main, and by hand. lychee checks the external targets of the Markdown docs;
+# findings.py keeps what is surely gone (404, 410, a name that does not resolve) and the run
+# uploads findings.json, which the factory's dead-links probe reads through the merger App. Two
+# consecutive runs must agree before a finding becomes a task.
+#
+# findings.json is uploaded on every run, `[]` when nothing is found or the scan errors: a missing
+# artifact makes the factory retry every minute. A scan that errors still fails the run, so the
+# probe (which needs two successful runs) starts no task on it.
+name: Dead links
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  LYCHEE_VERSION: "0.24.2"
+  LYCHEE_SHA256: "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a"  # pragma: allowlist secret
+
+jobs:
+  scan:
+    name: Scan external links
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install lychee
+        run: .github/scripts/dead-links/install-lychee.sh
+
+      # lychee exits 0 (nothing broken) or 2 (something broken); anything else is lychee failing.
+      - name: Scan
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # lychee reads github.com targets through the API
+        run: |
+          echo '[]' >findings.json
+          set +e
+          lychee --no-progress --format json --output lychee.json --max-retries 3 --timeout 20 \
+            --scheme https --scheme http \
+            --exclude-path docs/superpowers --exclude-path docs/specs --exclude-path website/content/docs/decisions \
+            'docs/**/*.md' 'website/content/**/*.md'
+          rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "lychee exited $rc" >&2; exit 1; }
+
+      - name: Findings
+        if: steps.scan.outcome == 'success'
+        run: |
+          python3 .github/scripts/dead-links/findings.py lychee.json >findings.new
+          mv findings.new findings.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: findings
+          path: findings.json
+          retention-days: 14
+          if-no-files-found: error
