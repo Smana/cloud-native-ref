@@ -8,19 +8,27 @@
 # findings.json is uploaded on every run, `[]` when nothing is found or the scan errors: a missing
 # artifact makes the factory retry every minute. A scan that errors still fails the run, so the
 # probe (which needs two successful runs) starts no task on it.
+#
+# external-links ("External links 🔗"): on a pull request, every external target it adds or
+# changes must answer 2xx after redirects. The dead-links class's holdout check (R17), not a
+# required check: a human's docs pull request does not wait on someone else's site. It runs on
+# pull_request with contents: read, so the head's code never sees a secret.
 name: Dead links
 
 on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths: ["**.md"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   LYCHEE_VERSION: "0.24.2"
@@ -28,7 +36,8 @@ env:
 
 jobs:
   scan:
-    name: Scan external links
+    name: Scan external links 🕸
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -65,3 +74,28 @@ jobs:
           path: findings.json
           retention-days: 14
           if-no-files-found: error
+
+  external-links:
+    name: External links 🔗
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install lychee
+        run: .github/scripts/dead-links/install-lychee.sh
+
+      - name: The pull request's external targets
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: .github/scripts/dead-links/changed-targets.sh "$BASE" >targets.txt
+
+      - name: Each one answers 2xx
+        run: |
+          if [ ! -s targets.txt ]; then echo "no external link target added or changed"; exit 0; fi
+          cat targets.txt
+          lychee --no-progress --max-retries 3 --timeout 20 --accept '200..=299' targets.txt

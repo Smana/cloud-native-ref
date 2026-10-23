@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# requires: python3
+# requires: python3 git
 #
 # Merge gate classes MC5: findings.py keeps 404, 410 and a name that does not resolve, and drops
 # 403, 429, 5xx, timeouts and a refused connection; the archive is upgraded to https. A fixture
@@ -50,5 +50,22 @@ sleep 1
 WAYBACK_API="http://127.0.0.1:$port/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/lychee.json" >"$d/arch.json" || fail "findings.py exited $?"
 arch=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[1].get("archive", ""))' "$d/arch.json")
 [ "$arch" = "https://web.archive.org/web/20261011195309/https://example.com/gone" ] || fail "archive: got '$arch', want the https snapshot"
+
+# changed-targets.sh: only the external targets a pull request adds or changes. lychee is stubbed
+# (--dump prints the URLs of the file), so the suite stays offline.
+mkdir "$d/bin" "$d/repo"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nfor f; do :; done\ngrep -oE "https?://[^ )>]+" "$f"\n' >"$d/bin/lychee"
+chmod +x "$d/bin/lychee"
+(
+  cd "$d/repo" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf '[old](https://example.com/old)\n' >a.md && git add a.md && git commit -qm base
+  git checkout -qb pr
+  printf '[old](https://example.com/old)\n[new](https://example.com/new)\n' >a.md
+  printf '[b](https://example.com/b)\n' >b.md
+  git add . && git commit -qm change
+) >/dev/null 2>&1
+ct=$(cd "$d/repo" && PATH="$d/bin:$PATH" bash "$HERE/../../../.github/scripts/dead-links/changed-targets.sh" main | tr '\n' ' ')
+[ "$ct" = "https://example.com/b https://example.com/new " ] || fail "changed-targets: got '$ct', want only the new and the added target"
 
 [ "$fails" -eq 0 ] && echo "ok  dead-links findings" || exit 1
