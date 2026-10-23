@@ -74,6 +74,9 @@ promtool = "3.15.0"
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
 hugo-extended = "0.168.0"
 kustomize = "5.8.3"
+# ShellCheck for "Check the shell scripts" and an agent's sandbox checks (agent-platform v3 feature 3):
+# one pin for both, which the apt package was not.
+shellcheck = "0.11.0"
 
 # Task runner (taskfile.yaml). Pinned here rather than installed separately so
 # the jdx/mise-action already in the job that calls `task`

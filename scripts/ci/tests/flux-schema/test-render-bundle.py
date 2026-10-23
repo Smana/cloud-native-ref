@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: python3 helm
 """Tests for render-bundle.py's `spec.valuesFrom` resolution.
 
 The second test harness in scripts/ci/flux-schema/, and it exists for the same

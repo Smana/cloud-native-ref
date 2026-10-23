@@ -1,0 +1,34 @@
+# .github/agent-checks.yaml: what an agent runs before it pushes, the CI's fast subset
+# (agent-platform v3 feature 3). A gate path. The harness reads it from the default branch, never
+# from the agent's branch. Every job of a pull_request workflow is a step's ci or a ciOnly entry
+# (scripts/ci/tests/test-agent-checks.py).
+version: 1
+timeoutMinutes: 8
+tools: [task, promtool, kustomize, pre-commit, shellcheck]
+definedBy: [taskfile.yaml, scripts/tasks.yaml, scripts/ci/, .pre-commit-config.yaml, mise.toml, flux/sources/ocirepo-ai-native-ref.yaml]
+steps:
+  - {name: overlay, run: ./scripts/ci/ai-overlay.sh --from-git, ci: "Kubernetes validation ☸", stopOnFailure: true, timeoutMinutes: 3}
+  - {name: suites, run: task ci:test, ci: "Kubernetes validation ☸"}
+  - {name: gate-invariants, run: ./scripts/ci/check-policy-gate-coverage.sh && ./scripts/ci/check-workflow-secrets.sh, ci: "Kubernetes validation ☸"}
+  - {name: vmrules, run: ./scripts/ci/validate-vmrules.sh, ci: "Kubernetes validation ☸"}
+  - {name: shellcheck, run: "find ./scripts \\( -type f -o -type l \\) -name '*.sh' -print0 | xargs -0 shellcheck -x -S warning", ci: "Check the shell scripts 💻"}
+  - {name: links, run: ./scripts/ci/validate-links.sh, ci: "Check the documentation links 🔗"}
+  - {name: doc-claims, run: ./scripts/ci/validate-doc-claims.sh, ci: "Check the documentation links 🔗"}
+  - {name: idp-topology, run: ./scripts/ci/validate-idp-topology.sh, ci: "Check the documentation links 🔗"}
+  - {name: openbao-policies, run: ./scripts/ci/validate-openbao-policies.sh, ci: "Check the documentation links 🔗"}
+  - {name: doc-paths, run: ./scripts/ci/verify-doc-paths.sh, ci: "Build the documentation site 📚"}
+  - {name: pre-commit, run: "SKIP=terraform_fmt,terraform_validate,terraform_tflint pre-commit run --all-files --show-diff-on-failure", ci: "Pre-commit checks 🛃"}
+ciOnly:
+  - {check: "Pre-commit checks 🛃", part: "the terraform hooks, the OpenBao module test", why: "OpenTofu provider and tflint plugin downloads beyond the egress"}
+  - {check: "Kubernetes validation ☸", part: "task ci:validate (the render, flux schema, polaris)", why: "about 20 chart hosts beyond the egress"}
+  - {check: "Kubernetes validation ☸", part: "the Docker suites", why: "no Docker daemon under gVisor"}
+  - {check: "Build the documentation site 📚", part: "the Hugo build", why: "Go's archive is on dl.google.com, beyond this repository's egress"}
+  - {check: "Security scanning 🔒", part: all, why: "Trivy's database, Checkov, TruffleHog's verification"}
+  - {check: "Upload SARIF results", part: all, why: "security-events: write, no checkout"}
+  - {check: "Rendered manifest diff 📝", part: all, why: "a render, and a diff against main"}
+  - {check: "Post the rendered diff comment", part: all, why: "pull-requests: write, no checkout"}
+  - {check: "Report a broken main 🚨", part: all, why: "runs on push to main only"}
+  - {check: "Validate Vector Log Parsing Configuration", part: "both variants", why: "Docker"}
+  - {check: "check-container-images/detect-changes", part: all, why: "builds container images: Docker"}
+  - {check: "check-container-images/build", part: all, why: "builds container images: Docker"}
+  - {check: "check-container-images/build-summary", part: all, why: "builds container images: Docker"}

@@ -9,6 +9,11 @@ tasks:
     desc: Run every shell and Python test suite the environment can satisfy
     cmds: ["{{.TASKFILE_DIR}}/ci/tests/run.sh"]
 
+  shellcheck:
+    desc: ShellCheck every script, symlinks included (the CI job's command; keep -type l)
+    cmds:
+      - find {{.ROOT_DIR}}/scripts \( -type f -o -type l \) -name "*.sh" -print0 | xargs -0 shellcheck -x -S warning
+
   links:
     desc: Resolve every relative Markdown link
     cmds: ["{{.TASKFILE_DIR}}/ci/validate-links.sh"]
