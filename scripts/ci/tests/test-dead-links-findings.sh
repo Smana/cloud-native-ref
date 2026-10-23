@@ -15,6 +15,15 @@ d="$(mktemp -d)"
 export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}" no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
 export GIT_CONFIG_NOSYSTEM=1
 trap 'kill "$stub" 2>/dev/null; rm -rf "$d"' EXIT
+# A stub listens when it accepts a connection, not after a fixed sleep: under gVisor the
+# interpreter alone can take longer than a second to start.
+ready() {
+  python3 -c 'import socket, sys, time
+for _ in range(100):
+    try: socket.create_connection(("127.0.0.1", int(sys.argv[1])), 0.2).close(); break
+    except OSError: time.sleep(0.1)
+else: sys.exit("stub on port %s never listened" % sys.argv[1])' "$1" || fail "stub on port $1 never listened"
+}
 
 cat >"$d/lychee.json" <<'JSON'
 {"error_map": {
@@ -58,7 +67,7 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PY
 python3 "$d/stub.py" "$port" & stub=$!
-sleep 1
+ready "$port"
 WAYBACK_API="http://127.0.0.1:$port/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/lychee.json" >"$d/arch.json" || fail "findings.py exited $?"
 arch=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[1].get("archive", ""))' "$d/arch.json")
 [ "$arch" = "https://web.archive.org/web/20261011195309/https://example.com/gone" ] || fail "archive: got '$arch', want the https snapshot"
@@ -86,7 +95,7 @@ http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PY
 port2=$((port + 1))
 python3 "$d/stub2.py" "$port2" & stub2=$!
-sleep 1
+ready "$port2"
 WAYBACK_API="http://127.0.0.1:$port2/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/shape.json" >"$d/shape-out.json" || fail "findings.py exited $?"
 kill "$stub2" 2>/dev/null
 shape=$(python3 -c 'import json,sys; print(" ".join(f["url"]+"|"+f["archive"] for f in json.load(open(sys.argv[1]))))' "$d/shape-out.json")
