@@ -85,6 +85,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install lychee
         run: .github/scripts/dead-links/install-lychee.sh
@@ -95,6 +96,8 @@ jobs:
         run: .github/scripts/dead-links/changed-targets.sh "$BASE" >targets.txt
 
       - name: Each one answers 2xx
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # read-only (contents: read); github.com rate limits
         run: |
           if [ ! -s targets.txt ]; then echo "no external link target added or changed"; exit 0; fi
           cat targets.txt

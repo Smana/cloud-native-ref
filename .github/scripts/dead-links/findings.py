@@ -15,6 +15,8 @@ overrides the availability endpoint (tests); WAYBACK_API=off skips the lookup.
 """
 import json
 import os
+import posixpath
+import re
 import socket
 import sys
 import time
@@ -26,10 +28,17 @@ WAYBACK = os.environ.get("WAYBACK_API", "https://archive.org/wayback/available")
 PACE = float(os.environ.get("WAYBACK_PACE", "5"))
 GONE = {404: "404", 410: "410"}
 lookups = {"left": 20}
+# The factory (agent-platform internal/factory/intake/deadlinks.go, keepable) refuses a whole run
+# over one finding outside these shapes, so such a finding is never emitted.
+ARCHIVE_RE = re.compile(r"^https://web\.archive\.org/web/[0-9]{1,14}/https://[^\s<>()]+$")
+BAD_URL_CHARS = " \t\r\n<>()"
 
 
 def nxdomain(url):
-    host = urllib.parse.urlsplit(url).hostname
+    try:
+        host = urllib.parse.urlsplit(url).hostname
+    except ValueError:
+        return False
     if not host:
         return False
     try:
@@ -63,17 +72,42 @@ def snapshot(url):
     return snap if snap.startswith("https://web.archive.org/web/") else ""
 
 
+def shaped(file, url):
+    """keepable's checks: a clean relative path of at most 512 characters; an http(s) URL that,
+    for https, has a host, no userinfo, at most 2048 characters and none of ` \\t\\r\\n<>()`."""
+    if posixpath.normpath(file) != file or file.startswith(("/", "..")) or len(file) > 512:
+        return False
+    try:
+        u = urllib.parse.urlsplit(url)
+        u.port  # noqa: B018 - raises ValueError on a malformed port
+    except ValueError:
+        return False
+    if u.scheme not in ("http", "https"):
+        return False
+    if u.scheme == "http":
+        return True
+    return bool(u.netloc and u.hostname) and "@" not in u.netloc and len(url) <= 2048 \
+        and not any(c in url for c in BAD_URL_CHARS)
+
+
 def main(path):
     report = json.load(open(path))
     out = []
     for file, entries in sorted((report.get("error_map") or {}).items()):
         for e in entries:
             url, code = e["url"], e.get("status", {}).get("code")
+            # lychee normalises a bare host to a trailing "/": the factory drops that finding as no
+            # link target of its file, which is the right outcome, so no special case here.
+            if not shaped(file.removeprefix("./"), url):
+                continue
             status = GONE.get(code) or ("nxdomain" if code is None and nxdomain(url) else None)
             if status is None:
                 continue
             f = {"file": file.removeprefix("./"), "line": max(1, (e.get("span") or {}).get("line") or 1), "url": url, "status": status,
-                 "archive": snapshot(url)}  # the factory's decoder is strict: all five keys, archive "" when none
+                 "archive": ""}
+            snap = snapshot(url)
+            if ARCHIVE_RE.match(snap) and snap.endswith("/" + url) and len(snap) <= 2048:
+                f["archive"] = snap  # the factory's decoder is strict: all five keys, archive "" when none
             out.append(f)
     out.sort(key=lambda f: (f["file"], f["url"]))
     json.dump(out, sys.stdout, indent=1)

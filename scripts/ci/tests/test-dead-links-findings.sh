@@ -51,6 +51,34 @@ WAYBACK_API="http://127.0.0.1:$port/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/lych
 arch=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[1].get("archive", ""))' "$d/arch.json")
 [ "$arch" = "https://web.archive.org/web/20261011195309/https://example.com/gone" ] || fail "archive: got '$arch', want the https snapshot"
 
+# The factory refuses a whole run over one out-of-shape finding: such entries are never emitted,
+# and an http:// snapshot (or one that is not of this URL) is dropped to "".
+cat >"$d/shape.json" <<'JSON'
+{"error_map": {"docs/b.md": [
+  {"url": "https://en.wikipedia.org/wiki/Foo_(bar)", "status": {"code": 404}, "span": {"line": 1}},
+  {"url": "https://user@example.com/x", "status": {"code": 404}, "span": {"line": 2}},
+  {"url": "https://example.com/ok", "status": {"code": 404}, "span": {"line": 3}},
+  {"url": "https://example.com/other", "status": {"code": 404}, "span": {"line": 4}}
+]}}
+JSON
+cat >"$d/stub2.py" <<'PY'
+import http.server, json, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(json.dumps({"archived_snapshots": {"closest": {"status": "200", "available": True,
+            "url": "http://web.archive.org/web/20261011195309/https://example.com/ok"}}}).encode())
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+port2=$((port + 1))
+python3 "$d/stub2.py" "$port2" & stub2=$!
+sleep 1
+WAYBACK_API="http://127.0.0.1:$port2/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/shape.json" >"$d/shape-out.json" || fail "findings.py exited $?"
+kill "$stub2" 2>/dev/null
+shape=$(python3 -c 'import json,sys; print(" ".join(f["url"]+"|"+f["archive"] for f in json.load(open(sys.argv[1]))))' "$d/shape-out.json")
+[ "$shape" = "https://example.com/ok|https://web.archive.org/web/20261011195309/https://example.com/ok https://example.com/other|" ] || fail "shape: got '$shape', want ok with its snapshot and other with none"
+
 # changed-targets.sh: only the external targets a pull request adds or changes. lychee is stubbed
 # (--dump prints the URLs of the file), so the suite stays offline.
 mkdir "$d/bin" "$d/repo"
