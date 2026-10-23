@@ -10,6 +10,10 @@ SUBJECT="$HERE/../../../.github/scripts/dead-links/findings.py"
 fails=0
 fail() { printf 'FAIL  %s\n' "$*" >&2; fails=$((fails + 1)); }
 d="$(mktemp -d)"
+# Under the agent checks: the stubs below are on 127.0.0.1, never through the egress proxy, and
+# the image's system git config (a commit-msg hook) would refuse the fixture commits.
+export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}" no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+export GIT_CONFIG_NOSYSTEM=1
 trap 'kill "$stub" 2>/dev/null; rm -rf "$d"' EXIT
 
 cat >"$d/lychee.json" <<'JSON'
@@ -29,6 +33,14 @@ JSON
 WAYBACK_API=off python3 "$SUBJECT" "$d/lychee.json" >"$d/out.json" || fail "findings.py exited $?"
 got=$(python3 -c 'import json,sys; print(" ".join(f["status"]+"="+f["url"] for f in json.load(open(sys.argv[1]))))' "$d/out.json")
 want="nxdomain=https://dead-links-fixture.invalid/x 404=https://example.com/gone 410=https://example.com/removed"
+# A name that does not resolve is only told apart from a resolver that does not answer when a
+# resolver answers: without one (a sandbox) the finding is rightly dropped.
+if ! python3 -c 'import socket
+try: socket.getaddrinfo("dead-links-fixture.invalid", 443)
+except socket.gaierror as e: raise SystemExit(e.errno != socket.EAI_NONAME)' 2>/dev/null; then
+  echo "note  no resolver answers here: the nxdomain case is not checked"
+  want="404=https://example.com/gone 410=https://example.com/removed"
+fi
 [ "$got" = "$want" ] || fail "findings: got '$got', want '$want'"
 
 keys=$(python3 -c 'import json,sys; print(sorted({",".join(sorted(f)) for f in json.load(open(sys.argv[1]))}))' "$d/out.json")
