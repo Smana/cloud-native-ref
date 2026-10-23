@@ -114,6 +114,16 @@ PUT_CLIENT_ID=""; run
 check "no clientId answered: exit 1, nothing written" "1 none" "$rc $(written)"
 PUT_CLIENT_ID=factory-slack-app
 
+echo "== 4b2. a stored secret with no client id is invalid: rotated once, the answered id stored, never probed with an empty id =="
+STORED='{"client-secret":"STOREDSECRET","project-id":"proj-1"}'; ACCEPT=0  # pragma: allowlist secret
+run
+check "rotated" "PUT /management/v1/users/ID/secret" "$(calls | grep PUT | sort -u)"
+check "not probed" absent "$([ -e "$T/probed-as" ] && echo probed || echo absent)"
+check "the answered client id stored" factory-slack-app "$(jq -r '."client-id"' "$T/written")"
+STORED='{"client-id":"","client-secret":"STOREDSECRET","project-id":"proj-1"}'; run  # pragma: allowlist secret
+check "empty client id: rotated, id stored" "PUT factory-slack-app" "$(calls | grep PUT | cut -d" " -f1 | sort -u) $(jq -r '."client-id"' "$T/written")"
+STORED="$OKSTORE"
+
 echo "== 4c. cannot tell: no rotation, but the project id converges and the mirror is retried =="
 ACCEPT=2; STORED='{"client-id":"factory-slack-app","client-secret":"STOREDSECRET","project-id":"old"}'  # pragma: allowlist secret
 run

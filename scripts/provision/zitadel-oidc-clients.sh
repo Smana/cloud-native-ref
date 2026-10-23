@@ -1499,9 +1499,10 @@ ensure_machine_user() {
 
     if [ -z "$id" ]; then
         rotate=true why="no such user"
-    elif [ -z "$secret" ]; then
-        rotate=true why="no stored secret"
-    elif why="$(printf '%s' "$secret" | probe_client_credentials "${cid:-$name}" 2>&1)"; then
+    elif [ -z "$secret" ] || [ -z "$cid" ]; then
+        # No client id to probe with, and none to store but ZITADEL's own answer.
+        rotate=true why="no stored secret or client id"
+    elif why="$(printf '%s' "$secret" | probe_client_credentials "$cid" 2>&1)"; then
         why=""
     else
         pr=$?
