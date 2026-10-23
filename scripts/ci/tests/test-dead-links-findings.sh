@@ -69,7 +69,8 @@ PY
 python3 "$d/stub.py" "$port" & stub=$!
 ready "$port"
 WAYBACK_API="http://127.0.0.1:$port/" WAYBACK_PACE=0 python3 "$SUBJECT" "$d/lychee.json" >"$d/arch.json" || fail "findings.py exited $?"
-arch=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[1].get("archive", ""))' "$d/arch.json")
+# By URL, not by position: without a resolver the nxdomain finding is not there to come first.
+arch=$(python3 -c 'import json,sys; print(next((f.get("archive", "") for f in json.load(open(sys.argv[1])) if f["url"] == "https://example.com/gone"), ""))' "$d/arch.json")
 [ "$arch" = "https://web.archive.org/web/20261011195309/https://example.com/gone" ] || fail "archive: got '$arch', want the https snapshot"
 
 # The factory refuses a whole run over one out-of-shape finding: such entries are never emitted,
