@@ -59,7 +59,7 @@ cosign = "3.1.4"
 # mise's registry maps this to aqua:prometheus/prometheus — promtool ships
 # inside the prometheus release archive — but the entry is keyed `promtool` so
 # that `mise install promtool` and `mise which promtool` both honour the pin.
-promtool = "3.15.0"
+promtool = "3.15.1"
 
 # amtool renders the Slack notification templates against fixture payloads
 # (scripts/ci/validate-alertmanager-templates.sh) with no cluster and no running
