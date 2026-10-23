@@ -57,6 +57,7 @@ cat >"$d/shape.json" <<'JSON'
 {"error_map": {"docs/b.md": [
   {"url": "https://en.wikipedia.org/wiki/Foo_(bar)", "status": {"code": 404}, "span": {"line": 1}},
   {"url": "https://user@example.com/x", "status": {"code": 404}, "span": {"line": 2}},
+  {"url": "https://example.com/100%", "status": {"code": 404}, "span": {"line": 5}},
   {"url": "https://example.com/ok", "status": {"code": 404}, "span": {"line": 3}},
   {"url": "https://example.com/other", "status": {"code": 404}, "span": {"line": 4}}
 ]}}

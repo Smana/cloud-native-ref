@@ -87,7 +87,8 @@ def shaped(file, url):
     if u.scheme == "http":
         return True
     return bool(u.netloc and u.hostname) and "@" not in u.netloc and len(url) <= 2048 \
-        and not any(c in url for c in BAD_URL_CHARS)
+        and not any(c in url for c in BAD_URL_CHARS) \
+        and not re.search(r"%(?![0-9A-Fa-f]{2})", url)  # Go's url.Parse refuses a bare %
 
 
 def main(path):
