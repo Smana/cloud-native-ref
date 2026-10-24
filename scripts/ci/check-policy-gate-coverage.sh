@@ -22,10 +22,11 @@ if canon is None:
 gates = canon["if"]["no_changed_files"]["paths"]
 errors = []
 
+# Every bot rule, Renovate's included: the factory's deps-patch reads it (merge gate R47).
 agent_logins = re.compile(r"\[bot\]$")
 for r in rules:
     users = (r.get("if", {}).get("has_author_in") or {}).get("users", [])
-    if not any(agent_logins.search(u) and u != "renovate[bot]" for u in users):
+    if not any(agent_logins.search(u) for u in users):
         continue
     have = set((r.get("if", {}).get("no_changed_files") or {}).get("paths", []))
     missing = [g for g in gates if g not in have]
