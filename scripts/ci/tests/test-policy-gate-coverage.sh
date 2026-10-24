@@ -20,6 +20,10 @@ policy:
 approval_rules:
   - name: human-authored
     if: {has_author_in: {users: [Smana]}}
+  - name: renovate
+    if:
+      has_author_in: {users: ["renovate[bot]"]}
+      no_changed_files: {paths: ['^\.policy\.yml$', '^tooling/base/agent-factory/']}
   - name: "low-risk: docs-links"
     if:
       has_author_in: {users: ["ogenki-agents[bot]"]}
@@ -55,6 +59,18 @@ d="$(tree)"
 sed -i "0,/'^tooling\/base\/agent-factory\/', '^docs/s//'^docs/" "$d/.policy.yml"
 out="$(REPO_ROOT="$d" SENTINELS=".policy.yml" bash "$SUBJECT" 2>&1)" && fail "a rule missing a gate regex fails"
 grep -q 'low-risk: docs-links' <<<"$out" || fail "the failure names the rule"
+
+# R47: the renovate rule is held to the gate list like any bot rule.
+d="$(tree)"
+python3 - "$d/.policy.yml" <<'PYEOF'
+import sys, yaml
+p = sys.argv[1]
+y = yaml.safe_load(open(p))
+next(r for r in y["approval_rules"] if r["name"] == "renovate")["if"].pop("no_changed_files")
+yaml.safe_dump(y, open(p, "w"))
+PYEOF
+out="$(REPO_ROOT="$d" SENTINELS=".policy.yml" bash "$SUBJECT" 2>&1)" && fail "a renovate rule without the gate list fails (R47)"
+grep -q "rule 'renovate' lacks gate paths" <<<"$out" || fail "the failure names the renovate rule"
 
 # No overlay (AI split S3): the child loop is skipped, said out loud, and the rest still runs.
 d="$(tree)"
