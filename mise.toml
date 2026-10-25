@@ -17,7 +17,7 @@ trivy = "0.76.1"
 # left to whatever is on PATH so CI and a local `pre-commit run -a` lint with
 # the same binary. The *plugin* version is separate — `.tflint.hcl` pins
 # ruleset.aws, which tflint downloads from GitHub releases on `--init`.
-tflint = "0.64.0"
+tflint = "0.65.0"
 "ubi:terramate-io/terramate" = "0.17.3"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
