@@ -46,6 +46,9 @@ cat >"$T/bin/terramate" <<EOF
 #!/usr/bin/env bash
 [ "\$1" != --stub-probe ] || { echo stub; exit 0; }
 echo "\$*" >>"$T/destroys"
+# Stands in for terramate-destroy-confirm.sh's interactive "y": it records the
+# confirmation in the marker file, exactly as the real script does.
+[ -z "\${STUB_CONFIRM:-}" ] || touch "\$TM_DESTROY_MARKER"
 EOF
 # Never called with TM_CLOUD=gcp; stubbed so a regression cannot reach AWS either.
 cat >"$T/bin/aws" <<EOF
@@ -125,6 +128,23 @@ destroys() { # $1 = expected walks, $2 = case, then env assignments
 }
 destroys 1 "a clean teardown with the network gone" EMPTY=1
 destroys 2 "a teardown with the network still standing" NETWORK_UP=1
+
+# The interactive route: no TM_DESTROY_CONFIRMED, the destroy was confirmed at the
+# /dev/tty prompt (marker file). The sweep must still run; with no confirmation
+# at all (and a stale marker from an earlier run) it must not.
+sweeps() { # $1 = expected sweeps, $2 = case, then env assignments
+  local want="$1" what="$2"; shift 2
+  : >"$T/calls"
+  require_stubs
+  env -u TM_DESTROY_CONFIRMED "$@" TM_CLOUD=gcp TM_DESTROY_MARKER="$T/marker" EMPTY=1 \
+    bash "$ROOT/scripts/ops/teardown/teardown.sh" >/dev/null 2>&1
+  n="$(grep 'forwarding-rules list' "$T/calls" | grep -c 'description~kubernetes.io/service-name')"
+  [ "$n" -eq "$want" ] || f "$what: expected $want sweep run(s), got $n"
+}
+rm -f "$T/marker"
+sweeps 1 "an interactive confirm" STUB_CONFIRM=1
+rm -f "$T/marker"; touch "$T/marker"
+sweeps 0 "no confirmation this run (stale marker)"
 
 [ "$fails" -eq 0 ] && echo PASS
 exit "$fails"

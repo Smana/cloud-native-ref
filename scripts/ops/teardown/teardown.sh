@@ -32,6 +32,8 @@
 #   scripts/ops/teardown/teardown.sh --verify-only   # skip the destroy, just report what is left
 #
 # TM_DESTROY_CONFIRMED=true skips the interactive prompt, for unattended runs.
+# An interactive "y" (terramate-destroy-confirm.sh) leaves a marker file instead;
+# either counts as a confirmed destroy for the GKE LB sweep below.
 set -o nounset
 set -o pipefail
 
@@ -98,7 +100,13 @@ destroy_walk() {
   return "$rc"
 }
 
+# Same default as terramate-destroy-confirm.sh. Cleared first so a marker left by
+# an earlier run cannot pass for this run's confirmation.
+DESTROY_MARKER="${TM_DESTROY_MARKER:-/tmp/.terramate-destroy-confirmed-${USER:-$(id -u)}}"
+export TM_DESTROY_MARKER="$DESTROY_MARKER"
+
 if [ "$VERIFY_ONLY" -eq 0 ]; then
+  [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ] || rm -f "$DESTROY_MARKER"
   echo "=== destroying (TM_CLOUD=${CLOUDS}) ==="
   destroy_walk
   destroy_rc=$?
@@ -148,7 +156,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   # confirmed teardown, and only once no GKE cluster is left in the project (the
   # script refuses otherwise). Retried only while the network stands, like the
   # AWS VPC check above: a clean teardown must not re-run the whole destroy.
-  if wants gcp && [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
+  if wants gcp && { [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ] || [ -e "$DESTROY_MARKER" ]; }; then
     _project="${GCP_PROJECT:-ogenki-435905}"
     _network="${GCP_NETWORK:-vpc-europe-west4-dev}"
     echo "=== sweeping the LoadBalancer leftovers GKE left in ${_project} ==="

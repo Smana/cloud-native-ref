@@ -24,7 +24,8 @@ if [ "${TM_DESTROY_CONFIRMED:-false}" = "true" ]; then
   exit 0
 fi
 
-MARKER="/tmp/.terramate-destroy-confirmed-${USER:-$(id -u)}"
+# teardown.sh reads the same marker to learn the destroy was confirmed here.
+MARKER="${TM_DESTROY_MARKER:-/tmp/.terramate-destroy-confirmed-${USER:-$(id -u)}}"
 TTL_SECONDS=600
 
 if [ -f "$MARKER" ]; then
