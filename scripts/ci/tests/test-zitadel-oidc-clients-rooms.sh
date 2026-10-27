@@ -189,6 +189,7 @@ reconcile_openbao_oidc() { :; }
 force_sync_mirrored() { :; }
 ensure_machine_user() { :; }
 restart_rotated_consumers() { :; } # its own suite: test-zitadel-oidc-clients-restart.sh
+restart_rooms_proxy() { :; }       # its own suite: test-zitadel-onboarding.sh
 mirror_read() { :; }               # previous_client_id's fallback: test-zitadel-oidc-clients-previous-id.sh
 store_probe() { return 0; }
 store_read() { printf '%s' "$p"; }

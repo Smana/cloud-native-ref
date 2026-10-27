@@ -274,6 +274,10 @@ script "deploy" {
         # One flag list per sync, expanded by the real call AND the recovery
         # printed when ZITADEL is late: a hand re-run missing the OpenBao flags
         # leaves every ExternalSecret on the dead directory's clients.
+        # The owners list in git: the owner's call on who holds which role and which
+        # GitHub account is theirs, applied on every deploy (grants by the client sync,
+        # GitHub links by the step after it).
+        OWNERS_FILE="$${ROOT}/scripts/provision/zitadel-owners.yaml"
         IDP_SYNC_ARGS=(
           --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
           --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200"
@@ -284,6 +288,7 @@ script "deploy" {
         CLIENT_SYNC_ARGS=(
           --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}"
           --workforce-pool "$${WORKFORCE_POOL}"
+          --owners "$${OWNERS_FILE}"
           --openbao-url "https://bao.$${PRIVATE_DOMAIN}:8200"
           --openbao-root-token-secret openbao-priv-gcp-root-token
           --openbao-ca-file "$${ROOT}/opentofu/gcp/gke/configure/.tls/ca.pem"
@@ -338,6 +343,13 @@ script "deploy" {
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync "$${CLIENT_SYNC_ARGS[@]}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
+
+        # After the IdP and the role sync: grants are done, now the GitHub links.
+        echo "== linking the owners' GitHub accounts"
+        IDP_URL="https://auth.$${PUBLIC_DOMAIN}" \
+          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" link-owners --owners "$${OWNERS_FILE}" \
+            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+          echo "[warn] linking the owners' GitHub accounts failed; re-run: IDP_URL=https://auth.$${PUBLIC_DOMAIN} scripts/provision/zitadel-idp.sh link-owners --owners $${OWNERS_FILE} --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
 
         echo "== granting access to the secrets it just created"
         bash "$${ROOT}/scripts/provision/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true

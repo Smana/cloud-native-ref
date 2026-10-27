@@ -1,0 +1,20 @@
+# The platform owners: who holds which ZITADEL project role, and which GitHub
+# account is linked to their ZITADEL user. Applied on every deploy, after the
+# IdP and the role sync (zitadel-oidc-clients.sh --owners grants the roles,
+# zitadel-idp.sh link-owners links GitHub).
+#
+# Who holds a role is the owner's call, not the repo's. THIS FILE IS THAT CALL,
+# MADE IN GIT: an entry here is the owner deciding, a PR here is the owner
+# changing their mind. Nobody gets a role by being in the directory.
+#
+#   loginName    the ZITADEL login name, the Google Workspace email
+#   githubLogin  the GitHub account to link (a link to a different account is
+#                refused and reported, never replaced)
+#   roles        project roles: admin, backend, frontend, data, agents-admin, agents-member
+#
+# A user who has not logged in yet does not exist in ZITADEL: their entry is
+# skipped with a message and applied by the next deploy.
+owners:
+  - loginName: smaine.kahlouch@ogenki.io
+    githubLogin: Smana
+    roles: [admin, agents-admin, agents-member]

@@ -547,7 +547,7 @@ out="$(rotate "$NEW_GH_SECRET" --apply)"
 check "rotate without IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "rotate without IdP: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
 
-# 22. link-github: an admin links a Google-only user's GitHub account (#2269).
+# 22. link-github: an admin links a Google-only user's GitHub account (the v1 login has no add-IdP page).
 link() { # <loginName> <githubLogin> [args]; same output contract as sync()
     local out rc
     out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
@@ -582,5 +582,55 @@ reset_state
 out="$(link alice@ogenki.io alice-gh --apply)"
 check "link without a GitHub IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "link without a GitHub IdP: names sync" "1" "$(count 'run sync first' "$out")"
+
+# 23. link-owners: the owners list in git, applied after the IdP and the role sync.
+cat > "$S/owners.yaml" <<'Y'
+owners:
+  - {loginName: ghost@ogenki.io, githubLogin: ghost-gh, roles: [admin]}
+  - {loginName: alice@ogenki.io, githubLogin: alice-gh, roles: [admin, agents-member]}
+Y
+link_owners() { # [args]; same output contract as sync()
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" link-owners --owners "$S/owners.yaml" --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+converge
+echo '{"login":"ghost-gh","id":777}' > "$S/github/ghost-gh"
+echo '{"login":"Alice-GH","id":4242}' > "$S/github/alice-gh"
+out="$(link_owners --apply)"
+check "owners: exits 0 although the first user has no ZITADEL account yet" "rc=0" "$(tail -1 <<< "$out")"
+check "owners: the unknown user is skipped with a clear message" "1" "$(count '^\[skip   \] ghost@ogenki.io .*first login' "$out")"
+check "owners: the known user is linked, with the numeric id" '[{"idpId":"idp-github","userId":"4242","userName":"Alice-GH","user":"u-alice"}]' "$(jq -c . "$S/links.json")"
+: > "$S/calls.log"
+out="$(link_owners --apply)"
+check "owners: a second run is ok and writes nothing" "rc=0 0" "$(tail -1 <<< "$out") $(calls '/links$')"
+echo '{"login":"mallory","id":666}' > "$S/github/mallory"
+cat > "$S/owners.yaml" <<'Y'
+owners:
+  - {loginName: alice@ogenki.io, githubLogin: mallory, roles: [admin]}
+Y
+out="$(link_owners --apply)"
+check "owners: a link to a different account is refused and reported" "1 1" "$(count '^rc=[1-9]' "$out") $(count 'already linked to GitHub Alice-GH \(4242\), not mallory' "$out")"
+check "owners: the existing link is kept" '["4242"]' "$(jq -c '[.[].userId]' "$S/links.json")"
+cat > "$S/owners.yaml" <<'Y'
+owners:
+  - {loginName: alice@ogenki.io, githubLogin: mallory, roles: [admin]}
+  - {loginName: ghost@ogenki.io, githubLogin: ghost-gh, roles: [admin]}
+Y
+out="$(link_owners --apply)"
+check "owners: one refusal does not stop the next entries" "1" "$(count '^\[skip   \] ghost@ogenki.io' "$out")"
+cat > "$S/owners.yaml" <<'Y'
+owners:
+  - {loginName: alice@ogenki.io, githubLogin: alice-gh, roles: [admin]}
+Y
+echo '[]' > "$S/links.json"; : > "$S/calls.log"
+out="$(link_owners)"
+check "owners dry run: plans the link, exits 0, writes nothing" "rc=0 1 0" "$(tail -1 <<< "$out") $(count 'would link alice@ogenki.io' "$out") $(calls '/links$')"
+reset_state
+out="$(link_owners --apply)"
+check "owners without a GitHub IdP: skipped, not a failure" "rc=0 1" "$(tail -1 <<< "$out") $(count '^\[skip   \] .*GitHub' "$out")"
+out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" bash "$SCRIPT" link-owners --cluster aws-0 --cloud aws 2>&1; echo "rc=$?")"
+check "owners without --owners: usage, exit 2" "rc=2" "$(tail -1 <<< "$out")"
 
 exit "$fail"

@@ -19,7 +19,7 @@ load_function() {
     [ -n "$body" ] || { echo "could not extract ${1}() from $2" >&2; exit 1; }
     eval "$body"
 }
-for f in ensure_machine_user stored_client_id stored_client_secret probe_client_credentials cmd_sync; do load_function "$f" "$SRC"; done
+for f in machine_user_id ensure_machine_user stored_client_id stored_client_secret probe_client_credentials cmd_sync; do load_function "$f" "$SRC"; done
 eval "$(sed -n '/^MACHINE_USERS=(/,/^)/p' "$SRC")"
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"

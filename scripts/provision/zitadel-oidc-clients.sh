@@ -45,7 +45,7 @@
 #   # a cluster that HOSTS its own identity provider
 #   zitadel-oidc-clients.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F [--mirror-openbao]]
-#     [--grant-admin EMAIL] [--grant ROLE=EMAIL ...]
+#     [--grant-admin EMAIL] [--grant ROLE=EMAIL ...] [--owners FILE]
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
 #
 #   # a SECONDARY cluster consuming the primary cloud's identity provider:
@@ -131,8 +131,14 @@ GRANT_ADMIN=""
 # A RESTORED directory too: it carries the agents-* roles with nobody holding
 # them, and rooms answer "forbidden" until the owner re-runs the sync with
 #   --grant agents-admin=<email> --grant agents-member=<email>
-# The deploy passes no grant: who holds a role is the owner's call, not the repo's.
+# The deploy passes no --grant: who holds a role is the owner's call, not the repo's.
+# --owners FILE is that call made in git (scripts/provision/zitadel-owners.yaml): the
+# deploy passes it, and every entry's roles are granted on every sync. A user who has
+# not logged in yet is skipped with a message, not a failure.
 GRANTS=()
+OWNERS_FILE=""
+# Set by apply_owner_grants only: an absent user is a skip there, a failure for --grant.
+GRANT_MISSING_OK=false
 
 # Empty means reconcile_openbao_oidc is a no-op: the consumer call on a
 # secondary cluster. A cluster hosting its own directory (aws-0's stage 4,
@@ -155,6 +161,7 @@ while [ $# -gt 0 ]; do
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
         --grant) GRANTS+=("$2"); shift 2 ;;
+        --owners) OWNERS_FILE="$2"; shift 2 ;;
         --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
         --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
         --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
@@ -188,6 +195,17 @@ for g in "${GRANTS[@]+"${GRANTS[@]}"}"; do
         *) echo "--grant takes <role>=<email>; got '${g}'" >&2; exit 2 ;;
     esac
 done
+
+# The owners list: parsed and checked here too, before the PAT resolve can write.
+if [ -n "$OWNERS_FILE" ]; then
+    # shellcheck source=scripts/lib/zitadel-owners.sh
+    . "$(dirname "$0")/../lib/zitadel-owners.sh"
+    OWNERS_JSON="$(owners_json "$OWNERS_FILE")" || exit 2
+    while read -r r; do
+        printf '%s\n' "${ZITADEL_PROJECT_ROLES[@]}" | grep -qxF -- "$r" \
+            || { echo "${OWNERS_FILE}: unknown role '${r}'; one of: ${ZITADEL_PROJECT_ROLES[*]}" >&2; exit 2; }
+    done < <(jq -r '.[].roles[]' <<< "$OWNERS_JSON")
+fi
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
 # one receives the client secrets this script writes. They are the same cloud
@@ -519,6 +537,9 @@ grant_role() {
     resp="$(search_all /management/v1/users/_search)" || return 1
     user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)" || return 1
     if [ -z "$user_id" ]; then
+        if [ "${GRANT_MISSING_OK:-false}" = true ]; then
+            echo "[skip   ] ${email} has no ZITADEL user yet (first login pending); '${role}' is granted by the next deploy"; return 0
+        fi
         echo "[FAILED ] no ZITADEL user for ${email}: they must log in once first" >&2; return 1
     fi
     resp="$(search_all /management/v1/users/grants/_search)" || return 1
@@ -539,6 +560,21 @@ grant_role() {
             || { echo "[FAILED ] could not grant '${role}' to ${email}" >&2; return 1; }
     fi
     echo "[granted] '${role}' to ${email}"
+}
+
+# Grant every role of every owner in the list (--owners). A user who does not exist
+# yet is skipped by grant_role; any other failure is reported and fails the list,
+# after every entry was tried.
+apply_owner_grants() {
+    local project_id="$1" entry email role failed=0
+    [ -n "${OWNERS_FILE:-}" ] || return 0
+    while read -r entry; do
+        email="$(jq -r .loginName <<< "$entry")"
+        while read -r role; do
+            GRANT_MISSING_OK=true grant_role "$role" "$email" "$project_id" || failed=1
+        done < <(jq -r '.roles[]' <<< "$entry")
+    done < <(owners_json "$OWNERS_FILE" | jq -c '.[]')
+    return "$failed"
 }
 
 # "Assert Roles on Authentication", and it is the flag every SSO consumer on this
@@ -1276,6 +1312,42 @@ restart_rotated_consumers() {
     done
 }
 
+# The rooms oauth2-proxy reads its client id from a Secret at start. A pod that
+# started before its ExternalSecret synced the new client kept the old id (400 at
+# login), so a created or repaired rooms-proxy client restarts it, once the Secret
+# carries the id. agent-system's Deployment arrives with ai-native-ref and may not
+# exist yet: then it starts on the new id by itself. Like restart_rotated_consumers,
+# only with kubectl on $CLUSTER and only on --apply.
+restart_rooms_proxy() {
+    local id="$1" ns=agent-system dep=rooms-oauth2-proxy json secrets s deadline
+    [ "$APPLY" = "true" ] || return 0
+    kubectl get configmap -n flux-system -o name 2>/dev/null | grep -Eq -- "-${CLUSTER}-vars\$" || {
+        echo "WARN: kubectl does not point at ${CLUSTER}; restart deploy/${dep} in ${ns} by hand once its Secret carries client ${id}" >&2
+        return 0
+    }
+    json="$(kubectl get deployment "$dep" -n "$ns" -o json 2>/dev/null)" || {
+        echo "[skip   ] deploy/${dep} not in ${ns} yet; it starts on client ${id} by itself"; return 0
+    }
+    secrets="$(jq -r '[.spec.template.spec | (.containers // []) + (.initContainers // []) | .[]
+        | (.envFrom // [])[].secretRef.name?, (.env // [])[].valueFrom.secretKeyRef.name?] | map(select(. != null)) | unique | .[]' <<< "$json")"
+    deadline=$(( $(date +%s) + ${OIDC_CONSUMER_WAIT_SECONDS:-180} ))
+    for s in $secrets; do
+        until secret_carries "$ns" "$s" "$id"; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "WARN: ${ns}/${s} does not carry client ${id} yet; deploy/${dep} keeps the old one." >&2
+                echo "      Once it does: kubectl rollout restart deployment ${dep} -n ${ns}" >&2
+                return 0
+            fi
+            sleep "${OIDC_CONSUMER_POLL_SECONDS:-5}"
+        done
+    done
+    if kubectl rollout restart deployment "$dep" -n "$ns" >/dev/null 2>&1; then
+        echo "[restart] deployment ${ns}/${dep} -- the rooms-proxy client is ${id}"
+    else
+        echo "WARN: could not restart deployment ${ns}/${dep}; it keeps the old client id" >&2
+    fi
+}
+
 # GCP hosting: publish this directory's project id for gke/configure, which
 # reads it at plan time (GCP parity GP-4). A fresh directory gets a new id
 # every build, and the committed one would otherwise come back on the next
@@ -1480,13 +1552,18 @@ reconcile_openbao_oidc() {
 # restarts, because the App re-reads its secret files at use (no Reloader runs in
 # either repository). An unreadable store stops it before ZITADEL mints a secret
 # it returns only once (#2086). Returns 1 on any failure: cmd_sync accumulates it.
+# The id of machine user $1, empty when there is none. The v1 search answers `id`.
+machine_user_id() {
+    api_or_fail POST /management/v1/users/_search \
+        -d "$(jq -cn --arg n "$1" '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}')" \
+        | jq -r --arg n "$1" 'first(.result[]? | select(.userName == $n) | .id // .userId) // empty'
+}
+
 ensure_machine_user() {
     local -
     set +x
     local name="${1}${APP_SUFFIX:-}" key="$2" id probe=0 stored='{}' secret="" cid="" rotate=false why="" pr=0 wrc=0
-    id="$(api_or_fail POST /management/v1/users/_search \
-        -d "$(jq -cn --arg n "$name" '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}')" \
-        | jq -r --arg n "$name" 'first(.result[]? | select(.userName == $n) | .userId) // empty')" || return 1
+    id="$(machine_user_id "$name")" || return 1
 
     store_probe "$key" || probe=$?
     if [ "$probe" -ge 2 ]; then
@@ -1540,10 +1617,21 @@ ensure_machine_user() {
     if [ "$rotate" = true ]; then
         local resp
         if [ -z "$id" ]; then
-            id="$(api_or_fail POST /management/v1/users/machine \
-                -d "$(jq -cn --arg n "$name" '{userName: $n, name: $n, accessTokenType: "ACCESS_TOKEN_TYPE_JWT"}')" \
-                | jq -r '.userId // empty')" || return 1
-            [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL returned no userId" >&2; return 1; }
+            # A 409 is "exists": a search that missed the user (a race, a page) is
+            # corrected by looking again, and the secret is generated for that user.
+            local created
+            if created="$(api_or_fail POST /management/v1/users/machine \
+                    -d "$(jq -cn --arg n "$name" '{userName: $n, name: $n, accessTokenType: "ACCESS_TOKEN_TYPE_JWT"}')" 2>&1)"; then
+                id="$(jq -r '.userId // empty' <<< "$created")"
+                [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL returned no userId" >&2; return 1; }
+            elif grep -q 'error: 409' <<< "$created"; then
+                id="$(machine_user_id "$name")" || return 1
+                [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL says it exists (409) but the search does not find it" >&2; return 1; }
+                echo "[exists ] ${name} (${id}) -- ZITADEL answered 409 on create, converging"
+            else
+                printf '%s\n' "$created" >&2
+                return 1
+            fi
         fi
         resp="$(api_or_fail PUT "/management/v1/users/${id}/secret" -d '{}')" || return 1
         secret="$(jq -r '.clientSecret // empty' <<< "$resp")"
@@ -1594,6 +1682,9 @@ cmd_sync() {
     for g in "${GRANTS[@]+"${GRANTS[@]}"}"; do
         grant_role "${g%%=*}" "${g#*=}" "$project_id" || exit 1
     done
+    # The owner's list: tried to the end, failing the sync after the clients ran.
+    local owners_failed=0
+    if [ -n "${OWNERS_FILE:-}" ]; then apply_owner_grants "$project_id" || owners_failed=1; fi
 
     local created=0 skipped=0 updated=0 converged=0 rotations=0
     # A failed mirror does not stop the loop, like openbao_failed below: the
@@ -1604,6 +1695,8 @@ cmd_sync() {
     # `<key>=<client id>` for each key whose stored client id this run replaced:
     # the only consumers restart_rotated_consumers restarts.
     local rotated=() prev_id
+    # The rooms-proxy client id when this run created it or repaired it.
+    local rooms_proxy_id=""
     # Fed to reconcile_openbao_oidc after the loop -- see the consumer's own
     # branches below for where each is set. Empty stays empty on a dry run
     # (reconcile_openbao_oidc treats that as its own skip) and on any topology
@@ -1728,6 +1821,7 @@ cmd_sync() {
                 else
                     app_set_redirect "$project_id" "$existing_id" "$redirect" "$token"
                     echo "[updated] ${name} -> ${redirect} (client secret untouched)"
+                    [ "$consumer" != "rooms-proxy" ] || rooms_proxy_id="$client_id"
                 fi
                 updated=$((updated + 1))
             fi
@@ -1919,6 +2013,7 @@ cmd_sync() {
         esac
         [ -z "$prev_id" ] || [ "$prev_id" = "$client_id" ] || rotated+=("${key}=${client_id}")
         echo "[created] ${name} -> ${key} (client ${client_id})"
+        [ "$consumer" != "rooms-proxy" ] || rooms_proxy_id="$client_id"
         created=$((created + 1))
     done
 
@@ -1945,6 +2040,11 @@ cmd_sync() {
     reconcile_openbao_oidc "$openbao_key" "$openbao_client_id" "$openbao_secret_sha" || openbao_failed=1
     force_sync_mirrored "${mirrored_keys[@]}"
     restart_rotated_consumers ${rotated[@]+"${rotated[@]}"}
+    # restart_rotated_consumers already rolled the proxy when its key was rotated.
+    case " ${rotated[*]:-} " in
+        *" agents-rooms-proxy="*) ;;
+        *) [ -z "$rooms_proxy_id" ] || restart_rooms_proxy "$rooms_proxy_id" ;;
+    esac
 
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}, rotated: ${rotations}"
@@ -1963,6 +2063,7 @@ cmd_sync() {
     [ -z "$failed_mirrors" ] || exit 1
     [ "$publish_failed" -eq 0 ] || exit 1
     [ "$machine_failed" -eq 0 ] || exit 1
+    [ "$owners_failed" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in

@@ -42,12 +42,20 @@
 #     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F --mirror-openbao]
 #   zitadel-idp.sh rotate-github-secret --cluster C --cloud aws|gcp [--client-id ID] [--apply] < secret
 #   zitadel-idp.sh link-github <loginName> <githubLogin> --cluster C --cloud aws|gcp [--apply]
+#   zitadel-idp.sh link-owners --owners FILE --cluster C --cloud aws|gcp [--apply]
 #
 # link-github adds a user's GitHub link as an admin (ADR-0056 allows it). ZITADEL's
 # self-service "link to an existing user" makes the user prove that user with a
-# password, which a Google-only user does not have: it ends on a password reset
-# (#2269). An existing link to the same GitHub account is ok; one to a different
-# account is refused, never replaced.
+# password, which a Google-only user does not have, and the v1 login has no
+# add-identity-provider page for a signed-in user: the flow dead-ends on a password
+# prompt (ZITADEL v4.19.4 source, login v1). An existing link to the same GitHub
+# account is ok; one to a different account is refused, never replaced.
+#
+# link-owners runs link-github for every entry of the owners list in git
+# (scripts/provision/zitadel-owners.yaml), after the IdP and the role sync. That list
+# is the owner's call on who is who, made in git. A user who has not logged in yet
+# has no ZITADEL user: skipped with a message, linked by the next deploy. A link to a
+# different account is reported and fails the run, after every entry was tried.
 #
 # rotate-github-secret reads the new GitHub OAuth App client secret on stdin
 # (never argv), checks its shape, then PUTs it to the GitHub IdP and writes
@@ -109,6 +117,9 @@ OPENBAO_ROOT_TOKEN_SECRET=""
 OPENBAO_CA_FILE=""
 MIRROR_OPENBAO="false"
 NEW_CLIENT_ID=""
+OWNERS_FILE=""
+# Set by link-owners: an absent user is a skip there, a failure for link-github.
+LINK_SKIP_MISSING="false"
 LINK_LOGIN=""
 GITHUB_LOGIN=""
 GITHUB_API="${GITHUB_API:-https://api.github.com}"
@@ -169,12 +180,13 @@ while [ $# -gt 0 ]; do
         --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
         --mirror-openbao) MIRROR_OPENBAO="true"; shift ;;
         --client-id) NEW_CLIENT_ID="$2"; shift 2 ;;
+        --owners) OWNERS_FILE="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 case "$COMMAND" in
-    sync|rotate-github-secret|link-github) ;;
+    sync|rotate-github-secret|link-github|link-owners) ;;
     *) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
@@ -187,6 +199,14 @@ if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
     echo "--mirror-openbao requires --openbao-url" >&2; exit 2
 fi
 [ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
+if [ "$COMMAND" = "link-owners" ]; then
+    [ -n "$OWNERS_FILE" ] || { echo "link-owners needs --owners FILE" >&2; exit 2; }
+    # shellcheck source=scripts/lib/zitadel-owners.sh
+    . "$(dirname "$0")/../lib/zitadel-owners.sh"
+    OWNERS_JSON="$(owners_json "$OWNERS_FILE")" || exit 2
+elif [ -n "$OWNERS_FILE" ]; then
+    echo "--owners is only for link-owners" >&2; exit 2
+fi
 if [ "$COMMAND" != "rotate-github-secret" ] && [ -n "$NEW_CLIENT_ID" ]; then
     echo "--client-id is only for rotate-github-secret" >&2; exit 2
 fi
@@ -603,6 +623,10 @@ link_github() {
         | api POST /v2/users -d @-)" \
         || { echo "[FAILED ] cannot search ZITADEL users" >&2; return 1; }
     matches="$(jq -r '[.result[]?.userId] | length' <<< "$resp")"
+    if [ "$matches" = "0" ] && [ "$LINK_SKIP_MISSING" = "true" ]; then
+        echo "[skip   ] ${LINK_LOGIN} has no ZITADEL user yet (first login pending); GitHub ${GITHUB_LOGIN} is linked by the next deploy"
+        return 0
+    fi
     [ "$matches" = "1" ] || { echo "[FAILED ] ${matches} ZITADEL users with login name '${LINK_LOGIN}', want exactly 1" >&2; return 1; }
     user_id="$(jq -r '.result[0].userId' <<< "$resp")"
 
@@ -629,6 +653,21 @@ link_github() {
         || { echo "[FAILED ] ZITADEL refused the link (is GitHub ${gh_login} linked to another user?)" >&2; return 1; }
     echo "[linked ] ${LINK_LOGIN} (${user_id}) to GitHub ${gh_login} (${gh_id})"
     echo "           roomctl rooms sees it once the broker's cached answer expires (5 minutes)"
+}
+
+# Link every owner of the list. One entry's failure does not stop the next ones.
+link_owners() {
+    local entry failed=0
+    if [ -z "$(idp_id_by_name "$GITHUB_IDP_NAME")" ]; then
+        echo "[skip   ] no '${GITHUB_IDP_NAME}' IdP in ZITADEL (no ${GITHUB_IDP_SECRET_KEY} in the store): GitHub links not applied"
+        return 0
+    fi
+    while read -r entry; do
+        LINK_LOGIN="$(jq -r .loginName <<< "$entry")"
+        GITHUB_LOGIN="$(jq -r .githubLogin <<< "$entry")"
+        LINK_SKIP_MISSING=true link_github || failed=1
+    done < <(jq -c '.[]' <<< "$OWNERS_JSON")
+    return "$failed"
 }
 
 # ── the broker's link reader ──────────────────────────────────────────────────
@@ -1018,6 +1057,11 @@ if [ "$COMMAND" = "link-github" ]; then
     link_github
     [ "$APPLY" = "true" ] || echo "This was a DRY RUN. Re-run with --apply."
     exit 0
+fi
+if [ "$COMMAND" = "link-owners" ]; then
+    rc=0; link_owners || rc=1
+    [ "$APPLY" = "true" ] || echo "This was a DRY RUN. Re-run with --apply."
+    exit "$rc"
 fi
 
 ensure_idp

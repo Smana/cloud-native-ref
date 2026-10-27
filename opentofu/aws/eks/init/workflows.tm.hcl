@@ -181,6 +181,7 @@ script "deploy" {
         IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync \
             --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
+            --owners "$${ROOT}/scripts/provision/zitadel-owners.yaml" \
             $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} || \
           echo "[warn] registration for ${global.eks_cluster_name} failed; re-run it by hand"
 
@@ -203,6 +204,15 @@ script "deploy" {
           { echo "[warn] IdP sync for ${global.eks_cluster_name} failed. Non-admin room access stays off until this runs;"
             echo "       re-run it by hand (fetch the CA with openbao-config.sh ca --ca-output-file <file>):"
             echo "         IDP_URL=$${IDP_URL} scripts/provision/zitadel-idp.sh sync --cluster ${global.eks_cluster_name} --cloud aws --region ${global.region} --apply --openbao-url ${global.openbao_url} --openbao-root-token-secret ${global.root_token_secret_name} --openbao-ca-file <file> --mirror-openbao"; }
+
+        # The owners' GitHub links, after the IdP sync (the GitHub IdP) and the
+        # client sync (the role grants). The list in git is the owner's call.
+        echo "== linking the owners' GitHub accounts"
+        IDP_URL="$${IDP_URL}" \
+          bash "$${ROOT}/scripts/provision/zitadel-idp.sh" link-owners \
+            --owners "$${ROOT}/scripts/provision/zitadel-owners.yaml" \
+            --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply || \
+          echo "[warn] linking the owners' GitHub accounts failed; re-run scripts/provision/zitadel-idp.sh link-owners --owners scripts/provision/zitadel-owners.yaml --cluster ${global.eks_cluster_name} --cloud aws --region ${global.region} --apply"
 
         # Consuming clusters. TM_CLOUD is the right source for "which lanes is
         # this invocation deploying" -- that is exactly the question, and it
