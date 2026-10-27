@@ -102,8 +102,8 @@ swept=0 skipped=0 failed=0
 # The records to delete from one zone's list-resource-record-sets JSON (stdin).
 # NS and SOA are the zone's own and never listed. With an owner id (--owner-id),
 # only what external-dns owns: its TXT registry entries carrying
-# `external-dns/owner=<id>` plus the non-TXT records they name (the TXT is named
-# for its record, with an `<type>-` prefix in the current format).
+# `external-dns/owner=<id>` plus the record of the type and name each one encodes
+# (`<type>-<name>`).
 FILTER_PY='
 import json, os, re, sys
 rs = [r for r in json.load(sys.stdin).get("ResourceRecordSets", []) if r["Type"] not in ("NS", "SOA")]
@@ -112,11 +112,16 @@ if owner:
     mark = re.compile("external-dns/owner=" + re.escape(owner) + "(,|\"|$)")
     txt = [r for r in rs if r["Type"] == "TXT"
            and any(mark.search(v["Value"]) for v in r.get("ResourceRecords", []))]
-    names = set()
+    # The registry TXT is named "<type>-<name>" (txtPrefix/txtSuffix are unset in
+    # the HelmRelease, so the default format): map it to the record of THAT type
+    # at THAT name. No legacy un-prefixed mapping: those records, if any, are left
+    # to the post-walk sweep.
+    owned = set()
     for r in txt:
-        names.add(r["Name"])
-        names.add(re.sub("^[a-z]+-", "", r["Name"], count=1))
-    rs = [r for r in rs if r in txt or (r["Type"] != "TXT" and r["Name"] in names)]
+        m = re.match("^(a|aaaa|cname|mx|ns|srv|ptr|naptr)-(.+)$", r["Name"])
+        if m:
+            owned.add((m.group(2), m.group(1).upper()))
+    rs = [r for r in rs if r in txt or (r["Name"], r["Type"]) in owned]
 print(json.dumps(rs))
 '
 

@@ -22,6 +22,9 @@ SWEEP="${SWEEP:-$ROOT/scripts/ops/aws/sweep-teardown-blockers.sh}"
 # private zone may be touched, and only the records its external-dns owns.
 OWN='"heritage=external-dns,external-dns/owner=aws-0,external-dns/resource=httproute/x/y"'
 OTHER='"heritage=external-dns,external-dns/owner=aws-1,external-dns/resource=httproute/x/y"'
+# Owners that merely START with ours: aws-01 and aws-0-x must not match aws-0.
+COLLIDE='"heritage=external-dns,external-dns/owner=aws-01,external-dns/resource=httproute/x/y"'
+SUFFIX='"heritage=external-dns,external-dns/owner=aws-0-x,external-dns/resource=httproute/x/y"'
 cat >"$T/bin/aws" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >>"$T/aws-calls"
@@ -39,6 +42,12 @@ case "\$*" in
         {"Name":"a-app.priv.example.","Type":"TXT","TTL":60,"ResourceRecords":[{"Value":$OWN}]},
         {"Name":"foreign.priv.example.","Type":"A","TTL":60,"ResourceRecords":[{"Value":"10.0.0.2"}]},
         {"Name":"a-foreign.priv.example.","Type":"TXT","TTL":60,"ResourceRecords":[{"Value":$OTHER}]},
+        {"Name":"app.priv.example.","Type":"AAAA","TTL":60,"ResourceRecords":[{"Value":"fd00::1"}]},
+        {"Name":"app.priv.example.","Type":"MX","TTL":60,"ResourceRecords":[{"Value":"10 mail.priv.example."}]},
+        {"Name":"collide.priv.example.","Type":"A","TTL":60,"ResourceRecords":[{"Value":"10.0.0.4"}]},
+        {"Name":"a-collide.priv.example.","Type":"TXT","TTL":60,"ResourceRecords":[{"Value":$COLLIDE}]},
+        {"Name":"suffix.priv.example.","Type":"A","TTL":60,"ResourceRecords":[{"Value":"10.0.0.5"}]},
+        {"Name":"a-suffix.priv.example.","Type":"TXT","TTL":60,"ResourceRecords":[{"Value":$SUFFIX}]},
         {"Name":"manual.priv.example.","Type":"A","TTL":60,"ResourceRecords":[{"Value":"10.0.0.3"}]},
         {"Name":"spf.priv.example.","Type":"TXT","TTL":60,"ResourceRecords":[{"Value":"\"v=spf1\""}]}]}'
     fi ;;
@@ -55,7 +64,10 @@ grep -q 'change-resource-record-sets' "$T/aws-calls" || f "--dns-only did not de
 grep -q 'app.priv.example' "$T/changes" && grep -q 'a-app.priv.example' "$T/changes" || f "the cluster's own records were not deleted"
 grep -q 'other.example' "$T/changes" && f "a record in ANOTHER zone was deleted"
 grep -q 'hosted-zone-id Z1' "$T/aws-calls" && ! grep -q 'hosted-zone-id Z[23]' "$T/aws-calls" || f "zones other than the cluster's private zone were read or changed"
-for keep in foreign manual spf; do
+# Same name, other type: only the A at "app" is owned (a-app TXT); AAAA and MX stay.
+grep -q '"Type": "AAAA"' "$T/changes" && f "the AAAA at an owned name was deleted"
+grep -q '"Type": "MX"' "$T/changes" && f "the MX at an owned name was deleted"
+for keep in foreign collide suffix manual spf; do
   grep -q "${keep}.priv.example" "$T/changes" && f "the record '$keep' (not owned by aws-0) was deleted"
 done
 grep -q 'priv.example.*NS\|"NS"' "$T/changes" && f "the apex NS was deleted"
