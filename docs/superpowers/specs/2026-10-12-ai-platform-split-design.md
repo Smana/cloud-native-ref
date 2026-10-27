@@ -122,7 +122,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 
 | Item | Contract |
 |---|---|
-| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet, with a `policy-bot` listener for `merge-gate` on both clouds), Gateway API, in the namespaces their routes reference today |
+| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet, with a `policy-bot` listener for `merge-gate` on both clouds, and on gcp-0 a `factory-slack` listener for `agent-system`), Gateway API, in the namespaces their routes reference today |
 | Cilium | Default-deny CNP is the constitution's rule; `socketLB.hostNamespaceOnly: true` on both clouds (gVisor needs it) and the startup taint on every node pool (F2) |
 | DNS | Hostnames under `private_domain_name` resolve on the tailnet |
 
