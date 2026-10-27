@@ -21,7 +21,8 @@ run() { # env assignments; prints output, returns rc
 }
 
 stub tofu 'echo "OpenTofu v1.13.2"; echo "on linux_amd64"'
-stub terramate 'echo 0.17.3'
+# Real terramate prints the bare version, then an update notice naming OTHER versions.
+stub terramate 'printf "0.17.3\n\nYour version of Terramate is out of date!\nThe latest version\nis 0.99.0 (released on Tue)\n"'
 out="$(run)"; rc=$?
 [ "$rc" -eq 0 ] || f "matching versions must pass, got rc=$rc: $out"
 
