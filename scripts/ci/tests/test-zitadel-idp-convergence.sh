@@ -217,6 +217,7 @@ case "$method $path" in
         echo "$data" > "$S/idp-put-body.json"
         upd idps.json --argjson d "$data" --arg i "${path##*/}" 'map(if .id == $i then .name = $d.name else . end)'
         echo '{}' ;;
+    "GET /management/v1/orgs/me") echo '{"org":{"id":"org-1"}}' ;;
     "GET /admin/v1/policies/login") jq -c '{policy:{idps:[.[]|{idpId:.}]}}' "$S/policy.json" ;;
     "POST /admin/v1/policies/login/idps") upd policy.json --argjson d "$data" '. + [$d.idpId]'; echo '{}' ;;
     "GET /management/v1/policies/login") echo '{"policy":{"isDefault":true}}' ;;
@@ -249,7 +250,7 @@ case "$method $path" in
         echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
     "POST /v2/users")
         # no loginName query = the whole listing (link-owners walks it)
-        jq -c --argjson d "$data" '{result: [.[] | select(($d.queries[0].loginNameQuery.loginName // null) == null or .loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id}]}' "$S/humans.json" ;;
+        jq -c --argjson d "$data" '{result: [.[] | select(($d.queries[0].loginNameQuery.loginName // null) == null or .loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id} + (if .org then {details: {resourceOwner: .org}} else {} end)]}' "$S/humans.json" ;;
     "POST /v2/users/"*"/links/_search")
         u="${path#/v2/users/}"; u="${u%%/*}"
         jq -c --arg u "$u" '{result: [.[] | select(.user == $u) | del(.user)]}' "$S/links.json" ;;
@@ -614,6 +615,17 @@ check "owners: a second run is ok and writes nothing" "rc=0 0" "$(tail -1 <<< "$
 write_owners 5999 alice-gh 4242
 out="$(link_owners --apply)"
 check "owners: an unknown subject is skipped with a clear message, exit 0" "rc=0 1" "$(tail -1 <<< "$out") $(count '^\[skip   \] alice@ogenki.io: no ZITADEL user holds Google subject 5999.*first login' "$out")"
+# a user of ANOTHER org holding the subject (planted link): not linked, the owner's own user is the only match
+converge; google_link u-alice 5001; google_link u-other 5001
+echo '[{"id":"u-alice","loginName":"alice@ogenki.io","org":"org-1"},{"id":"u-other","loginName":"x","org":"org-2"}]' > "$S/humans.json"
+write_owners 5001 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: an other-org user with the same subject is no match: linked to the org's user only" "rc=0 u-alice" "$(tail -1 <<< "$out") $(jq -r '.[] | select(.idpId == "idp-github") | .user' "$S/links.json")"
+converge; google_link u-other 5001
+echo '[{"id":"u-other","loginName":"x","org":"org-2"}]' > "$S/humans.json"
+out="$(link_owners --apply)"
+check "owners: the subject only in another org: skipped, nothing linked" "rc=0 1 []" "$(tail -1 <<< "$out") $(count '^\[skip   \] alice@ogenki.io: no ZITADEL user holds' "$out") $(gh_links)"
+converge; google_link u-alice 5001; echo '[{"id":"u-alice","loginName":"alice@ogenki.io","org":"org-1"}]' > "$S/humans.json"
 # a different pinned id than GitHub's answer: refused
 converge; google_link u-alice 5001; echo '[{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
 write_owners 5001 alice-gh 999

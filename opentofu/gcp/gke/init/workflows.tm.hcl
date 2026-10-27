@@ -342,7 +342,7 @@ script "deploy" {
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/provision/zitadel-oidc-clients.sh" sync "$${CLIENT_SYNC_ARGS[@]}" --apply || \
-          echo "[warn] OIDC registration failed; re-run it by hand"
+          echo "[warn] the OIDC client sync reported a failure (clients, mirrors, machine users or the owners list's grants); read the lines above, then re-run it by hand"
 
         # After the IdP and the role sync: grants are done, now the GitHub links.
         echo "== linking the owners' GitHub accounts"

@@ -663,9 +663,10 @@ link_user_github() {
 # entry's pinned numeric githubId. GitHub's own answer for the login may only
 # cross-check: another id refuses the link. One entry's failure does not stop the next.
 link_owners() {
-    local entry label subject gh_login gh_id g_idp gh_idp uid rc failed=0 gh_user api_id
-    if ! g_idp="$(zitadel_idp_id "$IDP_NAME")" || ! gh_idp="$(zitadel_idp_id "$GITHUB_IDP_NAME")"; then
-        echo "[FAILED ] cannot look up the IdPs in ZITADEL (stale PAT, or ZITADEL unreachable): no GitHub link applied" >&2
+    local entry label subject gh_login gh_id g_idp gh_idp uid rc failed=0 gh_user api_id org
+    if ! g_idp="$(zitadel_idp_id "$IDP_NAME" PROVIDER_TYPE_GOOGLE)" || ! gh_idp="$(zitadel_idp_id "$GITHUB_IDP_NAME" PROVIDER_TYPE_GITHUB)" \
+       || ! org="$(zitadel_org_id)"; then
+        echo "[FAILED ] cannot look up the IdPs and the org in ZITADEL (stale PAT, ZITADEL unreachable, or several IdPs by one name): no GitHub link applied" >&2
         return 1
     fi
     if [ -z "$g_idp" ] || [ -z "$gh_idp" ]; then
@@ -678,7 +679,7 @@ link_owners() {
         gh_login="$(jq -r .githubLogin <<< "$entry")"
         gh_id="$(jq -r .githubId <<< "$entry")"
         LINK_LOGIN="$label"; GITHUB_LOGIN="$gh_login" # the labels link_user_github prints
-        rc=0; uid="$(resolve_owner_user_id "$g_idp" "$subject")" || rc=$?
+        rc=0; uid="$(resolve_owner_user_id "$g_idp" "$subject" "$org")" || rc=$?
         case "$rc" in
             0) ;;
             3) echo "[skip   ] ${label}: no ZITADEL user holds Google subject ${subject} (first login pending); linked by the next deploy"; continue ;;

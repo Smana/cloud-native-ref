@@ -183,7 +183,7 @@ script "deploy" {
             --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
             --owners "$${ROOT}/scripts/provision/zitadel-owners.yaml" \
             $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} || \
-          echo "[warn] registration for ${global.eks_cluster_name} failed; re-run it by hand"
+          echo "[warn] the OIDC client sync reported a failure (for ${global.eks_cluster_name}: clients, mirrors, machine users or the owners list's grants); read the lines above, then re-run it by hand"
 
         # The Google/GitHub IdPs and the room broker's link reader. The reader's
         # PAT is minted here and must reach OpenBao's agents mount, which nothing

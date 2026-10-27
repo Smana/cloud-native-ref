@@ -129,8 +129,11 @@ GRANT_ADMIN=""
 # --grant <role>=<email>, repeatable: any project role, same constraint. gcp-0
 # mints a fresh ZITADEL every build, so its grants are re-run after each one.
 # A RESTORED directory too: it carries the agents-* roles with nobody holding
-# them, and rooms answer "forbidden" until the owner re-runs the sync with
-#   --grant agents-admin=<email> --grant agents-member=<email>
+# them, and rooms answer "forbidden" until the next deploy re-grants them from the
+# owners list (--owners, below).
+# --grant is a LAST RESORT: it matches the user by userName OR email, which anyone can
+# register (self-registration is on), so a namesake can receive the role; it refuses
+# when several users match, and cannot tell a namesake from the owner when only one does.
 # The deploy passes no --grant: who holds a role is the owner's call, not the repo's.
 # --owners FILE is that call made in git (scripts/provision/zitadel-owners.yaml): the
 # deploy passes it, and every entry's roles are granted on every sync, to the ONE user
@@ -549,7 +552,10 @@ grant_role() {
         echo "[dry-run] would grant '${role}' to ${email}"; return 0
     fi
     resp="$(search_all /management/v1/users/_search)" || return 1
-    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)" || return 1
+    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp")" || return 1
+    if [ "$(grep -c . <<< "$user_id")" -gt 1 ]; then
+        echo "[FAILED ] several ZITADEL users match ${email} (a registered namesake?); refusing to pick one. Use the owners list" >&2; return 1
+    fi
     if [ -z "$user_id" ]; then
         echo "[FAILED ] no ZITADEL user for ${email}: they must log in once first" >&2; return 1
     fi
@@ -584,13 +590,16 @@ grant_user_role() {
 # yet is skipped by grant_role; any other failure is reported and fails the list,
 # after every entry was tried.
 apply_owner_grants() {
-    local project_id="$1" entry label subject idp role uid failed=0 rc
+    local project_id="$1" entry label subject idp role uid failed=0 rc org
     [ -n "${OWNERS_FILE:-}" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
         echo "[dry-run] would grant the owners' roles"; return 0
     fi
-    if ! idp="$(zitadel_idp_id "Google Workspace")"; then
+    if ! idp="$(zitadel_idp_id "Google Workspace" PROVIDER_TYPE_GOOGLE)"; then
         echo "[FAILED ] cannot look up the Google IdP: the owners' roles are not granted" >&2; return 1
+    fi
+    if ! org="$(zitadel_org_id)"; then
+        echo "[FAILED ] cannot resolve the project's org: the owners' roles are not granted" >&2; return 1
     fi
     if [ -z "$idp" ]; then
         echo "[skip   ] no 'Google Workspace' IdP yet: nobody can hold a Google link, the owners' roles wait for the next deploy"; return 0
@@ -598,7 +607,7 @@ apply_owner_grants() {
     while read -r entry; do
         label="$(jq -r .loginName <<< "$entry")"
         subject="$(jq -r .googleSubject <<< "$entry")"
-        rc=0; uid="$(resolve_owner_user_id "$idp" "$subject")" || rc=$?
+        rc=0; uid="$(resolve_owner_user_id "$idp" "$subject" "$org")" || rc=$?
         case "$rc" in
             0) ;;
             3) echo "[skip   ] ${label}: no ZITADEL user holds Google subject ${subject} (first login pending); granted by the next deploy"; continue ;;

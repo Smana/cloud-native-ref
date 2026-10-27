@@ -79,6 +79,8 @@ owners:
   - {loginName: dup@x, githubLogin: dup, githubId: "13", googleSubject: "1003", roles: [data]}
 Y
 OWNERS_FILE="$T/owners.yaml"; OWNERS_JSON="$(owners_json "$OWNERS_FILE")"
+IDPS='{"result":[{"id":"idp-g","name":"Google Workspace","type":"PROVIDER_TYPE_GOOGLE"},{"id":"idp-gh","name":"GitHub","type":"PROVIDER_TYPE_GITHUB"}]}'
+USERS_MODE=full
 # u-squat registered alice@x as a local user, listed first and with no Google link.
 api_or_fail() {
     case "$2" in
@@ -90,14 +92,27 @@ api() {
     local body="${4:-}"; [ "$body" = "@-" ] && body="$(cat)"
     printf '%s %s %s\n' "$1" "$2" "$(jq -c . <<< "${body:-null}")" >> "$T/api"
     case "$1 $2" in
-        "POST /admin/v1/idps/templates/_search") echo '{"result":[{"id":"idp-g","name":"Google Workspace"},{"id":"idp-gh","name":"GitHub"}]}' ;;
-        "POST /v2/users") echo '{"result":[{"userId":"u-squat"},{"userId":"u-alice"},{"userId":"u-d1"},{"userId":"u-d2"}]}' ;;
+        "GET /management/v1/orgs/me") echo '{"org":{"id":"org-1"}}' ;;
+        "POST /admin/v1/idps/templates/_search") echo "$IDPS" ;;
+        "POST /v2/users")
+            echo "$body" >> "$T/users-req"
+            case "$USERS_MODE" in
+                paged) # two rows per page, three users, the owner on the second page
+                    case "$(jq -r .query.offset <<< "$body")" in
+                        0) echo '{"details":{"totalResult":"3"},"result":[{"userId":"u-squat"},{"userId":"u-d1"}]}' ;;
+                        *) echo '{"details":{"totalResult":"3"},"result":[{"userId":"u-alice"}]}' ;;
+                    esac ;;
+                short) if [ "$(jq -r .query.offset <<< "$body")" = 0 ]; then echo '{"details":{"totalResult":"3"},"result":[{"userId":"u-squat"},{"userId":"u-alice"}]}'; else echo '{"details":{"totalResult":"3"},"result":[]}'; fi ;;
+                *) # u-other is in ANOTHER org and holds a link with ghost's subject (a server ignoring the org filter)
+                   echo '{"details":{"totalResult":"5"},"result":[{"userId":"u-squat"},{"userId":"u-alice"},{"userId":"u-d1"},{"userId":"u-d2"},{"userId":"u-other","details":{"resourceOwner":"org-2"}}]}' ;;
+            esac ;;
         "POST /v2/users/u-alice/links/_search") echo '{"result":[{"idpId":"idp-g","userId":"1001"},{"idpId":"idp-gh","userId":"1003"}]}' ;;
         "POST /v2/users/u-d1/links/_search"|"POST /v2/users/u-d2/links/_search") echo '{"result":[{"idpId":"idp-g","userId":"1003"}]}' ;;
+        "POST /v2/users/u-other/links/_search") echo '{"result":[{"idpId":"idp-g","userId":"1002"}]}' ;;
         "POST /v2/users/"*"/links/_search") echo '{"result":[]}' ;;
     esac
 }
-: > "$T/api"; rm -f "$T/name-matching"
+: > "$T/api"; rm -f "$T/name-matching" "$T/users-req"
 o="$(apply_owner_grants p1 2>&1)"; r=$?
 check "an unknown user and a duplicate: the list fails (the duplicate), after trying all" 1 "$r"
 : > "$T/api"; apply_owner_grants p1 >/dev/null 2>&1
@@ -107,6 +122,27 @@ check "nothing is written for anyone else" 2 "$(grep -c '^POST /management/v1/us
 check "no userName or email search is made" none "$([ -e "$T/name-matching" ] && echo used || echo none)"
 check "no user: skipped with a clear message" 1 "$(grep -c '^\[skip   \] ghost@x: .*first login' <<<"$o")"
 check "two users on one subject: refused loudly, nothing granted" "1 0" "$(grep -c '^\[FAILED \].*dup@x.*2 users\|^\[FAILED \].*dup@x.*several' <<<"$o") $(grep -c 'u-d[12]/grants' "$T/api")"
+check "a user of another org holding ghost's subject: not granted" 0 "$(grep -c 'u-other/grants' "$T/api")"
+check "ghost stays skipped although another org's user carries the subject" 1 "$(grep -c '^\[skip   \] ghost@x' <<<"$o")"
+check "the user search is scoped to the project's org, sorted" "org-1 USER_FIELD_NAME_CREATION_DATE" "$(head -1 "$T/users-req" | jq -r '[.queries[0].organizationIdQuery.organizationId, .sortingColumn] | join(" ")')"
+# paging until the total: the owner is on page 2
+USERS_MODE=paged OWNERS_PAGE_SIZE=2; : > "$T/api"
+apply_owner_grants p1 >/dev/null 2>&1
+check "paged to the total: the owner on page 2 is found and granted" 2 "$(grep -c 'u-alice/grants' "$T/api")"
+# a listing that returns fewer users than its total is an error, never a quiet success
+USERS_MODE=short OWNERS_PAGE_SIZE=100; : > "$T/api"
+o="$(apply_owner_grants p1 2>&1)"
+check "fewer users than the total: not scanned, fails loudly, grants nothing" "yes 0" "$(grep -q 'not scanned' <<<"$o" && echo yes || echo no) $(grep -c '/grants ' "$T/api")"
+USERS_MODE=full; unset OWNERS_PAGE_SIZE
+# two instance IdPs with the same name: refused, nothing granted
+IDPS='{"result":[{"id":"idp-g","name":"Google Workspace","type":"PROVIDER_TYPE_GOOGLE"},{"id":"idp-g2","name":"Google Workspace","type":"PROVIDER_TYPE_GOOGLE"}]}'
+: > "$T/api"; o="$(apply_owner_grants p1 2>&1)"; r=$?
+check "several IdPs by that name: refused, nothing granted" "1 0 1" "$r $(grep -c '/grants ' "$T/api") $(grep -c 'several ZITADEL IdPs' <<<"$o")"
+# a same-named IdP of another type is not the Google IdP
+IDPS='{"result":[{"id":"idp-x","name":"Google Workspace","type":"PROVIDER_TYPE_OIDC"},{"id":"idp-g","name":"Google Workspace","type":"PROVIDER_TYPE_GOOGLE"},{"id":"idp-gh","name":"GitHub","type":"PROVIDER_TYPE_GITHUB"}]}'
+: > "$T/api"; apply_owner_grants p1 >/dev/null 2>&1
+check "picked by type: the Google one, not the OIDC namesake" 2 "$(grep -c 'u-alice/grants' "$T/api")"
+IDPS='{"result":[{"id":"idp-g","name":"Google Workspace","type":"PROVIDER_TYPE_GOOGLE"},{"id":"idp-gh","name":"GitHub","type":"PROVIDER_TYPE_GITHUB"}]}'
 # The explicit --grant stays the owner's interactive tool: name matching, a missing user fails.
 api_or_fail() {
     case "$2" in
@@ -116,6 +152,14 @@ api_or_fail() {
 }
 grant_role agents-admin ghost@x p1 >/dev/null 2>&1
 check "an explicit --grant of a missing user still fails" 1 "$?"
+api_or_fail() {
+    case "$2" in
+        */users/_search) echo '{"result":[{"id":"u-a","userName":"dup@x"},{"id":"u-b","human":{"email":{"email":"dup@x"}}}]}' ;;
+        */users/grants/_search) echo '{"result":[]}' ;;
+    esac
+}
+: > "$T/api"; o="$(grant_role agents-admin dup@x p1 2>&1)"; r=$?
+check "an explicit --grant matching two users is refused, nothing written" "1 0 1" "$r $(grep -c '/grants ' "$T/api") $(grep -c 'several ZITADEL users' <<<"$o")"
 api() { [ "${4:-}" != "@-" ] || cat >/dev/null; case "$2" in */grants) return 22 ;; "/admin/v1/idps/templates/_search") echo '{"result":[{"id":"idp-g","name":"Google Workspace"}]}' ;; "/v2/users") echo '{"result":[{"userId":"u-alice"}]}' ;; */links/_search) echo '{"result":[{"idpId":"idp-g","userId":"1001"}]}' ;; esac; }
 printf 'owners:\n  - {loginName: alice@x, githubLogin: alice, githubId: "11", googleSubject: "1001", roles: [admin]}\n' > "$T/one.yaml"
 OWNERS_FILE="$T/one.yaml"; OWNERS_JSON="$(owners_json "$OWNERS_FILE")"
@@ -253,6 +297,14 @@ check "cmd_sync applies the owners' grants with the project id" "owners p1" "$(c
 apply_owner_grants() { return 1; }
 run_cmd_sync
 check "a failed list does not stop the sync (summary printed) and fails it" "1 1" "$rc $(grep -c '^created:' <<<"$out")"
+
+echo "== 8. the workflow warnings name the step that failed =="
+for wf in opentofu/gcp/gke/init/workflows.tm.hcl opentofu/aws/eks/init/workflows.tm.hcl; do
+    check "$wf: the client sync warning names clients, mirrors and the owners' grants" 1 \
+        "$(grep -c "client sync reported a failure.*machine users or the owners list's grants" "$REPO_ROOT/$wf")"
+    check "$wf: the owners link step names itself" 1 "$(grep -c "linking the owners' GitHub accounts failed" "$REPO_ROOT/$wf")"
+done
+check "gcp: no bare 'OIDC registration failed' left on the hosting path" 0 "$(grep -c '\[warn\] OIDC registration failed; re-run it by hand' "$REPO_ROOT/opentofu/gcp/gke/init/workflows.tm.hcl")"
 
 [ "$fail" -eq 0 ] && echo "all checks passed"
 exit "$fail"

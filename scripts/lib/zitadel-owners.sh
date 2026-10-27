@@ -35,24 +35,45 @@ owners_json() {
         || { echo "invalid owners file ${file}" >&2; return 1; }
 }
 
-# zitadel_idp_id NAME: the id of the instance IdP template NAME; empty when it
-# does not exist, rc 1 when the API fails (never "absent" on an error).
+# zitadel_idp_id NAME TYPE: the id of the instance IdP template NAME of type TYPE
+# (PROVIDER_TYPE_GOOGLE, PROVIDER_TYPE_GITHUB); empty when there is none.
+#   rc 0 ok (id or empty)   rc 1 an API error   rc 2 several match: refused
 zitadel_idp_id() {
-    local resp
+    local resp ids
     resp="$(api POST /admin/v1/idps/templates/_search -d '{"queries":[]}' 2>/dev/null)" || return 1
-    jq -r --arg n "$1" 'first(.result[]? | select(.name == $n) | .id) // empty' <<< "$resp"
+    ids="$(jq -r --arg n "$1" --arg t "${2:-}" '.result[]? | select(.name == $n and ($t == "" or .type == $t)) | .id' <<< "$resp")" || return 1
+    if [ "$(grep -c . <<< "$ids")" -gt 1 ]; then
+        echo "[FAILED ] several ZITADEL IdPs are named '${1}'; refusing to pick one" >&2; return 2
+    fi
+    printf '%s' "$ids"
 }
 
-# resolve_owner_user_id GOOGLE_IDP_ID SUBJECT: the ZITADEL user whose Google IdP
-# link has providedUserId SUBJECT, through the v2 links, by nothing else.
+# zitadel_org_id: the org the admin PAT acts in, which owns the project the grants
+# target. Users of any other org are never matched.
+zitadel_org_id() {
+    local resp id
+    resp="$(api GET /management/v1/orgs/me 2>/dev/null)" || return 1
+    id="$(jq -r '.org.id // empty' <<< "$resp")" || return 1
+    [ -n "$id" ] || return 1
+    printf '%s' "$id"
+}
+
+# resolve_owner_user_id GOOGLE_IDP_ID SUBJECT ORG_ID: the ZITADEL user of org ORG_ID whose
+# Google IdP link has providedUserId SUBJECT, through the v2 links, by nothing else.
 #   rc 0 exactly one, its id on stdout    rc 3 none    rc 4 several (nothing resolved)
-#   rc 1 an API error (said on stderr)
+#   rc 1 an API error, or a listing that did not return every user (said on stderr)
+# The listing is sorted and paged until the total is reached: a skipped page must
+# never turn "several" into "one".
 resolve_owner_user_id() {
-    local idp="$1" subject="$2" offset=0 page ids id resp found=() n
+    local idp="$1" subject="$2" org="$3" size="${OWNERS_PAGE_SIZE:-100}" offset=0 page ids id resp found=() n total seen=0
     while :; do
-        page="$(api POST /v2/users -d "$(jq -cn --argjson o "$offset" '{query: {offset: $o, limit: 100}}')")" \
+        page="$(api POST /v2/users -d "$(jq -cn --argjson o "$offset" --argjson l "$size" --arg org "$org" \
+            '{query: {offset: $o, limit: $l, asc: true}, sortingColumn: "USER_FIELD_NAME_CREATION_DATE",
+              queries: [{organizationIdQuery: {organizationId: $org}}]}')")" \
             || { echo "[FAILED ] cannot list ZITADEL users" >&2; return 1; }
-        ids="$(jq -r '.result[]? | select(.machine == null) | .userId' <<< "$page")" || return 1
+        ids="$(jq -r --arg org "$org" '.result[]? | select((.details.resourceOwner // $org) == $org) | select(.machine == null) | .userId' <<< "$page")" || return 1
+        n="$(jq -r '[.result[]?] | length' <<< "$page")"
+        total="$(jq -r '.details.totalResult // empty' <<< "$page")"
         for id in $ids; do
             resp="$(api POST "/v2/users/${id}/links/_search" -d '{}')" \
                 || { echo "[FAILED ] cannot list the IdP links of ${id}" >&2; return 1; }
@@ -60,9 +81,13 @@ resolve_owner_user_id() {
                 found+=("$id")
             fi
         done
-        n="$(jq -r '[.result[]?] | length' <<< "$page")"
-        [ "$n" -ge 100 ] || break
-        offset=$((offset + 100))
+        seen=$((seen + n)); offset=$((offset + n))
+        if [ -n "$total" ]; then
+            [ "$seen" -lt "$total" ] || break
+            [ "$n" -gt 0 ] || { echo "[FAILED ] ZITADEL listed ${seen} of ${total} users; not scanned" >&2; return 1; }
+        else
+            [ "$n" -ge "$size" ] || break
+        fi
         [ "$offset" -lt 5000 ] || { echo "[FAILED ] more than 5000 users: not scanned" >&2; return 1; }
     done
     case "${#found[@]}" in
