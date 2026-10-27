@@ -217,6 +217,7 @@ case "$method $path" in
         echo "$data" > "$S/idp-put-body.json"
         upd idps.json --argjson d "$data" --arg i "${path##*/}" 'map(if .id == $i then .name = $d.name else . end)'
         echo '{}' ;;
+    "GET /management/v1/orgs/me") echo '{"org":{"id":"org-1"}}' ;;
     "GET /admin/v1/policies/login") jq -c '{policy:{idps:[.[]|{idpId:.}]}}' "$S/policy.json" ;;
     "POST /admin/v1/policies/login/idps") upd policy.json --argjson d "$data" '. + [$d.idpId]'; echo '{}' ;;
     "GET /management/v1/policies/login") echo '{"policy":{"isDefault":true}}' ;;
@@ -248,7 +249,8 @@ case "$method $path" in
         upd pats.json --argjson d "$data" --arg i "$id" '. + [{id:$i,expirationDate:$d.expirationDate}]'
         echo "{\"tokenId\":\"$id\",\"token\":\"reader-pat-$id\"}" ;;
     "POST /v2/users")
-        jq -c --argjson d "$data" '{result: [.[] | select(.loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id}]}' "$S/humans.json" ;;
+        # no loginName query = the whole listing (link-owners walks it)
+        jq -c --argjson d "$data" '{result: [.[] | select(($d.queries[0].loginNameQuery.loginName // null) == null or .loginName == $d.queries[0].loginNameQuery.loginName) | {userId: .id} + (if .org then {details: {resourceOwner: .org}} else {} end)]}' "$S/humans.json" ;;
     "POST /v2/users/"*"/links/_search")
         u="${path#/v2/users/}"; u="${u%%/*}"
         jq -c --arg u "$u" '{result: [.[] | select(.user == $u) | del(.user)]}' "$S/links.json" ;;
@@ -547,7 +549,7 @@ out="$(rotate "$NEW_GH_SECRET" --apply)"
 check "rotate without IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "rotate without IdP: store untouched" "$GH_SECRET" "$(jq -r .client_secret "$GH_STORE")"
 
-# 22. link-github: an admin links a Google-only user's GitHub account (#2269).
+# 22. link-github: an admin links a Google-only user's GitHub account (the v1 login has no add-IdP page).
 link() { # <loginName> <githubLogin> [args]; same output contract as sync()
     local out rc
     out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
@@ -582,5 +584,86 @@ reset_state
 out="$(link alice@ogenki.io alice-gh --apply)"
 check "link without a GitHub IdP: exits non-zero" "1" "$(count '^rc=[1-9]' "$out")"
 check "link without a GitHub IdP: names sync" "1" "$(count 'run sync first' "$out")"
+
+# 23. link-owners: the owners list in git, applied after the IdP and the role sync, to the
+# user holding the Google subject and to nobody else.
+write_owners() { # <googleSubject> <githubLogin> <githubId> [more entries via stdin]
+    printf 'owners:\n  - {loginName: alice@ogenki.io, googleSubject: "%s", githubLogin: %s, githubId: "%s", roles: [admin]}\n' "$1" "$2" "$3" > "$S/owners.yaml"
+}
+link_owners() { # [args]; same output contract as sync()
+    local out rc
+    out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" GITHUB_API="https://gh.test" AWS_REGION=eu-west-3 \
+        bash "$SCRIPT" link-owners --owners "$S/owners.yaml" --cluster aws-0 --cloud aws "$@" 2>&1)"; rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+google_link() { jq --arg u "$1" --arg s "$2" '. + [{user:$u, idpId:"idp-google", userId:$s, userName:"x"}]' "$S/links.json" > "$S/l.t" && mv "$S/l.t" "$S/links.json"; }
+gh_links() { jq -c '[.[] | select(.idpId == "idp-github") | .userId]' "$S/links.json"; }
+converge
+google_link u-alice 5001
+# u-squat registered alice@ogenki.io as a local user, listed first, with no Google link.
+echo '[{"id":"u-squat","loginName":"alice@ogenki.io"},{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
+echo '{"login":"Alice-GH","id":4242}' > "$S/github/alice-gh"
+write_owners 5001 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: exits 0" "rc=0" "$(tail -1 <<< "$out")"
+check "owners: linked, with the pinned GitHub id" '["4242"]' "$(gh_links)"
+check "owners: to the Google subject's user, not the squatter" "u-alice" "$(jq -r '.[] | select(.idpId == "idp-github") | .user' "$S/links.json")"
+: > "$S/calls.log"
+out="$(link_owners --apply)"
+check "owners: a second run is ok and writes nothing" "rc=0 0" "$(tail -1 <<< "$out") $(calls '/links$')"
+# no ZITADEL user holds the subject yet
+write_owners 5999 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: an unknown subject is skipped with a clear message, exit 0" "rc=0 1" "$(tail -1 <<< "$out") $(count '^\[skip   \] alice@ogenki.io: no ZITADEL user holds Google subject 5999.*first login' "$out")"
+# a user of ANOTHER org holding the subject (planted link): not linked, the owner's own user is the only match
+converge; google_link u-alice 5001; google_link u-other 5001
+echo '[{"id":"u-alice","loginName":"alice@ogenki.io","org":"org-1"},{"id":"u-other","loginName":"x","org":"org-2"}]' > "$S/humans.json"
+write_owners 5001 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: an other-org user with the same subject is no match: linked to the org's user only" "rc=0 u-alice" "$(tail -1 <<< "$out") $(jq -r '.[] | select(.idpId == "idp-github") | .user' "$S/links.json")"
+converge; google_link u-other 5001
+echo '[{"id":"u-other","loginName":"x","org":"org-2"}]' > "$S/humans.json"
+out="$(link_owners --apply)"
+check "owners: the subject only in another org: skipped, nothing linked" "rc=0 1 []" "$(tail -1 <<< "$out") $(count '^\[skip   \] alice@ogenki.io: no ZITADEL user holds' "$out") $(gh_links)"
+converge; google_link u-alice 5001; echo '[{"id":"u-alice","loginName":"alice@ogenki.io","org":"org-1"}]' > "$S/humans.json"
+# a different pinned id than GitHub's answer: refused
+converge; google_link u-alice 5001; echo '[{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
+write_owners 5001 alice-gh 999
+out="$(link_owners --apply)"
+check "owners: GitHub resolving the login to another id refuses the link" "1 1 []" "$(count '^rc=[1-9]' "$out") $(count "resolves 'alice-gh' to id 4242, not the pinned 999" "$out") $(gh_links)"
+# GitHub unreachable: the pinned id is linked, with a warning
+rm -f "$S/github/alice-gh"
+write_owners 5001 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: GitHub unreachable: pinned id linked, warned" "rc=0 1 [\"4242\"]" "$(tail -1 <<< "$out") $(count 'unchecked' "$out") $(gh_links)"
+echo '{"login":"Alice-GH","id":4242}' > "$S/github/alice-gh"
+# a link to another GitHub account is refused and reported, the existing one kept
+write_owners 5001 mallory 666
+echo '{"login":"mallory","id":666}' > "$S/github/mallory"
+out="$(link_owners --apply)"
+check "owners: a link to a different account is refused and reported" "1 1" "$(count '^rc=[1-9]' "$out") $(count 'already linked to GitHub .*4242.*not mallory' "$out")"
+check "owners: the existing link is kept" '["4242"]' "$(gh_links)"
+# two users hold the subject: refused loudly, nothing linked
+converge; google_link u-alice 5001; google_link u-twin 5001
+echo '[{"id":"u-alice","loginName":"a"},{"id":"u-twin","loginName":"b"}]' > "$S/humans.json"
+write_owners 5001 alice-gh 4242
+out="$(link_owners --apply)"
+check "owners: several users on one subject: refused, nothing linked" "1 1 []" "$(count '^rc=[1-9]' "$out") $(count 'several ZITADEL users hold Google subject 5001' "$out") $(gh_links)"
+# dry run
+converge; google_link u-alice 5001; echo '[{"id":"u-alice","loginName":"alice@ogenki.io"}]' > "$S/humans.json"
+: > "$S/calls.log"
+out="$(link_owners)"
+check "owners dry run: plans the link, exits 0, writes nothing" "rc=0 1 0" "$(tail -1 <<< "$out") $(count 'would link alice@ogenki.io' "$out") $(calls '/links$')"
+# an API failure is an error, never a skip
+out="$(FAIL_ON='POST /admin/v1/idps/templates/_search' link_owners --apply)"
+check "owners: an IdP lookup failure is an error, not a skip" "1 0" "$(count '^rc=[1-9]' "$out") $(count '^\[skip' "$out")"
+out="$(FAIL_ON='POST /v2/users' link_owners --apply)"
+check "owners: a user listing failure fails the run" "1" "$(count '^rc=[1-9]' "$out")"
+# no IdPs at all (fresh, no GitHub key): skipped, not a failure
+reset_state
+out="$(link_owners --apply)"
+check "owners without the IdPs: skipped, exit 0" "rc=0 1" "$(tail -1 <<< "$out") $(count '^\[skip   \] .*IdP' "$out")"
+out="$(PATH="$S/bin:$PATH" FAKE_STATE="$S" IDP_URL="https://auth.test" bash "$SCRIPT" link-owners --cluster aws-0 --cloud aws 2>&1; echo "rc=$?")"
+check "owners without --owners: usage, exit 2" "rc=2" "$(tail -1 <<< "$out")"
 
 exit "$fail"
