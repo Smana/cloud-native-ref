@@ -15,6 +15,8 @@
 # serves to the internet. A wildcard listener would let any HTTPRoute in the
 # allowed namespace claim any hostname without review.
 #
+# Inventory: probe (infrastructure), policy-bot (merge-gate), factory-slack (agent-system).
+#
 # The shim reads these annotations; `duration`/`renew-before` preserve what the
 # standalone wildcard Certificate used to set explicitly (90d / 15d).
 #
@@ -75,3 +77,23 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: policy-bot-public-tls
+    # The agent factory's Slack App (factory interfaces F9): Slack posts its Events API callbacks
+    # here, and the App verifies each against its signing secret (±5 min) before reading it. Routes
+    # from agent-system only; its HTTPRoute matches POST /slack/events and nothing else.
+    - name: factory-slack
+      hostname: "factory-slack.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - agent-system
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: factory-slack-public-tls
