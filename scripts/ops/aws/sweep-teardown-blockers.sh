@@ -49,7 +49,15 @@
 #
 # Usage:
 #   scripts/ops/aws/sweep-teardown-blockers.sh --cluster-name N --region R \
-#       [--zone-name Z] [--profile P] [--apply]
+#       [--zone-name Z] [--profile P] [--dns-only] [--owner-id ID] [--apply]
+#
+# --dns-only stops after the Route53 records, so it is safe while the cluster is
+# still up: eks-prepare-destroy.sh uses it to clear the records BEFORE the load
+# balancers they point at are released. Because it runs against a live account it
+# refuses to run without BOTH --zone-name (this cluster's zone) and --owner-id
+# (external-dns's txtOwnerId, the cluster name), and deletes only the records
+# external-dns owns: TXT registry entries carrying `external-dns/owner=<id>` and
+# the records they name. Anything else in the zone, or in another zone, stays.
 #
 # Dry-run unless --apply, and it lists exactly what it would delete.
 # Idempotent: safe to run before a destroy, after a failed one, or twice.
@@ -63,6 +71,8 @@ REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 ZONE_NAME=""
 PROFILE=""
 APPLY="false"
+DNS_ONLY="false"
+OWNER_ID=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -71,17 +81,49 @@ while [ $# -gt 0 ]; do
         --zone-name)    ZONE_NAME="$2"; shift 2 ;;
         --profile)      PROFILE="$2"; shift 2 ;;
         --apply)        APPLY="true"; shift ;;
+        --dns-only)     DNS_ONLY="true"; shift ;;
+        --owner-id)     OWNER_ID="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 [ -n "$CLUSTER_NAME" ] || { echo "--cluster-name is required" >&2; exit 2; }
 [ -n "$REGION" ] || { echo "--region is required (or set AWS_REGION)" >&2; exit 2; }
+if [ "$DNS_ONLY" = "true" ]; then
+    { [ -n "$ZONE_NAME" ] && [ -n "$OWNER_ID" ]; } \
+        || { echo "--dns-only needs --zone-name and --owner-id: refusing to purge unscoped" >&2; exit 2; }
+fi
 
 AWS=(aws --region "$REGION")
 [ -n "$PROFILE" ] && AWS+=(--profile "$PROFILE")
 
 swept=0 skipped=0 failed=0
+
+# The records to delete from one zone's list-resource-record-sets JSON (stdin).
+# NS and SOA are the zone's own and never listed. With an owner id (--owner-id),
+# only what external-dns owns: its TXT registry entries carrying
+# `external-dns/owner=<id>` plus the record of the type and name each one encodes
+# (`<type>-<name>`).
+FILTER_PY='
+import json, os, re, sys
+rs = [r for r in json.load(sys.stdin).get("ResourceRecordSets", []) if r["Type"] not in ("NS", "SOA")]
+owner = os.environ["OWNER_ID"]
+if owner:
+    mark = re.compile("external-dns/owner=" + re.escape(owner) + "(,|\"|$)")
+    txt = [r for r in rs if r["Type"] == "TXT"
+           and any(mark.search(v["Value"]) for v in r.get("ResourceRecords", []))]
+    # The registry TXT is named "<type>-<name>" (txtPrefix/txtSuffix are unset in
+    # the HelmRelease, so the default format): map it to the record of THAT type
+    # at THAT name. No legacy un-prefixed mapping: those records, if any, are left
+    # to the post-walk sweep.
+    owned = set()
+    for r in txt:
+        m = re.match("^(a|aaaa|cname|mx|ns|srv|ptr|naptr)-(.+)$", r["Name"])
+        if m:
+            owned.add((m.group(2), m.group(1).upper()))
+    rs = [r for r in rs if r in txt or (r["Name"], r["Type"]) in owned]
+print(json.dumps(rs))
+'
 
 # ── 1. Route53 records that block DeleteHostedZone ─────────────────────────
 #
@@ -90,15 +132,13 @@ swept=0 skipped=0 failed=0
 # ones this platform creates per cluster; a public zone is far more likely to be
 # shared with something outside this repo and is left alone.
 echo "== Route53: records blocking zone deletion"
-if [ -n "$ZONE_NAME" ]; then
-    zone_rows=$("${AWS[@]}" route53 list-hosted-zones \
-        --query "HostedZones[?Name=='${ZONE_NAME%.}.'].[Id,Name,Config.PrivateZone]" \
-        --output text 2>/dev/null || true)
-else
-    zone_rows=$("${AWS[@]}" route53 list-hosted-zones \
-        --query 'HostedZones[?Config.PrivateZone==`true`].[Id,Name,Config.PrivateZone]' \
-        --output text 2>/dev/null || true)
-fi
+# Filtered here rather than with --query so the scoping is the script's own.
+zone_rows=$("${AWS[@]}" route53 list-hosted-zones \
+    --query 'HostedZones[].[Id,Name,Config.PrivateZone]' --output text 2>/dev/null \
+    | awk -v want="${ZONE_NAME:+${ZONE_NAME%.}.}" -v anyzone="$([ -n "$ZONE_NAME" ] && [ "$DNS_ONLY" != true ] && echo 1)" '
+        want != "" && $2 != want { next }
+        anyzone != "1" && tolower($3) != "true" { next }
+        { print }' || true)
 
 if [ -z "$zone_rows" ]; then
     echo "  no candidate hosted zones"
@@ -107,8 +147,9 @@ else
         [ -n "$zid" ] || continue
         zid="${zid##*/}"
         # NS and SOA are the zone's own; everything else blocks its deletion.
-        recs=$("${AWS[@]}" route53 list-resource-record-sets --hosted-zone-id "$zid" \
-            --query 'ResourceRecordSets[?Type!=`NS` && Type!=`SOA`]' --output json 2>/dev/null || echo '[]')
+        raw=$("${AWS[@]}" route53 list-resource-record-sets --hosted-zone-id "$zid" \
+            --output json 2>/dev/null || echo '{}')
+        recs=$(OWNER_ID="$OWNER_ID" python3 -c "$FILTER_PY" <<<"$raw")
         n=$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$recs")
         if [ "$n" = "0" ]; then
             echo "  ${zname} — already clear"
@@ -138,6 +179,17 @@ print(json.dumps({"Changes": [{"Action": "DELETE", "ResourceRecordSet": r} for r
             failed=$((failed + 1))
         fi
     done <<<"$zone_rows"
+fi
+
+if [ "$DNS_ONLY" = "true" ]; then
+    echo
+    if [ "$APPLY" != "true" ]; then
+        echo "==> dry-run: ${swept} record(s) would be swept. Re-run with --apply."
+    else
+        echo "==> swept ${swept}, failed ${failed}."
+    fi
+    [ "$failed" -eq 0 ] || exit 1
+    exit 0
 fi
 
 # ── 2. the EKS-managed cluster security group ──────────────────────────────

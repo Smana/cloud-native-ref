@@ -333,6 +333,32 @@ strip_finalizers_for_kind() {
 	done
 }
 
+# Clear the external-dns records BEFORE any load balancer is released. Deleting
+# the Gateway Services below releases the NLBs; until now the Route53 records that
+# point at them were removed only by sweep-teardown-blockers.sh after the whole
+# walk (and only when a failed destroy made teardown.sh run it), so they dangled
+# through every stack in between. external-dns is stopped first (Flux is
+# suspended, so nothing scales it back) or it would recreate what is purged.
+# Best effort: the post-walk sweep stays as the backstop.
+# Scoped on both axes, because this runs against a live account: only this
+# cluster's private zone (priv domain from the network stack's tfvars, the stack
+# that creates the zone) and only the records external-dns owns for this cluster
+# (txtOwnerId is the cluster name, infrastructure/base/external-dns). If the zone
+# cannot be resolved the purge is skipped, never widened to every zone.
+echo "Stopping external-dns and purging its DNS records before releasing load balancers..."
+kubectl -n kube-system scale deployment -l app.kubernetes.io/name=external-dns --replicas=0 || true
+kubectl -n kube-system wait --for=delete pod -l app.kubernetes.io/name=external-dns --timeout=60s || true
+_repo="$(cd "$(dirname "$0")/../../.." && pwd)"
+_zone="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' \
+	"${_repo}/opentofu/aws/network/variables.tfvars" 2>/dev/null)"
+if [ -z "${_zone}" ]; then
+	echo "Cannot resolve this cluster's private zone; skipping the early DNS purge (the post-destroy sweep still runs)"
+else
+	bash "$(dirname "$0")/sweep-teardown-blockers.sh" --cluster-name "${CLUSTER_NAME}" --region "${REGION}" \
+		${PROFILE:+--profile "${PROFILE}"} --zone-name "${_zone}" --owner-id "${CLUSTER_NAME}" --dns-only --apply \
+		|| echo "DNS purge failed; the post-destroy sweep will retry"
+fi
+
 echo "Checking for Gateway API resources..."
 if kubectl api-resources --api-group=gateway.networking.k8s.io 2>/dev/null | grep -q gateways; then
 	# 1. HTTPRoutes / GRPCRoutes / TCPRoutes / TLSRoutes
