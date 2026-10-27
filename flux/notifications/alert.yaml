@@ -1,10 +1,13 @@
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack
   namespace: flux-system
 spec:
-  summary: "${cluster_name} cluster components impacted"
+  # v1 has no spec.summary: a v1beta3 Alert carrying one fails Flux's server-side apply once v1 is
+  # the storage version ("failed to convert merged object ... .spec.summary"), gcp-0 2026-10-27.
+  eventMetadata:
+    summary: "${cluster_name} cluster components impacted"
   providerRef:
     name: flux-slack-app
   eventSeverity: error
