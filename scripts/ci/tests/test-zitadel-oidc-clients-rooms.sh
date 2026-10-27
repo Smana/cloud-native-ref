@@ -25,7 +25,7 @@ load_function() {
     [ -n "$body" ] || { echo "could not extract ${1}() from $2" >&2; exit 1; }
     eval "$body"
 }
-for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role search_all \
+for f in oidc_config_payload app_set_redirect merge_secret converge_secret grant_role grant_user_role search_all \
          mirror_to_openbao force_sync_mirrored stored_client_id stored_client_secret secret_sha \
          previous_client_id cmd_sync; do
     case "$f" in mirror_to_openbao|force_sync_mirrored) load_function "$f" "$REPO_ROOT/scripts/lib/openbao-mirror.sh" ;; *) load_function "$f" "$SRC" ;; esac
@@ -166,7 +166,7 @@ grant_role agents-member dev@x p1 >/dev/null
 check "grant: a grant past the first page is found (PUT)" "PUT /management/v1/users/u1/grants/g2" "$(cut -d' ' -f1,2 "$T/api")"
 # A server that ignores the offset would page forever: fail loudly instead.
 api_or_fail() { jq -cn '{result: [range(200) | {id: "u\(.)", userName: "dev@x", userId: "other", projectId: "p1"}]}'; }
-o="$(timeout 20 bash -c "$(declare -f grant_role search_all api_or_fail); api() { cat >/dev/null; }; APPLY=true grant_role agents-member dev@x p1" 2>&1)"; r=$?
+o="$(timeout 20 bash -c "$(declare -f grant_role grant_user_role search_all api_or_fail); api() { cat >/dev/null; }; APPLY=true grant_role agents-member dev@x p1" 2>&1)"; r=$?
 check "grant: an endless listing fails loudly, it does not hang" "1 loud" "$r $(grep -q 'did not end' <<<"$o" && echo loud || echo quiet)"
 unset -f api api_or_fail
 

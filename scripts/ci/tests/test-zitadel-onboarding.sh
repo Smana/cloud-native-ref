@@ -30,69 +30,101 @@ echo "== 1. the owners list in git =="
 # shellcheck source=scripts/lib/zitadel-owners.sh
 . "$OWNERS_LIB" 2>/dev/null || { echo "  FAIL cannot source $OWNERS_LIB"; exit 1; }
 real="$(owners_json "$OWNERS_REAL" 2>&1)"
-check "the first owner" '{"loginName":"smaine.kahlouch@ogenki.io","githubLogin":"Smana","roles":["admin","agents-admin","agents-member"]}' "$(jq -c '.[0]' <<<"$real")"
-cat > "$T/bad-gh.yaml" <<'Y'
-owners:
-  - {loginName: a@x, githubLogin: "../orgs", roles: [admin]}
-Y
-owners_json "$T/bad-gh.yaml" >/dev/null 2>&1
-check "a malformed GitHub login is refused" 1 "$?"
-cat > "$T/no-login.yaml" <<'Y'
-owners:
-  - {githubLogin: bob, roles: [admin]}
-Y
-owners_json "$T/no-login.yaml" >/dev/null 2>&1
-check "an entry without a loginName is refused" 1 "$?"
-owners_json "$T/absent.yaml" >/dev/null 2>&1
-check "an unreadable file is refused" 1 "$?"
+check "the first owner, pinned to identities nobody else can claim" '{"loginName":"smaine.kahlouch@ogenki.io","githubLogin":"Smana","githubId":"4101366","googleSubject":"114494807855983228762","roles":["admin","agents-admin","agents-member"]}' "$(jq -c '.[0]' <<<"$real")"
+own() { printf 'owners:\n  - {loginName: a@x, githubLogin: bob, githubId: "%s", googleSubject: "%s", roles: %s}\n' "$1" "$2" "$3" > "$T/o.yaml"; owners_json "$T/o.yaml" >"$T/o.out" 2>&1; }
+own 1 2 '[admin]'; check "a complete entry is accepted" 0 "$?"
+own 1 2 '[admin, admin, data]'; check "roles are de-duplicated" '["admin","data"]' "$(jq -c '.[0].roles' "$T/o.out")"
+own x 2 '[admin]'; check "a non-numeric githubId is refused" 1 "$?"
+own 1 'x' '[admin]'; check "a non-numeric googleSubject is refused" 1 "$?"
+printf 'owners:\n  - {loginName: a@x, githubLogin: bob, githubId: "1", roles: [admin]}\n' > "$T/o.yaml"
+owners_json "$T/o.yaml" >/dev/null 2>&1; check "an entry without googleSubject is refused" 1 "$?"
+printf 'owners:\n  - {loginName: a@x, githubLogin: "../orgs", githubId: "1", googleSubject: "2", roles: [admin]}\n' > "$T/o.yaml"
+owners_json "$T/o.yaml" >/dev/null 2>&1; check "a malformed GitHub login is refused" 1 "$?"
+printf 'owners:\n  - {githubLogin: bob, githubId: "1", googleSubject: "2", roles: [admin]}\n' > "$T/o.yaml"
+owners_json "$T/o.yaml" >/dev/null 2>&1; check "an entry without a loginName is refused" 1 "$?"
+owners_json "$T/absent.yaml" >/dev/null 2>&1; check "an unreadable file: rc 2 (cannot parse), not 1 (invalid)" 2 "$?"
+mkdir -p "$T/jqonly"; ln -sf "$(command -v jq)" "$T/jqonly/jq"
+o="$(env PATH="$T/jqonly" "$BASH" -c ". '$OWNERS_LIB'; owners_json '$OWNERS_REAL'" 2>&1)"; r=$?
+check "no parser: rc 2, naming what is needed" "2 yes" "$r $(grep -q 'PyYAML' <<<"$o" && echo yes || echo no)"
 
-echo "== 2. --owners is validated before any call =="
+echo "== 2. load_owners: a problem with the list never stops the client sync =="
+load_function load_owners "$SRC"
+eval "$(grep -E '^ZITADEL_PROJECT_ROLES=\(' "$SRC")"
+OWNERS_BAD=0
+OWNERS_FILE="$OWNERS_REAL"; load_owners >/dev/null 2>&1
+check "a good list is kept" "0 $OWNERS_REAL" "$? ${OWNERS_FILE}"
+printf 'owners:\n  - {loginName: a@x, githubLogin: bob, githubId: "1", googleSubject: "2", roles: [root]}\n' > "$T/bad-role.yaml"
+OWNERS_FILE="$T/bad-role.yaml"; o="$(load_owners 2>&1)"; load_owners >/dev/null 2>&1; r=$?
+check "an unknown role: warns naming it, owners step off, no exit" "0 yes yes" "$r $(grep -q "root" <<<"$o" && echo yes || echo no) $([ -z "$OWNERS_FILE" ] && echo yes || echo no)"
+check "an unknown role: the sync is told to fail at its end" 1 "$OWNERS_BAD"
+OWNERS_BAD=0; OWNERS_FILE="$T/absent.yaml"; load_owners >/dev/null 2>&1; r=$?
+check "a missing file: continues too" "0 1" "$r $OWNERS_BAD"
+OWNERS_BAD=0; OWNERS_FILE="$OWNERS_REAL"
+o="$(env PATH="$T/jqonly:/usr/bin/../bin" "$BASH" -c "$(declare -f load_owners); . '$OWNERS_LIB'; OWNERS_FILE='$OWNERS_REAL'; OWNERS_BAD=0; $(grep -E '^ZITADEL_PROJECT_ROLES=\(' "$SRC"); PATH='$T/jqonly'; load_owners; echo rc=\$? bad=\$OWNERS_BAD" 2>&1)"
+check "no parser: warns, continues (rc 0), flags the failure" "yes" "$(grep -q 'rc=0 bad=1' <<<"$o" && grep -q PyYAML <<<"$o" && echo yes || echo no)"
+OWNERS_FILE=""; OWNERS_BAD=0
 mkdir -p "$T/bin"
 for cli in curl gcloud aws kubectl bao; do
     printf '#!/usr/bin/env bash\necho %s >> "%s/cli-calls"\nexit 1\n' "$cli" "$T" > "$T/bin/$cli"
     chmod +x "$T/bin/$cli"
 done
-cat > "$T/bad-role.yaml" <<'Y'
-owners:
-  - {loginName: a@x, githubLogin: bob, roles: [root]}
-Y
-o="$(PATH="$T/bin:$PATH" timeout 10 bash "$SRC" sync --cluster c0 --cloud gcp --owners "$T/bad-role.yaml" 2>&1)"; r=$?
-check "an unknown role: exit 2, no CLI called" "2 none" "$r $([ -e "$T/cli-calls" ] && echo called || echo none)"
-grep -q "root" <<<"$o" || { echo "  FAIL the refusal does not name the role: $(head -2 <<<"$o")"; fail=1; }
-o="$(PATH="$T/bin:$PATH" timeout 10 bash "$SRC" sync --cluster c0 --cloud gcp --owners "$T/absent.yaml" 2>&1)"; r=$?
-check "a missing file: exit 2, no CLI called" "2 none" "$r $([ -e "$T/cli-calls" ] && echo called || echo none)"
 
-echo "== 3. grants of the list: applied, an unknown user skipped =="
-for f in grant_role search_all apply_owner_grants; do load_function "$f" "$SRC"; done
-eval "$(grep -E '^ZITADEL_PROJECT_ROLES=\(' "$SRC")"
+echo "== 3. grants of the list: to the user holding the Google subject, by nothing else =="
+for f in grant_role grant_user_role search_all apply_owner_grants; do load_function "$f" "$SRC"; done
 APPLY=true
 cat > "$T/owners.yaml" <<'Y'
 owners:
-  - {loginName: alice@x, githubLogin: alice, roles: [admin, agents-member]}
-  - {loginName: ghost@x, githubLogin: ghost, roles: [agents-admin]}
+  - {loginName: alice@x, githubLogin: alice, githubId: "11", googleSubject: "1001", roles: [admin, agents-member]}
+  - {loginName: ghost@x, githubLogin: ghost, githubId: "12", googleSubject: "1002", roles: [agents-admin]}
+  - {loginName: dup@x, githubLogin: dup, githubId: "13", googleSubject: "1003", roles: [data]}
 Y
+OWNERS_FILE="$T/owners.yaml"; OWNERS_JSON="$(owners_json "$OWNERS_FILE")"
+# u-squat registered alice@x as a local user, listed first and with no Google link.
+api_or_fail() {
+    case "$2" in
+        */users/grants/_search) echo '{"result":[]}' ;;
+        *) echo "name matching used: $2" >> "$T/name-matching"; echo '{"result":[]}' ;;
+    esac
+}
+api() {
+    local body="${4:-}"; [ "$body" = "@-" ] && body="$(cat)"
+    printf '%s %s %s\n' "$1" "$2" "$(jq -c . <<< "${body:-null}")" >> "$T/api"
+    case "$1 $2" in
+        "POST /admin/v1/idps/templates/_search") echo '{"result":[{"id":"idp-g","name":"Google Workspace"},{"id":"idp-gh","name":"GitHub"}]}' ;;
+        "POST /v2/users") echo '{"result":[{"userId":"u-squat"},{"userId":"u-alice"},{"userId":"u-d1"},{"userId":"u-d2"}]}' ;;
+        "POST /v2/users/u-alice/links/_search") echo '{"result":[{"idpId":"idp-g","userId":"1001"},{"idpId":"idp-gh","userId":"1003"}]}' ;;
+        "POST /v2/users/u-d1/links/_search"|"POST /v2/users/u-d2/links/_search") echo '{"result":[{"idpId":"idp-g","userId":"1003"}]}' ;;
+        "POST /v2/users/"*"/links/_search") echo '{"result":[]}' ;;
+    esac
+}
+: > "$T/api"; rm -f "$T/name-matching"
+o="$(apply_owner_grants p1 2>&1)"; r=$?
+check "an unknown user and a duplicate: the list fails (the duplicate), after trying all" 1 "$r"
+: > "$T/api"; apply_owner_grants p1 >/dev/null 2>&1
+check "each role goes to the user holding the subject, not to the squatter" "POST /management/v1/users/u-alice/grants {\"projectId\":\"p1\",\"roleKeys\":[\"admin\"]}
+POST /management/v1/users/u-alice/grants {\"projectId\":\"p1\",\"roleKeys\":[\"agents-member\"]}" "$(grep '/grants' "$T/api")"
+check "nothing is written for anyone else" 2 "$(grep -c '^POST /management/v1/users/.*/grants ' "$T/api")"
+check "no userName or email search is made" none "$([ -e "$T/name-matching" ] && echo used || echo none)"
+check "no user: skipped with a clear message" 1 "$(grep -c '^\[skip   \] ghost@x: .*first login' <<<"$o")"
+check "two users on one subject: refused loudly, nothing granted" "1 0" "$(grep -c '^\[FAILED \].*dup@x.*2 users\|^\[FAILED \].*dup@x.*several' <<<"$o") $(grep -c 'u-d[12]/grants' "$T/api")"
+# The explicit --grant stays the owner's interactive tool: name matching, a missing user fails.
 api_or_fail() {
     case "$2" in
         */users/_search) echo '{"result":[{"id":"u-alice","userName":"alice@x"}]}' ;;
         */users/grants/_search) echo '{"result":[]}' ;;
     esac
 }
-api() { printf '%s %s %s\n' "$1" "$2" "$(jq -c .)" >> "$T/api"; }
-: > "$T/api"; OWNERS_FILE="$T/owners.yaml"
-o="$(apply_owner_grants p1 2>&1)"; r=$?
-check "the list: exit 0 with an unknown user in it" 0 "$r"
-apply_owner_grants p1 >/dev/null 2>&1
-check "each role of a known user is granted" "POST /management/v1/users/u-alice/grants {\"projectId\":\"p1\",\"roleKeys\":[\"admin\"]}
-POST /management/v1/users/u-alice/grants {\"projectId\":\"p1\",\"roleKeys\":[\"agents-member\"]}" "$(head -2 "$T/api")"
-check "the unknown user: skipped with a clear message" 1 "$(grep -c '^\[skip   \] ghost@x .*first login' <<<"$o")"
-check "the unknown user: no write for them" 0 "$(grep -c 'agents-admin' "$T/api")"
-check "the unknown user: not a failure line" 0 "$(grep -c '^\[FAILED' <<<"$o")"
-# --grant of a missing user stays a failure: the owner typed that one.
-GRANT_MISSING_OK=false grant_role agents-admin ghost@x p1 >/dev/null 2>&1
+grant_role agents-admin ghost@x p1 >/dev/null 2>&1
 check "an explicit --grant of a missing user still fails" 1 "$?"
-api() { cat >/dev/null; return 22; }
+api() { [ "${4:-}" != "@-" ] || cat >/dev/null; case "$2" in */grants) return 22 ;; "/admin/v1/idps/templates/_search") echo '{"result":[{"id":"idp-g","name":"Google Workspace"}]}' ;; "/v2/users") echo '{"result":[{"userId":"u-alice"}]}' ;; */links/_search) echo '{"result":[{"idpId":"idp-g","userId":"1001"}]}' ;; esac; }
+printf 'owners:\n  - {loginName: alice@x, githubLogin: alice, githubId: "11", googleSubject: "1001", roles: [admin]}\n' > "$T/one.yaml"
+OWNERS_FILE="$T/one.yaml"; OWNERS_JSON="$(owners_json "$OWNERS_FILE")"
+api_or_fail() { echo '{"result":[]}'; }
 apply_owner_grants p1 >/dev/null 2>&1
 check "a refused write fails the list" 1 "$?"
+api() { case "$2" in "/admin/v1/idps/templates/_search") return 22 ;; esac; }
+o="$(apply_owner_grants p1 2>&1)"; r=$?
+check "an API failure on the IdP lookup is an error, not a skip" "1 0" "$r $(grep -c '^\[skip' <<<"$o")"
 unset -f api api_or_fail
 
 echo "== 4. ensure_machine_user: a 409 on create means the user exists =="
@@ -146,18 +178,22 @@ kubectl() {
     case "$1 $2" in
         "get configmap") printf 'configmap/%s\n' "$CM" ;;
         "get deployment") [ "$DEPLOY" = present ] || return 1
-            echo '{"spec":{"template":{"spec":{"containers":[{"env":[{"name":"OAUTH2_PROXY_CLIENT_ID","valueFrom":{"secretKeyRef":{"name":"rooms-proxy","key":"client-id"}}}]}]}}}}' ;;
-        "get secret") jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" '{data:{"client-id":$v}}' ;;
+            echo '{"spec":{"template":{"spec":{"containers":[{"env":[{"name":"OAUTH2_PROXY_CLIENT_ID","valueFrom":{"secretKeyRef":{"name":"rooms-proxy","key":"client-id"}}},{"name":"OAUTH2_PROXY_EXTRA_OIDC_ISSUERS","valueFrom":{"secretKeyRef":{"name":"rooms-proxy-extra-issuers","key":"issuers"}}}]}]}}}}' ;;
+        # rooms-proxy-extra-issuers holds <issuer>=<roomctl client id>, never the proxy's own id
+        "get secret") if [[ "$*" == *rooms-proxy-extra-issuers* ]]; then jq -n --arg v "$(printf '%s' "https://auth.example=roomctl-id" | base64)" '{data:{issuers:$v}}'
+                      else jq -n --arg v "$(printf '%s' "$SECRET_ID" | base64)" '{data:{"client-id":$v}}'; fi ;;
     esac
 }
 restarts() { grep -c '^rollout restart deployment rooms-oauth2-proxy -n agent-system' "$T/kc" || true; }
 : > "$T/kc"; restart_rooms_proxy new-id >"$T/out" 2>&1
 check "restarts deploy/rooms-oauth2-proxy in agent-system" 1 "$(restarts)"
 : > "$T/kc"; DEPLOY=absent restart_rooms_proxy new-id >"$T/out" 2>&1
-check "no Deployment yet: skipped, no restart, exit 0" "0 0" "$(restarts) $?"
+check "no Deployment yet: skipped, no restart" 0 "$(restarts)"
+DEPLOY=absent restart_rooms_proxy new-id >/dev/null 2>&1
+check "no Deployment yet: exit 0" 0 "$?"
 : > "$T/kc"; SECRET_ID=old-id restart_rooms_proxy new-id >"$T/out" 2>&1
 check "Secret still on the old client: no restart onto it" 0 "$(restarts)"
-check "Secret still on the old client: says so" 1 "$(grep -c 'does not carry client new-id' "$T/out")"
+check "Secret still on the old client: says so, naming rooms-proxy" 1 "$(grep -c 'agent-system/rooms-proxy does not carry client new-id' "$T/out")"
 : > "$T/kc"; APPLY=false restart_rooms_proxy new-id >/dev/null 2>&1
 check "dry run: no kubectl" 0 "$(wc -l < "$T/kc")"
 : > "$T/kc"; CM=eks-aws-0-vars restart_rooms_proxy new-id >"$T/out" 2>&1
@@ -199,6 +235,14 @@ APPLY=false; run_cmd_sync; APPLY=true
 check "dry run: no restart" "0 " "$rc $(proxy_calls)"
 app_id_by_name() { echo ""; }; APPLY=false; run_cmd_sync; APPLY=true
 check "dry run create: no restart" "0 " "$rc $(proxy_calls)"
+
+# restart_rotated_consumers already rolled the proxy when its key was rotated: no second restart.
+app_id_by_name() { echo ""; }
+previous_client_id() { echo OLD; }
+run_cmd_sync
+check "key rotated (restart_rotated_consumers' job): no second restart" "0 " "$rc $(proxy_calls)"
+restart_rotated_consumers() { :; }
+unset -f previous_client_id; load_function previous_client_id "$SRC"
 
 echo "== 7. cmd_sync applies the list =="
 grant_role() { printf '%s %s %s\n' "$1" "$2" "$3" >>"$T/grants"; }

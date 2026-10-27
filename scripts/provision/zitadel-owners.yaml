@@ -4,17 +4,31 @@
 # zitadel-idp.sh link-owners links GitHub).
 #
 # Who holds a role is the owner's call, not the repo's. THIS FILE IS THAT CALL,
-# MADE IN GIT: an entry here is the owner deciding, a PR here is the owner
-# changing their mind. Nobody gets a role by being in the directory.
+# MADE IN GIT: an entry here is the owner deciding.
 #
-#   loginName    the ZITADEL login name, the Google Workspace email
-#   githubLogin  the GitHub account to link (a link to a different account is
-#                refused and reported, never replaced)
-#   roles        project roles: admin, backend, frontend, data, agents-admin, agents-member
+# ENTRIES ARE ADD-ONLY. REMOVING ONE REVOKES NOTHING. A removed owner keeps the
+# roles and the GitHub link already granted, on aws-0 and on any restored seed,
+# until someone revokes them by hand (gcp-0 loses them at its next rebuild):
+#   curl -X DELETE -H "Authorization: Bearer $PAT" \
+#     "$IDP_URL/management/v1/users/<userId>/grants/<grantId>"      # the grant
+#   curl -X DELETE -H "Authorization: Bearer $PAT" \
+#     "$IDP_URL/v2/users/<userId>/links/<idpId>/<providedUserId>"   # a link
+# (or the ZITADEL console, user page, Authorizations and External identities).
 #
-# A user who has not logged in yet does not exist in ZITADEL: their entry is
-# skipped with a message and applied by the next deploy.
+# An entry matches ONE ZITADEL user: the one whose Google IdP link carries
+# googleSubject. Never a userName or an email, which anyone can register. Zero
+# matches: skipped until that user's first login. Several: refused, nothing granted.
+#
+#   loginName      a label for messages, NOT used to find the user
+#   googleSubject  the Google IdP link's providedUserId (ZITADEL console: user,
+#                  External identities, on "Google Workspace"); quoted
+#   githubLogin    the GitHub account, a label cross-checked against githubId
+#   githubId       the numeric GitHub id, quoted: what is linked. A login that
+#                  GitHub resolves to another id is refused
+#   roles          project roles: admin, backend, frontend, data, agents-admin, agents-member
 owners:
   - loginName: smaine.kahlouch@ogenki.io
+    googleSubject: "114494807855983228762"
     githubLogin: Smana
+    githubId: "4101366"
     roles: [admin, agents-admin, agents-member]

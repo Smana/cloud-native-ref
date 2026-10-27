@@ -51,11 +51,13 @@
 # prompt (ZITADEL v4.19.4 source, login v1). An existing link to the same GitHub
 # account is ok; one to a different account is refused, never replaced.
 #
-# link-owners runs link-github for every entry of the owners list in git
+# link-owners links every entry of the owners list in git
 # (scripts/provision/zitadel-owners.yaml), after the IdP and the role sync. That list
-# is the owner's call on who is who, made in git. A user who has not logged in yet
-# has no ZITADEL user: skipped with a message, linked by the next deploy. A link to a
-# different account is reported and fails the run, after every entry was tried.
+# is the owner's call on who is who, made in git. The user is the ONE whose Google IdP
+# link carries the entry's googleSubject (never a loginName or email, which anyone can
+# register), the GitHub id is the pinned githubId. No such user yet: skipped, linked by
+# the next deploy. Several, a different pinned id, a link to another account or an API
+# error: reported, nothing linked for that entry, and the run exits 1 after trying all.
 #
 # rotate-github-secret reads the new GitHub OAuth App client secret on stdin
 # (never argv), checks its shape, then PUTs it to the GitHub IdP and writes
@@ -118,8 +120,6 @@ OPENBAO_CA_FILE=""
 MIRROR_OPENBAO="false"
 NEW_CLIENT_ID=""
 OWNERS_FILE=""
-# Set by link-owners: an absent user is a skip there, a failure for link-github.
-LINK_SKIP_MISSING="false"
 LINK_LOGIN=""
 GITHUB_LOGIN=""
 GITHUB_API="${GITHUB_API:-https://api.github.com}"
@@ -623,13 +623,16 @@ link_github() {
         | api POST /v2/users -d @-)" \
         || { echo "[FAILED ] cannot search ZITADEL users" >&2; return 1; }
     matches="$(jq -r '[.result[]?.userId] | length' <<< "$resp")"
-    if [ "$matches" = "0" ] && [ "$LINK_SKIP_MISSING" = "true" ]; then
-        echo "[skip   ] ${LINK_LOGIN} has no ZITADEL user yet (first login pending); GitHub ${GITHUB_LOGIN} is linked by the next deploy"
-        return 0
-    fi
     [ "$matches" = "1" ] || { echo "[FAILED ] ${matches} ZITADEL users with login name '${LINK_LOGIN}', want exactly 1" >&2; return 1; }
     user_id="$(jq -r '.result[0].userId' <<< "$resp")"
 
+    link_user_github "$user_id" "$gh_idp" "$gh_id" "$gh_login"
+}
+
+# Link user $1 to GitHub account ($3 numeric id, $4 login label) on IdP $2: ok when the
+# same account is already linked, refused when another one is, never replaced.
+link_user_github() {
+    local user_id="$1" gh_idp="$2" gh_id="$3" gh_login="$4" resp existing
     resp="$(api POST "/v2/users/${user_id}/links/_search" -d '{}')" \
         || { echo "[FAILED ] cannot list the IdP links of ${LINK_LOGIN}" >&2; return 1; }
     existing="$(jq -c --arg i "$gh_idp" '[.result[]? | select(.idpId == $i)][0] // empty' <<< "$resp")"
@@ -655,17 +658,43 @@ link_github() {
     echo "           roomctl rooms sees it once the broker's cached answer expires (5 minutes)"
 }
 
-# Link every owner of the list. One entry's failure does not stop the next ones.
+# Link every owner of the list to the user whose Google IdP link carries the entry's
+# googleSubject (never by loginName or email: anyone can register those), with the
+# entry's pinned numeric githubId. GitHub's own answer for the login may only
+# cross-check: another id refuses the link. One entry's failure does not stop the next.
 link_owners() {
-    local entry failed=0
-    if [ -z "$(idp_id_by_name "$GITHUB_IDP_NAME")" ]; then
-        echo "[skip   ] no '${GITHUB_IDP_NAME}' IdP in ZITADEL (no ${GITHUB_IDP_SECRET_KEY} in the store): GitHub links not applied"
+    local entry label subject gh_login gh_id g_idp gh_idp uid rc failed=0 gh_user api_id
+    if ! g_idp="$(zitadel_idp_id "$IDP_NAME")" || ! gh_idp="$(zitadel_idp_id "$GITHUB_IDP_NAME")"; then
+        echo "[FAILED ] cannot look up the IdPs in ZITADEL (stale PAT, or ZITADEL unreachable): no GitHub link applied" >&2
+        return 1
+    fi
+    if [ -z "$g_idp" ] || [ -z "$gh_idp" ]; then
+        echo "[skip   ] no '${IDP_NAME}' or '${GITHUB_IDP_NAME}' IdP in ZITADEL (no ${GITHUB_IDP_SECRET_KEY} in the store?): GitHub links not applied"
         return 0
     fi
     while read -r entry; do
-        LINK_LOGIN="$(jq -r .loginName <<< "$entry")"
-        GITHUB_LOGIN="$(jq -r .githubLogin <<< "$entry")"
-        LINK_SKIP_MISSING=true link_github || failed=1
+        label="$(jq -r .loginName <<< "$entry")"
+        subject="$(jq -r .googleSubject <<< "$entry")"
+        gh_login="$(jq -r .githubLogin <<< "$entry")"
+        gh_id="$(jq -r .githubId <<< "$entry")"
+        LINK_LOGIN="$label"; GITHUB_LOGIN="$gh_login" # the labels link_user_github prints
+        rc=0; uid="$(resolve_owner_user_id "$g_idp" "$subject")" || rc=$?
+        case "$rc" in
+            0) ;;
+            3) echo "[skip   ] ${label}: no ZITADEL user holds Google subject ${subject} (first login pending); linked by the next deploy"; continue ;;
+            4) echo "[FAILED ] ${label}: several ZITADEL users hold Google subject ${subject}; refused, no link" >&2; failed=1; continue ;;
+            *) failed=1; continue ;;
+        esac
+        if gh_user="$(curl -fsS -H "Accept: application/vnd.github+json" "${GITHUB_API}/users/${gh_login}" 2>/dev/null)"; then
+            api_id="$(jq -r '.id // empty' <<< "$gh_user")"
+            if [ "$api_id" != "$gh_id" ]; then
+                echo "[FAILED ] ${label}: GitHub resolves '${gh_login}' to id ${api_id:-<none>}, not the pinned ${gh_id}; refused, no link" >&2
+                failed=1; continue
+            fi
+        else
+            echo "WARN: ${label}: GitHub does not answer for '${gh_login}'; linking the pinned id ${gh_id} unchecked" >&2
+        fi
+        link_user_github "$uid" "$gh_idp" "$gh_id" "$gh_login" || failed=1
     done < <(jq -c '.[]' <<< "$OWNERS_JSON")
     return "$failed"
 }

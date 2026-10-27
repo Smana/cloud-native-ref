@@ -133,12 +133,14 @@ GRANT_ADMIN=""
 #   --grant agents-admin=<email> --grant agents-member=<email>
 # The deploy passes no --grant: who holds a role is the owner's call, not the repo's.
 # --owners FILE is that call made in git (scripts/provision/zitadel-owners.yaml): the
-# deploy passes it, and every entry's roles are granted on every sync. A user who has
-# not logged in yet is skipped with a message, not a failure.
+# deploy passes it, and every entry's roles are granted on every sync, to the ONE user
+# whose Google IdP link carries the entry's googleSubject (never by userName or email:
+# anyone can register those). No such user yet: skipped. Several: refused.
+# --grant and --grant-admin stay the owner's interactive tool, matching by name.
 GRANTS=()
 OWNERS_FILE=""
-# Set by apply_owner_grants only: an absent user is a skip there, a failure for --grant.
-GRANT_MISSING_OK=false
+# Set when the owners list could not be used: the sync still runs, then exits 1.
+OWNERS_BAD=0
 
 # Empty means reconcile_openbao_oidc is a no-op: the consumer call on a
 # secondary cluster. A cluster hosting its own directory (aws-0's stage 4,
@@ -196,16 +198,28 @@ for g in "${GRANTS[@]+"${GRANTS[@]}"}"; do
     esac
 done
 
-# The owners list: parsed and checked here too, before the PAT resolve can write.
-if [ -n "$OWNERS_FILE" ]; then
+# The owners list is an auxiliary step: when it cannot be read, parsed or has an
+# unknown role, say so loudly, switch the step off and let the client registration run
+# (it is the critical path). The sync then exits 1 at its end.
+load_owners() {
+    local rc=0 r
+    [ -n "${OWNERS_FILE:-}" ] || return 0
     # shellcheck source=scripts/lib/zitadel-owners.sh
     . "$(dirname "$0")/../lib/zitadel-owners.sh"
-    OWNERS_JSON="$(owners_json "$OWNERS_FILE")" || exit 2
-    while read -r r; do
-        printf '%s\n' "${ZITADEL_PROJECT_ROLES[@]}" | grep -qxF -- "$r" \
-            || { echo "${OWNERS_FILE}: unknown role '${r}'; one of: ${ZITADEL_PROJECT_ROLES[*]}" >&2; exit 2; }
-    done < <(jq -r '.[].roles[]' <<< "$OWNERS_JSON")
-fi
+    OWNERS_JSON="$(owners_json "$OWNERS_FILE")" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        while read -r r; do
+            printf '%s\n' "${ZITADEL_PROJECT_ROLES[@]}" | grep -qxF -- "$r" || {
+                echo "WARN: ${OWNERS_FILE}: unknown role '${r}' (one of: ${ZITADEL_PROJECT_ROLES[*]})" >&2; rc=1; break; }
+        done < <(jq -r '.[].roles[]' <<< "$OWNERS_JSON")
+    fi
+    if [ "$rc" -ne 0 ]; then
+        echo "WARN: the owners list is not applied by this run (${OWNERS_FILE}); the clients are registered regardless" >&2
+        OWNERS_FILE=""; OWNERS_BAD=1
+    fi
+    return 0
+}
+load_owners
 
 # Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
 # one receives the client secrets this script writes. They are the same cloud
@@ -537,11 +551,15 @@ grant_role() {
     resp="$(search_all /management/v1/users/_search)" || return 1
     user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)" || return 1
     if [ -z "$user_id" ]; then
-        if [ "${GRANT_MISSING_OK:-false}" = true ]; then
-            echo "[skip   ] ${email} has no ZITADEL user yet (first login pending); '${role}' is granted by the next deploy"; return 0
-        fi
         echo "[FAILED ] no ZITADEL user for ${email}: they must log in once first" >&2; return 1
     fi
+    grant_user_role "$role" "$user_id" "$email" "$project_id"
+}
+
+# Give user id $2 the project role $1; $3 labels the messages. The shared tail of
+# grant_role (name matching, interactive) and apply_owner_grants (Google subject).
+grant_user_role() {
+    local role="$1" user_id="$2" email="$3" project_id="$4" resp grant
     resp="$(search_all /management/v1/users/grants/_search)" || return 1
     grant="$(jq -c --arg u "$user_id" --arg p "$project_id" '[.result[]? | select(.userId == $u and .projectId == $p)][0] // empty' <<< "$resp")" || return 1
     if [ -n "$grant" ] && jq -e --arg r "$role" '.roleKeys | index($r)' <<< "$grant" >/dev/null; then
@@ -566,14 +584,31 @@ grant_role() {
 # yet is skipped by grant_role; any other failure is reported and fails the list,
 # after every entry was tried.
 apply_owner_grants() {
-    local project_id="$1" entry email role failed=0
+    local project_id="$1" entry label subject idp role uid failed=0 rc
     [ -n "${OWNERS_FILE:-}" ] || return 0
+    if [ "$project_id" = "DRYRUN-PROJECT" ]; then
+        echo "[dry-run] would grant the owners' roles"; return 0
+    fi
+    if ! idp="$(zitadel_idp_id "Google Workspace")"; then
+        echo "[FAILED ] cannot look up the Google IdP: the owners' roles are not granted" >&2; return 1
+    fi
+    if [ -z "$idp" ]; then
+        echo "[skip   ] no 'Google Workspace' IdP yet: nobody can hold a Google link, the owners' roles wait for the next deploy"; return 0
+    fi
     while read -r entry; do
-        email="$(jq -r .loginName <<< "$entry")"
+        label="$(jq -r .loginName <<< "$entry")"
+        subject="$(jq -r .googleSubject <<< "$entry")"
+        rc=0; uid="$(resolve_owner_user_id "$idp" "$subject")" || rc=$?
+        case "$rc" in
+            0) ;;
+            3) echo "[skip   ] ${label}: no ZITADEL user holds Google subject ${subject} (first login pending); granted by the next deploy"; continue ;;
+            4) echo "[FAILED ] ${label}: several ZITADEL users hold Google subject ${subject}; refused, nothing granted" >&2; failed=1; continue ;;
+            *) failed=1; continue ;;
+        esac
         while read -r role; do
-            GRANT_MISSING_OK=true grant_role "$role" "$email" "$project_id" || failed=1
+            grant_user_role "$role" "$uid" "$label" "$project_id" || failed=1
         done < <(jq -r '.roles[]' <<< "$entry")
-    done < <(owners_json "$OWNERS_FILE" | jq -c '.[]')
+    done < <(jq -c '.[]' <<< "$OWNERS_JSON")
     return "$failed"
 }
 
@@ -1328,8 +1363,12 @@ restart_rooms_proxy() {
     json="$(kubectl get deployment "$dep" -n "$ns" -o json 2>/dev/null)" || {
         echo "[skip   ] deploy/${dep} not in ${ns} yet; it starts on client ${id} by itself"; return 0
     }
+    # Only the Secret behind OAUTH2_PROXY_CLIENT_ID: the Deployment also reads
+    # rooms-proxy-extra-issuers, which holds roomctl's client id and never this one.
     secrets="$(jq -r '[.spec.template.spec | (.containers // []) + (.initContainers // []) | .[]
-        | (.envFrom // [])[].secretRef.name?, (.env // [])[].valueFrom.secretKeyRef.name?] | map(select(. != null)) | unique | .[]' <<< "$json")"
+        | (.env // [])[] | select(.name == "OAUTH2_PROXY_CLIENT_ID") | .valueFrom.secretKeyRef.name?]
+        | map(select(. != null)) | unique | .[]' <<< "$json")"
+    [ -n "$secrets" ] || secrets=rooms-proxy
     deadline=$(( $(date +%s) + ${OIDC_CONSUMER_WAIT_SECONDS:-180} ))
     for s in $secrets; do
         until secret_carries "$ns" "$s" "$id"; do
@@ -1556,7 +1595,7 @@ reconcile_openbao_oidc() {
 machine_user_id() {
     api_or_fail POST /management/v1/users/_search \
         -d "$(jq -cn --arg n "$1" '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}')" \
-        | jq -r --arg n "$1" 'first(.result[]? | select(.userName == $n) | .id // .userId) // empty'
+        | jq -r --arg n "$1" 'first(.result[]? | select(.userName == $n and .human == null) | .id // .userId) // empty'
 }
 
 ensure_machine_user() {
@@ -1624,6 +1663,7 @@ ensure_machine_user() {
                     -d "$(jq -cn --arg n "$name" '{userName: $n, name: $n, accessTokenType: "ACCESS_TOKEN_TYPE_JWT"}')" 2>&1)"; then
                 id="$(jq -r '.userId // empty' <<< "$created")"
                 [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL returned no userId" >&2; return 1; }
+            # api_or_fail relays curl -fsS's "returned error: 409"; that wording is the signal.
             elif grep -q 'error: 409' <<< "$created"; then
                 id="$(machine_user_id "$name")" || return 1
                 [ -n "$id" ] || { echo "[FAILED ] ${name}: ZITADEL says it exists (409) but the search does not find it" >&2; return 1; }
@@ -2064,6 +2104,7 @@ cmd_sync() {
     [ "$publish_failed" -eq 0 ] || exit 1
     [ "$machine_failed" -eq 0 ] || exit 1
     [ "$owners_failed" -eq 0 ] || exit 1
+    [ "${OWNERS_BAD:-0}" -eq 0 ] || exit 1
 }
 
 case "$COMMAND" in
