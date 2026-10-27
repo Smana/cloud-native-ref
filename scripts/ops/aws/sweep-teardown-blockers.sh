@@ -49,7 +49,11 @@
 #
 # Usage:
 #   scripts/ops/aws/sweep-teardown-blockers.sh --cluster-name N --region R \
-#       [--zone-name Z] [--profile P] [--apply]
+#       [--zone-name Z] [--profile P] [--dns-only] [--apply]
+#
+# --dns-only stops after the Route53 records, so it is safe while the cluster is
+# still up: eks-prepare-destroy.sh uses it to clear the records BEFORE the load
+# balancers they point at are released.
 #
 # Dry-run unless --apply, and it lists exactly what it would delete.
 # Idempotent: safe to run before a destroy, after a failed one, or twice.
@@ -63,6 +67,7 @@ REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 ZONE_NAME=""
 PROFILE=""
 APPLY="false"
+DNS_ONLY="false"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -71,6 +76,7 @@ while [ $# -gt 0 ]; do
         --zone-name)    ZONE_NAME="$2"; shift 2 ;;
         --profile)      PROFILE="$2"; shift 2 ;;
         --apply)        APPLY="true"; shift ;;
+        --dns-only)     DNS_ONLY="true"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -138,6 +144,17 @@ print(json.dumps({"Changes": [{"Action": "DELETE", "ResourceRecordSet": r} for r
             failed=$((failed + 1))
         fi
     done <<<"$zone_rows"
+fi
+
+if [ "$DNS_ONLY" = "true" ]; then
+    echo
+    if [ "$APPLY" != "true" ]; then
+        echo "==> dry-run: ${swept} record(s) would be swept. Re-run with --apply."
+    else
+        echo "==> swept ${swept}, failed ${failed}."
+    fi
+    [ "$failed" -eq 0 ] || exit 1
+    exit 0
 fi
 
 # ── 2. the EKS-managed cluster security group ──────────────────────────────

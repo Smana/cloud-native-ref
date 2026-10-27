@@ -333,6 +333,19 @@ strip_finalizers_for_kind() {
 	done
 }
 
+# Clear the external-dns records BEFORE any load balancer is released. Deleting
+# the Gateway Services below releases the NLBs; until now the Route53 records that
+# point at them were removed only by sweep-teardown-blockers.sh after the whole
+# walk (and only when a failed destroy made teardown.sh run it), so they dangled
+# through every stack in between. external-dns is stopped first (Flux is
+# suspended, so nothing scales it back) or it would recreate what is purged.
+# Best effort: the post-walk sweep stays as the backstop.
+echo "Stopping external-dns and purging its DNS records before releasing load balancers..."
+kubectl -n kube-system scale deployment -l app.kubernetes.io/name=external-dns --replicas=0 2>/dev/null || true
+kubectl -n kube-system wait --for=delete pod -l app.kubernetes.io/name=external-dns --timeout=60s 2>/dev/null || true
+bash "$(dirname "$0")/sweep-teardown-blockers.sh" --cluster-name "${CLUSTER_NAME}" --region "${REGION}" \
+	${PROFILE:+--profile "${PROFILE}"} --dns-only --apply || echo "DNS purge failed; the post-destroy sweep will retry"
+
 echo "Checking for Gateway API resources..."
 if kubectl api-resources --api-group=gateway.networking.k8s.io 2>/dev/null | grep -q gateways; then
 	# 1. HTTPRoutes / GRPCRoutes / TCPRoutes / TLSRoutes
