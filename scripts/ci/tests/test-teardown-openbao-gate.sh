@@ -50,6 +50,8 @@ EOF
 chmod +x "$T/bin/aws" "$T/bin/terramate" "$T/bin/gcloud"
 set +e
 export PATH="$T/bin:$PATH"
+# These stubs are not the pinned tofu/terramate; the pin check has its own suite (test-tool-pins.sh).
+export TM_SKIP_TOOL_PIN_CHECK=true
 
 require_stubs() {
   local tool

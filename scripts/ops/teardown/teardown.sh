@@ -42,6 +42,11 @@ CLOUDS="${TM_CLOUD:-aws}"
 VERIFY_ONLY=0
 [ "${1:-}" = "--verify-only" ] && VERIFY_ONLY=1
 
+# The destroy must run on the tofu and terramate mise.toml pins.
+# shellcheck source=scripts/lib/tool-pins.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/tool-pins.sh"
+[ "$VERIFY_ONLY" -eq 1 ] || verify_tool_pins || exit 1
+
 wants() { # $1 = lane
   case ",${CLOUDS// /}," in
     *,all,*) return 0 ;;

@@ -131,6 +131,12 @@ if [ -n "${TF_VAR_flux_git_ref:-}" ]; then
     fi
 fi
 
+# The tofu and terramate on PATH must be the ones mise.toml pins. Every deploy
+# and destroy reaches tofu through here, so this is the one place to check.
+# shellcheck source=scripts/lib/tool-pins.sh
+. "$(dirname "$0")/../lib/tool-pins.sh"
+verify_tool_pins || exit 1
+
 if [ "$RUN_ANY" = "true" ]; then
     exec "$@"
 fi
