@@ -106,9 +106,9 @@ globals {
   # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io
   cilium_version = "1.20.4"
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-operator
-  flux_operator_version = "0.60.0"
+  flux_operator_version = "0.62.1"
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-instance
-  flux_instance_version = "0.60.0"
+  flux_instance_version = "0.62.1"
 
   # Gateway API release. Shared for the same reason as cilium_version: Cilium is
   # the GatewayClass implementation, so the CRD set cannot move independently of
