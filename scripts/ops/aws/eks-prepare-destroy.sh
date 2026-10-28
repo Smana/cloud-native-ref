@@ -1,4 +1,5 @@
 #!/bin/bash
+# Prepare an EKS cluster for destruction — suspends Flux, deletes every PVC.
 
 # Don't use set -e globally - we want to handle errors gracefully during cleanup
 # set -e
