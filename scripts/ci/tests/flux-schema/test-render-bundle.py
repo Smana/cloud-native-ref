@@ -422,7 +422,8 @@ for path, doc in real:
 # spec.values (it would clobber the umbrella's four-entry list), and no static
 # gate can see the resumed-umbrella render. So pin both states against the real
 # manifests: suspended umbrella -> the base three entries, byte-equal to what
-# spec.values carried before; resumed umbrella -> the intake Secret as fourth.
+# spec.values carried before; resumed umbrella -> the intake Secret fourth, the
+# factory principal (optional) fifth.
 
 runlore_path = rb.REPO_ROOT / "observability" / "base" / "runlore" / "helmrelease.yaml"
 runlore_doc = next(d for p, d in real if p == runlore_path)
@@ -452,8 +453,12 @@ check("umbrella suspended: envFrom renders the base three, as before",
       f"{error or values.get('envFrom')!r}")
 
 values, error, _ = resolve(runlore_doc["spec"], runlore_objects + [factory_cm], cluster="aws-0")
-check("umbrella resumed: envFrom renders four, intake Secret last",
-      error is None and values.get("envFrom") == BASE_ENV + [{"secretRef": {"name": "runlore-factory-intake"}}],
+# Feature 14 (ai-native-ref v2.8.0) appends RunLore's factory client credentials, optional so that a
+# cluster without the key keeps the client off.
+check("umbrella resumed: envFrom renders five, intake then the optional factory principal",
+      error is None and values.get("envFrom") == BASE_ENV + [
+          {"secretRef": {"name": "runlore-factory-intake"}},
+          {"secretRef": {"name": "runlore-factory-principal", "optional": True}}],
       f"{error or values.get('envFrom')!r}")
 
 # --- A digest-pinned chartRef renders that digest, never a tag ---------------
