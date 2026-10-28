@@ -3,9 +3,11 @@
 # The chart's NetworkPolicy opens 443 to anywhere, but on gcp-0 ZITADEL is this cluster's own Gateway VIP
 # (auth.${public_domain_name}): Cilium answers a pod's connection to that VIP in-cluster, and a port-scoped
 # rule does not carry to it (ruling AU), so the TLS handshake was reset (live 1, 2026-10-28:
-# "factory token: Post https://auth...: read: connection reset by peer"). Narrower than the other gcp-0
-# ZITADEL clients' `toEntities: [all]` (owner, 2026-10-28): only the `ingress` entity, Cilium's Gateway
-# proxy that terminates the VIP, with no ports. If the token request still resets, widen to `all`.
+# "factory token: Post https://auth...: read: connection reset by peer"). The Gateway is TLS passthrough
+# (security/zitadel, TLSRoute) to ZITADEL's pods on 8080, and Cilium checks a client's egress against that
+# backend, not the proxy: Hubble showed RunLore's flow "to-proxy FORWARDED" then reset, and `toEntities:
+# [ingress]` alone did not open it (2026-10-28). So the rule names the backend itself: ZITADEL's pods, 8080
+# only — narrower than the other gcp-0 ZITADEL clients' `toEntities: [all]` (owner's choice).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -19,3 +21,11 @@ spec:
   egress:
     - toEntities:
         - ingress
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: security
+            app.kubernetes.io/name: zitadel
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
