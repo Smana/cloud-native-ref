@@ -10,4 +10,4 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-aws
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.24
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.25
