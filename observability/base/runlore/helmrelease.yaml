@@ -337,6 +337,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: observability
+        # The room broker's signed webhooks (ai-native-ref feature 14, RA7): POST /factory/webhook
+        # on this port, forwarded to the leader by RunLore itself.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: room-broker
       # The chart's non-strict egress only opens 443/6443 — but VictoriaMetrics
       # (vmsingle :8428) and VictoriaLogs (:9428) listen on other ports, so without
       # this the agent's metrics/logs tool calls hang until they time out, starving
@@ -368,6 +376,27 @@ spec:
                   k8s-app: hubble-relay
           ports:
             - port: 80
+              protocol: TCP
+        # The agent factory's API (feature 14): POST /v1/tasks and the verdict, 8082 on its Service.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: agent-system
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: agent-factory
+          ports:
+            - port: 8082
+              protocol: TCP
+        # Alertmanager, read once a fix is merged and once its soak ends (feature 14, RA14).
+        # Namespace-only: no manifest in this repository confirms the operator's pod label
+        # (`app.kubernetes.io/name: vmalertmanager` is a guess), so the port bounds it instead.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: observability
+          ports:
+            - port: 9093
               protocol: TCP
     vmServiceScrape:
       enabled: true
