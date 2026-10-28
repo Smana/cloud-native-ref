@@ -49,6 +49,8 @@ bao_target_for() {
         agents-rooms-proxy) printf 'agents/rooms-proxy' ;;
         agents-roomctl) printf 'agents/roomctl' ;;
         agents-factory-slack-principal) printf 'agents/factory-slack-principal' ;;
+        runlore-factory-principal) printf 'platform/runlore/factory-principal' ;;
+        agents-runlore-principal) printf 'agents/runlore-principal' ;;
         room-broker-zitadel-reader) printf 'agents/zitadel-reader' ;;
         *) return 1 ;;
     esac
