@@ -1,0 +1,21 @@
+# RunLore's token request to ZITADEL on gcp-0 (feature 14, the agent factory's client; plan ruling R4).
+#
+# The chart's NetworkPolicy opens 443 to anywhere, but on gcp-0 ZITADEL is this cluster's own Gateway VIP
+# (auth.${public_domain_name}): Cilium answers a pod's connection to that VIP in-cluster, and a port-scoped
+# rule does not carry to it (ruling AU), so the TLS handshake was reset (live 1, 2026-10-28:
+# "factory token: Post https://auth...: read: connection reset by peer"). Narrower than the other gcp-0
+# ZITADEL clients' `toEntities: [all]` (owner, 2026-10-28): only the `ingress` entity, Cilium's Gateway
+# proxy that terminates the VIP, with no ports. If the token request still resets, widen to `all`.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: runlore-zitadel
+  namespace: runlore
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: runlore
+      app.kubernetes.io/name: runlore
+  egress:
+    - toEntities:
+        - ingress
