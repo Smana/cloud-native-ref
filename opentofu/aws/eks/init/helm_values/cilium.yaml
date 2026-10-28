@@ -54,10 +54,17 @@ socketLB:
   # See: https://github.com/tailscale/tailscale/issues/15478
   hostNamespaceOnly: true
 operator:
+  # 100Mi was too small: the 1.20.3 -> 1.20.4 upgrade OOMKilled both replicas
+  # mid-rollout on gcp-0 (2026-10-28, lastState.reason=OOMKilled, two restarts
+  # each) while steady state afterwards measured 32Mi. Startup is the peak, not
+  # the run, so the ceiling has to cover the boot reconcile of every CRD,
+  # Gateway and identity. 256Mi is 2.5x the value that demonstrably failed.
+  # Kept identical here so both clouds stay on one operator footprint (the
+  # values files are otherwise per-cloud).
   resources:
     limits:
       cpu: 100m
-      memory: 100Mi
+      memory: 256Mi
   rollOutPods: true # Reload pods when the configmap is updated
   # Automatically restart pods not managed by Cilium (replaces manual restart script)
   # Default podRestartSelector is "k8s-app=kube-dns" which only restarts CoreDNS
