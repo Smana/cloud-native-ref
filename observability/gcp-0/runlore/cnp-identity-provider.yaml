@@ -11,7 +11,7 @@
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: runlore-zitadel
+  name: runlore-identity-provider
   namespace: runlore
 spec:
   endpointSelector:
@@ -24,7 +24,7 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: security
-            app.kubernetes.io/name: zitadel
+            app.kubernetes.io/instance: zitadel
       toPorts:
         - ports:
             - port: "8080"
