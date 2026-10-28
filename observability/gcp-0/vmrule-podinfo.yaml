@@ -8,7 +8,7 @@ spec:
     - name: podinfo
       rules:
         - alert: PodinfoNoAvailableReplica
-          expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="podnfo"} > 0)
+          expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="podinfo"} > 0)
           for: 5m
           labels:
             severity: critical
