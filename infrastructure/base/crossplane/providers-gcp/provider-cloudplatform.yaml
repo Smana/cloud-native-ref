@@ -9,13 +9,13 @@
 # that evidence. Keep adding providers one per service, the way the AWS side
 # does — the family package pulls in only what is declared.
 #
-# Version tracks the AWS providers (v2.6.0). They share the crossplane-contrib
+# Version tracks the AWS providers (v2.9.0). They share the crossplane-contrib
 # release train, so a split would mean two upgrade cadences for one controller.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
   name: provider-gcp-cloudplatform
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-cloudplatform:v3.0.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-cloudplatform:v3.1.0
   runtimeConfigRef:
     name: gcp-config
