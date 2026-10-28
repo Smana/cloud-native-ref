@@ -19,7 +19,7 @@ load_function() {
     [ -n "$body" ] || { echo "could not extract ${1}() from $2" >&2; exit 1; }
     eval "$body"
 }
-for f in machine_user_id ensure_machine_user stored_client_id stored_client_secret probe_client_credentials cmd_sync; do load_function "$f" "$SRC"; done
+for f in machine_user_id write_public ensure_machine_user stored_client_id stored_client_secret probe_client_credentials cmd_sync; do load_function "$f" "$SRC"; done
 eval "$(sed -n '/^MACHINE_USERS=(/,/^)/p' "$SRC")"
 # shellcheck source=scripts/lib/bao-map.sh
 . "$REPO_ROOT/scripts/lib/bao-map.sh"
@@ -42,7 +42,7 @@ api_or_fail() {
 }
 store_probe() { [ "$STORE_STATE" = 0 ] && return 0; STORE_PROBE_ERR="Rate exceeded"; return "$STORE_STATE"; }
 store_read() { printf '%s' "$STORED"; }
-store_write_and_mirror() { printf '%s' "$1" >"$T/key"; cat >"$T/written"; return "$WRITE_RC"; }
+store_write_and_mirror() { printf '%s' "$1" >"$T/key"; tee "$T/written-$1" >"$T/written"; return "$WRITE_RC"; }
 MIRROR_RC=0
 mirror_to_openbao() { cat >/dev/null; return "$MIRROR_RC"; }
 # Accepts only the client id the fixture says is current: a probe with another id is refused.
@@ -168,8 +168,29 @@ check "refused secret: reads only" "POST /management/v1/users/_search" "$(calls 
 check "refused secret: nothing written" none "$(written)"
 APPLY=true; ACCEPT=0
 
+echo "== 6b. runlore: one user, the full key for RunLore, the public half for the factory (R2) =="
+SAVE_KEY=$KEY
+KEY=runlore-factory-principal; PUBLIC=agents-runlore-principal; PUT_CLIENT_ID=runlore; VALID_ID=runlore
+run_runlore() { rm -f "$T"/written* "$T/api" "$T/key" "$T/probed-as"; : >"$T/api"; mirrored_keys=(); failed_mirrors=""
+                out="$(ensure_machine_user runlore "$KEY" "$PUBLIC" 2>&1)"; rc=$?
+                mirrored_keys=(); failed_mirrors=""; ensure_machine_user runlore "$KEY" "$PUBLIC" >/dev/null 2>&1; }
+STORED='{}'; USERS='{"result":[]}'; ACCEPT=0
+run_runlore
+check "runlore: exit 0" 0 "$rc"
+check "runlore: the full key" '{"client-id":"runlore","client-secret":"NEWSECRET","project-id":"proj-1"}' "$(jq -c . "$T/written-$KEY")"  # pragma: allowlist secret
+check "runlore: the public key holds no secret" '{"client-id":"runlore","project-id":"proj-1"}' "$(jq -c . "$T/written-$PUBLIC")"
+check "runlore: prints no secret" 0 "$(grep -c NEWSECRET <<<"$out")"
+STORED='{"client-id":"runlore","client-secret":"STOREDSECRET","project-id":"proj-1"}'  # pragma: allowlist secret
+USERS='{"result":[{"id":"ID","userName":"runlore"}]}'
+run_runlore
+check "runlore converged: the public half equal, not written" absent "$([ -e "$T/written-$PUBLIC" ] && echo written || echo absent)"
+STORED='{"client-id":"runlore","client-secret":"STOREDSECRET","project-id":"old"}'  # pragma: allowlist secret
+run_runlore
+check "runlore: a new project id rewrites the public half" '{"client-id":"runlore","project-id":"proj-1"}' "$(jq -c . "$T/written-$PUBLIC")"
+KEY=$SAVE_KEY; VALID_ID=factory-slack-app; PUT_CLIENT_ID=factory-slack-app; STORED='{}'; USERS='{"result":[]}'
+
 echo "== 7. declaration and map =="
-check "MACHINE_USERS" "factory-slack-app|agents-factory-slack-principal" "${MACHINE_USERS[*]:-}"
+check "MACHINE_USERS" "factory-slack-app|agents-factory-slack-principal runlore|runlore-factory-principal|agents-runlore-principal" "${MACHINE_USERS[*]:-}"
 check "bao-map" agents/factory-slack-principal "$(bao_target_for agents-factory-slack-principal 2>/dev/null)"
 
 echo "== 8. cmd_sync calls it, and its failure does not cut the sync short =="
@@ -181,10 +202,11 @@ for f in reconcile_workforce_audience publish_project_id reconcile_openbao_oidc 
     eval "$f() { echo $f >>\"\$T/steps\"; }"
 done
 restart_rotated_consumers() { echo restart >>"$T/steps"; }
-ensure_machine_user() { echo "ensure $1 $2" >>"$T/steps"; return "$EMU_RC"; }
+ensure_machine_user() { echo "ensure $1 $2${3:+ $3}" >>"$T/steps"; return "$EMU_RC"; }
 run_sync() { rm -f "$T/steps"; out="$( ( set -o errexit -o nounset -o pipefail; cmd_sync ) 2>&1 )"; rc=$?; }
 EMU_RC=0; run_sync
-check "called with the declared user and key" "ensure factory-slack-app agents-factory-slack-principal" "$(grep '^ensure' "$T/steps")"
+check "called with each declared user, key and public key" "ensure factory-slack-app agents-factory-slack-principal
+ensure runlore runlore-factory-principal agents-runlore-principal" "$(grep '^ensure' "$T/steps")"
 check "success: exit 0" 0 "$rc"
 EMU_RC=1; run_sync
 check "failure: exit 1" 1 "$rc"

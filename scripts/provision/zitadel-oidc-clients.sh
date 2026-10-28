@@ -443,7 +443,7 @@ CONSUMERS=(
 
 # ── the machine users ─────────────────────────────────────────────────────────
 #
-# name | secret key it lands in
+# name | secret key it lands in | (optional) key for the public half
 #
 # A sponsored principal of the agent factory (factory interfaces F4) authenticates
 # with client credentials. Its client id is not a secret, its client secret is.
@@ -455,7 +455,15 @@ CONSUMERS=(
 # No project role is granted: a sponsored principal is not a human and must never
 # pass `Groups.Admitted`, and with no role its token carries no `groups`, which
 # keeps oauth2-proxy's `allowed-group` closed to it.
-MACHINE_USERS=("factory-slack-app|agents-factory-slack-principal")
+#
+# RunLore, the agent factory's internal principal (ai-native-ref feature 14, RA2).
+# Its full key is RunLore's (`platform/runlore/factory-principal`, read through
+# `openbao-platform`); the factory reads only the client id and the project id
+# (`agents/runlore-principal`, read through `agents-secrets`), never the secret.
+MACHINE_USERS=(
+  "factory-slack-app|agents-factory-slack-principal"
+  "runlore|runlore-factory-principal|agents-runlore-principal"
+)
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
 # needs `groups` in scope to get a groups claim at all, without which it can
@@ -1607,10 +1615,28 @@ machine_user_id() {
         | jq -r --arg n "$1" 'first(.result[]? | select(.userName == $n and .human == null) | .id // .userId) // empty'
 }
 
+# write_public key client_id: the factory's half of an internal principal (R2): its client id and the
+# project id, never the secret, written only when it differs from what the store holds.
+write_public() {
+    local key="$1" cid="$2" want stored='{}' probe=0 wrc=0
+    [ -n "$key" ] || return 0
+    want="$(jq -cn --arg id "$cid" --arg proj "$project_id" '{"client-id": $id, "project-id": $proj}')"
+    store_probe "$key" || probe=$?
+    [ "$probe" -ge 2 ] && return 1
+    [ "$probe" -eq 1 ] || stored="$(store_read "$key" | jq -c '{"client-id": ."client-id", "project-id": ."project-id"}')" || return 1
+    [ "$stored" = "$want" ] && return 0
+    printf '%s' "$want" | store_write_and_mirror "$key" || wrc=$?
+    case "$wrc" in
+        0) mirrored_keys+=("$key") ;;
+        2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
+        *) return 1 ;;
+    esac
+}
+
 ensure_machine_user() {
     local -
     set +x
-    local name="${1}${APP_SUFFIX:-}" key="$2" id probe=0 stored='{}' secret="" cid="" rotate=false why="" pr=0 wrc=0
+    local name="${1}${APP_SUFFIX:-}" key="$2" public="${3:-}" id probe=0 stored='{}' secret="" cid="" rotate=false why="" pr=0 wrc=0
     id="$(machine_user_id "$name")" || return 1
 
     store_probe "$key" || probe=$?
@@ -1654,6 +1680,7 @@ ensure_machine_user() {
                 failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
                 return 1
             fi
+            write_public "$public" "$cid" || return 1
         fi
         return 0
     fi
@@ -1700,6 +1727,7 @@ ensure_machine_user() {
         2) failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}" ;;
         *) return 1 ;;
     esac
+    write_public "$public" "$cid" || return 1
     echo "[$([ "$rotate" = true ] && echo stored || echo converged)] ${name} -> ${key}${why:+ (${why})}"
 }
 
@@ -2067,8 +2095,11 @@ cmd_sync() {
     done
 
     # Accumulated like publish_failed: the restarts below still run.
-    local machine_failed=0 u
-    for u in ${MACHINE_USERS[@]+"${MACHINE_USERS[@]}"}; do ensure_machine_user "${u%%|*}" "${u#*|}" || machine_failed=1; done
+    local machine_failed=0 u mu_name mu_key mu_public
+    for u in ${MACHINE_USERS[@]+"${MACHINE_USERS[@]}"}; do
+        IFS='|' read -r mu_name mu_key mu_public <<<"$u"
+        ensure_machine_user "$mu_name" "$mu_key" "$mu_public" || machine_failed=1
+    done
 
     # Only now is headlamp-proxy guaranteed to exist, so only now can the
     # workforce provider be pinned to its client id. Deliberately after the loop

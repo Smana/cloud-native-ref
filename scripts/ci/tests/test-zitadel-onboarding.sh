@@ -172,7 +172,7 @@ check "an API failure on the IdP lookup is an error, not a skip" "1 0" "$r $(gre
 unset -f api api_or_fail
 
 echo "== 4. ensure_machine_user: a 409 on create means the user exists =="
-for f in machine_user_id ensure_machine_user stored_client_id stored_client_secret probe_client_credentials; do load_function "$f" "$SRC"; done
+for f in machine_user_id write_public ensure_machine_user stored_client_id stored_client_secret probe_client_credentials; do load_function "$f" "$SRC"; done
 project_id=proj-1; APP_SUFFIX=""; mirrored_keys=(); failed_mirrors=""
 SEARCHES=0
 api_or_fail() {

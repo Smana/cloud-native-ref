@@ -14,6 +14,8 @@ check "grafana-envvars" "platform/victoria-metrics/grafana-envvars" "$(bao_targe
 check "harbor-oidc" "platform/harbor/oidc" "$(bao_target_for harbor-oidc)"
 check "app-wizard llm" "apps/app-wizard/llm" "$(bao_target_for apps-app-wizard-llm)"
 check "factory-slack-principal" "agents/factory-slack-principal" "$(bao_target_for agents-factory-slack-principal)"
+check "runlore-factory-principal" "platform/runlore/factory-principal" "$(bao_target_for runlore-factory-principal)"
+check "agents-runlore-principal" "agents/runlore-principal" "$(bao_target_for agents-runlore-principal)"
 bao_target_for openbao-oidc >/dev/null; check "openbao-oidc is unmapped" "1" "$?"
 grep -q '^bao_target_for()' "$REPO_ROOT/scripts/provision/secret-store.sh" && { echo "  FAIL secret-store.sh still defines its own copy"; fails=1; }
 grep -q 'lib/bao-map.sh' "$REPO_ROOT/scripts/provision/secret-store.sh" || { echo "  FAIL secret-store.sh does not source the map"; fails=1; }
