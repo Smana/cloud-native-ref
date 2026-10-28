@@ -59,6 +59,15 @@ data:
     # so no aggregation can drop them.
     vmalert:
       spec:
+        # LogsQL rules (VMRule label vmlog: "true") belong to the victoria-logs vmalert. Without this
+        # selector this vmalert picked them up too and failed each one every interval ("unsupported
+        # path /select/logsql/stats_query"), e.g. AgentCacheMarkerMissing, health err.
+        ruleSelector:
+          matchExpressions:
+            - key: vmlog
+              operator: NotIn
+              values: ["true"]
+        ruleNamespaceSelector: {}
         externalLabels:
           cluster: "${cluster_name}"
           # env/cloud/region join cluster so a Slack message says WHERE without
