@@ -11,6 +11,7 @@ resources:
   - ../base/victoria-logs
   - vmrule-image-gallery.yaml
   - vmrule-podinfo.yaml
+  - vmrule-app-wizard.yaml
   # ./runlore, not ../base/runlore: the overlay patches the three things that
   # genuinely differ by cloud — the provider block, the network policy that
   # reaches the metadata server, and the identity. See the directory.
