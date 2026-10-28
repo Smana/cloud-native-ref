@@ -24,6 +24,14 @@ spec:
     strategy:
       name: RetryOnFailure
       retryInterval: 2m
+  upgrade:
+    # The same in-place retry for upgrades. A reconcile that lands mid-upgrade (a write to
+    # vm-common-helm-values) cancels it with "context canceled". Without an upgrade strategy
+    # that one cancel stalled the release (RetriesExceeded, 2026-10-28) and every Kustomization
+    # that depends on it until a manual `flux reconcile hr --force`.
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 2m
   valuesFrom:
     - kind: ConfigMap
       name: vm-common-helm-values
