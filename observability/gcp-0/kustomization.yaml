@@ -12,8 +12,9 @@ resources:
   # ./runlore, not ../base/runlore: the overlay patches the three things that
   # genuinely differ by cloud — the provider block, the network policy that
   # reaches the metadata server, and the identity. See the directory.
-  # Off during the agent factory's v2, as on aws-0 (see its kustomization).
-  # - ./runlore
+  # On for v3 feature 14's live proofs (RunLore as the agent factory's client, owner
+  # decision 2026-10-28); off again once they are recorded, as on aws-0.
+  - ./runlore
 
 # ../base/loggen is deliberately NOT listed (2026-08-30). It is a synthetic
 # log generator (2 replicas, ~1.7M lines/day) whose only purpose is demoing
