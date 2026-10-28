@@ -1,0 +1,17 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: app-wizard-availability
+  namespace: apps
+spec:
+  groups:
+    - name: app-wizard
+      rules:
+        - alert: AppWizardNoAvailableReplica
+          expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="app-wizzard"} > 0)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: app-wizard has no available replica
+            description: No replica of the app-wizard Deployment in apps has been available for 5 minutes.
