@@ -4,14 +4,15 @@ terraform {
   required_providers {
     google = {
       source = "hashicorp/google"
-      # >= 7.17 is the floor terraform-google-modules/kubernetes-engine v44 sets.
       # Pinning the same constraint in every GCP stack keeps one provider version
-      # across network and gke. Both CFT modules cap at < 8.
-      version = "~> 7.17"
+      # across network, gke and openbao. Both CFT modules accept 8.x: the VPC
+      # module wants `>= 4.64, < 9`, kubernetes-engine v46 `>= 7.39.0, < 9`. The
+      # old `~> 7.17` was the ceiling these stacks were left at, not a floor.
+      version = "~> 8.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "~> 7.17"
+      version = "~> 8.0"
     }
     tailscale = {
       source  = "tailscale/tailscale"

@@ -4,7 +4,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.17"
+      version = "~> 8.0"
     }
     # The OpenBao API is Vault-compatible, so the vault provider drives it.
     vault = {

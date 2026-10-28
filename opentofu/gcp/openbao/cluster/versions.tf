@@ -4,10 +4,10 @@ terraform {
   required_providers {
     google = {
       source = "hashicorp/google"
-      # Same floor and constraint as every other GCP stack in this repo, to keep
-      # one provider version across network, gke and openbao. See
-      # opentofu/gcp/network/versions.tf for why 7.17 is the floor.
-      version = "~> 7.17"
+      # Same constraint as every other GCP stack in this repo, to keep one
+      # provider version across network, gke and openbao. See
+      # opentofu/gcp/network/versions.tf for why 8.x is inside both CFT modules.
+      version = "~> 8.0"
     }
   }
 }

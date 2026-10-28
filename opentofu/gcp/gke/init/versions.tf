@@ -4,13 +4,15 @@ terraform {
   required_providers {
     google = {
       source = "hashicorp/google"
-      # >= 7.17 is the floor terraform-google-modules/kubernetes-engine v44 sets.
-      version = "~> 7.17"
+      # kubernetes-engine v46 wants `>= 7.39.0, < 9`, so 8.x is inside it. This
+      # stack is the one that pins the *major*: every other GCP stack follows.
+      version = "~> 8.0"
     }
     google-beta = {
       source = "hashicorp/google-beta"
-      # 7.39 added kubelet_config's shutdown grace fields (sandbox.tf).
-      version = "~> 7.39"
+      # 7.39 added kubelet_config's shutdown grace fields (sandbox.tf), and v46
+      # of the module floors the provider there.
+      version = "~> 8.0"
     }
   }
 }
