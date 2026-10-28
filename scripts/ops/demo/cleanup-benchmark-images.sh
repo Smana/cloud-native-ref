@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Remove benchmark-generated images from the image-gallery database and bucket.
 
 # =============================================================================
 # Benchmark Images Cleanup Script
