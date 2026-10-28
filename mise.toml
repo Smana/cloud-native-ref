@@ -22,7 +22,7 @@ tflint = "0.65.0"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
 # install the schema plugin with: flux plugin install schema
-flux2 = "2.9.6"
+flux2 = "2.10.0"
 helm = "4.3.1"
 
 # scripts/ci/ai-overlay.sh verifies the pinned ai-native-ref artifact before CI renders it.
