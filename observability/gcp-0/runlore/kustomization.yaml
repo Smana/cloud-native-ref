@@ -8,6 +8,7 @@ kind: Kustomization
 resources:
   - ../../base/runlore
   - workloadidentity.yaml
+  - cnp-zitadel.yaml
 
 patches:
   # No `target:` block, deliberately -- see security/aws-0/zitadel for the same
