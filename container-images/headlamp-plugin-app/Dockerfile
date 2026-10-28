@@ -11,7 +11,7 @@ ARG HEADLAMP_PLUGIN_APP_VERSION=v0.1.0
 # workflow is the only CI that ever looks at this directory, and it runs on
 # pull requests (building without pushing). A broken plugin therefore fails the
 # PR rather than shipping.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
