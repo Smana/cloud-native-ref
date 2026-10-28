@@ -106,10 +106,17 @@ agentNotReadyTaintKey: ignore-taint.cluster-autoscaler.kubernetes.io/cilium-agen
 kubeProxyReplacement: true
 
 operator:
+  # 100Mi was too small: the 1.20.3 -> 1.20.4 upgrade OOMKilled both replicas
+  # mid-rollout on gcp-0 (2026-10-28, lastState.reason=OOMKilled, two restarts
+  # each) while steady state afterwards measured 32Mi. Same shape as the agent's
+  # own limit below -- startup is the peak, not the run -- so the ceiling has to
+  # cover the reconcile of every CRD, Gateway and identity at boot. 256Mi is
+  # 2.5x the value that demonstrably failed, not a number picked for comfort:
+  # raise it with a measurement if it OOMs again.
   resources:
     limits:
       cpu: 100m
-      memory: 100Mi
+      memory: 256Mi
   rollOutPods: true
   # Default podRestartSelector is "k8s-app=kube-dns", which only restarts CoreDNS.
   # Empty restarts ALL unmanaged pods, which on GKE means the managed addons that
