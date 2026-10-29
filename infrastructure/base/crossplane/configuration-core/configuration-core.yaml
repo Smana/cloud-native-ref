@@ -26,4 +26,4 @@ metadata:
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
-  package: ghcr.io/smana/crossplane-configuration-core:v0.9.28
+  package: ghcr.io/smana/crossplane-configuration-core:v0.9.29
