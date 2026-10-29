@@ -45,7 +45,7 @@ into a platform-engineering workflow, and where it earns its keep — is covered
 at length in [Agentic Coding: concepts and hands-on Platform Engineering use
 cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/). Part of
 that work now runs on the platform itself: the
-[Maku's factory](https://airef.ogenki.io/docs/platform/ai-platform/agents/factory/)
+[agent factory](https://airef.ogenki.io/docs/platform/ai-platform/agents/factory/)
 turns a labelled issue into a pull request opened by sandboxed agents.
 
 ## The constitution
