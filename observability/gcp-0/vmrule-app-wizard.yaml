@@ -8,7 +8,7 @@ spec:
     - name: app-wizard
       rules:
         - alert: AppWizardUnavailable
-          expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="app-wizzard"} > 0)
+          expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="app-wizard"} > 0)
           for: 5m
           labels:
             severity: critical
