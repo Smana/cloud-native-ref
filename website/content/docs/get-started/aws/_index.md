@@ -20,7 +20,7 @@ and `clusters/aws-0/security/zitadel.yaml` is suspended; ADR-0027 does not
 support an AWS cluster beside a GCP primary. Rebuilding `aws-0` means moving the
 identity provider back first —
 [Migrate the identity provider]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}).
-The agent factory is fenced to `gcp-0` (`factory: gcp-0` in
+Maku's factory is fenced to `gcp-0` (`factory: gcp-0` in
 `.github/agent-factory.yaml`).
 {{< /callout >}}
 

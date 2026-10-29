@@ -28,7 +28,7 @@ description: "An opinionated, production-ready Kubernetes platform reference: bo
 
 <p class="cnref-eyebrow" style="margin-top:3rem">The whole platform, on one page</p>
 
-![Platform architecture: the cloud's managed services on the left with their AWS and GCP equivalents, the Kubernetes cluster in four tiers, the applications and data stores on top, and the AI platform below them: the agent factory taking a labelled GitHub issue through a sandboxed agent run to a pull request a human merges](/images/diagrams/platform-overview.svg)
+![Platform architecture: the cloud's managed services on the left with their AWS and GCP equivalents, the Kubernetes cluster in four tiers, the applications and data stores on top, and the AI platform below them: Maku's factory taking a labelled GitHub issue through a sandboxed agent run to a pull request a human merges](/images/diagrams/platform-overview.svg)
 
 <h2 class="cnref-section-title">What's here</h2>
 
@@ -60,7 +60,7 @@ for where the platform refuses to pretend they are the same.
 </p>
 
 <p class="cnref-strip-more">
-Self-hosted model serving and the agent factory run on this platform as an
+Self-hosted model serving and Maku run on this platform as an
 opt-in layer with its own repository and site:
 <a href="https://airef.ogenki.io/">airef.ogenki.io</a>.
 </p>

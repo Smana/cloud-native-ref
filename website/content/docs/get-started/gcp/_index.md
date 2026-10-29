@@ -134,7 +134,7 @@ re-apply it after any such change.
 ### 5 · Regional `E2_CPUS` quota
 
 Every node the platform builds is E2: the static `e2-standard-4` pool, the
-`e2-standard-8` gVisor pool the agent factory scales from zero, and the
+`e2-standard-8` gVisor pool Maku's factory scales from zero, and the
 Tailscale and OpenBao VMs. The regional `E2_CPUS` quota, not the generic `CPUS` one, binds:
 when it runs out, a scale-up fails while the cluster autoscaler's own ceiling
 (`autoscaling_max_cpu_cores`) still has room. Check it before the first deploy:
@@ -168,7 +168,7 @@ You are editing a working configuration, not writing one:
    read the Tailscale API key from the environment:
    `export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>`.
 4. Decide on the AI layer. **gcp-0 ships with `ai-gateway` and
-   `agent-platform` live** (the agent factory runs here), and both read
+   `agent-platform` live** (Maku's factory runs here), and both read
    model-provider keys a fork does not have. Nothing fails at deploy time; the
    gateway serves errors and agent runs fail later. Either seed the keys
    ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or

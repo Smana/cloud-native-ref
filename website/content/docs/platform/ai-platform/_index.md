@@ -1,7 +1,7 @@
 ---
 title: AI Platform
 weight: 50
-description: "Model serving and the agent factory, published on their own site: airef.ogenki.io. This platform hosts them as an opt-in layer."
+description: "Model serving and Maku, published on their own site: airef.ogenki.io. This platform hosts them as an opt-in layer."
 ---
 
 Two halves, one platform. **Serving** runs open-weights models on the cluster's own GPUs behind an
@@ -18,7 +18,7 @@ signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/de
 ## What runs where
 
 The source ships suspended (`flux/sources/ocirepo-ai-native-ref.yaml`); each cluster decides what to resume.
-The agent factory runs on `gcp-0`, the one live cluster: `aws-0` is torn down, and the ownership
+Maku's factory runs on `gcp-0`, the one live cluster: `aws-0` is torn down, and the ownership
 fence `.github/agent-factory.yaml` (`factory: gcp-0`) names the only factory allowed to act on this
 repository.
 
@@ -26,7 +26,7 @@ repository.
 |---|---|---|
 | `OCIRepository` `ai-native-ref` | live | live |
 | `ai-gateway` (CPU; the others depend on it) | live | live |
-| `agent-platform` (the agent factory) | live, fenced out | live |
+| `agent-platform` (Maku) | live, fenced out | live |
 | `llm-platform` (GPU serving) | suspended | suspended |
 
 To turn it on for a cluster, un-suspend the source with a patch in its
@@ -38,7 +38,7 @@ What this platform guarantees the AI platform (Flux names, substitution variable
 namespaces, OpenBao mounts) is the [host contract](https://airef.ogenki.io/docs/host-contract/).
 
 {{< cards >}}
-  {{< card link="https://airef.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the agent factory, status and roadmap." >}}
+  {{< card link="https://airef.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, Maku, status and roadmap." >}}
   {{< card link="https://airef.ogenki.io/docs/decisions/" title="AI decisions ↗" icon="external-link" subtitle="The AI ADRs, numbers unchanged." >}}
   {{< card link="https://github.com/Smana/ai-native-ref" title="ai-native-ref ↗" icon="github" subtitle="Manifests, runbooks, specs and plans." >}}
 {{< /cards >}}
