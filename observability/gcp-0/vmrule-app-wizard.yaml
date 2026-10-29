@@ -7,7 +7,7 @@ spec:
   groups:
     - name: app-wizard
       rules:
-        - alert: AppWizardNoAvailableReplica
+        - alert: AppWizardUnavailable
           expr: absent(kube_deployment_status_replicas_available{namespace="apps", deployment="app-wizzard"} > 0)
           for: 5m
           labels:
