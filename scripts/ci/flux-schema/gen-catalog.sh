@@ -17,7 +17,7 @@
 #      CRD itself and publishes no chart to render it from.)
 #   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
 #      (the chart and its CRDs exist only in the git repository, SP1 S2)
-#   6. Room CRD -> agents.ogenki.io/* (vendored, SP2)
+#   6. Room CRD -> maku.ogenki.io/* (vendored, SP2; agents.ogenki.io/* before maku v0.31.0)
 #   7. agentgateway CRDs               -> agentgateway.dev/*
 #      (PRESENT in the hosted ecosystem catalog, but that tracks upstream daily,
 #      not our pin, and v1alpha1 breaks on every minor: the local copy must win)
@@ -309,8 +309,9 @@ if [[ ! -s "${build_dir}/agents.x-k8s.io/sandbox_v1beta1.json" ]]; then
   exit 1
 fi
 
-if [[ ! -s "${build_dir}/agents.ogenki.io/room_v1alpha1.json" ]]; then
-  echo "error: catalog build produced no agents.ogenki.io/room_v1alpha1.json (infrastructure/base/room-broker/crd-rooms.yaml)" >&2
+# maku v0.31.0 moved the Room CRD from agents.ogenki.io to maku.ogenki.io; either one satisfies it.
+if [[ ! -s "${build_dir}/maku.ogenki.io/room_v1alpha1.json" && ! -s "${build_dir}/agents.ogenki.io/room_v1alpha1.json" ]]; then
+  echo "error: catalog build produced no maku.ogenki.io/room_v1alpha1.json (infrastructure/base/room-broker/crd-rooms.yaml)" >&2
   exit 1
 fi
 
