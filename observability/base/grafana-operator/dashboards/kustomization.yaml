@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - app-all-in-one.yaml
+  - certificates.yaml
   - runlore.yaml
   - kubernetes-node-exporter-full.yaml
 

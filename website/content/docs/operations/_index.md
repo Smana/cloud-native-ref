@@ -14,4 +14,5 @@ Grafana view of the same signal, so the two never drift apart.
 
 {{< cards >}}
   {{< card link="flux-health" title="Flux health" subtitle="Which Kustomizations and HelmReleases are not Ready, from a script or from the dashboard." >}}
+  {{< card link="certificate-expiry" title="Certificate expiry" subtitle="Which cert-manager certificates are expiring or not Ready — script, dashboard and alerts." >}}
 {{< /cards >}}

@@ -1,0 +1,182 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: certificates
+  namespace: infrastructure
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "kubernetes"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "uid": "certificates",
+      "title": "Certificates",
+      "description": "cert-manager certificate expiry and readiness, from the same metrics the CertificateExpiringSoon and CertificateNotReady alerts watch.",
+      "tags": ["cert-manager", "tls", "operations"],
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "refresh": 1,
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Certificates not Ready",
+          "description": "certmanager_certificate_ready_status{condition=\"True\"} == 0 -- the same expression, condition=\"True\" == 0, as the CertificateNotReady alert. One per certificate that is not Ready, including one stuck in Unknown (issuance that never completes).",
+          "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "count(certmanager_certificate_ready_status{condition=\"True\"} == 0)",
+              "legendFormat": "not Ready",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0"
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Expiring in under 14 days",
+          "description": "The same expression and threshold as the CertificateExpiringSoon alert. The panel's number is the count; the table below names them.",
+          "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "count((certmanager_certificate_expiration_timestamp_seconds - time()) < (14 * 24 * 3600))",
+              "legendFormat": "expiring soon",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0,
+              "noValue": "0"
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "id": 3,
+          "type": "table",
+          "title": "Certificates by days until expiry",
+          "description": "One row per certificate, soonest first. Days left is floor((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400), the same arithmetic scripts/ops/k8s/cert-expiry.sh prints, so the two views agree.",
+          "gridPos": {"x": 0, "y": 4, "w": 24, "h": 12},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sort_asc((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400)",
+              "legendFormat": "{{exported_namespace}}/{{name}}",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "job": true,
+                  "instance": true,
+                  "condition": false,
+                  "name": false,
+                  "exported_namespace": false
+                },
+                "renameByName": {
+                  "Value": "days left"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {"type": "color-text"},
+                "filterable": true
+              },
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "orange", "value": 7},
+                  {"color": "yellow", "value": 14},
+                  {"color": "green", "value": 30}
+                ]
+              },
+              "decimals": 0,
+              "unit": "short",
+              "displayName": "days left"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "exported_namespace/name"},
+                "properties": [
+                  {"id": "displayName", "value": "certificate"}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "footer": {"show": false, "reducer": ["sum"]},
+            "sortBy": [{"displayName": "days left", "desc": false}]
+          }
+        }
+      ]
+    }
