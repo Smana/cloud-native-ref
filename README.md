@@ -21,7 +21,7 @@ Workload Identity, S3 / Cloud Storage, KMS / Cloud KMS), the **Kubernetes cluste
 in four tiers (GitOps & composition, compute & networking, security & identity, observability),
 and **applications & data** on the right. Flux reconciles the repository; Tailscale provides
 private access; OpenBao holds the secrets and the PKI. The AI platform — self-hosted LLMs, the AI
-gateway and Maku — lives in [Smana/ai-native-ref](https://github.com/Smana/ai-native-ref)
+gateway and the Agent Factory — lives in [Smana/ai-native-ref](https://github.com/Smana/ai-native-ref)
 ([airef.ogenki.io](https://airef.ogenki.io/)); this repository hosts it as opt-in umbrellas pinned
 to its signed artifact.
 

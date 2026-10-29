@@ -29,7 +29,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `openbao-architecture.drawio` | The whole OpenBao design on one page — both clouds, the seal key, snapshots and their mirror, the PKI, and where the bootstrap secrets live. Deliberately sparse; the detail lives in prose. [Platform → Security → OpenBao Architecture](../../website/content/docs/platform/security/openbao-architecture.md) |
 | `openbao-lineage.drawio` | Two pages, embedded on two different pages. Page 1, what persists across a teardown versus what is rebuilt: [Platform → Security → OpenBao](../../website/content/docs/platform/security/openbao.md). Page 2, the cross-cloud fallback and the weekly restore drill: [Guides → OpenBao cross-cloud failover](../../website/content/docs/guides/openbao-cross-cloud-failover.md) |
 
-The AI platform's diagrams (`ai-platform`, `llm-platform`, `agent-factory`, `agent-factory-overview`; the file names keep the old product name)
+The AI platform's diagrams (`ai-platform`, `llm-platform`, `agent-factory`, `agent-factory-overview`)
 moved with its docs to [ai-native-ref](https://github.com/Smana/ai-native-ref/tree/main/docs/architecture).
 
 ## SVG for the site, PNG only where GitHub needs it

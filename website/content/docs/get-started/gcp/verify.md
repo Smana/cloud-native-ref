@@ -86,7 +86,7 @@ These Kustomizations report **no status at all**, and that is correct — they a
 | Suspended | Why |
 |---|---|
 | `ai-gateway` | opt-in AI layer; the next two depend on it ([AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}})) |
-| `agent-platform` | opt-in; Maku |
+| `agent-platform` | opt-in; the Agent Factory |
 | `llm-platform` | opt-in; GPU serving |
 | `security-openbao-snapshot` | opt-in |
 | `zitadel` | only when this cluster consumes an IdP rather than hosting one ([ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})) |

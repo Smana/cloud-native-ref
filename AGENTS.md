@@ -21,7 +21,7 @@ changing anything there.
 
 ## The AI platform lives in Smana/ai-native-ref
 
-The LLM platform, the AI gateway and Maku — manifests, docs, runbooks, specs — live in
+The LLM platform, the AI gateway and the Agent Factory — manifests, docs, runbooks, specs — live in
 [`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref), documented at
 [airef.ogenki.io](https://airef.ogenki.io/) (ADR-0057). This repository is their host.
 
