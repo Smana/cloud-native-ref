@@ -620,7 +620,7 @@ claims:
           - "gcp-0's twin ships suspended"
           - "gcp-0's twin stays suspended"
       - path: website/content/docs/platform/ai-platform/_index.md
-        must_contain: '\| `agent-platform` \(the agent factory\) \| live, fenced out \| live \|'
+        must_contain: '\| `agent-platform` \(the Agent Factory\) \| live, fenced out \| live \|'
       - path: website/content/docs/platform/foundations/cloud-support.md
         must_contain: 'live — the factory runs here'
 

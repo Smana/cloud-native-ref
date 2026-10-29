@@ -53,5 +53,5 @@ skills-ref validate .agents/skills/<name>   # checks frontmatter and naming
 Git and `gh` authenticated. Flux work needs the `fluxcd/agent-skills` plugin; `verify-spec` needs
 cluster access plus the VictoriaMetrics/VictoriaLogs MCPs.
 
-The agent factory's `factory-handoff` skill is not kept here: `roomctl setup <client>` installs it
-for each developer, at the version of their `roomctl`, and `roomctl doctor` checks it.
+The Agent Factory's `factory-handoff` skill is not kept here: `maku setup <client>` installs it
+for each developer, at the version of their `maku` (named `roomctl` before Maku v0.30.0), and `maku doctor` checks it.

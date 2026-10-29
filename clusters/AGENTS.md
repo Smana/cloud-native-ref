@@ -39,7 +39,7 @@ keys are created in-cluster at runtime so they cannot be checked here — those 
 
 All three must be released for an end-to-end deploy, the gateway layer first. The default
 `terramate script run deploy` and the default Flux reconciliation leave the cluster GPU-free; the
-gateway layer is live in Git on both clusters, for the agent factory. aws-0 is torn down, so only
+gateway layer is live in Git on both clusters, for the Agent Factory. aws-0 is torn down, so only
 gcp-0 runs it.
 
 | Layer | Gate | Release with |
@@ -83,7 +83,7 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
 ### On `gcp-0` — two Kubernetes gates, the gateway layer live
 
-`gcp-0/ai-gateway.yaml` is live on gcp-0 for the agent factory (runbook 14 step 6);
+`gcp-0/ai-gateway.yaml` is live on gcp-0 for the Agent Factory (runbook 14 step 6);
 `gcp-0/llm-platform.yaml` stays suspended
 ([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)).
 

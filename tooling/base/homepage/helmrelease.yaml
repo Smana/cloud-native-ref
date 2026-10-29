@@ -220,8 +220,8 @@ spec:
             - Rooms:
                 href: https://rooms.${private_domain_name}
                 description: "Agent rooms: follow, steer and approve agent runs"
-                # Maku, the agent platform's mark, from its brand assets at a release tag (agent-platform docs/assets/brand).
-                icon: https://raw.githubusercontent.com/Smana/agent-platform/v0.29.5/docs/assets/brand/png/maku-icon-192.png
+                # Maku, the agent platform's mark, from its brand assets at a release tag (maku docs/assets/brand).
+                icon: https://raw.githubusercontent.com/Smana/maku/v0.30.0/docs/assets/brand/png/maku-icon-192.png
                 namespace: agent-system
                 app: room-broker
 

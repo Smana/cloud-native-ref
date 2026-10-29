@@ -14,4 +14,5 @@ Grafana view of the same signal, so the two never drift apart.
 
 {{< cards >}}
   {{< card link="flux-health" title="Flux health" subtitle="Which Kustomizations and HelmReleases are not Ready, from a script or from the dashboard." >}}
+  {{< card link="pvc-unbound" title="Unbound PersistentVolumeClaims" subtitle="Which claims are not Bound, from a script or from the Storage dashboard." >}}
 {{< /cards >}}

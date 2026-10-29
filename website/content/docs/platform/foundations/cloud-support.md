@@ -8,7 +8,7 @@ lastVerified: 2026-10-17
 
 The platform runs on **two clouds**: `aws-0` on EKS and `gcp-0` on GKE Standard.
 **Only `gcp-0` is running today**: `aws-0` was torn down on 2026-10-17, so GCP is
-the primary cloud and hosts ZITADEL and the agent factory. They are not one abstraction with two backends. They are two implementations of
+the primary cloud and hosts ZITADEL and the Agent Factory. They are not one abstraction with two backends. They are two implementations of
 the same three-stage model, sharing every Kubernetes-layer component and
 diverging exactly where the clouds themselves diverge.
 

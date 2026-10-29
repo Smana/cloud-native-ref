@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - app-all-in-one.yaml
   - runlore.yaml
+  - storage.yaml
   - kubernetes-node-exporter-full.yaml
 
 # The four kubernetes-views-* dashboards were here until 2026-08-28 and are gone
