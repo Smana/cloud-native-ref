@@ -244,9 +244,9 @@ TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
 
 ## Single sign-on
 
-`gcp-0` hosts ZITADEL (GCP is the primary cloud), restored from the
-`zitadel-20260828` seed, and the deploy's last job registers the Google IdP and
-the OIDC clients. What is left by hand — granting yourself admin, the Google
+`aws-0` hosts ZITADEL (AWS is the primary cloud), restored from the
+2026-10-16 seed, and `gcp-0` consumes it; the deploy's last job registers the
+Google IdP and the OIDC clients. What is left by hand — granting yourself admin, the Google
 redirect URI, and a re-run when the deploy printed `[warn] … re-run it by hand` —
 is in [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
 A restored directory may have no admin PAT, in which case every sync fails until

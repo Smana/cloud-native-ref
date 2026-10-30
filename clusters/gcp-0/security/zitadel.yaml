@@ -15,12 +15,12 @@
 # before the database is usable: a restore from the seed (CNPG recovery, the
 # replica join, then ZITADEL's migrations) outlasts a plain HelmRelease check.
 #
-# ── ACTIVE: this cluster hosts the identity provider ──────────────────────────
-# ZITADEL is a primary-cloud singleton (ADR-0027) and GCP is primary
-# (global.primary_cloud in opentofu/config.tm.hcl): aws-0 is torn down and this
-# cluster runs alone, restoring its directory from the zitadel-20260828 seed
-# (security/gcp-0/zitadel). Every consumer here reads auth.<gcp public domain>
-# from identity_provider_url in the cluster vars ConfigMap.
+# ── INACTIVE: this cluster consumes aws-0's instance ──────────────────────────
+# ZITADEL is a primary-cloud singleton (ADR-0027) and AWS is primary
+# (global.primary_cloud in opentofu/config.tm.hcl), so this cluster does not
+# host one. It reaches auth.<aws public domain>, which every consumer here gets
+# from identity_provider_url in the cluster vars ConfigMap. gcp-0 itself is torn
+# down at the time of writing.
 #
 # Placement still has two halves, but only one of them is typed now:
 #
@@ -39,25 +39,26 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  # ACTIVE: GCP is primary (global.primary_cloud = "gcp", ADR-0027), so this
-  # cluster hosts the one directory and aws-0's Kustomization is suspended.
+  # SUSPENDED: aws-0 hosts the identity provider (global.primary_cloud = "aws",
+  # ADR-0027, reversed back to AWS on 2026-10-30). ZITADEL is a singleton --
+  # two directories mean a grant says nothing without knowing which one issued
+  # it.
   #
   # This is the half that cannot be derived: kustomize-controller owns the
   # field and re-asserts the committed value on its next apply, and Flux never
-  # sees Terramate globals. ./scripts/ci/validate-idp-topology.sh checks it
-  # against primary_cloud instead.
+  # sees Terramate globals. `flux suspend` therefore does not flip it durably.
+  # ./scripts/ci/validate-idp-topology.sh checks it against primary_cloud instead.
   #
-  # Moving the directory back to AWS is a MIGRATION -- the database seed, the
-  # admin credential and the OIDC clients travel together or the move
-  # half-works in silence. A GCP primary while AWS is also deployed does not
-  # exist: TM_CLOUD=gcp has no aws-0 (scripts/ci/validate-idp-topology.sh). See
-  # website/content/docs/guides/migrate-the-identity-provider.md.
-  suspend: false
+  # Moving the directory is a MIGRATION -- the database seed, the admin
+  # credential and the OIDC clients travel together or the move half-works in
+  # silence. See website/content/docs/guides/migrate-the-identity-provider.md.
+  #
+  # Suspending stops Flux reconciling an instance; it does not remove one that
+  # is already running.
+  suspend: true
   prune: true
   interval: 1m0s
-  # 15m, as on aws-0 and for its measured reason: a two-instance restore from
-  # the seed outlasts 10m, and the health check would flap through it.
-  timeout: 15m0s
+  timeout: 10m0s
   sourceRef:
     kind: ExternalArtifact
     name: security-artifact

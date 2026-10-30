@@ -4,15 +4,14 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  # SUSPENDED: GCP is the primary cloud (global.primary_cloud = "gcp" in
-  # opentofu/config.tm.hcl) and gcp-0 hosts the one identity provider
-  # (ADR-0027). aws-0 is torn down; returning to AWS primary is a migration
-  # (website/content/docs/guides/migrate-the-identity-provider.md), not a flip
-  # of this field alone.
+  # ACTIVE: this cluster is the primary cloud (global.primary_cloud = "aws" in
+  # opentofu/config.tm.hcl), so it hosts the one identity provider (ADR-0027).
+  # aws-0 is the live cluster and gcp-0 is torn down; ZITADEL restores from the
+  # 2026-10-16 seed (security/base/zitadel/sqlinstance.yaml).
   #
   # THE SECONDARY CLOUD IS SUSPENDED, THE PRIMARY IS NOT.
   # ./scripts/ci/validate-idp-topology.sh checks the pair against primary_cloud.
-  suspend: true
+  suspend: false
   prune: true
   interval: 1m0s
   # 15m, not 5m: this must be >= the time the HelmRelease can legitimately take,

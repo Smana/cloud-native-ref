@@ -32,8 +32,8 @@ Every subsystem is explained at
 
 Roughly 45 minutes end to end, and almost all of it unattended: about 30 minutes of
 infrastructure, then Flux converging the platform while you do something else. The
-committed configuration is **GCP-primary** (`primary_cloud = "gcp"`): `gcp-0` is the live
-cluster and `aws-0` is torn down. You need a GCP project, an AWS account holding the public
+committed configuration is **AWS-primary** (`primary_cloud = "aws"`): `aws-0` is the live
+cluster and `gcp-0` is torn down. You need a GCP project, an AWS account holding the public
 Route53 zone, a Tailscale account, and a GitHub App or token for Flux. Full prerequisites,
 the AWS lane and the annotated walkthrough are in
 [Get Started](https://cnref.ogenki.io/docs/get-started/).

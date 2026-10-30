@@ -39,8 +39,8 @@ keys are created in-cluster at runtime so they cannot be checked here — those 
 
 All three must be released for an end-to-end deploy, the gateway layer first. The default
 `terramate script run deploy` and the default Flux reconciliation leave the cluster GPU-free; the
-gateway layer is live in Git on both clusters, for the Agent Factory. aws-0 is torn down, so only
-gcp-0 runs it.
+gateway layer is live in Git on both clusters, for the Agent Factory. aws-0 is the live cluster; gcp-0 is
+torn down.
 
 | Layer | Gate | Release with |
 |---|---|---|

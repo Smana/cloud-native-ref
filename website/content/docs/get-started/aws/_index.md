@@ -14,14 +14,12 @@ what each one runs. Every stage below is an OpenTofu stack orchestrated by
 order even when you run one command that spans several stages.
 
 {{< callout type="warning" >}}
-**`aws-0` is torn down, and the committed configuration is GCP-primary.**
-`primary_cloud = "gcp"` in `opentofu/config.tm.hcl`, so `gcp-0` hosts ZITADEL
-and `clusters/aws-0/security/zitadel.yaml` is suspended; ADR-0027 does not
-support an AWS cluster beside a GCP primary. Rebuilding `aws-0` means moving the
-identity provider back first —
+**`aws-0` is the live cluster, and the committed configuration is AWS-primary.**
+`primary_cloud = "aws"` in `opentofu/config.tm.hcl`, so `aws-0` hosts ZITADEL
+(restored from the 2026-10-16 seed) and `clusters/gcp-0/security/zitadel.yaml`
+is suspended. `gcp-0` is torn down. Moving the identity provider to another
+cloud is a migration —
 [Migrate the identity provider]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}).
-The Agent Factory is fenced to `gcp-0` (`factory: gcp-0` in
-`.github/agent-factory.yaml`).
 {{< /callout >}}
 
 ## Configure before deploying

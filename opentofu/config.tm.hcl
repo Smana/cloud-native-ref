@@ -53,10 +53,10 @@ globals {
   #
   # Enforced by ./scripts/ci/validate-idp-topology.sh.
   #
-  # "gcp" since 2026-10-17: aws-0 is torn down and gcp-0 runs alone, restoring
-  # its own directory from the zitadel-20260828 seed (ADR-0027: a GCP-only
-  # platform makes GCP primary).
-  primary_cloud = "gcp"
+  # "aws" again since 2026-10-30 (ADR-0027, reversed from 2026-10-17): aws-0 is
+  # the live cluster and gcp-0 is torn down. aws-0 hosts ZITADEL, restored from
+  # the 2026-10-16 seed.
+  primary_cloud = "aws"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy

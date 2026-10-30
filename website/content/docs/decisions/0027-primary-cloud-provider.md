@@ -3,7 +3,7 @@ title: One primary cloud hosts the cross-cloud singletons — AWS by default, GC
 linkTitle: 0027 · Primary cloud
 weight: 270
 description: Some services cannot sensibly exist twice — one public DNS zone, one identity directory, one federation trust. Naming a primary cloud — AWS by default — gives those a defined home, and gives a GCP-only platform a defined way to take it over.
-lastVerified: 2026-10-17
+lastVerified: 2026-10-30
 ---
 
 **Status**: Accepted
@@ -11,11 +11,14 @@ lastVerified: 2026-10-17
 **Deciders**: Platform Team
 
 {{< callout type="info" >}}
-**GCP is the primary cloud since 2026-10-17.** `aws-0` was torn down, so the
-GCP-only case below applied: `primary_cloud = "gcp"`, and `gcp-0` hosts ZITADEL,
-restored from the `zitadel-20260828` seed. The decision is unchanged; the title
-used to read "AWS is the primary cloud", which described the default rather
-than the rule.
+**Reversed on 2026-10-30: AWS is the primary cloud again.** `aws-0` is the live
+cluster and `gcp-0` is torn down: `primary_cloud = "aws"`, and `aws-0` hosts
+ZITADEL, restored from the 2026-10-16 seed. Changes made only in `gcp-0`'s
+directory after 2026-10-17 are lost. The decision itself is unchanged.
+
+From 2026-10-17 to 2026-10-30 GCP was the primary cloud: `aws-0` had been torn
+down, so the GCP-only case below applied and `gcp-0` hosted ZITADEL, restored
+from the `zitadel-20260828` seed.
 {{< /callout >}}
 
 ---
