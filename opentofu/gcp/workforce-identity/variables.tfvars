@@ -14,9 +14,10 @@ workforce_pool_id = "ogenki-zitadel"
 # public_domain_name instead -- see locals in main.tf.
 identity_provider_url = "https://auth.cloud.ogenki.io"
 public_domain_name    = "gcp.cloud.ogenki.io"
-# The `platform` project of the directory in gcp-0's zitadel-20260828 seed.
-# A restored directory keeps its ids, so this holds across gcp-0 rebuilds; an
-# EMPTY bootstrap gets a new id, and then the audience is reconciled after
-# ZITADEL exists by resolve_workforce_audience in
-# scripts/provision/zitadel-oidc-clients.sh, and tofu ignores changes to it.
-zitadel_project_id = "388252679236747629"
+# The AWS-hosted ZITADEL's project id (aws-0's 2026-10-16 directory), valid
+# while AWS is primary because its rebuilds restore from a seed and keep their
+# ids. On a GCP-primary bootstrap this value is WRONG and unknowable in
+# advance; the audience is reconciled after ZITADEL exists by
+# resolve_workforce_audience in scripts/provision/zitadel-oidc-clients.sh, and
+# tofu ignores changes to it.
+zitadel_project_id = "388445486190712688"

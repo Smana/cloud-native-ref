@@ -85,16 +85,16 @@ designing anything under `infrastructure/`, `security/`, `observability/` or `to
 ## Deploying
 
 Three sequential stages — network, then OpenBao, then Kubernetes — orchestrated by Terramate.
-**gcp-0 is the only live cluster** (`primary_cloud = "gcp"`; aws-0 is torn down), and `TM_CLOUD`
-defaults to `aws`, so pass `TM_CLOUD=gcp`. Building aws-0 beside a GCP primary is unsupported
-(ADR-0027): move the identity provider back first.
+**aws-0 is the live cluster** (`primary_cloud = "aws"`; gcp-0 is torn down), and `TM_CLOUD`
+defaults to `aws`. A gcp-0 built beside it consumes
+aws-0's identity provider (ADR-0027).
 
 ```bash
-cd opentofu && TM_CLOUD=gcp terramate script run deploy   # the platform on gcp-0
-TM_CLOUD=gcp terramate script run preview                 # dry run
-TM_CLOUD=gcp terramate script run drift detect
+cd opentofu && terramate script run deploy   # the platform on aws-0
+terramate script run preview                 # dry run
+terramate script run drift detect
 
-TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy   # feature-branch cluster
+TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy   # feature-branch cluster
 ```
 
 Tool versions come from `mise.toml`; run `mise install` first. Cilium, Flux and Gateway API

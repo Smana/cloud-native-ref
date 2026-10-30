@@ -58,7 +58,5 @@ route53_region = "eu-west-3"
 workforce_pool_id = "ogenki-zitadel"
 
 # Must match zitadel_project_id in opentofu/gcp/workforce-identity, which
-# pins the workforce provider audience to it. The fallback until Secret Manager
-# `zitadel-project-id` exists (locals.tf): the zitadel-20260828 seed's
-# `platform` project.
-zitadel_project_id = "388252679236747629"
+# pins the workforce provider audience to it.
+zitadel_project_id = "388445486190712688"

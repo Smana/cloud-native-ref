@@ -325,7 +325,7 @@ claims:
       is now one derived and one verified.
     source:
       file: opentofu/config.tm.hcl
-      must_contain: 'primary_cloud\s*=\s*"gcp"'
+      must_contain: 'primary_cloud\s*=\s*"aws"'
     pages:
       - website/content/docs/platform/foundations/cloud-support.md
       - website/content/docs/guides/migrate-the-identity-provider.md
@@ -624,15 +624,16 @@ claims:
       - path: website/content/docs/platform/foundations/cloud-support.md
         must_contain: 'live — the factory runs here'
 
-  - id: primary-cloud-gcp-pages
+  - id: primary-cloud-pages
     why: >-
-      aws-0 was torn down on 2026-10-17 and primary_cloud became "gcp". The AWS
-      deploy page, the README quickstart and ADR-0027's banner tell a reader
-      which cloud to build; flipping primary_cloud back must force a look at
-      them, or the AWS page keeps warning against the configuration it ships.
+      primary_cloud was "gcp" from 2026-10-17 (aws-0 torn down) and is "aws"
+      again since 2026-10-30 (ADR-0027 reversed). The AWS deploy page, the
+      README quickstart and ADR-0027's banner tell a reader which cloud to
+      build; flipping primary_cloud must force a look at them, or the AWS page
+      keeps warning against the configuration it ships.
     source:
       file: opentofu/config.tm.hcl
-      pattern: '\n\s*primary_cloud\s*=\s*"(gcp)"'
+      pattern: '\n\s*primary_cloud\s*=\s*"(aws)"'
     pages:
       - path: website/content/docs/get-started/aws/_index.md
         must_contain: 'primary_cloud = "{value}"'
