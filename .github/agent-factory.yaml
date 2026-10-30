@@ -1,2 +1,2 @@
-# Names the agent factory that may act on this repository (agent-platform ownership fence): only gcp-0 takes its issues, runs and merges.
-factory: gcp-0
+# Names the agent factory that may act on this repository (agent-platform ownership fence): only aws-0 takes its issues, runs and merges.
+factory: aws-0
