@@ -68,7 +68,7 @@ promtool = "3.15.1"
 # gate: a template using a function the cluster's Alertmanager does not have
 # must fail here, not at notification time. amtool ships inside the alertmanager
 # release archive.
-"aqua:prometheus/alertmanager" = "0.34.1"
+"aqua:prometheus/alertmanager" = "0.34.2"
 
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
