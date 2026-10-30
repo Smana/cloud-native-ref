@@ -79,7 +79,7 @@ jobs:
       # tflint — the same file a contributor runs `mise install` against, so
       # this keeps the CI/local parity the Dagger image was there to provide.
       - name: Install tools
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5
 
       - name: Validate Opentofu configuration
         run: pre-commit run --all-files --show-diff-on-failure
@@ -212,7 +212,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install tools
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5
 
       # Pinned: preflight.sh only enforces a version floor (>=0.10), so an
       # unpinned install silently floats to whatever upstream released.
@@ -308,7 +308,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5
 
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
@@ -383,7 +383,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install ShellCheck
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5
         with:
           install_args: shellcheck
       - name: Run ShellCheck
@@ -405,7 +405,7 @@ jobs:
 
       # Only what the overlay needs: the full mise.toml pulls gcloud and the OpenTofu toolchain.
       - name: Install flux and cosign
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5
         with:
           install_args: flux2 cosign
 
