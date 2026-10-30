@@ -14,11 +14,11 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.29
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.9.30
 ```
 
 `gcp-0` serves the same claims from its own package,
-`ghcr.io/smana/crossplane-configuration-gcp:v0.9.29`, pinned in
+`ghcr.io/smana/crossplane-configuration-gcp:v0.9.30`, pinned in
 `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`.
 Both depend on `ghcr.io/smana/crossplane-configuration-core`, the XRDs, pinned
 at the same tag in
