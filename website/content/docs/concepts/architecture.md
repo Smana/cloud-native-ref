@@ -35,7 +35,7 @@ tiers: GitOps and composition (Flux, Crossplane), compute and networking
 the PostgreSQL, Valkey and object storage (S3 or GCS) the compositions
 provision for them. The opt-in AI platform — model serving and the Agent Factory —
 sits here too, deployed from its own repository and documented on
-[airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/).
+[airef.ogenki.io](https://airef.ogenki.io/docs/get-started/).
 
 ## Why it is shaped this way
 
