@@ -3,7 +3,7 @@
 **Date:** 2026-10-12 · **Status:** accepted (ADR-0057) ·
 **ADR:** [0057](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/) ·
 **Part of:** the v2 roadmap on the
-[status page](https://airef.ogenki.io/docs/platform/ai-platform/status/#v2-roadmap)
+[status page](https://airef.ogenki.io/docs/status/#v2-roadmap)
 
 ## Outcome
 

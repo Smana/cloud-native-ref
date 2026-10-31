@@ -22,7 +22,7 @@ Three roles, three resources:
   `cilium-tailscale`, hand-authored in `infrastructure/base/gapi/tailscale-gatewayclass.yaml`
   because it needs a `parametersRef` to a `CiliumGatewayClassConfig`. The opt-in
   AI platform brings its own, `envoy-ai-gateway` and `agentgateway`,
-  documented on [airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/gateways/).
+  documented on [airef.ogenki.io](https://airef.ogenki.io/docs/how-it-works/gateways/).
 - **`Gateway`** — listeners, hostnames, and TLS, owned by the platform.
   Every Gateway lives in the `infrastructure` namespace. The two Tailscale
   Gateways — with the `GatewayClass` and its config, the shared private
