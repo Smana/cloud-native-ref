@@ -172,3 +172,5 @@ The authoring procedure agents follow is [`AGENTS.md`](AGENTS.md) in this direct
 because the drawio skill's own preset-application steps cover colour, shape, edges and fonts but
 have no icon step at all. It also records that **mermaid is the default for new diagrams** —
 `.drawio` is for the files already here, and for when it is asked for by name.
+
+The dead-links drill (aws-0, 2026-10-31, runbook 15 §3) plants this dead link and removes it afterwards: [Kubernetes on AWS, turnkey](https://kubernetes.io/docs/setup/production-environment/turnkey/aws/).
