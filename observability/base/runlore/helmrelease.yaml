@@ -13,8 +13,7 @@ spec:
   # standby replicas were permanently NotReady and Helm's --wait could never
   # succeed with replicaCount>1. #264 shipped (readyz decoupled from leadership,
   # followers forward work to the leader), so every replica reports Ready and
-  # Flux's full health verification is back on — this deployment is the live
-  # validation of exactly that.
+  # Flux's full health verification is back on.
   install:
     remediation:
       retries: 3
@@ -56,14 +55,11 @@ spec:
       valuesKey: values.yaml
       optional: true
   values:
-    # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
-    # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct
-    # leader election/failover). replicaCount: 2 is live HA: BOTH replicas report
-    # Ready (runlore#264 — readyz decoupled from leadership), the Service
-    # round-robins, and a non-leader replica forwards work-bearing requests to
-    # the leader via its routable Lease identity (<pod>_<podIP>).
+    # One replica on its volume (G8, RK15). Each StatefulSet replica owns an RWO
+    # volume, and the soaks (`factory.jsonl`) sit beside the outcome ledger on it, so a failover lost
+    # them. The StatefulSet keeps its claim; a Deployment would template another.
     workloadKind: StatefulSet
-    replicaCount: 2
+    replicaCount: 1
     image:
       # MUST match the GitRepository ref in flux/sources/gitrepo-runlore.yaml. It was
       # once left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran
