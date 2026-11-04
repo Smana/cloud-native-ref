@@ -89,8 +89,8 @@ spec:
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
       # bump the v0.13.0 chart was rendered with these exact values and the resulting
       # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      # 0.19.1, in lockstep with the GitRepository's `tag: v0.19.1` (the knowledge queue and the knowledge
-      # MCP; the v0.19.1 chart rendered with these values replays through the v0.19.1 config.Load).
+      # 0.20.0, in lockstep with the GitRepository's `tag: v0.20.0` (the knowledge queue and the knowledge
+      # MCP; the v0.20.0 chart rendered with these values replays through the v0.20.0 config.Load).
       #
       # This was "0.13.0" while the source had already moved to a COMMIT pin far
       # past v0.13.0 -- exactly the drift the paragraphs above warn about, and it
@@ -99,7 +99,7 @@ spec:
       # KnownFields(true), so a chart newer than its binary fails closed on a key
       # the binary has never heard of.
       repository: ghcr.io/smana/runlore
-      tag: "0.19.1"
+      tag: "0.20.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
