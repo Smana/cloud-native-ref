@@ -485,6 +485,14 @@ spec:
         model: glm-5.2
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
+        # List prices in $ per M tokens for glm-5.2, read 2026-11-04 at
+        # https://docs.z.ai/guides/overview/pricing (the page the factory's meter.prices cites).
+        # With them RunLore reports runlore_investigation_cost_usd (RK20); without them nothing is
+        # priced. Inert while RunLore is off.
+        pricing:
+          input_usd_per_mtok: 1.40
+          output_usd_per_mtok: 4.40
+          cached_input_usd_per_mtok: 0.26
       catalog:
         dir: /var/lib/runlore/catalog
         git:

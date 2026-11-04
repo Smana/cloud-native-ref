@@ -14,7 +14,7 @@ resources:
   - ../base/metrics-server
   # RunLore SRE agent — consumes Alertmanager + the observability stack;
   # its dashboard + health alerts ship from base on both clusters.
-  # Off while the agent factory's v2 is built (owner, 2026-10-16): re-enable with
-  # the Alertmanager route in vm-common-helm-values-configmap.yaml and
-  # vmrules/runlore.yaml. Uninstalling keeps its PVCs.
+  # RunLore, a session switch (RK15): on for a demo session, off after. Flip it with the Alertmanager
+  # route in vm-common-helm-values-configmap.yaml and the two runlore rule files, and with aws-0's
+  # factory copies in ai-native-ref (runbook 25). Uninstalling keeps its PVCs.
   # - ../base/runlore

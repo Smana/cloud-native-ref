@@ -1,0 +1,17 @@
+# RunLore's model spend in dollars a day (RK20, step 1): measured over its first session; PR 3c alerts.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: runlore-spend
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: runlore
+    app.kubernetes.io/part-of: runlore
+spec:
+  groups:
+    - name: runlore.spend
+      interval: 5m
+      rules:
+        # Dollars a day of every delivered investigation, recalls included, priced from model.pricing.
+        - record: runlore:investigation_cost_usd:increase1d
+          expr: sum(increase(runlore_investigation_cost_usd_sum[1d]))
