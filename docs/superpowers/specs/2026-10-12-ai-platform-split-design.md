@@ -159,7 +159,7 @@ ConfigMap `runlore-factory-values` in `runlore` through `valuesFrom` with `optio
 deploys without the AI platform. RunLore's Service `runlore` in `runlore` serves the
 room broker's webhooks on 8080 at `/factory/webhook`; RunLore's egress reaches the factory
 (`agent-system`, `agent-factory`, 8082) and Alertmanager (`observability`, 9093), and its ingress
-admits `agent-system`'s `room-broker`.
+admits `agent-system`'s `room-broker` and `agent-gateway`'s `agent-router`, which reads the knowledge base at `/mcp` on 8080. The rule is L4: any caller the port admits reaches `/mcp`, which is read-only and serves public text. RunLore itself is a session switch on aws-0.
 
 ### What `ai-native-ref` guarantees back
 
