@@ -12,8 +12,8 @@ resources:
   # Log generator for demo purposes — aws-0 only, see observability/gcp-0/kustomization.yaml.
   - ../base/loggen
   - ../base/metrics-server
-  # RunLore SRE agent — consumes Alertmanager + the observability stack;
-  # its dashboard + health alerts ship from base on both clusters.
+  # RunLore SRE agent — consumes Alertmanager + the observability stack; its dashboard
+  # ships from base on both clusters, its health alerts while the switch below is on.
   # RunLore, a session switch (RK15): on for a demo session, off after. Flip it with the Alertmanager
   # route in vm-common-helm-values-configmap.yaml and the two runlore rule files, and with aws-0's
   # factory copies in ai-native-ref (runbook 25). Uninstalling keeps its PVCs.

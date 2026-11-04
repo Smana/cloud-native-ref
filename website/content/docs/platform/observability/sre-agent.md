@@ -82,12 +82,13 @@ External Secret; no credential is ever inlined.
 | | |
 |---|---|
 | Chart | `deploy/helm/runlore` from the `runlore` `GitRepository` |
-| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.18.0` |
-| Image | `0.18.0` — signed, multi-arch, SBOM-attested |
-| Workload | `StatefulSet`, `replicaCount: 2`, leader election |
-| Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
+| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.19.1` |
+| Image | `0.19.1` — signed, multi-arch, SBOM-attested |
+| Workload | `StatefulSet`, `replicaCount: 1` (a restart keeps the volume, so the agent factory's soak survives it) |
+| Storage | one RWO 1Gi PVC, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Identity | `aws-0`: EKS Pod Identity `xplane-runlore` bound to the `runlore` ServiceAccount. `gcp-0`: a `GCPWorkloadIdentity` claim (`observability/gcp-0/runlore/workloadidentity.yaml`) — a direct principal binding carrying viewer roles only |
 | Kustomization | `observability` |
+| Switch | On aws-0 RunLore is a session switch, off by default: it runs for a demo session and is switched off after. On gcp-0 it is off too. The Alertmanager route and the two rule files are flipped with it |
 
 {{< callout type="warning" >}}
 **The chart tag and the image tag must move together.** The chart is rendered
@@ -141,8 +142,9 @@ carries a Grafana dashboard plus **12 `VMRule` alerts** on its own health:
 an agent that investigates in a loop is a cost surface, not only a reliability
 one. The 12 alerts ship from the base
 (`observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml`) to
-**both** clusters — they moved out of the `aws-0` overlay on 2026-08-30,
-having stayed behind when the agent itself went multi-cloud. See
+**both** clusters' bases — they moved out of the `aws-0` overlay on 2026-08-30,
+having stayed behind when the agent itself went multi-cloud. While RunLore is switched
+off they are not listed by the `vmrules` kustomization, so they apply only during a session. See
 [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}).
 
 ## Known gaps

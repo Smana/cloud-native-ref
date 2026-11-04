@@ -11,8 +11,11 @@
 # effective ingress allow-list for :8080 is:
 #   observability namespace  (chart NetworkPolicy — vmagent scrape + Alertmanager webhook)
 # + runlore peer pods        (chart NetworkPolicy — leader forwarding, runlore#264)
+# + agent-system room-broker (chart NetworkPolicy — signed webhooks, /factory/webhook)
+# + agent-gateway agent-router (chart NetworkPolicy — the knowledge MCP at /mcp)
 # + ingress entity           (this policy — Gateway data plane / Slack interactions)
-# and nothing else.
+# and nothing else. The rules are L4: any caller the port admits reaches every path on it, /mcp
+# included, which is read-only public text.
 #
 # Dropping this file without also clearing `ingressFrom` black-holes every externally
 # routed request, including Slack's POST /slack/interactions. See issue #1589.

@@ -6,9 +6,9 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.13.0 release: the chart is rendered from THIS tag, and the signed,
+  # Pinned to a release (the tag below): the chart is rendered from THIS tag, and the signed,
   # multi-arch release image in observability/base/runlore/helmrelease.yaml
-  # (image.tag "0.13.0") must come from the same one. Keep them in lockstep on every
+  # (image.tag, the same version without the v) must come from the same one. Keep them in lockstep on every
   # bump — bumping one alone is not a partial upgrade, it is an outage.
   #
   # v0.13.0 was validated before it was cut, not after: this pin briefly pointed at

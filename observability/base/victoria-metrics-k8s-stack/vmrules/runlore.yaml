@@ -2,9 +2,10 @@
 # upstream repo also ships a PrometheusRule variant; only this one is
 # vendored here).
 #
-# Cloud-neutral on purpose: runlore runs on BOTH clusters since #1862, so its
-# health alerts must too — RunloreAgentDown is absent()-based and only works
-# where the workload is expected to exist.
+# Cloud-neutral on purpose: runlore can run on BOTH clusters (#1862), so its
+# health alerts live in base — RunloreAgentDown is absent()-based and only works
+# where the workload is expected to exist. The kustomization lists this file only
+# while RunLore's session switch (observability/aws-0/kustomization.yaml) is on.
 #
 # DISCOVERY NOTE — the VictoriaMetrics Operator discovers VMRule objects via the
 # `ruleSelector` / `ruleNamespaceSelector` on the VMAlert CR. By default many
