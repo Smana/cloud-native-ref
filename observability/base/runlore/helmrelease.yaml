@@ -542,8 +542,8 @@ spec:
         # lists them (RK17). ready-to-merge does not wait for a sweep (RunLore's Curation.Once).
         sweeps:
           mode: apply
-        # Off until the first queue has listed the backlog (RK17); PR 3b restores the chart's 720h.
-        stale_after: 0s
+        # RK17: the backlog has been through the first queue (live 4); this closes what nobody kept.
+        stale_after: 720h
       cloud:
         # provider stays a literal: it is the one value here that is genuinely
         # per-cloud rather than per-cluster, and observability/gcp-0/runlore
