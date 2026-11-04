@@ -515,6 +515,19 @@ spec:
           app_id: 4106804
           installation_id: 141652301
           private_key_env: GITHUB_APP_PRIVATE_KEY  # pragma: allowlist secret
+      curate:
+        # The `Knowledge queue` issue on forge.kb_repo, linked by one Slack line (RK4). Rewritten at
+        # each demo session's end by `lore curate queue-issue` (runbook 25): RunLore runs only in sessions.
+        queue_issue:
+          slack: true
+        # apply: the sweeps comment, label and close, and the factory's `Resolve` and `ready-to-merge` go
+        # through the same guard, which dry-run would block (the curator's own draft is not gated). `interval` stays the
+        # chart's 6h: a shorter one makes Suppress and Dedup act on the open PRs before the first queue
+        # lists them (RK17). ready-to-merge does not wait for a sweep (RunLore's Curation.Once).
+        sweeps:
+          mode: apply
+        # Off until the first queue has listed the backlog (RK17); PR 3b restores the chart's 720h.
+        stale_after: 0s
       cloud:
         # provider stays a literal: it is the one value here that is genuinely
         # per-cloud rather than per-cluster, and observability/gcp-0/runlore
