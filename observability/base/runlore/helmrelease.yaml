@@ -13,8 +13,7 @@ spec:
   # standby replicas were permanently NotReady and Helm's --wait could never
   # succeed with replicaCount>1. #264 shipped (readyz decoupled from leadership,
   # followers forward work to the leader), so every replica reports Ready and
-  # Flux's full health verification is back on — this deployment is the live
-  # validation of exactly that.
+  # Flux's full health verification is back on.
   install:
     remediation:
       retries: 3
@@ -56,14 +55,11 @@ spec:
       valuesKey: values.yaml
       optional: true
   values:
-    # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
-    # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct
-    # leader election/failover). replicaCount: 2 is live HA: BOTH replicas report
-    # Ready (runlore#264 — readyz decoupled from leadership), the Service
-    # round-robins, and a non-leader replica forwards work-bearing requests to
-    # the leader via its routable Lease identity (<pod>_<podIP>).
+    # One replica on its volume (G8, RK15). Each StatefulSet replica owns an RWO
+    # volume, and the soaks (`factory.jsonl`) sit beside the outcome ledger on it, so a failover lost
+    # them. The StatefulSet keeps its claim; a Deployment would template another.
     workloadKind: StatefulSet
-    replicaCount: 2
+    replicaCount: 1
     image:
       # MUST match the GitRepository ref in flux/sources/gitrepo-runlore.yaml. It was
       # once left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran
@@ -93,8 +89,8 @@ spec:
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
       # bump the v0.13.0 chart was rendered with these exact values and the resulting
       # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      # 0.18.0, in lockstep with the GitRepository's `tag: v0.18.0` (the agent factory's client; the
-      # v0.18.0 chart rendered with these values replays through the v0.18.0 config.Load).
+      # 0.19.1, in lockstep with the GitRepository's `tag: v0.19.1` (the knowledge queue and the knowledge
+      # MCP; the v0.19.1 chart rendered with these values replays through the v0.19.1 config.Load).
       #
       # This was "0.13.0" while the source had already moved to a COMMIT pin far
       # past v0.13.0 -- exactly the drift the paragraphs above warn about, and it
@@ -103,7 +99,7 @@ spec:
       # KnownFields(true), so a chart newer than its binary fails closed on a key
       # the binary has never heard of.
       repository: ghcr.io/smana/runlore
-      tag: "0.18.0"
+      tag: "0.19.1"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
@@ -322,7 +318,7 @@ spec:
       awsPodIdentity: true
       # Scope who may reach :8080. Left empty the chart emits no `from:` at all,
       # i.e. every pod in the cluster can post to the webhook endpoint (#1589).
-      # In-cluster callers all live in `observability`: vmagent scrapes /metrics
+      # In-cluster callers live in `observability`, plus the room broker and the agent router: vmagent scrapes /metrics
       # (vmServiceScrape below) and Alertmanager/VMAlert POST the incident
       # webhook. The chart always prepends a peer podSelector, so replica-to-
       # replica leader forwarding (runlore#264) survives this narrowing.
@@ -346,6 +342,14 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: room-broker
+        # The agent router's `runlore-kb` MCP target: kb_search and kb_get at /mcp on this port. The
+        # rule is L4: any caller the port admits reaches /mcp, which is read-only public text.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-gateway
+          podSelector:
+            matchLabels:
+              gateway.networking.k8s.io/gateway-name: agent-router
       # The chart's non-strict egress only opens 443/6443 — but VictoriaMetrics
       # (vmsingle :8428) and VictoriaLogs (:9428) listen on other ports, so without
       # this the agent's metrics/logs tool calls hang until they time out, starving
@@ -481,6 +485,14 @@ spec:
         model: glm-5.2
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
+        # List prices in $ per M tokens for glm-5.2, read 2026-11-04 at
+        # https://docs.z.ai/guides/overview/pricing (the page the factory's meter.prices cites).
+        # With them RunLore reports runlore_investigation_cost_usd (RK20); without them nothing is
+        # priced. Inert while RunLore is off.
+        pricing:
+          input_usd_per_mtok: 1.40
+          output_usd_per_mtok: 4.40
+          cached_input_usd_per_mtok: 0.26
       catalog:
         dir: /var/lib/runlore/catalog
         git:
@@ -519,6 +531,19 @@ spec:
           app_id: 4106804
           installation_id: 141652301
           private_key_env: GITHUB_APP_PRIVATE_KEY  # pragma: allowlist secret
+      curate:
+        # The `Knowledge queue` issue on forge.kb_repo, linked by one Slack line (RK4). Rewritten at
+        # each demo session's end by `lore curate queue-issue` (runbook 25): RunLore runs only in sessions.
+        queue_issue:
+          slack: true
+        # apply: the sweeps comment, label and close, and the factory's `Resolve` and `ready-to-merge` go
+        # through the same guard, which dry-run would block (the curator's own draft is not gated). `interval` stays the
+        # chart's 6h: a shorter one makes Suppress and Dedup act on the open PRs before the first queue
+        # lists them (RK17). ready-to-merge does not wait for a sweep (RunLore's Curation.Once).
+        sweeps:
+          mode: apply
+        # Off until the first queue has listed the backlog (RK17); PR 3b restores the chart's 720h.
+        stale_after: 0s
       cloud:
         # provider stays a literal: it is the one value here that is genuinely
         # per-cloud rather than per-cluster, and observability/gcp-0/runlore
@@ -538,6 +563,11 @@ spec:
       # (observability/.../vm-common-helm-values-configmap.yaml).
       server:
         webhook_token_env: WEBHOOK_TOKEN  # pragma: allowlist secret
+        # The agent router's `runlore-kb` target reads the knowledge base here (RK12). No token, by the
+        # owner's decision: any caller the port admits reaches it, it is read-only and serves public
+        # text (RK13). RunLore warns at start-up that `/mcp` has no token; that line is expected.
+        mcp:
+          enabled: true
       # Investigation signals — enable the query_metrics / query_metrics_range /
       # query_logs tools so investigations correlate the GitOps change against live
       # saturation + application logs (multi-source RCA), not just k8s object state.

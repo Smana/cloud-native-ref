@@ -12,8 +12,8 @@ resources:
   # ./runlore, not ../base/runlore: the overlay patches the three things that
   # genuinely differ by cloud — the provider block, the network policy that
   # reaches the metadata server, and the identity. See the directory.
-  # Off again after v3 feature 14's live proofs (2026-10-28), as on aws-0. The pins and the
-  # identity-provider CNP stay in ./runlore, dormant, so turning it on is this one line.
+  # Off; RunLore's demo sessions run on aws-0 (RK15). The pins and the identity-provider CNP stay
+  # in ./runlore, dormant, so turning it on is this one line.
   # - ./runlore
 
 # ../base/loggen is deliberately NOT listed (2026-08-30). It is a synthetic
