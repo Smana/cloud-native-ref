@@ -1,0 +1,30 @@
+# The platform CA, for RunLore's factory client (factory.ca_file, mounted at /etc/runlore-factory-ca by
+# extraVolumes in observability/base/runlore/helm-values-configmap.yaml). A public certificate, not a secret.
+# This is the platform's offline root (the same file as .github/openbao-root-ca.pem), which is a subset of the chain
+# in agent-system's openbao-ca: the factory presents its intermediate, so the root verifies it. The session's
+# first step verifies the factory's certificate against it (runbook 25 section 10 in ai-native-ref).
+# Rotating the CA means a PR here and one in ai-native-ref (tooling/*/agent-factory/configmap-agent-factory-ca.yaml):
+# test-factory-backend-tls.py there and scripts/ci/tests/test-runlore-factory-ca-mount.py here hold the copies equal.
+# gcp-0's copy: one offline root signs both clouds' intermediates (website/content/docs/platform/security/pki-and-secrets.md).
+# Hand-check it against openbao-priv-gcp-ca-chain at the next gcp-0 session: it is not re-checked continuously.
+# Listed in this directory's kustomization, so the single `./runlore` switch carries it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-ca
+  namespace: runlore
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICADCCAYagAwIBAgIUEzHBOi1xmj9QIMtHWiEM4LO9hl8wCgYIKoZIzj0EAwMw
+    NzEXMBUGA1UEAwwOT2dlbmtpIFJvb3QgQ0ExDzANBgNVBAoMBk9nZW5raTELMAkG
+    A1UEBhMCRlIwHhcNMjYwODI0MjE1ODI1WhcNMzYwODI0MjE1ODI1WjA3MRcwFQYD
+    VQQDDA5PZ2Vua2kgUm9vdCBDQTEPMA0GA1UECgwGT2dlbmtpMQswCQYDVQQGEwJG
+    UjB2MBAGByqGSM49AgEGBSuBBAAiA2IABO7orzgMIWbsVf7QdtvHrnhSAIcEXwXV
+    B243EOBH59LFLjYOUzA0Nq6suyAdd9+TBE8pdMCqBlRWL0DZZ24ev+ch3/5Z+gPx
+    eNKd128CccMwvJfd8bj9r2gpxkSt+h8NRqNTMFEwHQYDVR0OBBYEFLphgq6KIo0y
+    9VZZ2evda2PbxFIoMB8GA1UdIwQYMBaAFLphgq6KIo0y9VZZ2evda2PbxFIoMA8G
+    A1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwMDaAAwZQIwHy/UasGk9CQexknwyFjB
+    CorZQddilehlmq+I+CuSMSBVTeeYOK5yDtPlVt4sF4fsAjEA8msirlebVxErrKFl
+    row8Rpy7kvBOs8TtbnMSoUO3rQXOLliMtqsD2Zidqr1vDx+D
+    -----END CERTIFICATE-----

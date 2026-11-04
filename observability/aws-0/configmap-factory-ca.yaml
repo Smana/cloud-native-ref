@@ -1,10 +1,11 @@
-# The platform CA, for RunLore's factory client (factory.ca_file, mounted at /etc/runlore/factory-ca by
+# The platform CA, for RunLore's factory client (factory.ca_file, mounted at /etc/runlore-factory-ca by
 # extraVolumes in observability/base/runlore/helm-values-configmap.yaml). A public certificate, not a secret.
-# This is aws-0's offline root (the same file as .github/openbao-root-ca.pem), which is a subset of the chain
+# This is the platform's offline root (the same file as .github/openbao-root-ca.pem), which is a subset of the chain
 # in agent-system's openbao-ca: the factory presents its intermediate, so the root verifies it. The session's
-# first step compares it with openbao-ca (runbook 25 section 10 in ai-native-ref) and replaces it if they differ.
-# Rotating the CA means a PR here and one in ai-native-ref (tooling/aws-0/agent-factory/configmap-agent-factory-ca.yaml):
-# a test there holds the two equal. gcp-0 has none: its CA is another lineage, and it is torn down.
+# first step verifies the factory's certificate against it (runbook 25 section 10 in ai-native-ref).
+# Rotating the CA means a PR here and one in ai-native-ref (tooling/*/agent-factory/configmap-agent-factory-ca.yaml):
+# test-factory-backend-tls.py there and scripts/ci/tests/test-runlore-factory-ca-mount.py here hold the copies equal.
+# Listed in observability/aws-0/kustomization.yaml beside the `../base/runlore` switch: it goes on and off with it.
 apiVersion: v1
 kind: ConfigMap
 metadata:

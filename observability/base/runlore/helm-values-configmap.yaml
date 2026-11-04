@@ -22,12 +22,14 @@ data:
           name: runlore-slack
       - secretRef:
           name: runlore-webhook
-    # The platform CA for the factory client (factory.ca_file, set by the AI platform's values once a RunLore
-    # release carries it). Keys the pinned chart does not know are ignored, so these mount nothing until the
-    # pin moves; `optional` keeps a pod starting where the ConfigMap is absent (gcp-0 has none). The ConfigMap is
-    # observability/aws-0/configmap-factory-ca.yaml, a static public certificate.
+    # The platform CA for the factory client: the AI platform's values set factory.ca_file to
+    # /etc/runlore-factory-ca/ca.crt. A SIBLING of /etc/runlore, never inside it: the chart mounts its config ConfigMap
+    # there read-only, and the runtime cannot create a mount point in it (the pod would not start).
+    # `optional` does not make a missing file harmless once ca_file is set: RunLore refuses a missing ca_file at
+    # start. The ConfigMap ships with the switch: observability/aws-0/configmap-factory-ca.yaml (listed beside the
+    # `../base/runlore` line) or observability/gcp-0/runlore/configmap-factory-ca.yaml (listed in ./runlore).
     extraVolumes:
       - name: factory-ca
         configMap: {name: factory-ca, optional: true}
     extraVolumeMounts:
-      - {name: factory-ca, mountPath: /etc/runlore/factory-ca, readOnly: true}
+      - {name: factory-ca, mountPath: /etc/runlore-factory-ca, readOnly: true}
