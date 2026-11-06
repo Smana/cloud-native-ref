@@ -11,7 +11,7 @@ go = "1.27.3"
 nodejs = "24.22.2"
 opentofu = "1.13.8"
 pre-commit = "4.7.0"
-trivy = "0.76.1"
+trivy = "0.76.2"
 
 # Needed by the `terraform_tflint` pre-commit hook. Pinned here rather than
 # left to whatever is on PATH so CI and a local `pre-commit run -a` lint with
