@@ -11,7 +11,7 @@ run that opens a pull request, under its own identity.
 {{< callout type="info" >}}
 **The AI platform has its own repository and site.** Its manifests, ADRs, runbooks and docs live in
 [`Smana/ai-native-ref`](https://github.com/Smana/ai-native-ref) and publish on
-[airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/). This platform pulls it as one
+[airef.ogenki.io](https://airef.ogenki.io/docs/get-started/). This platform pulls it as one
 signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/)).
 {{< /callout >}}
 
@@ -35,10 +35,10 @@ To turn it on for a cluster, un-suspend the source with a patch in its
 next sync sets Git's value back.
 
 What this platform guarantees the AI platform (Flux names, substitution variables, Gateways,
-namespaces, OpenBao mounts) is the [host contract](https://airef.ogenki.io/docs/host-contract/).
+namespaces, OpenBao mounts) is the [host contract](https://airef.ogenki.io/docs/reference/host-contract/).
 
 {{< cards >}}
-  {{< card link="https://airef.ogenki.io/docs/platform/ai-platform/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the Agent Factory, status and roadmap." >}}
+  {{< card link="https://airef.ogenki.io/docs/get-started/" title="AI platform docs ↗" icon="external-link" subtitle="Serving, gateways, the Agent Factory, status and roadmap." >}}
   {{< card link="https://airef.ogenki.io/docs/decisions/" title="AI decisions ↗" icon="external-link" subtitle="The AI ADRs, numbers unchanged." >}}
   {{< card link="https://github.com/Smana/ai-native-ref" title="ai-native-ref ↗" icon="github" subtitle="Manifests, runbooks, specs and plans." >}}
 {{< /cards >}}

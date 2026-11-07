@@ -135,6 +135,11 @@ We welcome contributions, feedback, and questions!
 **Before contributing**: Review [SECURITY.md](SECURITY.md) for security policy and
 [AGENTS.md](AGENTS.md) for development guidelines.
 
+## Support this work
+
+One person maintains cloud-native-ref and pays for the AWS and GCP clusters its live tests need;
+[sponsoring it](https://github.com/sponsors/Smana) helps cover that.
+
 ## License
 
 This project is provided as a reference implementation. Please review individual component licenses.

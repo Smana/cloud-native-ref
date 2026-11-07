@@ -9,9 +9,9 @@ min_version = "2024.11.1"
 go = "1.27.3"
 "aqua:golangci/golangci-lint" = "2.15.0"
 nodejs = "24.22.2"
-opentofu = "1.13.2"
+opentofu = "1.13.9"
 pre-commit = "4.7.0"
-trivy = "0.76.1"
+trivy = "0.76.2"
 
 # Needed by the `terraform_tflint` pre-commit hook. Pinned here rather than
 # left to whatever is on PATH so CI and a local `pre-commit run -a` lint with
@@ -51,7 +51,7 @@ cosign = "3.1.4"
 # it follows the rename; it also verifies GitHub attestations and SLSA
 # provenance on install, which the action did not. (`ubi:` also works but mise
 # now deprecates it in favour of `github:`.)
-"github:FairwindsOps/polaris" = "10.2.5"
+"github:FairwindsOps/polaris" = "10.2.6"
 
 # promtool parses the PromQL inside every repo-authored VMRule
 # (scripts/ci/validate-vmrules.sh). Pinned, not `latest`: the PromQL parser IS the
@@ -59,7 +59,7 @@ cosign = "3.1.4"
 # mise's registry maps this to aqua:prometheus/prometheus — promtool ships
 # inside the prometheus release archive — but the entry is keyed `promtool` so
 # that `mise install promtool` and `mise which promtool` both honour the pin.
-promtool = "3.15.1"
+promtool = "3.16.0"
 
 # amtool renders the Slack notification templates against fixture payloads
 # (scripts/ci/validate-alertmanager-templates.sh) with no cluster and no running

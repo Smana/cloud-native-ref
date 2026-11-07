@@ -171,7 +171,7 @@ You are editing a working configuration, not writing one:
    `agent-platform` live** (the Agent Factory runs here), and both read
    model-provider keys a fork does not have. Nothing fails at deploy time; the
    gateway serves errors and agent runs fail later. Either seed the keys
-   ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or
+   ([gateways](https://airef.ogenki.io/docs/how-it-works/gateways/)) or
    set `spec.suspend: true` in `clusters/gcp-0/ai-gateway.yaml` and
    `clusters/gcp-0/agent-platform.yaml`, in Git — a `flux suspend` is undone by
    the next sync. GPU serving is off.

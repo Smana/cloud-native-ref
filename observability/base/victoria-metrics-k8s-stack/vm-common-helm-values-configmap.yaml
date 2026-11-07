@@ -418,11 +418,17 @@ data:
             # Send a copy of every non-blackholed alert to the RunLore SRE agent,
             # then continue so Slack still receives it. RunLore's own trigger policy
             # decides which alerts it actually investigates.
-            # Off again with RunLore after v3 feature 14's live proofs on gcp-0 (2026-10-28): no
-            # RunLore runs anywhere, so the route would only fail to deliver. Uncomment it together
-            # with `- ./runlore` in observability/gcp-0/kustomization.yaml.
+            # RunLore's session switch (observability/aws-0/kustomization.yaml). Once on, a gcp-0 up
+            # during an aws-0 session, without RunLore, fails this route and fires RunloreAgentDown.
+            # repeat_interval: the root's 12h would make the next generation wait half a day in a
+            # session; 1h stays above recurrence_cooldown (30m) and the 30m dedup.window, so a repeat
+            # after a decided generation files the next one. A repeat while a generation is undecided
+            # files nothing (RunLore's own rule): no stub, no triager run. It still investigates and posts
+            # to Slack again, because recurrence_cooldown (30m) is below the 1h repeat; a standing alert
+            # costs one investigation an hour, against one every 12h before.
             # - receiver: "runlore"
             #   continue: true
+            #   repeat_interval: 1h
             # One channel carries every severity, so the cadence is what
             # separates a page from a nag.
             - matchers:

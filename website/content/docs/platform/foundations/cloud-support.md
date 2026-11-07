@@ -35,7 +35,7 @@ and torn down afterwards.
 | Observability (VictoriaMetrics, Grafana, RunLore) | ✅ | ✅ same stack |
 | Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
 | Applications | ✅ | ✅ podinfo · basic · App Wizard · image-gallery (GCS through Workload Identity) |
-| [AI platform](https://airef.ogenki.io/docs/platform/ai-platform/): AI gateway, agent factory | ✅ | ✅ live — the factory runs here |
+| [AI platform](https://airef.ogenki.io/docs/get-started/): AI gateway, agent factory | ✅ | ✅ live — the factory runs here |
 | AI platform: GPU serving | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
 | Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
 

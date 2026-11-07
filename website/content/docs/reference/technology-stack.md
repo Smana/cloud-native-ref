@@ -57,8 +57,8 @@ pinned once in `opentofu/config.tm.hcl`.
 
 Envoy Gateway, Envoy AI Gateway, agentgateway, vLLM and the Agent Factory are
 pinned in [ai-native-ref](https://github.com/Smana/ai-native-ref), not here —
-see its [gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)
-and [serving](https://airef.ogenki.io/docs/platform/ai-platform/serving/) pages.
+see its [gateways](https://airef.ogenki.io/docs/how-it-works/gateways/)
+and [serving](https://airef.ogenki.io/docs/how-it-works/serving/) pages.
 
 ## Managed cloud services
 

@@ -55,7 +55,7 @@ a stack expects is to read the file already sitting next to it.
    not have: `platform-llm-api-keys` in AWS Secrets Manager, plus keys in
    OpenBao. Nothing fails at deploy time; the gateway serves errors and the
    agent runs fail later. Either seed the keys
-   ([gateways](https://airef.ogenki.io/docs/platform/ai-platform/gateways/)) or
+   ([gateways](https://airef.ogenki.io/docs/how-it-works/gateways/)) or
    set `spec.suspend: true` in `clusters/aws-0/ai-gateway.yaml` and
    `clusters/aws-0/agent-platform.yaml`. Set it in Git: a `flux suspend` is
    undone by the next sync. GPU serving is already off.

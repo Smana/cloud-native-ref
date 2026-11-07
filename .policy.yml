@@ -10,6 +10,7 @@ policy:
         - human-authored
         - renovate
         - "low-risk: docs-links"
+        - "low-risk: dead-links"
         - "low-risk: factory revert"
         - agent change approved by a maintainer
 
@@ -67,6 +68,60 @@ approval_rules:
           - '^docs/platform-constitution\.md$'
 
   - name: "low-risk: docs-links"  # live (OD-8)
+    if:
+      has_author_in:
+        users: ["ogenki-agents[bot]"]
+      only_has_contributors_in:
+        users: ["ogenki-agents[bot]"]
+      from_branch:
+        pattern: '^agent/[a-z2-7]{8}$'
+      only_changed_files:
+        paths: ['^(docs|website/content)/.+\.md$']
+      no_changed_files:
+        paths:
+          - '^\.policy\.yml$'
+          - '^\.github/'
+          - '^\.github/agent-factory\.yaml$'  # the ownership fence: which factory acts here (agent-platform v0.14.0)
+          - '(^|/)(AGENTS|CLAUDE)\.md$'
+          - '^\.(agents|claude)/'
+          - '^clusters/[^/]+-agent-platform/'
+          - '^clusters/[^/]+/agent-platform\.yaml$'
+          - '^flux/sources/ocirepo-ai-native-ref\.yaml$'  # the AI platform pin (AI split S3, design §4)
+          - '^clusters/[^/]+/(ai-gateway|llm-platform)\.yaml$'  # the other two umbrellas: sourceRef and path pick what applies
+          - '^clusters/[^/]+/flux/flux-sources\.yaml$'  # aws-0 un-suspends the pin here
+          - '^\.gitignore$'  # keeps the AI paths out of this tree
+          - '^scripts/ci/ai-overlay\.sh$'  # what CI renders the AI paths from
+          - '^infrastructure/base/(agent-sandbox|karpenter-nodepools-agents|runtimeclass-gvisor|agent-runtime|agent-router|agent-mcp|room-broker|kueue|kueue-queues|agent-model-routing|agentgateway|agent-gateway)/'
+          - '^infrastructure/(aws-0|gcp-0)/(agent-mcp|agent-router|room-broker|kueue|agentgateway|agent-gateway|agentgateway-poc)/'  # the per-cloud render roots GCP parity gave these bases (TW2)
+          - '^infrastructure/aws-0/agent-model-routing/'
+          - '^security/base/(agent-policies|agent-secrets|octo-sts|merge-gate-secrets)/'
+          - '^security/(aws-0|gcp-0)/(agent-secrets|octo-sts|merge-gate-secrets)/'
+          - '^observability/base/agent-platform/'
+          - '^observability/base/runlore-factory/'
+          - '^observability/(aws-0|gcp-0)/agent-platform/'
+          - '^tooling/base/(agent-factory|policy-bot)/'
+          - '^tooling/(aws-0|gcp-0)/(agent-factory|policy-bot)/'
+          - '^flux/sources/ocirepo-(agent-factory|kueue)\.yaml$'
+          - '^opentofu/(aws|gcp)/openbao/management/(mounts\.tf|policies/(agents-secrets|merge-gate-secrets|external-secrets)\.hcl)$'
+          - '^opentofu/(aws/eks|gcp/gke)/configure/openbao\.tf$'
+          - '^scripts/ci/check-(policy-gate-coverage|workflow-secrets)\.sh$'
+          - '^infrastructure/base/crossplane/configuration-(aws|gcp)/'  # selects the AgentRun composition and the harness digest (AI split S0)
+          - '^infrastructure/(aws-0|gcp-0)/crossplane/configuration/'  # per-cloud render roots: a kustomize patches/images entry can override spec.package
+          - '^clusters/[^/]+/infrastructure/crossplane-configuration\.yaml$'  # its spec.path picks the Configuration render root
+          - '^docs/platform-constitution\.md$'
+          - '^docs/(superpowers|specs)/'
+          - '^website/content/docs/decisions/'
+      file_not_added:
+        paths: ['.*']
+      file_not_deleted:
+        paths: ['.*']
+      modified_lines:
+        total: "< 21"
+      has_workflow_result:        # R42 (review G6): CI, TruffleHog included, is part of the rule
+        conclusions: ["success"]
+        workflows: [".github/workflows/ci.yaml"]
+
+  - name: "low-risk: dead-links"  # the dead-links class's fence (MC2): docs-links' rule, renamed (R23)
     if:
       has_author_in:
         users: ["ogenki-agents[bot]"]

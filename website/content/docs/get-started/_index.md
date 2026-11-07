@@ -73,7 +73,7 @@ worth a look before you choose, if you are evaluating rather than just trying it
 The AI platform — model serving and the Agent Factory — is an opt-in layer on
 top, deployed from its own repository: see
 [AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}) for what
-runs where, and [airef.ogenki.io](https://airef.ogenki.io/docs/platform/ai-platform/)
+runs where, and [airef.ogenki.io](https://airef.ogenki.io/docs/get-started/)
 for the platform itself.
 
 ## When you are done

@@ -34,6 +34,15 @@ if (cd "$tmp/pre" && env -u CI -u GITHUB_ACTIONS ./scripts/ci/ai-overlay.sh --fr
 fi
 grep -q "needs a release tag" "$tmp/out" || { echo "FAIL: a pre-release pin refused without its reason:"; cat "$tmp/out"; exit 1; }
 
+# The tree half compares --from-git with the verified artifact at the repository's own pin. A
+# pre-release pin (an aws-0 session's session-only config) has no git tag, so --from-git refuses
+# it by design (checked above): the half needs a release pin and is skipped on a pre-release one.
+pin_tag=$(sed -n 's/^    tag: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$ROOT/flux/sources/ocirepo-ai-native-ref.yaml" | head -1)
+if ! [[ $pin_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "PASS: --from-git refuses CI=true, GITHUB_ACTIONS and a pre-release pin; the tree half is skipped: the pin '${pin_tag}' is a pre-release"
+  exit 0
+fi
+
 copy "$tmp/verified"
 copy "$tmp/git"
 (cd "$tmp/verified" && ./scripts/ci/ai-overlay.sh >/dev/null)

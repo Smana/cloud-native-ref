@@ -25,5 +25,7 @@ kind: Kustomization
 resources:
   - cert-manager.yaml
   - openbao.yaml
-  # Off with RunLore during the agent factory's v2: RunloreAgentDown is absent()-based.
+  # RunLore's session switch, with the route and the aws-0 overlay line: RunloreAgentDown is
+  # absent()-based, so these stay commented while RunLore is off.
   # - runlore.yaml
+  # - runlore-spend.yaml

@@ -85,7 +85,7 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
 `gcp-0/ai-gateway.yaml` is live on gcp-0 for the Agent Factory (runbook 14 step 6);
 `gcp-0/llm-platform.yaml` stays suspended
-([AI platform status](https://airef.ogenki.io/docs/platform/ai-platform/status/)).
+([AI platform status](https://airef.ogenki.io/docs/status/)).
 
 - **Two gates, no OpenTofu one.** `gcp-0/ai-gateway.yaml` (children in `gcp-0-ai-gateway/`, the
   aws-0 twin) and `gcp-0/llm-platform.yaml`, which depends on it. There is no

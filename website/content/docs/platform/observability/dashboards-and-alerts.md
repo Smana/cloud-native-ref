@@ -40,7 +40,7 @@ namespaces, all targeting the one Grafana in `observability`).
 A repo-wide grep for `kind: GrafanaFolder` finds eight CRs, each reconciled by
 default and defined in the namespace that owns its dashboards. The AI
 platform's `llm` folder ships from
-[ai-native-ref](https://airef.ogenki.io/docs/platform/ai-platform/observability/)
+[ai-native-ref](https://airef.ogenki.io/docs/operate/observability/)
 and is out of scope here:
 
 | Folder | Defined in | Holds |
