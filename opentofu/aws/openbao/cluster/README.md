@@ -61,7 +61,8 @@ in `ha` mode:
   so replaced nodes linger in the peer set as dead voters. Spot churn accumulates them.
   The `OpenBaoRaftQuorumAtRisk` alert
   (`observability/base/victoria-metrics-k8s-stack/vmrules/openbao.yaml`) is what tells you
-  this is happening.
+  this is happening; it only evaluates on multi-voter clusters (`vault_raft_peers > 1`), so
+  a single-node dev-mode cluster does not page for it.
 
 For a deployment meant to stay up: take the last two voters off spot as well, put the
 Raft path on encrypted gp3 EBS, and add a lifecycle hook that deregisters the peer before
