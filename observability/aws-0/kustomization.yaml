@@ -17,5 +17,5 @@ resources:
   # RunLore, a session switch (RK15): on for a demo session, off after. Flip it with the Alertmanager
   # route in vm-common-helm-values-configmap.yaml and the two runlore rule files, and with aws-0's
   # factory copies in ai-native-ref (runbook 25). Uninstalling keeps its PVCs.
-  # - ../base/runlore
+  - ../base/runlore
   # - configmap-factory-ca.yaml  (with it: RunLore refuses a missing factory.ca_file at start)

@@ -426,9 +426,9 @@ data:
             # files nothing (RunLore's own rule): no stub, no triager run. It still investigates and posts
             # to Slack again, because recurrence_cooldown (30m) is below the 1h repeat; a standing alert
             # costs one investigation an hour, against one every 12h before.
-            # - receiver: "runlore"
-            #   continue: true
-            #   repeat_interval: 1h
+            - receiver: "runlore"
+              continue: true
+              repeat_interval: 1h
             # One channel carries every severity, so the cadence is what
             # separates a page from a nag.
             - matchers:
