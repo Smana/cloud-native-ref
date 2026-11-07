@@ -56,7 +56,7 @@ locals {
 module "gke" {
   # checkov:skip=CKV_TF_1:Version-pinned like every other registry module here.
   source  = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
-  version = "~> 46.0"
+  version = "~> 47.0"
 
   project_id = var.project_id
   name       = var.cluster_name
