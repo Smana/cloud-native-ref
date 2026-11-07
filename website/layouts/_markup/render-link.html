@@ -1,0 +1,37 @@
+{{- /* Hextra v0.12.3's render-link.html, extended to resolve relative destinations
+  too. Pages link each other as relative `.md` files so the links also resolve on
+  GitHub and in validate-links.sh; Hextra's hook only resolves "/"-prefixed ones,
+  so it emitted these verbatim and every one 404'd on the site. */ -}}
+{{- $dest := .Destination -}}
+{{- $url := urls.Parse $dest -}}
+{{- $isExternal := or $url.Scheme (hasPrefix $dest "//") -}}
+
+{{- if and $dest (not $isExternal) $url.Path -}}
+  {{- with or (.PageInner.GetPage $url.Path) (.PageInner.Resources.Get $url.Path) (resources.Get $url.Path) -}}
+    {{- $query := cond $url.RawQuery (printf "?%s" $url.RawQuery) "" -}}
+    {{- $fragment := cond $url.Fragment (printf "#%s" $url.Fragment) "" -}}
+    {{- $dest = printf "%s%s%s" .RelPermalink $query $fragment -}}
+  {{- else -}}
+    {{- if hasPrefix $dest "/" -}}
+      {{- $hasBasePrefix := and (ne site.Home.RelPermalink "/") (hasPrefix $dest site.Home.RelPermalink) -}}
+      {{- if not $hasBasePrefix -}}
+        {{- $dest = (relURL (strings.TrimPrefix "/" $dest)) -}}
+      {{- end -}}
+    {{- else if strings.HasSuffix $url.Path ".md" -}}
+      {{- warnf "%s: unresolved link %q" .Page.File.Path .Destination -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with . -}}
+{{- $isExternal := strings.HasPrefix .Destination "http" -}}
+<a href="{{ $dest | safeURL }}"
+   {{- with .Title -}}title="{{ . }}"{{- end -}}
+   {{- if $isExternal -}}target="_blank" rel="noopener"{{- end -}}
+>
+  {{- .Text | safeHTML -}}
+  {{- if and .Page.Site.Params.externalLinkDecoration $isExternal -}}
+    {{- partial "utils/icon.html" (dict "name" "arrow-up-right" "attributes" `class="hx:inline hx:rtl:rotate-270 hx:align-baseline" height="1em" aria-hidden="true"`) -}}
+  {{- end -}}
+</a>
+{{- end -}}

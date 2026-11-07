@@ -16,7 +16,7 @@ lastVerified: 2026-09-02
 **Superseded 2026-09-02.** This record's dismissal of Workforce Identity
 Federation assumed Headlamp itself had to perform the Google STS token
 exchange; it does not — Headlamp's `-proxy-auth-token-header` flag lets an
-upstream proxy do the exchange and hand it a working token. [ADR-0032](0032-workforce-identity-federation-for-gke-rbac.md)
+upstream proxy do the exchange and hand it a working token. [ADR-0032]({{< relref "/docs/decisions/0032-workforce-identity-federation-for-gke-rbac.md" >}})
 uses exactly that, restoring per-user Kubernetes RBAC on `gcp-0`. The
 context and alternatives below are otherwise still an accurate record of what
 was known on 2026-08-28.
