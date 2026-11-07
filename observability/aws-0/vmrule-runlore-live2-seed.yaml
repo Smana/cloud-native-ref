@@ -1,7 +1,5 @@
-# RunLore knowledge-base session, Live 2 seed (ai-native-ref runbook 25 §3). Deliberately broken:
-# the selector names `podnfo`, a Deployment that does not exist (`podinfo` is the real one), so the
-# alert always fires. RunLore investigates it, the factory publishes the fix to this selector, and
-# the alert resolves when the fix merges. Remove the file when the session ends.
+# RunLore knowledge-base session, Live 2 seed (ai-native-ref runbook 25 §3). The alert fires when
+# podinfo in apps has had no available replica for 5 minutes. Remove the file when the session ends.
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -14,7 +12,7 @@ spec:
     - name: podinfo-availability
       rules:
         - alert: PodinfoUnavailable
-          expr: absent(kube_deployment_status_replicas_available{namespace="apps",deployment="podnfo"} > 0)
+          expr: absent(kube_deployment_status_replicas_available{namespace="apps",deployment="podinfo"} > 0)
           for: 5m
           labels:
             severity: critical
