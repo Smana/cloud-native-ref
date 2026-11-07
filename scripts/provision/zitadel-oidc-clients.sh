@@ -1624,7 +1624,16 @@ write_public() {
     store_probe "$key" || probe=$?
     [ "$probe" -ge 2 ] && return 1
     [ "$probe" -eq 1 ] || stored="$(store_read "$key" | jq -c '{"client-id": ."client-id", "project-id": ."project-id"}')" || return 1
-    [ "$stored" = "$want" ] && return 0
+    if [ "$stored" = "$want" ]; then
+        # Equal in the store still mirrors, as ensure_machine_user's converged branch does: a rebuilt
+        # OpenBao starts empty while the managed store keeps the last lineage's copy.
+        if printf '%s' "$want" | mirror_to_openbao "$key"; then
+            mirrored_keys+=("$key")
+        else
+            failed_mirrors="${failed_mirrors}${failed_mirrors:+ }${key}"
+        fi
+        return 0
+    fi
     printf '%s' "$want" | store_write_and_mirror "$key" || wrc=$?
     case "$wrc" in
         0) mirrored_keys+=("$key") ;;
