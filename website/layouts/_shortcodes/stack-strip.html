@@ -19,7 +19,7 @@
 <div class="cnref-strip">
   <p class="cnref-eyebrow">Built with</p>
   <ul class="cnref-strip-list">
-    {{- range site.Data.stack.groups -}}
+    {{- range hugo.Data.stack.groups -}}
       {{- range .items -}}
         {{- if .strip }}
     <li class="cnref-strip-item{{ if .logo_dark }} cnref-has-dark{{ end }}">

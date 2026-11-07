@@ -46,9 +46,11 @@ jobs:
 
       # refLinksErrorLevel: ERROR turns an unresolved relref into a non-zero
       # exit, so this step is the internal-link gate as well as the build gate.
+      # --panicOnWarning fails on a deprecation warning, so a Renovate hugo bump
+      # surfaces it here rather than when the key is removed.
       - name: Build
         working-directory: website
-        run: hugo --minify --gc
+        run: hugo --minify --gc --panicOnWarning
 
       - name: Install Python dependencies
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml

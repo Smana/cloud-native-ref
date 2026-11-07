@@ -1,6 +1,6 @@
 baseURL: https://cnref.ogenki.io/
 title: Cloud Native Reference
-languageCode: en-us
+locale: en-us
 enableRobotsTXT: true
 enableGitInfo: true
 
