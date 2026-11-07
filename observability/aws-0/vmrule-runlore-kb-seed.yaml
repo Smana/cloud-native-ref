@@ -1,8 +1,5 @@
 # RunLore knowledge-base session, KB-entry seed (ai-native-ref runbook 25 §3 shape, a second incident).
-# Deliberately broken: the selector names `metrics-servr`, a Deployment that does not exist
-# (`metrics-server` is the real one, in kube-system), so the alert always fires. RunLore investigates,
-# the factory publishes the selector fix, the alert resolves when it merges, and the verified fix must
-# reach Smana/runlore-kb as a new entry PR, which the factory's kb-entries class then judges in shadow.
+# The alert fires when metrics-server in kube-system has had no available replica for 5 minutes.
 # Remove the file when the session ends.
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
@@ -16,7 +13,7 @@ spec:
     - name: metrics-server-availability
       rules:
         - alert: MetricsServerUnavailable
-          expr: absent(kube_deployment_status_replicas_available{namespace="kube-system",deployment="metrics-servr"} > 0)
+          expr: absent(kube_deployment_status_replicas_available{namespace="kube-system",deployment="metrics-server"} > 0)
           for: 5m
           labels:
             severity: critical
