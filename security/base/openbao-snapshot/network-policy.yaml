@@ -59,7 +59,7 @@ spec:
     # NO toPorts, deliberately. The operator does not have the proxy pod listen
     # on 8200: for each port of the user Service it allocates a free CONTAINER
     # port and maps 8200 onto it through the generated ClusterIP Service's
-    # targetPort. tailscale v1.90.6, cmd/k8s-operator/egress-services.go:
+    # targetPort. tailscale v1.104.4, cmd/k8s-operator/egress-services.go:
     # `unusedPort()` returns `rand.Int32N(maxPorts) + 10000`, i.e. a random port
     # in [10000, 11000) ("The high range should make it easier to distinguish
     # container ports from the tailnet target ports"), and the PortMap is built
