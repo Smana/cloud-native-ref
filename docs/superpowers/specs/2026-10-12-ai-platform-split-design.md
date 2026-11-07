@@ -67,6 +67,8 @@ What `cloud-native-ref` guarantees, and `ai-native-ref` may rely on. This sectio
 `HOST-CONTRACT.md` into `ai-native-ref` at the split. Changing an item is a breaking change for
 both repositories: it lands with a version bump of the pin and a note in both.
 
+**Contract version 7** (the factory's TLS). H5 names the `openbao` issuer and the `agent-system.svc` PKI domains; H8 adds the `factory-ca` ConfigMap in `runlore`.
+
 **Contract version 2** (S3, 2026-10-16). Changes from 1: H1 Source names both signing identities,
 the aws-0 un-suspend patch and the children's sources; H1 Feature branches is a pin edit on the
 branch, not a variable; H3 drops `ai_native_ref_tag` (S3 plan D1–D3).
@@ -134,7 +136,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 | OpenBao | Mounts `agents` and `merge-gate` (both clouds), with the policies in `opentofu/<cloud>/openbao/management` and the JWT auth roles at `jwt/${cluster_name}` from `opentofu/<cloud>/{eks,gke}/configure/openbao.tf` that the `agents-secrets` and `merge-gate-secrets` stores log in with |
 | Stores | `ai-native-ref` creates its own namespaced stores (`agents-secrets`, `merge-gate-secrets`); it reads the cluster-wide `openbao-platform` store only where it does today, and the CA from `openbao-ca` |
 | ZITADEL | The rooms and `roomctl` OIDC clients, the `factory-slack-app` machine user (client credentials, no project role; its client id, secret and project id at `agents/factory-slack-principal`), the `runlore` machine user (client credentials, no project role; its full key at `platform/runlore/factory-principal`, its client id and project id at `agents/runlore-principal`), and the link-only GitHub IdP, provisioned by the host's scripts |
-| PKI | The OpenBao PKI role signs certificates for the broker's in-cluster and private names (F7) |
+| PKI | The OpenBao PKI role signs certificates for the broker's in-cluster and private names (F7), and for the factory's (`agent-factory.agent-system.svc[.cluster.local]`): the role's additional allowed domains are `agent-system.svc.cluster.local` and `agent-system.svc` on both clouds, subdomains allowed. The issuer is `ClusterIssuer/openbao` on both clouds; the CA chain is `certificates/${private_domain_name}/ca-chain` (`ca`, aws-0) or `openbao-priv-gcp-ca-chain` (raw PEM, gcp-0) |
 | Workload identity | EKS Pod Identity (never IRSA) and GKE Workload Identity, through the `EPI` and `GCPWorkloadIdentity` compositions |
 
 ### H6 · Compute
@@ -159,7 +161,7 @@ ConfigMap `runlore-factory-values` in `runlore` through `valuesFrom` with `optio
 deploys without the AI platform. RunLore's Service `runlore` in `runlore` serves the
 room broker's webhooks on 8080 at `/factory/webhook`; RunLore's egress reaches the factory
 (`agent-system`, `agent-factory`, 8082) and Alertmanager (`observability`, 9093), and its ingress
-admits `agent-system`'s `room-broker` and `agent-gateway`'s `agent-router`, which reads the knowledge base at `/mcp` on 8080. The rule is L4: any caller the port admits reaches `/mcp`, which is read-only and serves public text. RunLore itself is a session switch on aws-0.
+admits `agent-system`'s `room-broker` and `agent-gateway`'s `agent-router`, which reads the knowledge base at `/mcp` on 8080. The rule is L4: any caller the port admits reaches `/mcp`, which is read-only and serves public text. RunLore itself is a session switch on aws-0. The host mounts a static ConfigMap `factory-ca` (the platform CA, a public certificate; a copy per cloud, shipped with RunLore's switch) at `/etc/runlore-factory-ca` through the chart's `extraVolumes`/`extraVolumeMounts`, for a RunLore release that reads `factory.ca_file`; the key itself is the AI platform's, in `runlore-factory-values`. Rotating the CA is a PR in both repositories: `ai-native-ref` holds its own copy, `agent-factory-ca`, and a test there holds the two equal.
 
 ### What `ai-native-ref` guarantees back
 
