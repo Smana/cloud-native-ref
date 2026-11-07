@@ -74,3 +74,24 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: policy-bot-public-tls
+    # The agent factory's Slack App (factory interfaces F9), gcp-0's twin: Slack posts its Events API
+    # callbacks here and the App verifies each against its signing secret (±5 min). Routes from
+    # agent-system only; its HTTPRoute matches POST /slack/events alone. One Slack App has one
+    # Request URL, so only the cloud it points at receives events.
+    - name: factory-slack
+      hostname: "factory-slack.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - agent-system
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: factory-slack-public-tls
