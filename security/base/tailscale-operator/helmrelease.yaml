@@ -12,7 +12,11 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: tailscale
-      version: "1.90.6"
+        # Explicit, though the kustomization sets it: without it Renovate's flux
+        # manager cannot resolve the HelmRepository and silently skips the chart,
+        # which held it at 1.90.6 while the CRDs moved to 1.104.x.
+        namespace: tailscale
+      version: "1.104.4"
   interval: 2m0s
   install:
     remediation:
@@ -26,7 +30,7 @@ spec:
       # (infrastructure/base/gapi/platform-tailscale-general-gateway.yaml): the
       # tailnet is SHARED between aws-0 and gcp-0, and the chart default
       # ("tailscale-operator", verified via `helm template tailscale/tailscale-
-      # operator --version 1.90.6`) is not tailnet-unique across two clusters
+      # operator --version 1.104.4`) is not tailnet-unique across two clusters
       # running this same shared HelmRelease. Without this, gcp-0's operator
       # device collides with aws-0's and Tailscale silently suffixes one of
       # them. `cluster_name` substitutes on both clouds.

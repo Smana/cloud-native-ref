@@ -13,6 +13,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: loggen
+        namespace: observability
       interval: 12h
   values:
     replicaCount: 2
