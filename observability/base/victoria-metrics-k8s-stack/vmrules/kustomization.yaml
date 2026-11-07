@@ -27,5 +27,5 @@ resources:
   - openbao.yaml
   # RunLore's session switch, with the route and the aws-0 overlay line: RunloreAgentDown is
   # absent()-based, so these stay commented while RunLore is off.
-  # - runlore.yaml
-  # - runlore-spend.yaml
+  - runlore.yaml
+  - runlore-spend.yaml
