@@ -67,6 +67,8 @@ What `cloud-native-ref` guarantees, and `ai-native-ref` may rely on. This sectio
 `HOST-CONTRACT.md` into `ai-native-ref` at the split. Changing an item is a breaking change for
 both repositories: it lands with a version bump of the pin and a note in both.
 
+**Contract version 8** (the Slack App on aws-0, 2026-11-07). H4 Gateways: the `factory-slack` listener for `agent-system` is on both clouds' `platform-public`, no longer gcp-0's alone.
+
 **Contract version 7** (the factory's TLS). H5 names the `openbao` issuer and the `agent-system.svc` PKI domains; H8 adds the `factory-ca` ConfigMap in `runlore`.
 
 **Contract version 2** (S3, 2026-10-16). Changes from 1: H1 Source names both signing identities,
@@ -124,7 +126,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 
 | Item | Contract |
 |---|---|
-| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet, with a `policy-bot` listener for `merge-gate` on both clouds, and on gcp-0 a `factory-slack` listener for `agent-system`), Gateway API, in the namespaces their routes reference today |
+| Gateways | `platform-tailscale-general` (tailnet) and `platform-public` (internet, with a `policy-bot` listener for `merge-gate` and a `factory-slack` listener for `agent-system`, both on both clouds), Gateway API, in the namespaces their routes reference today |
 | Cilium | Default-deny CNP is the constitution's rule; `socketLB.hostNamespaceOnly: true` on both clouds (gVisor needs it) and the startup taint on every node pool (F2) |
 | DNS | Hostnames under `private_domain_name` resolve on the tailnet |
 
