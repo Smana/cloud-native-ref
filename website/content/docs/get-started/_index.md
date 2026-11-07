@@ -36,9 +36,9 @@ inside a stage.
 **This costs real money while it runs.** A managed control plane, several nodes,
 a load balancer and an OpenBao instance are billable from the first apply. The
 committed configuration is deliberately cheap — spot instances, a single-node
-OpenBao, a zonal GKE cluster — but it is not free: measured, it runs about
-**$730/month on AWS** and **$220/month on GCP**, and roughly $66/month keeps
-billing on AWS after everything is destroyed. The numbers, and which lines are
+OpenBao, a zonal GKE cluster — but it is not free: at list price it runs about
+**$575/month on AWS** and **$320/month on GCP**, and about $24/month keeps
+billing after every cluster is destroyed. The numbers, and which lines are
 worth attacking, are in
 [What it costs]({{< relref "/docs/get-started/costs.md" >}}). Read
 [Teardown](#when-you-are-done) before you start, not after.

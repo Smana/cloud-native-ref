@@ -592,37 +592,50 @@ claims:
 
   - id: gcp-0-ai-gateway-umbrella-live
     why: >-
-      gcp-0's ai-gateway umbrella ships `spec.suspend: false` (runbook 14 step
-      6): with aws-0 torn down, the agent factory runs on gcp-0. A page still
-      calling it suspended sends a reader to a resume step that Git undoes at
-      the next reconcile; flipping the source back must force a look at it.
+      gcp-0's ai-gateway umbrella ships `spec.suspend: false`, kept from when
+      gcp-0 ran the agent factory (runbook 14 step 6). A page calling it
+      suspended sends a reader to a resume step that Git undoes at the next
+      reconcile; flipping the source back must force a look at it.
     source:
       file: clusters/gcp-0/ai-gateway.yaml
       pattern: 'suspend:\s*(false)'
     pages:
       - path: clusters/AGENTS.md
-        must_contain: 'live on gcp-0'
+        must_contain: '`gcp-0/ai-gateway\.yaml` is unsuspended'
 
   - id: gcp-0-agent-platform-umbrella-live
     why: >-
       gcp-0's agent-platform umbrella ships `spec.suspend: false` (runbook 14
-      step 6), and the ownership fence names gcp-0 as the one factory that acts
-      on this repository. A flip back must fail a gate until the pages follow.
+      step 6), fenced out while another cluster owns the repository. A flip
+      back must fail a gate until the pages follow.
     source:
       file: clusters/gcp-0/agent-platform.yaml
       pattern: 'suspend:\s*(false)'
     pages:
       - path: clusters/AGENTS.md
-        # The agent-platform paragraph's own words: the bare 'live on gcp-0'
-        # is also in the ai-gateway paragraphs, so it would hold with this one deleted.
-        must_contain: '`spec\.suspend: false` on both clusters; it runs on\s+gcp-0'
+        must_contain: '`spec\.suspend: false` on both clusters'
         must_not_contain:
           - "gcp-0's twin ships suspended"
           - "gcp-0's twin stays suspended"
       - path: website/content/docs/platform/ai-platform/_index.md
-        must_contain: '\| `agent-platform` \(the Agent Factory\) \| live, fenced out \| live \|'
+        must_contain: '\| `agent-platform` \(the Agent Factory\) \| live \| live, fenced out \|'
+
+  - id: agent-factory-fence-owner
+    why: >-
+      The ownership fence names the one cluster whose factory acts on this
+      repository. It moved gcp-0 -> aws-0 when aws-0 came back (2026-10-30),
+      and four pages kept saying gcp-0 for a week; a move must fail a gate
+      until the pages follow.
+    source:
+      file: .github/agent-factory.yaml
+      pattern: '(?m)^factory:\s*(\S+)'
+    pages:
+      - path: clusters/AGENTS.md
+        must_contain: '`factory: {value}`'
+      - path: website/content/docs/platform/ai-platform/_index.md
+        must_contain: '(?s)The Agent Factory runs on `{value}`.{0,200}`factory: {value}`'
       - path: website/content/docs/platform/foundations/cloud-support.md
-        must_contain: 'live — the factory runs here'
+        must_contain: '\| ✅ live — the factory runs here \| ✅ \|'
 
   - id: primary-cloud-pages
     why: >-
