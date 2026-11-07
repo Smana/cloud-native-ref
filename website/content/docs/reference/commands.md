@@ -38,6 +38,12 @@ TM_CLOUD=all     terramate script run deploy   # every lane there is
 A comma list, so a third cloud needs no new keyword. Stacks under
 `opentofu/shared/` are owned by neither cloud and run under every value.
 
+**Terramate refuses to run with untracked files in the checkout**: `terramate
+script run deploy` exits 1 with `Error: repository has untracked files` before
+any stack runs. Do not delete the files or bypass the safeguard — deploy from a
+clean worktree of `origin/main` instead; the state is remote, so the checkout
+does not matter.
+
 ## Environment gates (`TM_*`)
 
 Seven environment variables decide what a Terramate run is allowed to do. Six of

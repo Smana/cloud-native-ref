@@ -14,11 +14,6 @@ terramate script run drift detect
 cd opentofu/<stack> && tofu plan -var-file=variables.tfvars   # one stack, directly
 ```
 
-**Terramate refuses to run with untracked files in the checkout**: `terramate script run deploy`
-exits 1 with `Error: repository has untracked files` before any stack runs. Do not delete the files
-or bypass the safeguard — deploy from a clean worktree of `origin/main` instead. The state is remote,
-so the checkout does not matter.
-
 Validate with `tofu validate` and
 `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .`
 
