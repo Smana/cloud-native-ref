@@ -44,7 +44,7 @@ store_probe() { [ "$STORE_STATE" = 0 ] && return 0; STORE_PROBE_ERR="Rate exceed
 store_read() { printf '%s' "$STORED"; }
 store_write_and_mirror() { printf '%s' "$1" >"$T/key"; tee "$T/written-$1" >"$T/written"; return "$WRITE_RC"; }
 MIRROR_RC=0
-mirror_to_openbao() { cat >/dev/null; return "$MIRROR_RC"; }
+mirror_to_openbao() { cat >"$T/mirrored-$1"; [ "$1" != "${MIRROR_FAIL_KEY:-}" ] || return 1; return "$MIRROR_RC"; }
 # Accepts only the client id the fixture says is current: a probe with another id is refused.
 probe_client_credentials() { cat >/dev/null; echo "$1" >"$T/probed-as"; [ "$1" = "$VALID_ID" ] || return 1; return "$ACCEPT"; }
 VALID_ID=factory-slack-app
@@ -171,7 +171,7 @@ APPLY=true; ACCEPT=0
 echo "== 6b. runlore: one user, the full key for RunLore, the public half for the factory (R2) =="
 SAVE_KEY=$KEY
 KEY=runlore-factory-principal; PUBLIC=agents-runlore-principal; PUT_CLIENT_ID=runlore; VALID_ID=runlore
-run_runlore() { rm -f "$T"/written* "$T/api" "$T/key" "$T/probed-as"; : >"$T/api"; mirrored_keys=(); failed_mirrors=""
+run_runlore() { rm -f "$T"/written* "$T"/mirrored* "$T/api" "$T/key" "$T/probed-as"; : >"$T/api"; mirrored_keys=(); failed_mirrors=""
                 out="$(ensure_machine_user runlore "$KEY" "$PUBLIC" 2>&1)"; rc=$?
                 mirrored_keys=(); failed_mirrors=""; ensure_machine_user runlore "$KEY" "$PUBLIC" >/dev/null 2>&1; }
 STORED='{}'; USERS='{"result":[]}'; ACCEPT=0
@@ -184,6 +184,14 @@ STORED='{"client-id":"runlore","client-secret":"STOREDSECRET","project-id":"proj
 USERS='{"result":[{"id":"ID","userName":"runlore"}]}'
 run_runlore
 check "runlore converged: the public half equal, not written" absent "$([ -e "$T/written-$PUBLIC" ] && echo written || echo absent)"
+# A rebuilt OpenBao starts empty while the managed store keeps the last lineage's copy: equal in the
+# store must still reach OpenBao, or the factory's sponsored Secret never syncs (aws-0, 2026-11-07).
+check "runlore converged: the public half still mirrored" '{"client-id":"runlore","project-id":"proj-1"}' "$(jq -c . "$T/mirrored-$PUBLIC" 2>/dev/null || echo none)"
+check "runlore converged: the public half recorded as mirrored" yes "$(case " ${mirrored_keys[*]:-} " in *" $PUBLIC "*) echo yes ;; *) echo no ;; esac)"
+MIRROR_FAIL_KEY=$PUBLIC; run_runlore; MIRROR_FAIL_KEY=""
+# As write_public's write path: recorded, not fatal here; cmd_sync exits 1 on any failed mirror.
+check "runlore converged, public mirror fails: recorded, not in mirrored_keys" "0 yes no" \
+    "$rc $(case " $failed_mirrors " in *" $PUBLIC "*) echo yes ;; *) echo no ;; esac) $(case " ${mirrored_keys[*]:-} " in *" $PUBLIC "*) echo yes ;; *) echo no ;; esac)"
 STORED='{"client-id":"runlore","client-secret":"STOREDSECRET","project-id":"old"}'  # pragma: allowlist secret
 run_runlore
 check "runlore: a new project id rewrites the public half" '{"client-id":"runlore","project-id":"proj-1"}' "$(jq -c . "$T/written-$PUBLIC")"
