@@ -241,7 +241,7 @@ claims:
       dependency.
     source:
       file: observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
-      pattern: 'victoriametrics-logs-datasource@(\d+\.\d+\.\d+)'
+      pattern: '^\s*- "victoriametrics-logs-datasource@(\d+\.\d+\.\d+)"'
     pages:
       - website/content/docs/platform/observability/dashboards-and-alerts.md
     must_contain: '{value}'
