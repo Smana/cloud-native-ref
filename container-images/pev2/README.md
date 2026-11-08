@@ -222,4 +222,4 @@ docker build --no-cache -t ghcr.io/smana/pev2:v1.17.0 .
 ## License
 
 PEV2 is licensed under the PostgreSQL License.
-See: https://github.com/dalibo/pev2/blob/main/LICENSE
+See: https://github.com/dalibo/pev2/blob/master/LICENSE
