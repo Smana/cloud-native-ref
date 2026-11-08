@@ -791,7 +791,7 @@ latest_unsealed_snapshot() {
 }
 
 # May OPENBAO_NEW_LINEAGE=true start a NEW lineage on this node? A pure decision,
-# lifted into scripts/test-openbao-new-lineage.sh, so the rule is tested without a
+# lifted into scripts/ci/tests/test-openbao-new-lineage.sh, so the rule is tested without a
 # live node.
 #
 #   $1 this node's seal type     $2 the newest object's seal segment (may be empty)
