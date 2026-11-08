@@ -28,7 +28,7 @@ permit unmodified use to refer to the project. Path pattern:
 | File | Source | Terms |
 |---|---|---|
 | `go.svg` | `golang/website` — `_content/images/go-logo-blue.svg` | [Go brand guidelines](https://go.dev/brand) — unmodified use permitted |
-| `grafana.svg` | `grafana/grafana` — `public/img/grafana_icon.svg` | [Grafana Labs trademark policy](https://grafana.com/legal/trademark-policy/) |
+| `grafana.svg` | `grafana/grafana` — `public/img/grafana_icon.svg` | [Grafana Labs trademark policy](https://grafana.com/trademark-policy/) |
 | `hugo.svg` | `gohugoio/hugoDocs` — `static/images/hugo-logo-wide.svg` | Apache-2.0 project |
 | `karpenter.svg` | `aws/karpenter-provider-aws` — `website/static/favicon.svg` | Apache-2.0 project |
 | `openbao.svg` / `openbao-dark.svg` | `openbao/openbao` — `website/public/img/logo-black.svg` and `logo-white.svg` | Linux Foundation project |
