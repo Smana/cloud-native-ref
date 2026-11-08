@@ -11,4 +11,4 @@ resources:
   - ../base/external-dns
   - ./gapi
   - ../base/keda
-  # Karpenter is deployed via separate Flux Kustomization (see clusters/aws-0/infrastructure.yaml)
+  # Karpenter is deployed via separate Flux Kustomization (see clusters/aws-0/infrastructure/karpenter.yaml)
