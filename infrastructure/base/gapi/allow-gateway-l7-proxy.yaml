@@ -15,7 +15,7 @@
 # than endpointSelector: {} which would affect ALL pods (including Kyverno
 # admission webhooks, breaking kube-apiserver -> webhook communication).
 #
-# Reference: https://docs.cilium.io/en/stable/security/policy/language/#entities-based
+# Reference: https://docs.cilium.io/en/stable/security/policy/layer3/#entities-based
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
