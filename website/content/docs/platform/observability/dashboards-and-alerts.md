@@ -102,7 +102,7 @@ for 16 months, the other fetching GitHub "latest" on every pod start.
 
 ## VictoriaTraces
 
-`observability/base/victoria-traces/` runs `victoria-traces-single` (0.1.11),
+`observability/base/victoria-traces/` runs `victoria-traces-single` (0.1.12),
 3-day retention, wired into Grafana as a Jaeger-protocol datasource. The `3d`
 suffix in `retentionPeriod: 3d` matters: a unit-less `retentionPeriod: 3`
 means 3 **months** in the VictoriaMetrics chart family, and that is what this
