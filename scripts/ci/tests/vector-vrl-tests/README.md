@@ -283,5 +283,5 @@ Check the error output carefully. Common issues:
 
 - [Vector VRL Documentation](https://vector.dev/docs/reference/vrl/)
 - [VRL Functions Reference](https://vector.dev/docs/reference/vrl/functions/)
-- [VRL Type System](https://vector.dev/docs/reference/vrl/type_system/)
-- [CloudNativePG Auto Explain](https://cloudnative-pg.io/documentation/current/monitoring/#auto_explain)
+- [VRL Type System](https://vector.dev/docs/reference/vrl/#type-safety)
+- [CloudNativePG Auto Explain](https://cloudnative-pg.io/docs/current/postgresql_conf#enabling-auto_explain)
