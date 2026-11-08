@@ -38,7 +38,7 @@
 
 {{- $id := .Get "group" -}}
 {{- $group := "" -}}
-{{- range site.Data.stack.groups -}}
+{{- range hugo.Data.stack.groups -}}
   {{- if eq .id $id }}{{ $group = . }}{{ end -}}
 {{- end -}}
 {{- if not $group -}}

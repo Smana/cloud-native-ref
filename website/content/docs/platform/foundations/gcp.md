@@ -1,12 +1,12 @@
 ---
 title: GCP
 weight: 30
-description: The six OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
+description: The seven OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
 lastVerified: 2026-09-02
 ---
 
 GCP instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
-as six OpenTofu stacks, mirroring [AWS]({{< relref "/docs/platform/foundations/aws.md" >}})
+as seven OpenTofu stacks, mirroring [AWS]({{< relref "/docs/platform/foundations/aws.md" >}})
 stack for stage. Each stack's `stack.tm.hcl` declares what it runs `after`, so
 Terramate applies them in this order:
 
@@ -18,6 +18,7 @@ Terramate applies them in this order:
 | `opentofu/gcp/openbao/management/` | Security | The three-tier PKI, the `lineage/` marker mount, policies, and the rehydrate step. **Persistent** |
 | `opentofu/gcp/gke/init/` | Kubernetes (Stage 1) | The GKE cluster, the static node pool, Gateway API CRDs, IAM, the `flux-system` namespace and secrets |
 | `opentofu/gcp/gke/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
+| `opentofu/gcp/workforce-identity/` | Identity (no `after`; `gke/configure` reads its `workforce_pool_id`) | The organisation-level workforce pool federating ZITADEL, for [per-user RBAC]({{< relref "/docs/platform/security/per-user-rbac.md" >}}) on GKE |
 
 Bootstrap is two stacks here for exactly the reason it is on AWS: a provider
 cannot be configured from an attribute of a resource the same configuration is

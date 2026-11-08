@@ -32,7 +32,7 @@ SKIP = {".git", ".bundle", "node_modules", "docs", ".claude", ".agents"}
 
 def dashboards():
     for path in (ROOT / "observability").rglob("*.yaml"):
-        if any(part in SKIP for part in path.parts):
+        if any(part in SKIP for part in path.relative_to(ROOT).parts):
             continue
         try:
             docs = list(yaml.safe_load_all(path.read_text()))

@@ -7,8 +7,10 @@ lastVerified: 2026-10-17
 ---
 
 The platform runs on **two clouds**: `aws-0` on EKS and `gcp-0` on GKE Standard.
-**Only `gcp-0` is running today**: `aws-0` was torn down on 2026-10-17, so GCP is
-the primary cloud and hosts ZITADEL and the Agent Factory. They are not one abstraction with two backends. They are two implementations of
+**Only `aws-0` is running today**: `gcp-0` is torn down, and AWS has been the
+primary cloud again since 2026-10-30
+([ADR-0027](../../decisions/0027-primary-cloud-provider.md)), hosting ZITADEL and
+the Agent Factory. The two lanes are not one abstraction with two backends. They are two implementations of
 the same three-stage model, sharing every Kubernetes-layer component and
 diverging exactly where the clouds themselves diverge.
 
@@ -35,7 +37,7 @@ and torn down afterwards.
 | Observability (VictoriaMetrics, Grafana, RunLore) | ✅ | ✅ same stack |
 | Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
 | Applications | ✅ | ✅ podinfo · basic · App Wizard · image-gallery (GCS through Workload Identity) |
-| [AI platform](https://airef.ogenki.io/docs/get-started/): AI gateway, agent factory | ✅ | ✅ live — the factory runs here |
+| [AI platform](https://airef.ogenki.io/docs/get-started/): AI gateway, agent factory | ✅ live — the factory runs here | ✅ |
 | AI platform: GPU serving | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
 | Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
 
@@ -143,13 +145,13 @@ Seven records carry the multicloud reasoning. Read in this order they explain
 why the platform looks the way it does on a second cloud:
 
 {{< cards >}}
-  {{< card link="../../decisions/0007-cloud-abstraction-boundaries/" title="ADR-0007 · Cloud abstraction boundaries" subtitle="Where the platform refuses to pretend two clouds are one. An API that only looks neutral produces worse errors than one that is honestly cloud-shaped." >}}
-  {{< card link="../../decisions/0005-gke-standard-self-managed-cilium/" title="ADR-0005 · GKE Standard, self-managed Cilium" subtitle="Autopilot cannot run the CNI this platform is built on, so Standard it is." >}}
-  {{< card link="../../decisions/0006-nap-computeclass-over-karpenter/" title="ADR-0006 · ComputeClass over Karpenter" subtitle="Karpenter's GCP provider was not credible; NAP is the native equivalent." >}}
-  {{< card link="../../decisions/0017-multi-cloud-dns-naming/" title="ADR-0017 · Multi-cloud DNS naming" subtitle="Public names carry no cloud label; private names are pinned per cloud." >}}
-  {{< card link="../../decisions/0019-cross-cloud-dns-federation/" title="ADR-0019 · Cross-cloud DNS federation" subtitle="GKE reaches Route 53 with a projected token, not an access key." >}}
-  {{< card link="../../decisions/0018-per-cloud-opentofu-state/" title="ADR-0018 · Per-cloud OpenTofu state" subtitle="Each cloud's state lives in its own cloud, so a teardown needs one set of credentials." >}}
-  {{< card link="../../decisions/0020-harbor-gcs-workload-identity/" title="ADR-0020 · Harbor on GCS with Workload Identity" subtitle="A chart limitation forces static keys on AWS but not on GCP — the asymmetry is upstream's, not ours." >}}
+  {{< card link="/docs/decisions/0007-cloud-abstraction-boundaries/" title="ADR-0007 · Cloud abstraction boundaries" subtitle="Where the platform refuses to pretend two clouds are one. An API that only looks neutral produces worse errors than one that is honestly cloud-shaped." >}}
+  {{< card link="/docs/decisions/0005-gke-standard-self-managed-cilium/" title="ADR-0005 · GKE Standard, self-managed Cilium" subtitle="Autopilot cannot run the CNI this platform is built on, so Standard it is." >}}
+  {{< card link="/docs/decisions/0006-nap-computeclass-over-karpenter/" title="ADR-0006 · ComputeClass over Karpenter" subtitle="Karpenter's GCP provider was not credible; NAP is the native equivalent." >}}
+  {{< card link="/docs/decisions/0017-multi-cloud-dns-naming/" title="ADR-0017 · Multi-cloud DNS naming" subtitle="Public names carry no cloud label; private names are pinned per cloud." >}}
+  {{< card link="/docs/decisions/0019-cross-cloud-dns-federation/" title="ADR-0019 · Cross-cloud DNS federation" subtitle="GKE reaches Route 53 with a projected token, not an access key." >}}
+  {{< card link="/docs/decisions/0018-per-cloud-opentofu-state/" title="ADR-0018 · Per-cloud OpenTofu state" subtitle="Each cloud's state lives in its own cloud, so a teardown needs one set of credentials." >}}
+  {{< card link="/docs/decisions/0020-harbor-gcs-workload-identity/" title="ADR-0020 · Harbor on GCS with Workload Identity" subtitle="A chart limitation forces static keys on AWS but not on GCP — the asymmetry is upstream's, not ours." >}}
 {{< /cards >}}
 
 ## The shared layer

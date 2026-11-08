@@ -11,7 +11,7 @@ check times out and a `HelmRelease` whose chart failed to install look
 identical from the outside: the object's `Ready` condition goes false, and
 everything around it keeps reporting green.
 
-This page covers the two views of that signal, on `gcp-0` and anywhere else
+This page covers the two views of that signal, on either cluster and anywhere else
 the repository is deployed.
 
 ## The report: `scripts/ops/k8s/flux-health.sh`
@@ -42,7 +42,7 @@ It is **a report, not a gate**:
 no-condition cases for both kinds plus the unreachable-cluster path.
 
 Why a second script, when `flux-not-ready.sh` already exists? That one covers
-the Kustomizations only. On `gcp-0` the `HelmRelease`s are just as
+the Kustomizations only. The `HelmRelease`s are just as
 load-bearing — a chart that fails to reconcile surfaces its error in the
 object's `Ready` condition, nowhere else.
 

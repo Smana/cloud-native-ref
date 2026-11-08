@@ -23,9 +23,9 @@
 
 {{- $depth := int (.Get "depth" | default 9) -}}
 {{- /* Hugo keys data by filename verbatim, so the key is "repo-tree" and a
-       hyphen cannot be dotted in a Go template — site.Data.repoTree silently
+       hyphen cannot be dotted in a Go template — hugo.Data.repoTree silently
        yields nothing and the tree renders as an empty box with a header row. */ -}}
-{{- $tree := index site.Data "repo-tree" -}}
+{{- $tree := index hugo.Data "repo-tree" -}}
 <div class="cnref-tree">
   <table>
     <thead>

@@ -7,6 +7,8 @@ kind: Kustomization
 # here too put two Kustomizations with prune: true in charge of the same
 # objects, each able to delete what the other owns.
 resources:
+  # RunLore session, KB-entry seed: an always-firing rule; remove at session end.
+  - vmrule-runlore-kb-seed.yaml
   # RunLore session, Live 2 seed (runbook 25 §3): an always-firing rule; remove at session end.
   - vmrule-runlore-live2-seed.yaml
   - ../base/kubernetes-event-exporter

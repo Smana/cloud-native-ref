@@ -1,10 +1,10 @@
 # OpenTofu / Terramate
 
-15 stacks today. `cd opentofu && terramate list` is the source of truth, not this list:
+16 stacks today. `cd opentofu && terramate list` is the source of truth, not this list:
 
 ```
 aws/{network,eks/init,eks/configure,openbao/cluster,openbao/lineage,openbao/management,llm-platform}
-gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management}
+gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management,workforce-identity}
 shared/{tailscale,aws-gcp-federation}
 ```
 
@@ -35,7 +35,7 @@ other than tofu carry `${global.cloud_gate}` or `--tm-run`; the destructive ones
 `eks-prepare-destroy.sh` deletes every PVC.
 
 **Why not tags.** A tag filter has no committed default — `--no-tags` has to be typed, so a fresh
-clone or CI would get all 15 stacks, and `drift reconcile` runs `tofu apply -auto-approve`. Tags
+clone or CI would get all 16 stacks, and `drift reconcile` runs `tofu apply -auto-approve`. Tags
 remain right for *listing* (`terramate list --tags=gcp`), never for gating.
 
 ## The other six `TM_*` gates
@@ -55,8 +55,9 @@ majority shape — `=true` authorises — and goes into that table in the same c
 
 ## Opt-in stacks
 
-Stacks tagged `opt-in` (currently `llm-platform`) no-op unless an env var enables them. Their
-scripts are overridden in their own `workflows.tm.hcl`.
+Stacks tagged `opt-in` no-op unless an env var enables them: `aws/llm-platform` on
+`TM_LLM_PLATFORM_ENABLED`, every `gcp/*` stack on `TM_CLOUD` naming gcp. Their scripts are
+overridden in their own `workflows.tm.hcl`.
 
 ```bash
 TM_LLM_PLATFORM_ENABLED=true terramate script run deploy
@@ -106,6 +107,7 @@ disagree.
 **A stack that gains a provider breaks `--reverse destroy` invisibly**, because lock files are
 gitignored and the destroy path never ran `init`.
 
-**Deploys apply the shared checkout's disk, not `main`.** `git pull` first, then verify the result
+**Deploys apply the checkout's disk, not `main`.** Deploy from a clean worktree of a freshly fetched
+`origin/main` (Terramate refuses to run at all with untracked files), then verify the result
 against the cloud rather than against the log — `terramate destroy` can exit 0 having destroyed
 nothing.

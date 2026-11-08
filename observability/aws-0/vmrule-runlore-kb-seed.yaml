@@ -1,0 +1,24 @@
+# RunLore knowledge-base session, KB-entry seed (ai-native-ref runbook 25 §3 shape, a second incident).
+# The alert fires when metrics-server in kube-system has had no available replica for 5 minutes.
+# Remove the file when the session ends.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    app: metrics-server
+  name: runlore-kb-seed
+  namespace: observability
+spec:
+  groups:
+    - name: metrics-server-availability
+      rules:
+        - alert: MetricsServerUnavailable
+          expr: absent(kube_deployment_status_replicas_available{namespace="kube-system",deployment="metrics-server"} > 0)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: metrics-server in kube-system has no available replica
+            description: >-
+              kube_deployment_status_replicas_available for kube-system/metrics-server reports no replica above
+              zero for 5 minutes.

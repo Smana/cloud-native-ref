@@ -20,7 +20,9 @@ run it either: `aws-0` was torn down, and `gcp-0` restored **its own** earlier
 directory from the `zitadel-20260828` seed rather than receiving `aws-0`'s. Users
 and grants made only in the AWS directory did not move, and with no PAT copied
 the owner minted one by hand (the recovery callout in
-[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}})).
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}})). The
+2026-10-30 switch back to AWS skipped it the same way: `aws-0` restored its
+2026-10-16 seed, and changes made only in `gcp-0`'s directory were lost.
 {{< /callout >}}
 
 ## Four things move, not one
