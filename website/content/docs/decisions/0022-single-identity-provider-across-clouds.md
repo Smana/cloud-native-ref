@@ -14,7 +14,7 @@ lastVerified: 2026-08-27
 
 {{< callout type="warning" >}}
 **Superseded the same day it was written.**
-[ADR-0024](0024-identity-provider-per-cloud.md) makes ZITADEL deployable on
+[ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}}) makes ZITADEL deployable on
 either cloud, defaulting to AWS.
 
 What changed is not the reasoning below — two instances really are two user

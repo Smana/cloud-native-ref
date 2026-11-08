@@ -168,7 +168,7 @@ You are editing a working configuration, not writing one:
    read the Tailscale API key from the environment:
    `export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>`.
 4. Decide on the AI layer. **gcp-0 ships with `ai-gateway` and
-   `agent-platform` live** (the Agent Factory runs here), and both read
+   `agent-platform` unsuspended** (fenced out while `aws-0` runs the factory), and both read
    model-provider keys a fork does not have. Nothing fails at deploy time; the
    gateway serves errors and agent runs fail later. Either seed the keys
    ([gateways](https://airef.ogenki.io/docs/how-it-works/gateways/)) or

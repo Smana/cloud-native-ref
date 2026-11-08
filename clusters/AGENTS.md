@@ -63,7 +63,8 @@ for the child manifests and the teardown procedure.
 
 The gateway layer — Envoy Gateway, Agent Router (the `envoy-ai-gateway` chart), the Semantic Router
 and the human/system Gateway `ai-gateway` — is its own umbrella (`aws-0/ai-gateway.yaml` →
-`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** from 2026-10-16 until its teardown, and **live on gcp-0** since its go-live commit (runbook 14 step 6): `llm-platform` and
+`aws-0-ai-gateway/`, OD-3), CPU only, and **live on aws-0** (unsuspended since 2026-10-16; gcp-0's
+twin is unsuspended too, in Git): `llm-platform` and
 `agent-platform` depend on it. See
 [`aws-0-ai-gateway/README.md`](https://github.com/Smana/ai-native-ref/blob/main/clusters/aws-0-ai-gateway/README.md)
 for what it reads — it needs no per-rebuild seeding step, only a one-time per-account secret.
@@ -81,9 +82,9 @@ umbrellas went live: #2429 changed a child's health check that never reached the
 `kv_cache_usage_perc`. The legacy KEDA HTTP add-on, with a proxy in the data path and a lagging
 request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
-### On `gcp-0` — two Kubernetes gates, the gateway layer live
+### On `gcp-0` — two Kubernetes gates (cluster torn down; Git state)
 
-`gcp-0/ai-gateway.yaml` is live on gcp-0 for the Agent Factory (runbook 14 step 6);
+`gcp-0/ai-gateway.yaml` is unsuspended, as it was while gcp-0 ran the Agent Factory;
 `gcp-0/llm-platform.yaml` stays suspended
 ([AI platform status](https://airef.ogenki.io/docs/status/)).
 
@@ -112,9 +113,8 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 ## The agent platform — one gate per cluster
 
 `<cluster>/agent-platform.yaml`, children in `<cluster>-agent-platform/` (in the artifact, like
-`llm-platform`'s). `spec.suspend: false` on both clusters; it runs on gcp-0 (runbook 14 step 6),
-the one live cluster since aws-0's teardown, which owns the repository through the ownership fence
-(`factory: gcp-0`). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
+`llm-platform`'s). `spec.suspend: false` on both clusters; it runs on aws-0, the one live cluster, which owns the
+repository through the ownership fence (`factory: aws-0` in `.github/agent-factory.yaml`). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
 start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves
 `AgentRun`: before it, `agent-policies` targets an API nobody serves and still reports Ready.

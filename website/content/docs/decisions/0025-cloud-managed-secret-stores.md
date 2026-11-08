@@ -17,7 +17,7 @@ grammar that keeps the store swappable
 ---
 
 {{< callout type="info" >}}
-**Amended 2026-09-02 by [ADR-0033](0033-openbao-store-of-record-lineage.md).**
+**Amended 2026-09-02 by [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}).**
 The constraint recorded below is unchanged: this reference cannot afford an
 always-on OpenBao. What changed is what the constraint bounds. OpenBao's storage
 is now derived from a *lineage* — a persistent seal key, five bootstrap secrets

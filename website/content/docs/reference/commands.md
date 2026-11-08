@@ -18,7 +18,7 @@ terramate script run drift detect    # Check drift
 
 # Individual stack
 cd opentofu/aws/<stack>   # network, eks/init, eks/configure, openbao/{lineage,cluster,management}, llm-platform
-cd opentofu/gcp/<stack>   # network, gke/init, gke/configure, openbao/{lineage,cluster,management}
+cd opentofu/gcp/<stack>   # network, gke/init, gke/configure, openbao/{lineage,cluster,management}, workforce-identity
 cd opentofu/shared/<stack>  # tailscale, aws-gcp-federation
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
