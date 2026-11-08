@@ -17,7 +17,7 @@ spec:
           annotations:
             summary: Problem with registering new nodes in the cluster.
             description: |
-              Karpenter in the nodepool {{ $labels.nodeppol }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
+              Karpenter in the nodepool {{ $labels.nodepool }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
@@ -29,7 +29,7 @@ spec:
           annotations:
             summary: Nodepool almost full, you should increase limits.
             description: |
-              Nodepool {{ $labels.nodeppol }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
+              Nodepool {{ $labels.nodepool }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
