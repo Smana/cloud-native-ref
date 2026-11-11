@@ -134,4 +134,4 @@ classes:
     author: agents
     harness: plain
     mode: "off"
-factory: aws-0
+factory: gcp-0

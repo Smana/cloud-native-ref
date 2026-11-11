@@ -19,7 +19,7 @@ signed, version-pinned Flux artifact ([ADR-0057](https://airef.ogenki.io/docs/de
 
 The source ships suspended (`flux/sources/ocirepo-ai-native-ref.yaml`); each cluster decides what to resume.
 The Agent Factory runs on `aws-0`, the one live cluster: `gcp-0` is torn down, and the ownership
-fence `.github/agent-factory.yaml` (`factory: aws-0`) names the only factory allowed to act on this
+fence `.github/agent-factory.yaml` (`factory: gcp-0` for the current session) names the only factory allowed to act on this
 repository.
 
 | Umbrella | `aws-0` | `gcp-0` (torn down; Git state) |
