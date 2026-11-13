@@ -269,7 +269,7 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
 # The Room CRD (SP2), vendored beside the broker that serves it (ruling P16).
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/infrastructure/base/room-broker/crd-rooms.yaml" -d "${build_dir}"
-# Factory, Repository and MergePolicy (maku v0.41.0), committed under vendored-crds/ because
+# Factory, Repository and MergePolicy (maku v0.47.0), committed under vendored-crds/ because
 # ai-native-ref commits manifests of those kinds and so cannot supply the CRDs to its own check.
 for kind in factory repository mergepolicy; do
   "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/maku-${kind}.yaml" -d "${build_dir}"
