@@ -1,137 +1,38 @@
 # Names the agent factory that may act on this repository (agent-platform ownership fence): only aws-0 takes its issues, runs and merges.
-classes:
-  alert-rules:
-    author: agents
-    conditions:
-      all:
-      - allowedFiles:
-        - ^observability/.+\.ya?ml$
-    harness: plain
-    mode: shadow
-    monitor:
-      followUpWindow: 2h0m0s
-      verification:
-        within: 2h0m0s
-  dashboards:
-    author: agents
-    harness: plain
-    mode: "off"
-  dead-links:
-    author: agents
-    conditions:
-      all:
-      - allowedFiles:
-        - ^(docs|website/content)/.+\.md$
-      - modifyOnly: true
-      - maxModifiedLines: 20
-      - diffShape: links-only
-      - holdoutChecks:
-        - "External links \U0001F517"
-      - oracle:
-          maxFindings: 10
-          probe: dead-links
-          workflow: dead-links.yaml
-      deny:
-      - protectedFiles:
-        - ^docs/(superpowers|specs)/
-        - ^website/content/docs/decisions/
-    harness: plain
-    limits:
-      maxPerDay: 1
-    mode: shadow
-    monitor:
-      followUpWindow: 168h0m0s
-      oracleRuns: 2
-  deps-minor:
-    adopt:
-      branches:
-      - ^renovate/
-      logins:
-      - renovate[bot]
-    author: adopt
-    conditions:
-      all:
-      - allowedFiles:
-        - ^(apps|flux|infrastructure|observability|security|tooling)/.+\.ya?ml$
-      - modifyOnly: true
-      - maxPatchFiles: 3
-      - maxModifiedLines: 10
-      - diffShape: semver-minor
-      - releaseAgeCheck: renovate/stability-days
-      deny:
-      - protectedFiles:
-        - ^security/base/zitadel/
-        - ^security/(aws|gcp)-0/zitadel/
-        - ^flux/sources/helmrepo-zitadel\.yaml$
-        - ^infrastructure/base/crossplane/configuration-core/
-        - ^flux/sources/gitrepo-gateway-api\.yaml$
-        - ^observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap\.yaml$
-    harness: adopted-none
-    mode: shadow
-    monitor:
-      flux:
-        source: flux-system/flux-system
-        within: 1h0m0s
-      followUpWindow: 168h0m0s
-  deps-patch:
-    adopt:
-      branches:
-      - ^renovate/
-      logins:
-      - renovate[bot]
-    author: adopt
-    conditions:
-      all:
-      - allowedFiles:
-        - ^(apps|flux|infrastructure|observability|security|tooling)/.+\.ya?ml$
-      - modifyOnly: true
-      - maxPatchFiles: 3
-      - maxModifiedLines: 10
-      - diffShape: semver-patch
-      - releaseAgeCheck: renovate/stability-days
-      deny:
-      - protectedFiles:
-        - ^security/base/zitadel/
-        - ^security/(aws|gcp)-0/zitadel/
-        - ^flux/sources/helmrepo-zitadel\.yaml$
-        - ^infrastructure/base/crossplane/configuration-core/
-        - ^flux/sources/gitrepo-gateway-api\.yaml$
-        - ^observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap\.yaml$
-    harness: adopted-none
-    limits:
-      maxPerDay: 2
-    mode: shadow
-    monitor:
-      flux:
-        source: flux-system/flux-system
-        within: 1h0m0s
-      followUpWindow: 168h0m0s
-  docs:
-    author: agents
-    harness: checked
-    mode: "off"
-  docs-links:
-    author: agents
-    conditions:
-      all:
-      - holdoutChecks:
-        - "Check the documentation links \U0001F517"
-    harness: plain
-    mode: live
-  revert:
-    author: agents
-    conditions:
-      all:
-      - holdoutChecks:
-        - "Check the documentation links \U0001F517"
-    harness: plain
-    mode: live
-  scripts:
-    author: agents
-    harness: plain
-    mode: "off"
-  tests:
-    author: agents
-    harness: plain
-    mode: "off"
 factory: gcp-0
+mergePolicies:
+- holdoutChecks:
+  - "Check the documentation links \U0001F517"
+  mode: live
+  name: docs-links
+- holdoutChecks:
+  - "Check the documentation links \U0001F517"
+  mode: live
+  name: revert
+- mode: "off"
+  name: docs
+- mode: "off"
+  name: tests
+- mode: "off"
+  name: dashboards
+- mode: "off"
+  name: scripts
+- mode: "off"
+  name: review
+- allowedFiles:
+  - ^observability/.+\.ya?ml$
+  mode: shadow
+  name: alert-rules
+- allowedFiles:
+  - ^(docs|website/content)/.+\.md$
+  mode: shadow
+  name: dead-links
+  oracleWorkflow: dead-links.yaml
+- allowedFiles:
+  - ^(apps|flux|infrastructure|observability|security|tooling)/.+\.ya?ml$
+  mode: shadow
+  name: deps-patch
+- allowedFiles:
+  - ^(apps|flux|infrastructure|observability|security|tooling)/.+\.ya?ml$
+  mode: shadow
+  name: deps-minor
