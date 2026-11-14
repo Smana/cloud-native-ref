@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.47.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -64,9 +64,8 @@ spec:
             type: object
           spec:
             description: |-
-              RepositorySpec is one repository served (D3): today's repositories[] entry. Its merge settings
-              and the MergePolicies it binds are here (reusable merge policies B2, B3), or, in the
-              per-repository shape, in the MergePolicy that names it.
+              RepositorySpec is one repository served (D3): today's repositories[] entry, with its merge
+              settings and the MergePolicies it binds (reusable merge policies B2, B3).
             properties:
               checks:
                 description: |-
@@ -105,6 +104,8 @@ spec:
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
                   autoMergesPerDay:
+                    description: AutoMergesPerDay is MaxPerDay's former name, read
+                      while MaxPerDay is unset. Deprecated.
                     type: integer
                   awaitingCIFor:
                     description: |-
@@ -156,19 +157,27 @@ spec:
                     maxLength: 1024
                     type: string
                   gateStatus:
-                    description: GateStatus makes the factory post the gate's verdict
-                      as a commit status on the pull request.
+                    description: |-
+                      GateStatus makes the factory post the gate's verdict as a commit status on the pull request,
+                      maku/merge-gate; nil means true (v4 step 8). Read it through PostsGateStatus.
                     type: boolean
                   leakScanCheck:
                     maxLength: 1024
                     type: string
+                  maxPerDay:
+                    description: |-
+                      MaxPerDay caps the repository's auto-merges a day, every live policy together (MR9): the
+                      name a policy's own cap has. Read it through PerDay.
+                    minimum: 0
+                    type: integer
                   mergerLogin:
                     maxLength: 253
                     type: string
                   policyBot:
                     description: |-
-                      PolicyBot false drops policy-bot from the gate and needs gateStatus: maku/merge-gate is then
-                      the status branch protection requires (D11); nil means true.
+                      PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step
+                      8). Without it maku/merge-gate is the status branch protection requires, which needs
+                      gateStatus. Read it through UsesPolicyBot.
                     type: boolean
                   policyBotLogin:
                     maxLength: 253
@@ -211,8 +220,8 @@ spec:
                   properties:
                     allowedFiles:
                       description: |-
-                        AllowedFiles, CompanionFiles, RequiredLabel and OracleWorkflow are fill-once: set here or on
-                        the policy, never both.
+                        CompanionFiles, RequiredLabel and OracleWorkflow are fill-once: set here or on the policy,
+                        never both. AllowedFiles fills the policy's when it has none, and narrows it when it has (MR3).
                       items:
                         maxLength: 512
                         type: string
@@ -247,6 +256,7 @@ spec:
                       enum:
                       - live
                       - shadow
+                      - disabled
                       - "off"
                       type: string
                     name:
@@ -355,10 +365,10 @@ spec:
             x-kubernetes-validations:
             - message: review is bound with mode off and no parameter
               rule: '!has(self.mergePolicies) || !self.mergePolicies.exists(b, b.name
-                == ''review'' && (b.mode != ''off'' || has(b.allowedFiles) || has(b.companionFiles)
-                || has(b.requiredLabel) || has(b.oracleWorkflow) || has(b.holdoutChecks)
-                || has(b.protectedFiles) || has(b.requiresApproval) || has(b.maxPatchFiles)
-                || has(b.maxModifiedLines) || has(b.maxPerDay)))'
+                == ''review'' && (!(b.mode in [''off'', ''disabled'']) || has(b.allowedFiles)
+                || has(b.companionFiles) || has(b.requiredLabel) || has(b.oracleWorkflow)
+                || has(b.holdoutChecks) || has(b.protectedFiles) || has(b.requiresApproval)
+                || has(b.maxPatchFiles) || has(b.maxModifiedLines) || has(b.maxPerDay)))'
             - message: bind docs-links and revert when any policy is bound (OD-8)
               rule: '!has(self.mergePolicies) || size(self.mergePolicies) == 0 ||
                 (self.mergePolicies.exists(b, b.name == ''docs-links'') && self.mergePolicies.exists(b,
@@ -388,8 +398,7 @@ spec:
                 minimum: 0
                 type: integer
               classes:
-                description: Classes is one entry per binding, or per served class
-                  of a per-repository MergePolicy (B10).
+                description: Classes is one entry per binding (B10).
                 items:
                   description: |-
                     BindingStatus is one class of a Repository (B10): the binding's mode, the policy generation it
@@ -411,6 +420,7 @@ spec:
                       enum:
                       - live
                       - shadow
+                      - disabled
                       - "off"
                       type: string
                     name:
@@ -505,6 +515,8 @@ spec:
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
                   autoMergesPerDay:
+                    description: AutoMergesPerDay is MaxPerDay's former name, read
+                      while MaxPerDay is unset. Deprecated.
                     type: integer
                   awaitingCIFor:
                     description: |-
@@ -556,19 +568,27 @@ spec:
                     maxLength: 1024
                     type: string
                   gateStatus:
-                    description: GateStatus makes the factory post the gate's verdict
-                      as a commit status on the pull request.
+                    description: |-
+                      GateStatus makes the factory post the gate's verdict as a commit status on the pull request,
+                      maku/merge-gate; nil means true (v4 step 8). Read it through PostsGateStatus.
                     type: boolean
                   leakScanCheck:
                     maxLength: 1024
                     type: string
+                  maxPerDay:
+                    description: |-
+                      MaxPerDay caps the repository's auto-merges a day, every live policy together (MR9): the
+                      name a policy's own cap has. Read it through PerDay.
+                    minimum: 0
+                    type: integer
                   mergerLogin:
                     maxLength: 253
                     type: string
                   policyBot:
                     description: |-
-                      PolicyBot false drops policy-bot from the gate and needs gateStatus: maku/merge-gate is then
-                      the status branch protection requires (D11); nil means true.
+                      PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step
+                      8). Without it maku/merge-gate is the status branch protection requires, which needs
+                      gateStatus. Read it through UsesPolicyBot.
                     type: boolean
                   policyBotLogin:
                     maxLength: 253
@@ -607,11 +627,6 @@ spec:
                   type: string
                 maxItems: 32
                 type: array
-              mergePolicy:
-                description: MergePolicy names the MergePolicy that applies, in the
-                  per-repository shape.
-                maxLength: 253
-                type: string
               observedGeneration:
                 format: int64
                 type: integer

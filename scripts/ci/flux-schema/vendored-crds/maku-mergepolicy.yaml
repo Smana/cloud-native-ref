@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.47.0 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the mergepolicy kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -19,9 +19,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.repositoryRef
-      name: Repo
-      type: string
     - jsonPath: .status.consumerCount
       name: Consumers
       type: integer
@@ -42,7 +39,7 @@ spec:
       openAPIV3Schema:
         description: |-
           MergePolicy is one reusable class definition, its name the class name (reusable merge policies
-          B1), or, in the per-repository shape until the next minor, one repository's merge policy (D3, D4).
+          B1).
         properties:
           apiVersion:
             description: |-
@@ -63,10 +60,9 @@ spec:
             type: object
           spec:
             description: |-
-              MergePolicySpec is a MergePolicy in one of two shapes (reusable merge policies B1, B8). With
-              repositoryRef, the per-repository shape: one repository's classes and merge rules (D3, D4), today's
-              repositories[].classes and merge, removed in the next minor. Without it, the class shape: one
-              reusable class definition, named by the object, that Repositories bind.
+              MergePolicySpec is one reusable class definition, named by the object, that Repositories bind
+              (reusable merge policies B1). The per-repository shape (repositoryRef, classes, merge) was
+              removed in the release after N (B8): the API server prunes those fields on read.
             properties:
               allowedFiles:
                 description: 'AllowedFiles: every changed path matches one of these
@@ -105,236 +101,6 @@ spec:
                   Checks switches the repository's checks on for the class's public implementer and reviewer
                   runs (v3 feature 3, RC8): the claim's spec.loop.checks and the repository's checks.egress.
                 type: boolean
-              classes:
-                additionalProperties:
-                  description: |-
-                    Class is one merge class (§5.2): live classes auto-merge once policy-bot agrees; a shadow
-                    class is decided exactly like a live one and never armed until the wave (R32, owner,
-                    2026-09-27); an unmarked class is a prediction and a PR label only (OD-8). Never both.
-
-                    The other fields are the class's declared conditions (merge gate classes MC1), named as gh-aw
-                    names them where it has a name. Each is checked on top of the gate's fixed base, which no class
-                    can remove; an absent one is not checked, so a class that declares none is decided as before.
-                  properties:
-                    allowedFiles:
-                      description: 'AllowedFiles: every changed path matches one of
-                        these regular expressions.'
-                      items:
-                        maxLength: 512
-                        type: string
-                      maxItems: 64
-                      type: array
-                    author:
-                      description: |-
-                        Author is how the class's pull requests are authored (MC1's author row): absent, the agents
-                        App through a task's runs; Adopt, another author's pull requests the factory adopts (MC10).
-                      properties:
-                        adopt:
-                          description: |-
-                            Adopt names the logins whose pull requests are adopted and the head branches they come from
-                            (gh-aw's allowed-branches); every commit and every push of the branch must be theirs.
-                          properties:
-                            branches:
-                              items:
-                                maxLength: 253
-                                type: string
-                              maxItems: 64
-                              type: array
-                            logins:
-                              items:
-                                maxLength: 253
-                                type: string
-                              maxItems: 64
-                              type: array
-                          type: object
-                      type: object
-                    checks:
-                      description: |-
-                        Checks switches the repository's checks on for the class's public implementer and reviewer
-                        runs (v3 feature 3, RC8): the claim's spec.loop.checks and the repository's checks.egress.
-                      type: boolean
-                    companionFiles:
-                      description: |-
-                        CompanionFiles are the paths an added-entry pull request may append to beside its one added
-                        entry (a knowledge base's index and log), anchored like AllowedFiles.
-                      items:
-                        maxLength: 512
-                        type: string
-                      maxItems: 64
-                      type: array
-                    description:
-                      description: |-
-                        Description says what the class is for, in plain words, for the settings pages and
-                        `kubectl get`; the gate never reads it.
-                      maxLength: 280
-                      type: string
-                    diffShape:
-                      description: 'DiffShape is a shape every changed line must have:
-                        links-only is R52''s LinksOnly.'
-                      maxLength: 512
-                      type: string
-                    escalation:
-                      description: Escalation maps a signal group to a profile of
-                        harnessAllowed; an absent group goes to the human.
-                      properties:
-                        notConverged:
-                          maxLength: 253
-                          type: string
-                        outOfBudget:
-                          maxLength: 253
-                          type: string
-                      type: object
-                    harness:
-                      description: |-
-                        Harness is the class's floor profile, HarnessAllowed the variants the scoper may recommend,
-                        and Escalation the variant a failed run's signal group steps to (team evaluation TE2, TE7).
-                        Absent, the class runs as before.
-                      maxLength: 253
-                      type: string
-                    harnessAllowed:
-                      items:
-                        maxLength: 253
-                        type: string
-                      maxItems: 64
-                      type: array
-                    holdoutChecks:
-                      description: |-
-                        HoldoutChecks are checks GitHub Actions must report SUCCESS on the head; their workflow is
-                        a gate path, so the pull request cannot change them (loops L7).
-                      items:
-                        maxLength: 1024
-                        type: string
-                      maxItems: 64
-                      type: array
-                    live:
-                      type: boolean
-                    maxModifiedLines:
-                      type: integer
-                    maxPatchFiles:
-                      description: |-
-                        MaxPatchFiles caps the changed files and MaxModifiedLines their additions plus deletions,
-                        as GitHub counts them (policy-bot's modified_lines); 0 is no cap.
-                      type: integer
-                    maxPerDay:
-                      description: MaxPerDay caps this class's merges a day, under
-                        merge.autoMergesPerDay; 0 is no cap of its own.
-                      type: integer
-                    modifyOnly:
-                      description: 'ModifyOnly: no file is added, deleted, renamed
-                        or copied.'
-                      type: boolean
-                    monitor:
-                      description: |-
-                        Monitor watches each merge of the class after it lands (merge gate classes MC7): main's CI
-                        for every merge, the detector's next runs for an oracle class, Flux on the factory's cluster,
-                        and follow-up fixes for FollowUpWindow. Absent: no monitor, as before.
-                      properties:
-                        flux:
-                          description: Flux watches the factory's cluster once its
-                            source holds the merge commit.
-                          properties:
-                            source:
-                              description: |-
-                                Source is namespace/name. Optional in the type, since a MergePolicy leaves it to the
-                                repository's merge.fluxSource; required on a class.
-                              maxLength: 1024
-                              type: string
-                            within:
-                              maxLength: 32
-                              pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                              type: string
-                          type: object
-                        followUpWindow:
-                          description: |-
-                            FollowUpWindow is how long later merges are read for a fix of this one (MC8), and when the
-                            monitor's verdict is final.
-                          maxLength: 32
-                          pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                          type: string
-                        oracleRuns:
-                          description: |-
-                            OracleRuns is how many scheduled detector runs after the merge must report none of the
-                            targets the pull request wrote; 0 reads none. Needs an oracle.
-                          type: integer
-                        verification:
-                          description: |-
-                            Verification reads an internal principal's verdict on the fix (RA11, R12): the merge is
-                            watched for it, for at most Within after the merge. Unset by default.
-                          properties:
-                            within:
-                              maxLength: 32
-                              pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                              type: string
-                          type: object
-                      type: object
-                    oracle:
-                      description: |-
-                        Oracle makes the class oracle-backed (MC4–MC6): its tasks are a detector's findings, and its
-                        gate holds only when the head no longer holds them and changes nothing else.
-                      properties:
-                        maxFindings:
-                          type: integer
-                        probe:
-                          maxLength: 1024
-                          type: string
-                        workflow:
-                          description: |-
-                            Workflow is optional in the type, since a MergePolicy leaves it to the binding's
-                            oracleWorkflow; required on a class.
-                          maxLength: 1024
-                          type: string
-                      type: object
-                    protectedFiles:
-                      description: 'ProtectedFiles: no changed path matches one of
-                        these.'
-                      items:
-                        maxLength: 512
-                        type: string
-                      maxItems: 64
-                      type: array
-                    releaseAgeCheck:
-                      description: |-
-                        ReleaseAgeCheck names the commit status that holds the release age (MC11), posted by an
-                        adopted login: Renovate's renovate/stability-days.
-                      maxLength: 1024
-                      type: string
-                    requiredLabel:
-                      description: |-
-                        RequiredLabel is the label an adopted pull request must carry, set by an adopted login, for
-                        the factory to adopt it (K11): RunLore's ready-to-merge.
-                      maxLength: 253
-                      type: string
-                    requiresApproval:
-                      description: |-
-                        RequiresApproval asks a human about a pull request touching one of its paths, even in a live
-                        class (merge policies MP12).
-                      items:
-                        description: ApprovalLeaf asks a human about a pull request
-                          touching one of its paths, even in a live class.
-                        properties:
-                          changedFiles:
-                            items:
-                              maxLength: 512
-                              type: string
-                            maxItems: 64
-                            type: array
-                        type: object
-                      maxItems: 16
-                      type: array
-                    shadow:
-                      type: boolean
-                    testFirst:
-                      description: |-
-                        TestFirst starts every public task of the class with a tester run that writes the failing
-                        tests first (v3 feature 4, TF1); needs Checks and the repository's merge.contractCheck.
-                      type: boolean
-                  type: object
-                maxProperties: 32
-                type: object
-                x-kubernetes-validations:
-                - message: a class is live or shadow, never both
-                  rule: self.all(k, !((has(self[k].live) && self[k].live) && (has(self[k].shadow)
-                    && self[k].shadow)))
               companionFiles:
                 description: |-
                   CompanionFiles are the paths an added-entry pull request may append to beside its one added
@@ -366,6 +132,14 @@ spec:
                     maxLength: 253
                     type: string
                 type: object
+              evidence:
+                description: |-
+                  Evidence is how many clean shadow decisions a promotion needs (MR4): low is 5, for a class
+                  whose diff a shape or an oracle checks mechanically; standard, the default, is 20.
+                enum:
+                - low
+                - standard
+                type: string
               harness:
                 description: |-
                   Harness is the class's floor profile, HarnessAllowed the variants the scoper may recommend,
@@ -401,109 +175,6 @@ spec:
                 description: MaxPerDay caps this class's merges a day, under merge.autoMergesPerDay;
                   0 is no cap of its own.
                 type: integer
-              merge:
-                description: Merge is §5.1's merge actor and §6.4's rollback.
-                properties:
-                  approveToMerge:
-                    description: |-
-                      ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
-                      agents pull request (human path AM1). Off, the approval hands off to a human merge.
-                    type: boolean
-                  autoMergesPerDay:
-                    type: integer
-                  awaitingCIFor:
-                    description: |-
-                      AwaitingCIFor bounds a pull request's stay in AwaitingCI on a wait verdict (#182): past it,
-                      a human is told which checks never reported. Omitted, Parse sets 24h (D2); 0s is no bound.
-                      Read it through AwaitingCIBound.
-                    maxLength: 32
-                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                    type: string
-                  breaker:
-                    description: |-
-                      Breaker is the circuit breaker's outcome window (R41, review G5): a class whose last Window
-                      merges hold MaxReverts reverts is demoted to human review, whatever the config.
-                    properties:
-                      maxFollowUps:
-                        description: |-
-                          MaxFollowUps: follow-up fixes and monitor regressions in the last Window merges that demote
-                          a class (MC8); 0 counts none.
-                        type: integer
-                      maxReverts:
-                        type: integer
-                      recoverAfter:
-                        description: |-
-                          RecoverAfter: a tripped class resumes once this many of its newest merges, all newer than the
-                          newest bad one, are clean and mature (human path AM7); 0 keeps the window rule alone.
-                        type: integer
-                      window:
-                        type: integer
-                    type: object
-                  checkReruns:
-                    description: |-
-                      CheckReruns caps the re-runs of a cancelled required check per task; 0 hands it to a human
-                      instead. Above 0 the merger App must hold actions: write.
-                    format: int32
-                    type: integer
-                  contractCheck:
-                    description: |-
-                      ContractCheck is the check run that proves a task's test contract (R21, TF7): required on
-                      a task with a contract (row 2b), only reported on one without.
-                    maxLength: 1024
-                    type: string
-                  fixRuns:
-                    format: int32
-                    type: integer
-                  fluxSource:
-                    description: |-
-                      FluxSource is the GitRepository that delivers the repository to the factory's cluster,
-                      namespace/name: the source every monitor.flux of a bound MergePolicy watches (B2, Q14).
-                    maxLength: 1024
-                    type: string
-                  gateStatus:
-                    description: GateStatus makes the factory post the gate's verdict
-                      as a commit status on the pull request.
-                    type: boolean
-                  leakScanCheck:
-                    maxLength: 1024
-                    type: string
-                  mergerLogin:
-                    maxLength: 253
-                    type: string
-                  policyBot:
-                    description: |-
-                      PolicyBot false drops policy-bot from the gate and needs gateStatus: maku/merge-gate is then
-                      the status branch protection requires (D11); nil means true.
-                    type: boolean
-                  policyBotLogin:
-                    maxLength: 253
-                    type: string
-                  requiredChecks:
-                    description: The 8 contexts classic protection requires, by name
-                      (GitHub Actions, app 15368).
-                    items:
-                      maxLength: 1024
-                      type: string
-                    maxItems: 64
-                    type: array
-                  revertWindow:
-                    maxLength: 32
-                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                    type: string
-                  verifyChecks:
-                    description: |-
-                      The checks main's CI runs on push, watched on the merge commit. Not RequiredChecks: a
-                      path-filtered push workflow never reports there, and absent must not mean pending (§6.4).
-                    items:
-                      maxLength: 1024
-                      type: string
-                    maxItems: 64
-                    type: array
-                  verifyFor:
-                    maxLength: 32
-                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                    type: string
-                type: object
               modifyOnly:
                 description: 'ModifyOnly: no file is added, deleted, renamed or copied.'
                 type: boolean
@@ -551,6 +222,15 @@ spec:
                         type: string
                     type: object
                 type: object
+              narrowedFiles:
+                description: |-
+                  NarrowedFiles is a binding's allowedFiles over a policy that has its own (MR3): every changed
+                  path matches one of these too. Set only by resolving a binding; refused on a MergePolicy.
+                items:
+                  maxLength: 512
+                  type: string
+                maxItems: 64
+                type: array
               oracle:
                 description: |-
                   Oracle makes the class oracle-backed (MC4–MC6): its tasks are a detector's findings, and its
@@ -580,13 +260,6 @@ spec:
                   ReleaseAgeCheck names the commit status that holds the release age (MC11), posted by an
                   adopted login: Renovate's renovate/stability-days.
                 maxLength: 1024
-                type: string
-              repositoryRef:
-                description: |-
-                  RepositoryRef names the Repository of a per-repository MergePolicy; absent, the object is
-                  a class definition.
-                maxLength: 253
-                minLength: 1
                 type: string
               requiredLabel:
                 description: |-
@@ -634,74 +307,22 @@ spec:
                 type: boolean
             type: object
             x-kubernetes-validations:
-            - message: spec.repositoryRef is fixed once set
-              rule: '!has(oldSelf.repositoryRef) || self.repositoryRef == oldSelf.repositoryRef'
-            - message: 'a MergePolicy keeps its shape: delete it and create a policy'
-              rule: has(self.repositoryRef) == has(oldSelf.repositoryRef)
-            - message: the per-repository fields (repositoryRef, classes, merge) and
-                the class fields never together (B8)
-              rule: '!has(self.repositoryRef) || !(has(self.description) || has(self.live)
-                || has(self.shadow) || has(self.checks) || has(self.testFirst) ||
-                has(self.allowedFiles) || has(self.protectedFiles) || has(self.requiresApproval)
-                || has(self.modifyOnly) || has(self.maxPatchFiles) || has(self.maxModifiedLines)
-                || has(self.diffShape) || has(self.holdoutChecks) || has(self.maxPerDay)
-                || has(self.oracle) || has(self.monitor) || has(self.author) || has(self.releaseAgeCheck)
-                || has(self.companionFiles) || has(self.requiredLabel) || has(self.harness)
-                || has(self.harnessAllowed) || has(self.escalation) || has(self.requires))'
-            - message: 'classes and merge are the per-repository shape: they need
-                repositoryRef (B8)'
-              rule: has(self.repositoryRef) || (!has(self.classes) && !has(self.merge))
             - message: 'mode is the binding''s: live and shadow are refused on a MergePolicy
                 (B4)'
-              rule: has(self.repositoryRef) || (!has(self.live) && !has(self.shadow))
+              rule: '!has(self.live) && !has(self.shadow)'
             - message: 'oracle.workflow is the repository''s: set oracleWorkflow on
                 the binding'
               rule: '!has(self.oracle) || !has(self.oracle.workflow)'
             - message: 'the Flux source is the repository''s: Repository.spec.merge.fluxSource
                 (B2)'
               rule: '!has(self.monitor) || !has(self.monitor.flux) || !has(self.monitor.flux.source)'
+            - message: 'narrowedFiles is set by a binding''s allowedFiles: set allowedFiles
+                on the policy'
+              rule: '!has(self.narrowedFiles)'
           status:
-            description: MergePolicyStatus is what the factory made of its MergePolicy
-              and of the repository's file (D10).
+            description: 'MergePolicyStatus is what the factory made of its MergePolicy
+              (B10): Accepted, and its consumers.'
             properties:
-              authority:
-                enum:
-                - central
-                - repository
-                type: string
-              classCount:
-                description: 'ClassCount and LiveCount are always serialized, zero
-                  included: the printer columns read them.'
-                minimum: 0
-                type: integer
-              classes:
-                description: Classes is the per-repository shape's, until the next
-                  minor.
-                items:
-                  description: ClassStatus is one class's mode and last decision (D10,
-                    narrowed for v1).
-                  properties:
-                    lastDecision:
-                      maxLength: 63
-                      type: string
-                    lastDecisionAt:
-                      format: date-time
-                      type: string
-                    mode:
-                      enum:
-                      - live
-                      - shadow
-                      - unarmed
-                      type: string
-                    name:
-                      maxLength: 63
-                      type: string
-                  required:
-                  - mode
-                  - name
-                  type: object
-                maxItems: 32
-                type: array
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -764,16 +385,17 @@ spec:
                 x-kubernetes-list-type: map
               consumerCount:
                 description: |-
-                  ConsumerCount and CurrentCount are always serialized, zero included: the printer columns
-                  read them. CurrentCount counts the accepted consumers serving the current generation.
+                  ConsumerCount, CurrentCount and LiveCount are always serialized, zero included: the printer
+                  columns read them. CurrentCount counts the accepted consumers serving the current generation,
+                  LiveCount the served consumers that bind the policy live.
                 minimum: 0
                 type: integer
               consumers:
-                description: Consumers are the Repositories that bind a class-shape
-                  MergePolicy (B10).
+                description: Consumers are the Repositories that bind the MergePolicy
+                  (B10).
                 items:
-                  description: ConsumerStatus is one Repository's binding of a class-shape
-                    MergePolicy (B10).
+                  description: ConsumerStatus is one Repository's binding of a MergePolicy
+                    (B10).
                   properties:
                     accepted:
                       description: Accepted is always serialized, false included.
@@ -782,6 +404,7 @@ spec:
                       enum:
                       - live
                       - shadow
+                      - disabled
                       - "off"
                       type: string
                     reason:
@@ -817,15 +440,15 @@ spec:
         type: object
         x-kubernetes-validations:
         - message: a MergePolicy's name is its class name (B1)
-          rule: has(self.spec.repositoryRef) || self.metadata.name.matches('^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$')
+          rule: self.metadata.name.matches('^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$')
         - message: review takes only description, harness, harnessAllowed, escalation,
             checks and testFirst
-          rule: has(self.spec.repositoryRef) || self.metadata.name != 'review' ||
-            !(has(self.spec.live) || has(self.spec.shadow) || has(self.spec.allowedFiles)
-            || has(self.spec.protectedFiles) || has(self.spec.requiresApproval) ||
-            (has(self.spec.modifyOnly) && self.spec.modifyOnly) || has(self.spec.maxPatchFiles)
-            || has(self.spec.maxModifiedLines) || has(self.spec.diffShape) || has(self.spec.holdoutChecks)
-            || has(self.spec.maxPerDay) || has(self.spec.oracle) || has(self.spec.monitor)
+          rule: self.metadata.name != 'review' || !(has(self.spec.live) || has(self.spec.shadow)
+            || has(self.spec.allowedFiles) || has(self.spec.narrowedFiles) || has(self.spec.protectedFiles)
+            || has(self.spec.requiresApproval) || (has(self.spec.modifyOnly) && self.spec.modifyOnly)
+            || has(self.spec.maxPatchFiles) || has(self.spec.maxModifiedLines) ||
+            has(self.spec.diffShape) || has(self.spec.holdoutChecks) || has(self.spec.maxPerDay)
+            || has(self.spec.evidence) || has(self.spec.oracle) || has(self.spec.monitor)
             || has(self.spec.author) || has(self.spec.releaseAgeCheck) || has(self.spec.companionFiles)
             || has(self.spec.requiredLabel) || has(self.spec.requires))
     served: true
