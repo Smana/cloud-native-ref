@@ -56,7 +56,8 @@ spec:
 """
 # Since phase H only agentgateway's overlay carries run-token issuers.
 RUN = {AGW: AGW_GOOD}
-# Every expected overlay present, so a case isolates the one thing it changes.
+# Every expected overlay present, so a case isolates the one thing it changes. octo-sts is
+# optional, so FULL lacks it and `full({})` passing proves a bundle without it passes.
 FULL = {**{name: "" for name in acs.EXPECTED}, **RUN}
 
 
@@ -73,7 +74,7 @@ if not acs.check_bundle(full({AGW: AGW_GOOD.replace(GKE + "\n", "https://oidc.ek
 if not acs.check_bundle(full({AGWC: "toFQDNs:\n  - matchName: oidc.eks.europe-west4.amazonaws.com\n"})):
     fails.append("an amazonaws.com host in gcp-0's agentgateway controller overlay must fail")
 if not acs.check_bundle(full({"overlay-security-gcp-0-octo-sts.yaml": "toFQDNs:\n  - matchName: oidc.eks.europe-west4.amazonaws.com\n"})):
-    fails.append("an amazonaws.com host in a gcp-0 agent overlay must fail")
+    fails.append("an amazonaws.com host in gcp-0's octo-sts overlay must fail: optional, still judged when present")
 if not acs.check_bundle(bundle({"overlay-infrastructure-aws-0-agent-router.yaml": GOOD})):
     fails.append("a bundle with no gcp-0 agent overlay is vacuous and must fail")
 if acs.check_bundle(full({"overlay-security-gcp-0-cert-manager-public.yaml": "region: eu-west-3\nrole: arn:aws:iam::1:role/x\nsts.amazonaws.com\n"})):
@@ -85,7 +86,7 @@ if not acs.check_bundle(full({"overlay-infrastructure-gcp-0-envoy-ai-gateway.yam
 # Partial vacuity: the zero-overlay guard alone passed both of these.
 if not acs.check_bundle(bundle({k: v for k, v in FULL.items() if k not in RUN})):
     fails.append("a bundle missing the run-token overlays must fail")
-if not acs.check_bundle(bundle({k: v for k, v in FULL.items() if k != "overlay-security-gcp-0-octo-sts.yaml"})):
+if not acs.check_bundle(bundle({k: v for k, v in FULL.items() if k != "overlay-security-gcp-0-agent-secrets.yaml"})):
     fails.append("a bundle missing any expected overlay must fail")
 if not acs.check_bundle(full({k: v.replace("issuer:", "issuerX:") for k, v in RUN.items()})):
     fails.append("run-token overlays with no issuer left to check must fail")
@@ -177,8 +178,8 @@ if not secrets(ca=CA.replace("openbao-priv-gcp-ca-chain", "openbao-priv-gcp-root
     fails.append("an openbao-ca reading any other entry must fail")
 if not secrets(room_ca=ROOM_CA.replace("{key: openbao-priv-gcp-ca-chain}", "{key: certificates/priv.gcp.cluster.local/ca-chain, property: ca}")):
     fails.append("a room-broker-ca reading the AWS-shaped entry must fail")
-if not secrets(room_ca=""):
-    fails.append("a room-broker overlay with no room-broker-ca must fail")
+if secrets(room_ca=""):
+    fails.append("room-broker-ca is optional: a room-broker overlay without it must pass")
 if not secrets(keys="", ca=""):
     fails.append("a render with neither ExternalSecret is vacuous and must fail")
 
