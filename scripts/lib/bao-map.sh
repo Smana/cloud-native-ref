@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Managed-store key -> OpenBao path, the one copy (GCP parity GP-5). Read by
-# secret-store.sh's `migrate` and by the --mirror-openbao of zitadel-oidc-clients.sh
-# and zitadel-idp.sh.
+# secret-store.sh's `migrate` and by the --mirror-openbao of zitadel-oidc-clients.sh.
 # Why the map is explicit and what must stay out of it: see the comment kept
 # above the function below.
 
@@ -51,7 +50,6 @@ bao_target_for() {
         agents-factory-slack-principal) printf 'agents/factory-slack-principal' ;;
         runlore-factory-principal) printf 'platform/runlore/factory-principal' ;;
         agents-runlore-principal) printf 'agents/runlore-principal' ;;
-        room-broker-zitadel-reader) printf 'agents/zitadel-reader' ;;
         *) return 1 ;;
     esac
 }

@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 #
 # Mirror a managed-store secret into the OpenBao path its ExternalSecret reads
-# (--mirror-openbao). Shared by zitadel-oidc-clients.sh and zitadel-idp.sh, so
-# there is one copy of the merge rule and the failure handling. Callers set
+# (--mirror-openbao), for zitadel-oidc-clients.sh: one copy of the merge rule
+# and the failure handling. Callers set
 # MIRROR_OPENBAO, OPENBAO_URL, OPENBAO_CA_FILE and OPENBAO_ROOT_TOKEN_SECRET.
 
 # shellcheck source=scripts/lib/openbao-api.sh
@@ -11,8 +11,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/bao-map.sh"
 
 # The fields this script owns in a consumer secret: every key merge_secret and
-# converge_secret write, plus the room broker reader's `pat tokenId githubIdpId`
-# (zitadel-idp.sh). Onto an EXISTING OpenBao value the mirror copies only
+# converge_secret write. Onto an EXISTING OpenBao value the mirror copies only
 # these. The rest of a blob belongs to another writer -- seed's
 # GF_SECURITY_ADMIN_PASSWORD in grafana-envvars -- and OpenBao's copy of it may
 # be newer than the store's (a rotation made in OpenBao), so the mirror never
@@ -27,7 +26,6 @@ MIRRORED_FIELDS=(
     clientID clientSecret
     client_id client_secret endpoint
     client-id client-secret cookie-secret project-id
-    pat tokenId githubIdpId
 )
 
 # Mirror one consumer secret into the OpenBao path its ExternalSecret reads
