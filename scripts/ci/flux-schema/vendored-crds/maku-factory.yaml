@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.47.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the factory kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -142,7 +142,7 @@ spec:
                     description: |-
                       How long a run that never started may sit Pending before the task escalates as
                       run_unschedulable (P): no other layer bounds it — activeDeadlineSeconds counts from the
-                      pod's start, and Kueue queues unadmitted work forever. Defaulted when omitted, never left
+                      pod's start, and the runs quota holds a run back forever. Defaulted when omitted, never left
                       open.
                     type: integer
                   maxTextBytes:
@@ -333,6 +333,8 @@ spec:
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
                   autoMergesPerDay:
+                    description: AutoMergesPerDay is MaxPerDay's former name, read
+                      while MaxPerDay is unset. Deprecated.
                     type: integer
                   awaitingCIFor:
                     description: |-
@@ -384,19 +386,27 @@ spec:
                     maxLength: 1024
                     type: string
                   gateStatus:
-                    description: GateStatus makes the factory post the gate's verdict
-                      as a commit status on the pull request.
+                    description: |-
+                      GateStatus makes the factory post the gate's verdict as a commit status on the pull request,
+                      maku/merge-gate; nil means true (v4 step 8). Read it through PostsGateStatus.
                     type: boolean
                   leakScanCheck:
                     maxLength: 1024
                     type: string
+                  maxPerDay:
+                    description: |-
+                      MaxPerDay caps the repository's auto-merges a day, every live policy together (MR9): the
+                      name a policy's own cap has. Read it through PerDay.
+                    minimum: 0
+                    type: integer
                   mergerLogin:
                     maxLength: 253
                     type: string
                   policyBot:
                     description: |-
-                      PolicyBot false drops policy-bot from the gate and needs gateStatus: maku/merge-gate is then
-                      the status branch protection requires (D11); nil means true.
+                      PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step
+                      8). Without it maku/merge-gate is the status branch protection requires, which needs
+                      gateStatus. Read it through UsesPolicyBot.
                     type: boolean
                   policyBotLogin:
                     maxLength: 253
@@ -430,7 +440,8 @@ spec:
               mergeGuardrails:
                 description: |-
                   MergeGuardrails bound every repository's class policy (MP3, MP6): a class may add protected
-                  paths and mandatory checks and choose lower caps, never the reverse. A cap of 0 is no guardrail.
+                  paths and mandatory checks and choose lower caps, never the reverse. A cap of 0 takes its default
+                  (MR7, WithDefaults).
                 properties:
                   mandatoryChecks:
                     items:
