@@ -9,15 +9,15 @@ mergePolicies:
   - "Check the documentation links \U0001F517"
   mode: live
   name: revert
-- mode: "off"
+- mode: disabled
   name: docs
-- mode: "off"
+- mode: disabled
   name: tests
-- mode: "off"
+- mode: disabled
   name: dashboards
-- mode: "off"
+- mode: disabled
   name: scripts
-- mode: "off"
+- mode: disabled
   name: review
 - allowedFiles:
   - ^observability/.+\.ya?ml$
