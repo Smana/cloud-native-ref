@@ -26,6 +26,8 @@ SCOPED = re.compile(r"^overlay-(infrastructure|security|observability|tooling)-g
 # Only run tokens are judged by issuer: another gcp-0 policy may trust ZITADEL.
 RUN_TOKEN = re.compile(r"-gcp-0-agent-gateway\.yaml$")
 # By name, so a renamed overlay directory fails instead of silently leaving scope.
+# octo-sts is in SCOPED but not here: judged while ai-native-ref still ships it, not required
+# since the run-controller cutover (ANR #376) left it unused.
 EXPECTED = (
     "overlay-infrastructure-gcp-0-agent-router.yaml",
     "overlay-infrastructure-gcp-0-agentgateway.yaml",
@@ -35,7 +37,6 @@ EXPECTED = (
     "overlay-infrastructure-gcp-0-envoy-ai-gateway.yaml",
     "overlay-infrastructure-gcp-0-envoy-gateway.yaml",
     "overlay-infrastructure-gcp-0-vllm-semantic-router.yaml",
-    "overlay-security-gcp-0-octo-sts.yaml",
     "overlay-security-gcp-0-agent-secrets.yaml",
     "overlay-observability-gcp-0-agent-platform.yaml",
     "overlay-tooling-gcp-0-agent-factory.yaml",
@@ -154,10 +155,14 @@ def check_gcp0_secrets(bundle_dir):
             if r.get("kind") != "Password" or r.get("name") not in passwords:
                 problems.append(f"{f.name}: ai-gateway-api-keys generator {r.get('kind')}/{r.get('name')} "
                                 "is not a Password rendered beside it")
-    for overlay, name in (("overlay-security-gcp-0-agent-secrets.yaml", "openbao-ca"),
-                          ("overlay-infrastructure-gcp-0-room-broker.yaml", "room-broker-ca")):
+    # room-broker-ca is optional: judged while ai-native-ref still renders it, not required since
+    # the run-controller cutover (ANR #376) left the broker without it.
+    for overlay, name, required in (("overlay-security-gcp-0-agent-secrets.yaml", "openbao-ca", True),
+                                    ("overlay-infrastructure-gcp-0-room-broker.yaml", "room-broker-ca", False)):
         f = pathlib.Path(bundle_dir) / overlay
         es = _named(_docs(f), "ExternalSecret", name)
+        if es is None and not required:
+            continue
         keys = [((d.get("remoteRef") or {}).get("key")) for d in ((es or {}).get("spec") or {}).get("data") or []]
         if keys != ["openbao-priv-gcp-ca-chain"]:
             problems.append(f"{f.name}: {name} reads {keys or 'nothing'}, not Secret Manager's openbao-priv-gcp-ca-chain (GP-26)")

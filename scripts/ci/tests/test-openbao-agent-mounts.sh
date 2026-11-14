@@ -50,7 +50,7 @@ cmp -s "$ROOT/opentofu/aws/openbao/management/policies/merge-gate-secrets.hcl" "
   || fail "the aws and gcp merge-gate-secrets.hcl have diverged"
 grep -q 'merge-gate-secrets = {' "$ROOT/opentofu/gcp/gke/configure/openbao.tf" || fail "gcp: no merge-gate-secrets role on jwt/gcp-0"
 grep -q '^      path: "agents"$' "$ROOT/security/base/agent-secrets/secretstore.yaml" || fail "the agents-secrets SecretStore is not on the agents mount"
-grep -rq 'key: agents/' "$ROOT/security/base/octo-sts" "$ROOT/infrastructure/base/agent-router" && fail "an ExternalSecret still carries the old agents/ prefix"
+grep -rqs 'key: agents/' "$ROOT/security/base/octo-sts" "$ROOT/infrastructure/base/agent-router" && fail "an ExternalSecret still carries the old agents/ prefix"
 
 [ "$fails" -eq 0 ] || exit 1
 echo PASS
