@@ -185,25 +185,13 @@ script "deploy" {
             $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} || \
           echo "[warn] the OIDC client sync reported a failure (for ${global.eks_cluster_name}: clients, mirrors, machine users or the owners list's grants); read the lines above, then re-run it by hand"
 
-        # The Google/GitHub IdPs and the room broker's link reader. The reader's
-        # PAT is minted here and must reach OpenBao's agents mount, which nothing
-        # else fills: migrate leaves an existing path alone, so a rotation would
-        # never land. The mirror needs OpenBao's CA; without it the sync still
-        # runs and only the mirror is skipped.
-        IDP_MIRROR=()
-        if [ "$${#OPENBAO_ARGS[@]}" -gt 0 ]; then
-          IDP_MIRROR=(--mirror-openbao)
-        else
-          echo "[warn] no OpenBao CA: the room broker's reader is not mirrored; non-admin room access stays off until the IdP sync is re-run with the OpenBao flags"
-        fi
-        echo "== syncing ${global.eks_cluster_name}'s IdPs and the room broker's link reader"
+        # The Google and GitHub IdPs.
+        echo "== syncing ${global.eks_cluster_name}'s IdPs"
         IDP_URL="$${IDP_URL}" \
           bash "$${ROOT}/scripts/provision/zitadel-idp.sh" sync \
-            --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply \
-            $${OPENBAO_ARGS[@]+"$${OPENBAO_ARGS[@]}"} $${IDP_MIRROR[@]+"$${IDP_MIRROR[@]}"} || \
-          { echo "[warn] IdP sync for ${global.eks_cluster_name} failed. Non-admin room access stays off until this runs;"
-            echo "       re-run it by hand (fetch the CA with openbao-config.sh ca --ca-output-file <file>):"
-            echo "         IDP_URL=$${IDP_URL} scripts/provision/zitadel-idp.sh sync --cluster ${global.eks_cluster_name} --cloud aws --region ${global.region} --apply --openbao-url ${global.openbao_url} --openbao-root-token-secret ${global.root_token_secret_name} --openbao-ca-file <file> --mirror-openbao"; }
+            --cluster "${global.eks_cluster_name}" --cloud aws --region "${global.region}" --apply || \
+          { echo "[warn] IdP sync for ${global.eks_cluster_name} failed; re-run it by hand:"
+            echo "         IDP_URL=$${IDP_URL} scripts/provision/zitadel-idp.sh sync --cluster ${global.eks_cluster_name} --cloud aws --region ${global.region} --apply"; }
 
         # The owners' GitHub links, after the IdP sync (the GitHub IdP) and the
         # client sync (the role grants). The list in git is the owner's call.

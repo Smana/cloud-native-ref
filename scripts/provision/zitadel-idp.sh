@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Register the Google Workspace identity provider and the groups Action in
-# ZITADEL, plus an optional link-only GitHub IdP and the room broker's read-only
-# link reader, from configuration this repository owns.
+# ZITADEL, plus an optional link-only GitHub IdP, from configuration this
+# repository owns.
 #
 # WHY THIS EXISTS
 #
@@ -30,16 +30,12 @@
 #      never by recreating, which would orphan every existing user link.
 #   4. Uploads scripts/provision/zitadel-actions/groups-from-roles.js as a v1 Action.
 #   5. Wires that Action into flow 2 (CustomiseToken) on BOTH triggers.
-#   6. If `zitadel-github-idp` is in the store: a LINK-ONLY GitHub IdP, and the
-#      room broker's read-only reader -- machine user room-broker-idp-reader with
-#      ORG_OWNER_VIEWER, one PAT (1 year, re-minted under 30 days) written to
-#      `room-broker-zitadel-reader` as {"pat","tokenId","githubIdpId"}. Without the key,
-#      all of step 6 is skipped.
+#   6. If `zitadel-github-idp` is in the store: a LINK-ONLY GitHub IdP. Without
+#      the key, step 6 is skipped.
 #
 # Usage:
 #   zitadel-idp.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #   zitadel-idp.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
-#     [--openbao-url U --openbao-root-token-secret S --openbao-ca-file F --mirror-openbao]
 #   zitadel-idp.sh rotate-github-secret --cluster C --cloud aws|gcp [--client-id ID] [--apply] < secret
 #   zitadel-idp.sh link-github <loginName> <githubLogin> --cluster C --cloud aws|gcp [--apply]
 #   zitadel-idp.sh link-owners --owners FILE --cluster C --cloud aws|gcp [--apply]
@@ -64,10 +60,6 @@
 # {"client_id","client_secret"} to `zitadel-github-idp`. sync cannot do this:
 # ZITADEL never echoes a stored secret back, so a secret-only change is
 # invisible to it. --client-id replaces the stored client id in the same step.
-#
-# --mirror-openbao also copies `room-broker-zitadel-reader` to OpenBao's
-# agents/zitadel-reader (scripts/lib/bao-map.sh), where the broker's
-# ExternalSecret reads it. Without the GitHub key there is no reader: skipped.
 #
 # Dry-run unless --apply. The client secret is never printed.
 #
@@ -101,8 +93,6 @@ set -o pipefail
 . "$(dirname "$0")/../lib/cloud-secret-store.sh"
 # shellcheck source=scripts/lib/zitadel-pat.sh
 . "$(dirname "$0")/../lib/zitadel-pat.sh"
-# shellcheck source=scripts/lib/openbao-mirror.sh
-. "$(dirname "$0")/../lib/openbao-mirror.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -112,12 +102,6 @@ CLOUD=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 GCP_PROJECT=""
 APPLY="false"
-# Same flags as zitadel-oidc-clients.sh. Without them the reader blob stays in
-# the managed store, which no cluster ExternalSecret reads.
-OPENBAO_URL=""
-OPENBAO_ROOT_TOKEN_SECRET=""
-OPENBAO_CA_FILE=""
-MIRROR_OPENBAO="false"
 NEW_CLIENT_ID=""
 OWNERS_FILE=""
 LINK_LOGIN=""
@@ -143,19 +127,11 @@ ACTION_NAME="groupsFromRoles"
 ACTION_FILE="$(cd "$(dirname "$0")" && pwd)/zitadel-actions/groups-from-roles.js"
 
 # GitHub is OPTIONAL and LINK-ONLY: a developer signs in with Google and links
-# GitHub once, and the room broker reads that link (ListIDPLinks) with a
-# read-only machine user (spec D7). No Action, no token claim: user metadata is
-# self-writable, an IdP link is not.
+# GitHub once. No Action, no token claim: user metadata is self-writable, an
+# IdP link is not.
 GITHUB_IDP_NAME="GitHub"
 GITHUB_IDP_SECRET_KEY="zitadel-github-idp" # pragma: allowlist secret
 GITHUB_ENABLED="false" # set by ensure_github_idp from the one read of the key
-READER_USER="room-broker-idp-reader"
-# ORG_OWNER_VIEWER is read-only. ZITADEL has no narrower org role that includes
-# user.read, which ListIDPLinks needs.
-READER_ROLE="ORG_OWNER_VIEWER"
-READER_STORE_KEY="room-broker-zitadel-reader" # pragma: allowlist secret
-READER_PAT_DAYS=365
-READER_PAT_ROTATE_DAYS=30
 
 if [ "$COMMAND" = "link-github" ]; then
     LINK_LOGIN="${1:-}"; GITHUB_LOGIN="${2:-}"
@@ -175,10 +151,6 @@ while [ $# -gt 0 ]; do
         --region)  REGION="$2"; shift 2 ;;
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
-        --openbao-url) OPENBAO_URL="$2"; shift 2 ;;
-        --openbao-root-token-secret) OPENBAO_ROOT_TOKEN_SECRET="$2"; shift 2 ;;
-        --openbao-ca-file) OPENBAO_CA_FILE="$2"; shift 2 ;;
-        --mirror-openbao) MIRROR_OPENBAO="true"; shift ;;
         --client-id) NEW_CLIENT_ID="$2"; shift 2 ;;
         --owners) OWNERS_FILE="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -191,13 +163,6 @@ case "$COMMAND" in
 esac
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
-if [ -n "$OPENBAO_URL" ]; then
-    [ -n "$OPENBAO_ROOT_TOKEN_SECRET" ] || { echo "--openbao-url requires --openbao-root-token-secret" >&2; exit 2; }
-    [ -f "$OPENBAO_CA_FILE" ] || { echo "--openbao-url requires a readable --openbao-ca-file" >&2; exit 2; }
-fi
-if [ "$MIRROR_OPENBAO" = "true" ] && [ -z "$OPENBAO_URL" ]; then
-    echo "--mirror-openbao requires --openbao-url" >&2; exit 2
-fi
 [ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
 if [ "$COMMAND" = "link-owners" ]; then
     [ -n "$OWNERS_FILE" ] || { echo "link-owners needs --owners FILE" >&2; exit 2; }
@@ -491,13 +456,13 @@ github_idp_payload() {
 }
 
 # Reads the store key ONCE and records the answer in GITHUB_ENABLED, which the
-# login-policy step and ensure_broker_reader read instead of asking again.
+# login-policy step and the GitHub-side hint read instead of asking again.
 ensure_github_idp() {
     local blob client_id client_secret shape template existing existing_client_id
 
     blob="$(store_read "$GITHUB_IDP_SECRET_KEY" || true)"
     if [ -z "$blob" ]; then
-        echo "[skip   ] ${GITHUB_IDP_SECRET_KEY} not in the ${CLOUD} store: no GitHub IdP, no broker reader"
+        echo "[skip   ] ${GITHUB_IDP_SECRET_KEY} not in the ${CLOUD} store: no GitHub IdP"
         return 0
     fi
     client_id="$(jq -r '.client_id // empty' <<< "$blob")"
@@ -699,150 +664,6 @@ link_owners() {
     done < <(jq -c '.[]' <<< "$OWNERS_JSON")
     return "$failed"
 }
-
-# ── the broker's link reader ──────────────────────────────────────────────────
-#
-# The room broker decides who may see a room from the user's GitHub IdP link
-# (ListIDPLinks), so it needs a ZITADEL credential that can read users and
-# nothing else: machine user + ORG_OWNER_VIEWER + a PAT. The PAT is returned
-# once, at creation, so it is written to the store in the same step; a 1-year
-# expiry rotated under 30 days keeps it from silently dying.
-#
-# Old PATs are left to expire: the broker may still hold one while it picks up
-# the new store value.
-ensure_broker_reader() {
-    local gh_id="$1" resp user_id roles stored stored_pat stored_id stored_gh valid threshold expiry token minted_id
-
-    # idp_id_by_name swallows API errors and answers empty; storing that would
-    # shut every non-admin out of every room. Nothing is written without an id.
-    if [ "$APPLY" = "true" ] && [ -z "$gh_id" ]; then
-        echo "[FAILED ] cannot resolve the '${GITHUB_IDP_NAME}' IdP id; not touching the reader" >&2
-        return 1
-    fi
-
-    resp="$(jq -nc --arg n "$READER_USER" \
-        '{queries: [{userNameQuery: {userName: $n, method: "TEXT_QUERY_METHOD_EQUALS"}}]}' \
-        | api POST /management/v1/users/_search -d @-)" \
-        || { echo "[FAILED ] cannot search users for ${READER_USER}" >&2; return 1; }
-    user_id="$(jq -r --arg n "$READER_USER" '[.result[]? | select(.userName == $n) | .id][0] // empty' <<< "$resp")"
-
-    if [ -n "$user_id" ]; then
-        echo "[ok     ] machine user '${READER_USER}' (${user_id})"
-    elif [ "$APPLY" != "true" ]; then
-        echo "[dry-run] would create machine user '${READER_USER}'"
-    else
-        user_id="$(jq -nc --arg n "$READER_USER" \
-            '{userName: $n, name: "Room broker IdP link reader",
-              description: "Read-only: lets the room broker read users'"'"' IdP links (ListIDPLinks).",
-              accessTokenType: "ACCESS_TOKEN_TYPE_BEARER"}' \
-            | api POST /management/v1/users/machine -d @- | jq -r '.userId // empty')"
-        [ -n "$user_id" ] || { echo "[FAILED ] machine user creation returned no id" >&2; return 1; }
-        echo "[created] machine user '${READER_USER}' (${user_id})"
-    fi
-
-    if [ -z "$user_id" ]; then
-        echo "[dry-run] would grant ${READER_ROLE} to ${READER_USER}"
-    else
-        resp="$(jq -nc --arg u "$user_id" '{queries: [{userIdQuery: {userId: $u}}]}' \
-            | api POST /management/v1/orgs/me/members/_search -d @-)" \
-            || { echo "[FAILED ] cannot list org members" >&2; return 1; }
-        roles="$(jq -c --arg u "$user_id" '[.result[]? | select(.userId == $u) | .roles[]?] | sort' <<< "$resp")"
-        if [ "$roles" = "[\"${READER_ROLE}\"]" ]; then
-            echo "[ok     ] ${READER_USER} holds exactly ${READER_ROLE}"
-        elif [ "$APPLY" != "true" ]; then
-            echo "[STALE  ] ${READER_USER} org roles: has ${roles}, want only ${READER_ROLE}"
-            echo "[dry-run] would grant ${READER_ROLE} to ${READER_USER}"
-        elif [ "$roles" = "[]" ]; then
-            jq -nc --arg u "$user_id" --arg r "$READER_ROLE" '{userId: $u, roles: [$r]}' \
-                | api POST /management/v1/orgs/me/members -d @- >/dev/null \
-                || { echo "[FAILED ] granting ${READER_ROLE} to ${READER_USER}" >&2; return 1; }
-            echo "[granted] ${READER_ROLE} to ${READER_USER}"
-        else
-            jq -nc --arg r "$READER_ROLE" '{roles: [$r]}' \
-                | api PUT "/management/v1/orgs/me/members/${user_id}" -d @- >/dev/null \
-                || { echo "[FAILED ] narrowing ${READER_USER} to ${READER_ROLE}; it still holds ${roles}" >&2; return 1; }
-            echo "[updated] ${READER_USER} org roles ${roles} -> only ${READER_ROLE}"
-        fi
-    fi
-
-    # The PAT the broker will read is the STORED one, so validity is the expiry
-    # of the token id stored beside it -- not "some PAT of the reader is fine",
-    # which would bless a freshly minted token whose store write failed while the
-    # stored one runs out. The token value cannot be read back from ZITADEL.
-    stored="$(store_read "$READER_STORE_KEY" || true)"
-    stored_pat="$(jq -r '.pat // empty' <<< "${stored:-null}" 2>/dev/null || true)"
-    stored_id="$(jq -r '.tokenId // empty' <<< "${stored:-null}" 2>/dev/null || true)"
-    stored_gh="$(jq -r '.githubIdpId // empty' <<< "${stored:-null}" 2>/dev/null || true)"
-    valid="false"
-    if [ -n "$user_id" ] && [ -n "$stored_pat" ] && [ -n "$stored_id" ]; then
-        resp="$(api POST "/management/v1/users/${user_id}/pats/_search" -d '{}')" \
-            || { echo "[FAILED ] cannot list PATs of ${READER_USER}" >&2; return 1; }
-        # RFC 3339 strings of one shape compare correctly as text.
-        threshold="$(date -u -d "+${READER_PAT_ROTATE_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
-        if jq -e --arg t "$threshold" --arg i "$stored_id" \
-            'any(.result[]?; .id == $i and (.expirationDate // "") > $t)' <<< "$resp" >/dev/null; then
-            valid="true"
-        fi
-    fi
-
-    # Read by store_write.
-    # shellcheck disable=SC2034
-    local STORE_WRITE_DESCRIPTION="Room broker's read-only ZITADEL credential. Written by zitadel-idp.sh."
-    # shellcheck disable=SC2034
-    local STORE_WRITE_LABEL="zitadel-idp"
-    if [ "$valid" = "true" ] && [ "$stored_gh" = "$gh_id" ]; then
-        echo "[ok     ] ${READER_STORE_KEY}: PAT valid for over ${READER_PAT_ROTATE_DAYS} days, githubIdpId current"
-    elif [ "$valid" = "true" ]; then
-        echo "[STALE  ] ${READER_STORE_KEY}: githubIdpId has ${stored_gh:-<none>}, want ${gh_id:-<new IdP>}"
-        if [ "$APPLY" != "true" ]; then
-            echo "[dry-run] would update githubIdpId in ${READER_STORE_KEY}"
-        else
-            printf '%s' "$stored_pat" | jq -Rs --arg id "$gh_id" --arg t "$stored_id" \
-                '{pat: ., tokenId: $t, githubIdpId: $id}' \
-                | store_write "$READER_STORE_KEY" \
-                || { echo "[FAILED ] ${READER_STORE_KEY} was not updated" >&2; return 1; }
-            echo "[updated] ${READER_STORE_KEY} githubIdpId -> ${gh_id}"
-        fi
-    else
-        echo "[STALE  ] ${READER_STORE_KEY}: no PAT with over ${READER_PAT_ROTATE_DAYS} days left"
-        if [ "$APPLY" != "true" ]; then
-            echo "[dry-run] would mint a PAT (${READER_PAT_DAYS} days) for ${READER_USER} and store it in ${READER_STORE_KEY}"
-        else
-            [ -n "$gh_id" ] || { echo "[FAILED ] no GitHub IdP id to store" >&2; return 1; }
-            expiry="$(date -u -d "+${READER_PAT_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
-            resp="$(jq -nc --arg e "$expiry" '{expirationDate: $e}' \
-                | api POST "/management/v1/users/${user_id}/pats" -d @-)" \
-                || { echo "[FAILED ] minting a PAT for ${READER_USER}" >&2; return 1; }
-            token="$(jq -r '.token // empty' <<< "$resp")"
-            minted_id="$(jq -r '.tokenId // empty' <<< "$resp")"
-            [ -n "$token" ] && [ -n "$minted_id" ] || { echo "[FAILED ] PAT creation returned no token or tokenId" >&2; return 1; }
-            # Stdin, never argv: the token is a credential.
-            printf '%s' "$token" | jq -Rs --arg id "$gh_id" --arg t "$minted_id" \
-                '{pat: ., tokenId: $t, githubIdpId: $id}' \
-                | store_write "$READER_STORE_KEY" \
-                || { echo "[FAILED ] PAT ${minted_id} minted but ${READER_STORE_KEY} was not written; the stored credential is unchanged and the next --apply retries" >&2; return 1; }
-            echo "[minted ] PAT for ${READER_USER}, expires ${expiry}, stored in ${READER_STORE_KEY}"
-        fi
-    fi
-
-    # Every run, not only after a write: a rebuilt OpenBao is empty while the
-    # store still holds a valid PAT. The mirror writes nothing when they agree.
-    if [ "$MIRROR_OPENBAO" = "true" ]; then
-        if [ "$APPLY" != "true" ]; then
-            echo "[dry-run] would mirror ${READER_STORE_KEY} to OpenBao"
-        else
-            # The blob holds the PAT, and xtrace would print it.
-            local -
-            set +x
-            stored="$(store_read "$READER_STORE_KEY")" \
-                || { echo "[FAILED ] ${READER_STORE_KEY} is unreadable; not mirrored" >&2; return 1; }
-            printf '%s' "$stored" | mirror_to_openbao "$READER_STORE_KEY" || return 1
-            # Otherwise the broker's ExternalSecret serves the old PAT for up to 20m.
-            force_sync_mirrored "$READER_STORE_KEY"
-        fi
-    fi
-}
-
 # The check that would have caught the day-long outage described at ACTION_NAME:
 # a mismatch is invisible until a real user tries to log in, so it is worth
 # failing the script over rather than discovering it in a browser.
@@ -1119,7 +940,6 @@ elif [ "$APPLY" = "true" ]; then
 fi
 
 if [ "$GITHUB_ENABLED" = "true" ]; then
-    ensure_broker_reader "$GITHUB_IDP_ID"
     echo
     echo "GitHub-side, once per ZITADEL (an OAuth App takes exactly one callback URL):"
     echo "  ${IDP_URL}/ui/login/login/externalidp/callback"

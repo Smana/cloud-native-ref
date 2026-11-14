@@ -95,12 +95,10 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 # 3. The Google identity provider, the LOGIN POLICY entry that actually enables
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
-#    With $OPENBAO, it also mirrors the room broker's ZITADEL link reader into
-#    OpenBao (non-admin room access stays off until it runs). That reader and
-#    the link-only GitHub IdP exist only when `zitadel-github-idp` (the GitHub
+#    The link-only GitHub IdP exists only when `zitadel-github-idp` (the GitHub
 #    OAuth App's client id and secret) is in this cloud's store; without it
-#    the sync skips both.
-IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL $OPENBAO --mirror-openbao --apply
+#    the sync skips it.
+IDP_URL=$IDP_URL ./scripts/provision/zitadel-idp.sh sync $CL --apply
 ```
 
 **There is no manual step for Harbor.** Step 1 already wrote its client id and
