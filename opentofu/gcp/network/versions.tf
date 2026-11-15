@@ -16,7 +16,7 @@ terraform {
     }
     tailscale = {
       source  = "tailscale/tailscale"
-      version = "~> 0.29"
+      version = "~> 0.30"
     }
     # Only for the inbound-DNS allocation wait in tailscale.tf. Same provider
     # the AWS llm-platform stack uses for EFS mount-target propagation.
