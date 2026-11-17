@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the mergepolicy kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -96,11 +96,6 @@ spec:
                         type: array
                     type: object
                 type: object
-              checks:
-                description: |-
-                  Checks switches the repository's checks on for the class's public implementer and reviewer
-                  runs (v3 feature 3, RC8): the claim's spec.loop.checks and the repository's checks.egress.
-                type: boolean
               companionFiles:
                 description: |-
                   CompanionFiles are the paths an added-entry pull request may append to beside its one added
@@ -121,17 +116,6 @@ spec:
                   is R52''s LinksOnly.'
                 maxLength: 512
                 type: string
-              escalation:
-                description: Escalation maps a signal group to a profile of harnessAllowed;
-                  an absent group goes to the human.
-                properties:
-                  notConverged:
-                    maxLength: 253
-                    type: string
-                  outOfBudget:
-                    maxLength: 253
-                    type: string
-                type: object
               evidence:
                 description: |-
                   Evidence is how many clean shadow decisions a promotion needs (MR4): low is 5, for a class
@@ -140,19 +124,6 @@ spec:
                 - low
                 - standard
                 type: string
-              harness:
-                description: |-
-                  Harness is the class's floor profile, HarnessAllowed the variants the scoper may recommend,
-                  and Escalation the variant a failed run's signal group steps to (team evaluation TE2, TE7).
-                  Absent, the class runs as before.
-                maxLength: 253
-                type: string
-              harnessAllowed:
-                items:
-                  maxLength: 253
-                  type: string
-                maxItems: 64
-                type: array
               holdoutChecks:
                 description: |-
                   HoldoutChecks are checks GitHub Actions must report SUCCESS on the head; their workflow is
@@ -162,8 +133,6 @@ spec:
                   type: string
                 maxItems: 64
                 type: array
-              live:
-                type: boolean
               maxModifiedLines:
                 type: integer
               maxPatchFiles:
@@ -172,7 +141,7 @@ spec:
                   as GitHub counts them (policy-bot's modified_lines); 0 is no cap.
                 type: integer
               maxPerDay:
-                description: MaxPerDay caps this class's merges a day, under merge.autoMergesPerDay;
+                description: MaxPerDay caps this class's merges a day, under merge.maxPerDay;
                   0 is no cap of its own.
                 type: integer
               modifyOnly:
@@ -267,20 +236,6 @@ spec:
                   the factory to adopt it (K11): RunLore's ready-to-merge.
                 maxLength: 253
                 type: string
-              requires:
-                description: 'Requires names the parameters each binding must set:
-                  of Requirable.'
-                items:
-                  enum:
-                  - allowedFiles
-                  - companionFiles
-                  - requiredLabel
-                  - oracleWorkflow
-                  - holdoutChecks
-                  type: string
-                maxItems: 5
-                type: array
-                x-kubernetes-list-type: set
               requiresApproval:
                 description: |-
                   RequiresApproval asks a human about a pull request touching one of its paths, even in a live
@@ -298,18 +253,8 @@ spec:
                   type: object
                 maxItems: 16
                 type: array
-              shadow:
-                type: boolean
-              testFirst:
-                description: |-
-                  TestFirst starts every public task of the class with a tester run that writes the failing
-                  tests first (v3 feature 4, TF1); needs Checks and the repository's merge.contractCheck.
-                type: boolean
             type: object
             x-kubernetes-validations:
-            - message: 'mode is the binding''s: live and shadow are refused on a MergePolicy
-                (B4)'
-              rule: '!has(self.live) && !has(self.shadow)'
             - message: 'oracle.workflow is the repository''s: set oracleWorkflow on
                 the binding'
               rule: '!has(self.oracle) || !has(self.oracle.workflow)'
@@ -405,7 +350,6 @@ spec:
                       - live
                       - shadow
                       - disabled
-                      - "off"
                       type: string
                     reason:
                       maxLength: 64
@@ -441,16 +385,8 @@ spec:
         x-kubernetes-validations:
         - message: a MergePolicy's name is its class name (B1)
           rule: self.metadata.name.matches('^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$')
-        - message: review takes only description, harness, harnessAllowed, escalation,
-            checks and testFirst
-          rule: self.metadata.name != 'review' || !(has(self.spec.live) || has(self.spec.shadow)
-            || has(self.spec.allowedFiles) || has(self.spec.narrowedFiles) || has(self.spec.protectedFiles)
-            || has(self.spec.requiresApproval) || (has(self.spec.modifyOnly) && self.spec.modifyOnly)
-            || has(self.spec.maxPatchFiles) || has(self.spec.maxModifiedLines) ||
-            has(self.spec.diffShape) || has(self.spec.holdoutChecks) || has(self.spec.maxPerDay)
-            || has(self.spec.evidence) || has(self.spec.oracle) || has(self.spec.monitor)
-            || has(self.spec.author) || has(self.spec.releaseAgeCheck) || has(self.spec.companionFiles)
-            || has(self.spec.requiredLabel) || has(self.spec.requires))
+        - message: review is not a policy
+          rule: self.metadata.name != 'review'
     served: true
     storage: true
     subresources:

@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the factory kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -169,18 +169,14 @@ spec:
                     type: string
                 type: object
               defaults:
-                description: Defaults apply when triage leaves a value open.
+                description: |-
+                  Defaults apply when triage leaves a value open. A workflow names the template and the tier: the
+                  two keys that did were removed (WF9, WF13).
                 properties:
                   dataClass:
                     maxLength: 253
                     type: string
                   predictedClass:
-                    maxLength: 253
-                    type: string
-                  template:
-                    maxLength: 253
-                    type: string
-                  tier:
                     maxLength: 253
                     type: string
                 type: object
@@ -197,6 +193,9 @@ spec:
                     - observe
                     - apply
                     type: string
+                  treatment:
+                    maxLength: 253
+                    type: string
                 type: object
               facts:
                 description: |-
@@ -212,42 +211,14 @@ spec:
                       about money, and a room that read it needs the release that writes it.
                     type: boolean
                 type: object
-              harnessProfiles:
-                additionalProperties:
-                  description: |-
-                    HarnessProfile is a named, centrally approved way of running a class (merge policy MP2). Stage 1
-                    reads Checks and TestFirst; Template, Tier and Loop are validated here and read from repository
-                    cutover on. Empty keeps what the factory selects today.
-                  properties:
-                    checks:
-                      type: boolean
-                    description:
-                      description: 'Description is the line the scoper''s brief shows:
-                        when to choose the profile.'
-                      maxLength: 120
-                      type: string
-                    loop:
-                      description: LoopRef names a row of loops, or off.
-                      maxLength: 253
-                      type: string
-                    template:
-                      maxLength: 253
-                      type: string
-                    testFirst:
-                      type: boolean
-                    tier:
-                      maxLength: 253
-                      type: string
-                  type: object
-                maxProperties: 16
-                type: object
               loops:
                 additionalProperties:
                   description: |-
                     Loop is one row of loops. A row switches its class's loop on when it sets any of the three
                     keys (D4: no row, or a row without them, is today's run); an unset key then takes the
                     design's default. Rows are keyed by class so the scoper's switch (scoper design SC2,
-                    loops.<class>.scope) joins them as one more key.
+                    loops.<class>.scope) joins them as one more key. A row inherits each key it leaves unset from
+                    default's row (WF10, rowOf).
                   properties:
                     continuations:
                       description: 'Continuations is how many not_yet verdicts continue
@@ -272,9 +243,9 @@ spec:
                         maxProperties: 32
                         type: object
                       description: |-
-                        Models is role → tier → the provider alias that role runs on for a public task of that tier
-                        (v3 F15, F3); a role or tier without an entry, and every internal task, keep today's model.
-                        It never switches the loop on.
+                        Models is the loops row's public fallback: role → tier → provider alias (F3). A role or tier
+                        without an entry keeps today's model; a workflow's models override takes precedence, including
+                        a tier alias on an internal task (CP10). It never switches the loop on.
                       maxProperties: 32
                       type: object
                     scope:
@@ -332,10 +303,6 @@ spec:
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
-                  autoMergesPerDay:
-                    description: AutoMergesPerDay is MaxPerDay's former name, read
-                      while MaxPerDay is unset. Deprecated.
-                    type: integer
                   awaitingCIFor:
                     description: |-
                       AwaitingCIFor bounds a pull request's stay in AwaitingCI on a wait verdict (#182): past it,
@@ -462,12 +429,6 @@ spec:
                     type: integer
                   maxPerDay:
                     type: integer
-                  minPromotionEvidence:
-                    description: |-
-                      MinPromotionEvidence is the clean shadow decisions a class needs before it may be promoted to
-                      live (MP7): 0 is DefaultMinPromotionEvidence, and less is refused here. A promotion on less
-                      needs an operator's exception, recorded per request, never a lower number here.
-                    type: integer
                   protectedFiles:
                     items:
                       maxLength: 512
@@ -583,6 +544,74 @@ spec:
                     maximum: 100
                     minimum: 0
                     type: integer
+                type: object
+              workflows:
+                additionalProperties:
+                  description: |-
+                    HarnessProfile is one workflow (WF1, WF7): the template it runs, the tier it raises a task to,
+                    whether its runs run the repository's checks, its loops row, and where a failed run steps to.
+                    Empty keeps what the factory selects today. A Factory spells the map workflows.
+                  properties:
+                    checks:
+                      type: boolean
+                    description:
+                      description: 'Description is the line the scoper''s brief shows:
+                        when to choose the workflow.'
+                      maxLength: 120
+                      type: string
+                    effort:
+                      additionalProperties:
+                        description: Effort is a role's reasoning effort (CP9).
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        maxLength: 6
+                        type: string
+                      description: |-
+                        Effort maps a non-implementer role to low, medium or high (CP9). An absent role keeps the
+                        harness's default, high.
+                      maxProperties: 4
+                      type: object
+                    escalation:
+                      description: |-
+                        Escalation is the workflow a failed run's signal group steps to (WF7, TE7); absent, or an
+                        absent group, goes to a maintainer.
+                      properties:
+                        notConverged:
+                          maxLength: 253
+                          type: string
+                        outOfBudget:
+                          maxLength: 253
+                          type: string
+                      type: object
+                    loop:
+                      description: LoopRef names a row of loops, or off.
+                      maxLength: 253
+                      type: string
+                    models:
+                      additionalProperties:
+                        description: ModelAlias is a provider alias, a named type
+                          for the same reason.
+                        maxLength: 253
+                        type: string
+                      description: |-
+                        Models maps a non-implementer role to a model alias (CP10). Internal runs accept only the
+                        tier-light, tier-standard and tier-frontier aliases; provider aliases are public only.
+                      maxProperties: 4
+                      type: object
+                    template:
+                      maxLength: 253
+                      type: string
+                    tier:
+                      maxLength: 253
+                      type: string
+                  type: object
+                description: |-
+                  Workflows are the factory's workflows (WF1, WF2): quick, standard, careful and none are
+                  shipped, and an entry here replaces the shipped one of its name whole. harnessProfiles, its
+                  old name, was removed (WF9, WF13).
+                maxProperties: 16
                 type: object
             type: object
           status:
