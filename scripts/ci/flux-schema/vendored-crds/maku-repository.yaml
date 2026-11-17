@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.50.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -103,10 +103,6 @@ spec:
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
-                  autoMergesPerDay:
-                    description: AutoMergesPerDay is MaxPerDay's former name, read
-                      while MaxPerDay is unset. Deprecated.
-                    type: integer
                   awaitingCIFor:
                     description: |-
                       AwaitingCIFor bounds a pull request's stay in AwaitingCI on a wait verdict (#182): past it,
@@ -257,7 +253,6 @@ spec:
                       - live
                       - shadow
                       - disabled
-                      - "off"
                       type: string
                     name:
                       description: Name is the MergePolicy's, so the class's (B1).
@@ -330,6 +325,8 @@ spec:
                     is a gate path, so its text is trusted.
                   properties:
                     class:
+                      description: Class names the oracle policy that judges a probe
+                        schedule's tasks; unset otherwise (WF6).
                       maxLength: 253
                       type: string
                     cron:
@@ -352,27 +349,41 @@ spec:
                     text:
                       maxLength: 14336
                       type: string
+                    workflow:
+                      description: Workflow is the workflow the schedule's tasks run;
+                        unset is quick (WF3).
+                      maxLength: 253
+                      type: string
                   type: object
                 maxItems: 16
                 type: array
               triggerLabel:
                 maxLength: 50
                 type: string
+              workflow:
+                description: |-
+                  Workflow is the workflow a task of the repository runs when no label and no source names one,
+                  standard by default, and whether its careful tasks start with the tester (WF3, WF7).
+                properties:
+                  default:
+                    description: Default is the workflow a task runs when nothing
+                      else names one; unset is standard.
+                    maxLength: 253
+                    type: string
+                  testFirst:
+                    description: |-
+                      TestFirst starts every public careful task with a tester run that writes the failing tests
+                      first (v3 feature 4, TF1); needs merge.contractCheck.
+                    type: boolean
+                type: object
             required:
             - factoryRef
             - repository
             type: object
             x-kubernetes-validations:
-            - message: review is bound with mode off and no parameter
+            - message: review is not a policy
               rule: '!has(self.mergePolicies) || !self.mergePolicies.exists(b, b.name
-                == ''review'' && (!(b.mode in [''off'', ''disabled'']) || has(b.allowedFiles)
-                || has(b.companionFiles) || has(b.requiredLabel) || has(b.oracleWorkflow)
-                || has(b.holdoutChecks) || has(b.protectedFiles) || has(b.requiresApproval)
-                || has(b.maxPatchFiles) || has(b.maxModifiedLines) || has(b.maxPerDay)))'
-            - message: bind docs-links and revert when any policy is bound (OD-8)
-              rule: '!has(self.mergePolicies) || size(self.mergePolicies) == 0 ||
-                (self.mergePolicies.exists(b, b.name == ''docs-links'') && self.mergePolicies.exists(b,
-                b.name == ''revert''))'
+                == ''review'')'
             - message: 'classAuthority repository: the repository''s file holds the
                 bindings (MP15)'
               rule: '!has(self.classAuthority) || self.classAuthority != ''repository''
@@ -421,7 +432,6 @@ spec:
                       - live
                       - shadow
                       - disabled
-                      - "off"
                       type: string
                     name:
                       maxLength: 63
@@ -514,10 +524,6 @@ spec:
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
-                  autoMergesPerDay:
-                    description: AutoMergesPerDay is MaxPerDay's former name, read
-                      while MaxPerDay is unset. Deprecated.
-                    type: integer
                   awaitingCIFor:
                     description: |-
                       AwaitingCIFor bounds a pull request's stay in AwaitingCI on a wait verdict (#182): past it,
