@@ -1,0 +1,12 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: electra
+  namespace: demo
+spec:
+  image:
+    repository: stefanprodan/podinfo
+    tag: 6.17.0
+  route:
+    enabled: true
+    hostname: toto
