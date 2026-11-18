@@ -1,4 +1,4 @@
-# The factory's signed chart (SP3 §4). Releases and CI prereleases use keyless signatures.
+# The factory's signed chart (SP3 §4). Signatures: release.yaml tags only (R20).
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -10,14 +10,14 @@ spec:
   # Flux pulls the digest (it wins over the tag), so a re-pushed tag changes nothing. The tag
   # stays for Renovate and for readers.
   ref:
-    tag: "0.53.2-pr618.g9d0bdb48"
-    digest: sha256:312dd4d13e15c7607ea75bb555e5d3506c8e1ab9469ee4de246f973c482caa4a
+    tag: "0.53.3"  # maku v0.53.3
+    digest: sha256:01ea00f83cd7a16ebb860a28b5cb51badb4ffe1127db921835f82053d45140ba
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
-  # One identity accepts the release signer and the signed PR artifact used by this validation.
+  # One identity: Flux refuses several. maku's release workflow signs every chart since v0.30.0.
   verify:
     provider: cosign
     matchOIDCIdentity:
       - issuer: "^https://token\\.actions\\.githubusercontent\\.com$"
-        subject: "^https://github\\.com/Smana/maku/\\.github/workflows/(release\\.yaml@refs/tags/v.*|ci\\.yaml@refs/pull/[0-9]+/merge)$"
+        subject: "^https://github\\.com/Smana/maku/\\.github/workflows/release\\.yaml@refs/tags/v.*$"
