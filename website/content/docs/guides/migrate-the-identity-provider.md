@@ -22,7 +22,9 @@ and grants made only in the AWS directory did not move, and with no PAT copied
 the owner minted one by hand (the recovery callout in
 [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}})). The
 2026-10-30 switch back to AWS skipped it the same way: `aws-0` restored its
-2026-10-16 seed, and changes made only in `gcp-0`'s directory were lost.
+2026-10-16 seed, and changes made only in `gcp-0`'s directory were lost. The
+2026-11-25 switch to GCP restored `gcp-0`'s own newest generation
+(`zitadel-20261114-b7ee8335`), after an older seed failed against the stored PAT.
 {{< /callout >}}
 
 ## Four things move, not one
@@ -119,6 +121,11 @@ done
 from `primary_cloud` and passed as a `-var`, which wins over the file — adding
 it there changes nothing and reports no error. `./scripts/ci/validate-idp-topology.sh`
 fails in CI if the two gates disagree.
+
+In practice the flip is a `git revert` of the previous flip commit (#2862 before the
+2026-11-25 switch), plus a fence in each AI repository: ai-native-ref, runlore and
+runlore-kb. A repository that requires the `maku/merge-gate` status cannot merge its
+fence while no factory is live, so it needs an admin merge.
 
 **6. Deploy:**
 

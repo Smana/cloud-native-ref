@@ -142,7 +142,7 @@ The per-cloud verify pages cover the rest of the post-deploy checks:
 
 {{< callout type="warning" >}}
 **A restored ZITADEL can predate its own configuration.** The hosting cluster
-bootstraps its database from a frozen backup (`gcp-0`: `zitadel-20260828`), so a cluster rebuilt today comes back with
+bootstraps its database from a frozen backup (`gcp-0`: `zitadel-20261114-b7ee8335`), so a cluster rebuilt today comes back with
 whatever OIDC clients and roles existed when that seed was taken — not the ones
 this page creates. Re-run steps 1 and 3 after a restore; they are idempotent
 and will fill in whatever the seed is missing. Harbor needs no re-run — it
