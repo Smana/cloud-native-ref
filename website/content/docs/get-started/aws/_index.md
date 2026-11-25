@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: Deploy the platform on AWS — three sequential stages, about thirty minutes.
-lastVerified: 2026-11-16
+lastVerified: 2026-10-17
 ---
 
 AWS is one of two implemented cloud lanes — see
@@ -14,12 +14,14 @@ what each one runs. Every stage below is an OpenTofu stack orchestrated by
 order even when you run one command that spans several stages.
 
 {{< callout type="warning" >}}
-**`aws-0` is the live cluster, and the committed configuration is AWS-primary.**
-`primary_cloud = "aws"` in `opentofu/config.tm.hcl`, so `aws-0` hosts ZITADEL
-(restored from the `zitadel-pre-destroy` alias) and `clusters/gcp-0/security/zitadel.yaml`
-is suspended. `gcp-0` is torn down. Moving the identity provider to another
-cloud is a migration —
+**`aws-0` is torn down, and the committed configuration is GCP-primary.**
+`primary_cloud = "gcp"` in `opentofu/config.tm.hcl`, so `gcp-0` hosts ZITADEL
+and `clusters/aws-0/security/zitadel.yaml` is suspended; ADR-0027 does not
+support an AWS cluster beside a GCP primary. Rebuilding `aws-0` means moving the
+identity provider back first —
 [Migrate the identity provider]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}).
+The Agent Factory is fenced to `gcp-0` (`factory: gcp-0` in
+`.github/agent-factory.yaml`).
 {{< /callout >}}
 
 ## Configure before deploying
