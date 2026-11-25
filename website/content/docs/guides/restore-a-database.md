@@ -2,7 +2,7 @@
 title: Restore a database from object storage
 weight: 40
 description: How a CloudNativePG cluster bootstraps from a frozen backup, the check that will refuse it, and how to verify the restore actually worked.
-lastVerified: 2026-08-29
+lastVerified: 2026-11-25
 ---
 
 A `SQLInstance` claim can bootstrap a brand-new database from a backup in object
@@ -53,7 +53,7 @@ On AWS the same command takes `--cloud aws --bucket <region>-ogenki-cnpg-backups
 `ZITADEL_MASTERKEY` in OpenBao `platform/zitadel/envvars`, outside the backup.
 Confirm the writing directory's key is in that lineage before you rely on a
 seed: the 2026-09-30 `gcp-0` directory's masterkey existed only in the cluster,
-so its archive cannot be restored. `gcp-0` restores `zitadel-20260828` instead.
+so its archive cannot be restored.
 {{< /callout >}}
 
 Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
@@ -61,8 +61,50 @@ Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
 ```yaml
 - op: replace
   path: /spec/objectStoreRecovery/path
-  value: zitadel-20260828
+  value: zitadel-20261114-b7ee8335
 ```
+
+### On a rebuild, restore the newest generation
+
+**Restore the directory's newest generation, never an older seed.** The admin PAT and the
+OIDC client ids in the secret stores were written by the newest directory. An older seed
+predates them, and every IdP and OIDC step of `gke/init` then fails with HTTP `401` and
+`App.NotFound`. That is what the 2026-11-25 `gcp-0` rebuild hit with `zitadel-20260828`:
+the stored PAT dated from 2026-11-11.
+
+The cluster that wrote the newest generation is usually gone, so `cnpg-promote-seed.sh`
+cannot freeze it. Find the newest generation by its last WAL, copy it server-side to a
+dated name, and verify the copy:
+
+```bash
+B=gs://<project>-ogenki-cnpg-backups
+gcloud storage ls "$B/"                                   # xplane-zitadel-cnpg-cluster-<uid>/ prefixes
+gcloud storage ls -l "$B/xplane-zitadel-cnpg-cluster-*/wals/**" | sort -k2 | tail -1
+
+gcloud storage cp --recursive "$B/xplane-zitadel-cnpg-cluster-b7ee8335/*" \
+  "$B/zitadel-20261114-b7ee8335/"
+./scripts/ops/k8s/cnpg-promote-seed.sh --verify-seed zitadel-20261114-b7ee8335 \
+  --cloud gcp --bucket <project>-ogenki-cnpg-backups
+```
+
+Name the seed after the last WAL's date and the generation's uid. Freeze it soon after a
+teardown: the bucket's lifecycle rule expires `xplane-*` objects after 30 days.
+
+{{< callout type="warning" >}}
+**Pinned an old seed and it already restored?** `bootstrap` is immutable, so changing the
+path is not enough. Recreate the database from the new seed:
+
+```bash
+flux suspend kustomization zitadel -n flux-system
+kubectl delete helmrelease -n security zitadel
+kubectl delete sqlinstance -n security xplane-zitadel
+# commit the new objectStoreRecovery path, then:
+flux resume kustomization zitadel -n flux-system
+```
+
+When ZITADEL is `Ready`, re-run `TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy`
+so the IdP and OIDC steps converge (#2905).
+{{< /callout >}}
 
 ## 2. Why the destination is always empty
 

@@ -223,7 +223,7 @@ on the primary cloud. Only public DNS stays AWS-owned
 
 `gcp-0` takes that opt-out today: `aws-0` is torn down, so GCP is the primary
 cloud ([ADR-0027](../../decisions/0027-primary-cloud-provider.md)) and `gcp-0`
-hosts the one instance, restored from its `zitadel-20260828` seed. The singleton
+hosts the one instance, restored from its `zitadel-20261114-b7ee8335` seed. The singleton
 relocates rather than being duplicated — two clouds each running a directory is
 ruled out, since a grant means nothing without knowing which directory issued
 it.

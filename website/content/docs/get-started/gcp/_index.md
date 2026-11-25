@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: Deploy the platform on GKE — five prerequisites, three stages, two commands.
-lastVerified: 2026-10-17
+lastVerified: 2026-11-25
 ---
 
 The GCP lane builds the same three-stage model as
@@ -176,6 +176,13 @@ You are editing a working configuration, not writing one:
    `clusters/gcp-0/agent-platform.yaml`, in Git — a `flux suspend` is undone by
    the next sync. GPU serving is off.
 
+   If you keep the factory, add `https://rooms.priv.gcp.ogenki.io/link/github/callback`
+   to the Callback URLs of its GitHub App (`ogenki-agent-factory`) in the GitHub
+   console, once per cluster that serves the account link. Without it the link fails
+   with `The redirect_uri is not associated with this application`, and three failed
+   attempts lock the user out for 10 minutes. After a successful link, the factory
+   caches link lookups, misses included, for `api.access.ttl` (5 minutes).
+
 ## Deploy
 
 One command. Terramate owns the dependency graph — that is what it is for — and
@@ -233,6 +240,20 @@ a no-op, so this is waste rather than breakage, but it is why the run reports on
 more stack than you might expect.
 {{< /callout >}}
 
+{{< callout type="warning" >}}
+**On the first deploy of the primary cloud, `gke/init` fails at its last job although
+everything applied.** `stage5-verify-openbao-oidc` checks OpenBao's OIDC client against
+ZITADEL, which Flux has not started yet, so it reads `auth/oidc/config`, times out and
+exits `2`. Terramate stops there, so the standalone `gke/configure` run never happens.
+Run it, wait for ZITADEL, then re-run `gke/init` so its IdP and OIDC steps converge:
+
+```bash
+TM_CLOUD=gcp terramate -C opentofu/gcp/gke/configure script run deploy
+flux get kustomizations zitadel -n flux-system --watch   # until Ready
+TM_CLOUD=gcp terramate -C opentofu/gcp/gke/init script run deploy
+```
+{{< /callout >}}
+
 `flux_git_ref` defaults to `refs/heads/main`. Only override it to test an
 unmerged branch — and remember the branch is deleted when its PR merges, which
 404s the cluster's Git source until you restore it:
@@ -245,12 +266,30 @@ TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
 ## Single sign-on
 
 `gcp-0` hosts ZITADEL (GCP is the primary cloud), restored from the
-`zitadel-20260828` seed, and the deploy's last job registers the Google IdP and
-the OIDC clients. What is left by hand — granting yourself admin, the Google
+`zitadel-20261114-b7ee8335` seed, and the deploy's last job registers the Google IdP and
+the OIDC clients. The seed must be the directory's newest generation, or the stored
+admin PAT and client ids no longer match it
+([Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}})). What is left by hand — granting yourself admin, the Google
 redirect URI, and a re-run when the deploy printed `[warn] … re-run it by hand` —
 is in [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
 A restored directory may have no admin PAT, in which case every sync fails until
 you mint one; the recovery is on that page.
+
+## Rebuilding gcp-0 as the primary
+
+When `gcp-0` takes over from a torn-down `aws-0`, make three choices before the deploy:
+
+| Choice | Pick | What it costs |
+|---|---|---|
+| ZITADEL seed | The newest generation, frozen as a dated seed ([how]({{< relref "/docs/guides/restore-a-database.md" >}})) | Nothing. An older seed breaks the stored PAT and client ids |
+| OpenBao snapshot | The newest `-gcpckms.snap`: deploy with `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true` | The secrets written on `aws-0` after that snapshot. Newer `-awskms.snap` objects cannot be unwrapped here, so write those secrets again |
+| The flip | `git revert` of the previous primary-cloud flip, plus the fences in ai-native-ref, runlore and runlore-kb | Repositories that require `maku/merge-gate` cannot merge their fence while no factory is live: an admin merge is needed |
+
+On 2026-11-25 the snapshot restored was from 2026-11-14, so the secrets `aws-0` wrote
+between then and its teardown were lost. The full rehydrate rules are in
+[OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
+The gates the flip changes are listed in
+[Migrate the identity provider]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}).
 
 ## Verify
 

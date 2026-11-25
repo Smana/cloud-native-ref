@@ -136,6 +136,17 @@ The secret ID must stay flat and dash-separated — GCP Secret Manager forbids `
 which is why this value differs in shape from `aws-0`'s path-style
 `/platform/llm/hf_token` (same split as `openbao_snapshot_secret`, for the same reason).
 
+## Rebuilding gcp-0 as the primary cloud
+
+The site's [Get started on GCP](../website/content/docs/get-started/gcp/_index.md) owns
+what the 2026-11-25 rebuild taught:
+
+| Topic | Section |
+|---|---|
+| ZITADEL seed, OpenBao snapshot, the flip | *Rebuilding gcp-0 as the primary* |
+| `gke/init` failing at its OIDC check on the first deploy | *Deploy* |
+| The factory GitHub App's callback URL (an owner console step) | *Configure*, step 4 |
+
 ## Credentials your shell needs
 
 Distinct from the three prerequisites above: those are things that must EXIST in
