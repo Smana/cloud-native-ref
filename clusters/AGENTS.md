@@ -39,8 +39,8 @@ keys are created in-cluster at runtime so they cannot be checked here — those 
 
 All three must be released for an end-to-end deploy, the gateway layer first. The default
 `terramate script run deploy` and the default Flux reconciliation leave the cluster GPU-free; the
-gateway layer is live in Git on both clusters, for the Agent Factory. aws-0 is the live cluster; gcp-0 is
-torn down.
+gateway layer is live in Git on both clusters, for the Agent Factory. aws-0 is torn down, so only
+gcp-0 runs it.
 
 | Layer | Gate | Release with |
 |---|---|---|
@@ -114,7 +114,7 @@ request-count trigger, is gone; AI Gateway routes directly to each vLLM Service.
 
 `<cluster>/agent-platform.yaml`, children in `<cluster>-agent-platform/` (in the artifact, like
 `llm-platform`'s). `spec.suspend: false` on both clusters; it runs on aws-0, the one live cluster, which owns the
-repository through the ownership fence (`factory: aws-0` in `.github/agent-factory.yaml` for the 2026-11-16 session; it names the cloud that runs the current session). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
+repository through the ownership fence (`factory: gcp-0` in `.github/agent-factory.yaml` for the 2026-11-11 session; it names the cloud that runs the current session). It `dependsOn` `ai-gateway`, never `llm-platform`: agents run on frontier
 models with zero GPUs. The `AgentRun` XRD is always installed; this gate decides whether a run can
 start. On a cluster where it is suspended, resume only once the crossplane-configuration pin serves
 `AgentRun`: before it, `agent-policies` targets an API nobody serves and still reports Ready.
