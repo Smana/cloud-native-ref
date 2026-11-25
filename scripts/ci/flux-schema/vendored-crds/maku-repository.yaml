@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.54.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -26,11 +26,14 @@ spec:
       name: Factory
       type: string
     - jsonPath: .status.classCount
-      name: Classes
+      name: Policies
       type: integer
     - jsonPath: .status.liveCount
       name: Live
       type: integer
+    - jsonPath: .status.conditions[?(@.type=="BindingsValid")].status
+      name: BindingsValid
+      type: string
     - jsonPath: .status.conditions[?(@.type=="Accepted")].status
       name: Accepted
       type: string
@@ -103,6 +106,11 @@ spec:
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
                     type: boolean
+                  autoRevert:
+                    description: |-
+                      AutoRevert merges the factory's own revert pull request at the original head GitHub created.
+                      It replaces the deprecated live `revert` policy binding; unset is false.
+                    type: boolean
                   awaitingCIFor:
                     description: |-
                       AwaitingCIFor bounds a pull request's stay in AwaitingCI on a wait verdict (#182): past it,
@@ -169,6 +177,18 @@ spec:
                   mergerLogin:
                     maxLength: 253
                     type: string
+                  paused:
+                    description: |-
+                      Paused stops every automatic policy decision with a human-readable reason. A maintainer's
+                      approve-to-merge review still arms; resume by removing this block.
+                    properties:
+                      reason:
+                        description: Reason is the operator's short explanation of
+                          the pause.
+                        maxLength: 200
+                        minLength: 1
+                        type: string
+                    type: object
                   policyBot:
                     description: |-
                       PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step
@@ -209,10 +229,9 @@ spec:
                   MergePolicies binds the class-shape MergePolicies this repository uses (B3), one per class:
                   the policy's name, the mode, and this repository's parameters.
                 items:
-                  description: |-
-                    Binding is one repository's use of a MergePolicy (B3, B4): the policy's name, which is the class
-                    name (B1), the mode, and the parameters this repository supplies. A binding tightens or fills;
-                    it never widens what the policy says.
+                  description: 'Binding is one repository''s use of a MergePolicy:
+                    the policy''s name, mode, and parameters. A binding tightens or
+                    fills; it never widens what the policy says.'
                   properties:
                     allowedFiles:
                       description: |-
@@ -220,6 +239,7 @@ spec:
                         never both. AllowedFiles fills the policy's when it has none, and narrows it when it has (MR3).
                       items:
                         maxLength: 512
+                        pattern: ^\^.*\$$
                         type: string
                       maxItems: 64
                       type: array
@@ -365,15 +385,58 @@ spec:
                   Workflow is the workflow a task of the repository runs when no label and no source names one,
                   standard by default, and whether its careful tasks start with the tester (WF3, WF7).
                 properties:
+                  addStages:
+                    description: |-
+                      AddStages enables optional stages marked allowed on the repository's default workflow (WR12).
+                      Removing, reordering, or naming a stage not marked allowed is refused at admission.
+                    items:
+                      maxLength: 63
+                      type: string
+                    maxItems: 8
+                    type: array
+                  budget:
+                    description: |-
+                      Budget narrows the repository's default workflow budget to a tier at or below the workflow's
+                      own budget (WR12): light, standard or frontier. Raising it is refused at admission.
+                    enum:
+                    - light
+                    - standard
+                    - frontier
+                    maxLength: 8
+                    type: string
                   default:
                     description: Default is the workflow a task runs when nothing
                       else names one; unset is standard.
                     maxLength: 253
                     type: string
+                  planGate:
+                    description: |-
+                      PlanGate controls whether plan-first tasks wait for approval after scoping: ask (default)
+                      or auto (approves at once and says so in the room).
+                    enum:
+                    - ask
+                    - auto
+                    type: string
+                  planGateHours:
+                    description: |-
+                      PlanGateHours is how long an unanswered plan waits before its status comment says it is
+                      parked (default 72, 1 to 720). It never expires into a run or a stop on its own.
+                    maximum: 720
+                    minimum: 1
+                    type: integer
+                  stepUp:
+                    description: |-
+                      StepUp is whether a task of the repository steps up without asking: auto (the default), ask
+                      (the task waits with a "run again deeper" offer) or off.
+                    enum:
+                    - auto
+                    - ask
+                    - "off"
+                    type: string
                   testFirst:
                     description: |-
-                      TestFirst starts every public careful task with a tester run that writes the failing tests
-                      first (v3 feature 4, TF1); needs merge.contractCheck.
+                      TestFirst starts every public task whose workflow's row sets tests with a tester run that
+                      writes the failing tests first (v3 feature 4, TF1); needs merge.contractCheck.
                     type: boolean
                 type: object
             required:
@@ -412,8 +475,8 @@ spec:
                 description: Classes is one entry per binding (B10).
                 items:
                   description: |-
-                    BindingStatus is one class of a Repository (B10): the binding's mode, the policy generation it
-                    serves, and whether its current generation resolves.
+                    BindingStatus is one binding: its written mode, the mode actually served, the policy generation,
+                    and whether its current generation resolves.
                   properties:
                     accepted:
                       description: Accepted is always serialized, false included.
@@ -443,6 +506,14 @@ spec:
                       type: integer
                     reason:
                       maxLength: 64
+                      type: string
+                    servedMode:
+                      description: 'ServedMode is the resolved class''s actual mode:
+                        live, shadow, or disabled when nothing serves.'
+                      enum:
+                      - live
+                      - shadow
+                      - disabled
                       type: string
                   required:
                   - name
@@ -507,7 +578,7 @@ spec:
                   - status
                   - type
                   type: object
-                maxItems: 8
+                maxItems: 10
                 type: array
                 x-kubernetes-list-map-keys:
                 - type
@@ -523,6 +594,11 @@ spec:
                     description: |-
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
+                    type: boolean
+                  autoRevert:
+                    description: |-
+                      AutoRevert merges the factory's own revert pull request at the original head GitHub created.
+                      It replaces the deprecated live `revert` policy binding; unset is false.
                     type: boolean
                   awaitingCIFor:
                     description: |-
@@ -590,6 +666,18 @@ spec:
                   mergerLogin:
                     maxLength: 253
                     type: string
+                  paused:
+                    description: |-
+                      Paused stops every automatic policy decision with a human-readable reason. A maintainer's
+                      approve-to-merge review still arms; resume by removing this block.
+                    properties:
+                      reason:
+                        description: Reason is the operator's short explanation of
+                          the pause.
+                        maxLength: 200
+                        minLength: 1
+                        type: string
+                    type: object
                   policyBot:
                     description: |-
                       PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step

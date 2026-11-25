@@ -5,10 +5,6 @@ mergePolicies:
   - "Check the documentation links \U0001F517"
   mode: live
   name: docs-links
-- holdoutChecks:
-  - "Check the documentation links \U0001F517"
-  mode: live
-  name: revert
 - mode: disabled
   name: docs
 - mode: disabled
