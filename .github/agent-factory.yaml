@@ -7,14 +7,6 @@ mergePolicies:
   name: docs-links
 - mode: disabled
   name: docs
-- mode: disabled
-  name: tests
-- mode: disabled
-  name: dashboards
-- mode: disabled
-  name: scripts
-- mode: disabled
-  name: review
 - allowedFiles:
   - ^observability/.+\.ya?ml$
   mode: shadow
