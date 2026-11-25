@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.54.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the factory kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -176,6 +176,14 @@ spec:
                   dataClass:
                     maxLength: 253
                     type: string
+                  harness:
+                    description: |-
+                      Harness is the default harness for new tasks when no maintainer label or treatment arm overrides it.
+                      Empty defaults to openhands.
+                    enum:
+                    - openhands
+                    - opencode
+                    type: string
                   predictedClass:
                     maxLength: 253
                     type: string
@@ -196,6 +204,14 @@ spec:
                   treatment:
                     maxLength: 253
                     type: string
+                  treatmentHarness:
+                    description: |-
+                      TreatmentHarness selects the harness for the treatment cohort without changing workflow,
+                      template, loop, checks, model, effort, or tier. Empty uses defaults.harness (openhands).
+                    enum:
+                    - openhands
+                    - opencode
+                    type: string
                 type: object
               facts:
                 description: |-
@@ -211,6 +227,32 @@ spec:
                       about money, and a room that read it needs the release that writes it.
                     type: boolean
                 type: object
+              gitops:
+                description: |-
+                  GitOps is the repository and manifest path where the factory opens policy-change pull requests.
+                  The factory never merges those pull requests.
+                properties:
+                  branch:
+                    description: Branch is the base branch for policy changes, main
+                      when omitted.
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9._/-]+$
+                    type: string
+                  path:
+                    description: Path is the manifest's slash-separated path in that
+                      repository.
+                    maxLength: 512
+                    pattern: ^[^/].*[^/]$|^[^/]$
+                    type: string
+                  repository:
+                    description: Repository is owner/name on GitHub.
+                    maxLength: 140
+                    pattern: ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$
+                    type: string
+                required:
+                - path
+                - repository
+                type: object
               loops:
                 additionalProperties:
                   description: |-
@@ -220,6 +262,11 @@ spec:
                     loops.<class>.scope) joins them as one more key. A row inherits each key it leaves unset from
                     default's row (WF10, rowOf).
                   properties:
+                    ask:
+                      description: |-
+                        Ask checks whether an issue states acceptance before any run starts (WR6); absent inherits
+                        default's, or falls back to the scoper's forced question on legacy rows. Never switches the loop on.
+                      type: boolean
                     continuations:
                       description: 'Continuations is how many not_yet verdicts continue
                         the conversation (L2): 0 to 5, default 2.'
@@ -248,6 +295,16 @@ spec:
                         a tier alias on an internal task (CP10). It never switches the loop on.
                       maxProperties: 32
                       type: object
+                    plan:
+                      description: |-
+                        Plan runs the scoper before the implementer (WR6): plan: true is scope: scoper, plan: false
+                        is scope: off. Contradicting scope on the same row is refused. Never switches the loop on.
+                      type: boolean
+                    review:
+                      description: |-
+                        Review resolves the template for a workflow that names none (pair when true, solo when
+                        false), and must agree with a workflow's explicit template (WR6). Never switches the loop on.
+                      type: boolean
                     scope:
                       description: |-
                         Scope is the class's scope mode (scoper design SC2): off, steering or scoper; unset is off.
@@ -284,12 +341,25 @@ spec:
                             hold: 2 to 5, required.'
                           format: int32
                           type: integer
+                        parallel:
+                          description: |-
+                            Parallel is how many independent parts of a split may be open at once: 1 (default) or 2
+                            (MaxParallelParts, phase H3). Two parts run together only when their declared files do not
+                            overlap, each names at least one check, and neither depends on the other.
+                          maximum: 2
+                          minimum: 1
+                          type: integer
                       type: object
                     stallSteps:
                       description: 'StallSteps ends a run with no commit by this many
                         steps (L3): 1 to 500, default 80.'
                       format: int32
                       type: integer
+                    tests:
+                      description: |-
+                        Tests starts a public task of the row with the tester when its repository opts in
+                        (Repository.spec.workflow.testFirst); absent is off. It never switches the loop on.
+                      type: boolean
                   type: object
                 maxProperties: 32
                 type: object
@@ -302,6 +372,11 @@ spec:
                     description: |-
                       ApproveToMerge: a maintainer's APPROVED review of the current head arms the merger on an
                       agents pull request (human path AM1). Off, the approval hands off to a human merge.
+                    type: boolean
+                  autoRevert:
+                    description: |-
+                      AutoRevert merges the factory's own revert pull request at the original head GitHub created.
+                      It replaces the deprecated live `revert` policy binding; unset is false.
                     type: boolean
                   awaitingCIFor:
                     description: |-
@@ -369,6 +444,18 @@ spec:
                   mergerLogin:
                     maxLength: 253
                     type: string
+                  paused:
+                    description: |-
+                      Paused stops every automatic policy decision with a human-readable reason. A maintainer's
+                      approve-to-merge review still arms; resume by removing this block.
+                    properties:
+                      reason:
+                        description: Reason is the operator's short explanation of
+                          the pause.
+                        maxLength: 200
+                        minLength: 1
+                        type: string
+                    type: object
                   policyBot:
                     description: |-
                       PolicyBot true routes the gate through policy-bot, an opt-in (D11); nil means false (v4 step
@@ -436,6 +523,20 @@ spec:
                     maxItems: 64
                     type: array
                 type: object
+              outcomes:
+                description: |-
+                  Outcomes are the task outcomes this factory offers (phase F): change by default.
+                  An outcome not listed here falls back to change.
+                items:
+                  enum:
+                  - change
+                  - plan-first
+                  - review
+                  - report
+                  maxLength: 16
+                  type: string
+                maxItems: 4
+                type: array
               prices:
                 additionalProperties:
                   description: |-
@@ -475,17 +576,64 @@ spec:
                       escalates as before. Defaulted when omitted.
                     type: integer
                 type: object
+              roles:
+                additionalProperties:
+                  description: RoleDef declares one custom role in Factory.spec.roles
+                    (WR11).
+                  properties:
+                    brief:
+                      description: Brief is a relative path under the factory's configuration
+                        directory, read at load (≤ 16 KiB).
+                      maxLength: 512
+                      type: string
+                    capability:
+                      description: Capability is the closed capability profile the
+                        role binds (read in this release).
+                      enum:
+                      - read
+                      - tests
+                      - write
+                      maxLength: 16
+                      type: string
+                    effort:
+                      description: Effort is low, medium or high; unset keeps the
+                        harness's default.
+                      enum:
+                      - low
+                      - medium
+                      - high
+                      maxLength: 6
+                      type: string
+                    model:
+                      description: Model is an optional model alias for the role.
+                      maxLength: 253
+                      type: string
+                  type: object
+                description: |-
+                  Roles are custom roles declared by the platform (WR11), each bound to a closed capability
+                  profile and a brief file under the factory's configuration directory.
+                maxProperties: 16
+                type: object
               scoper:
                 description: |-
                   Scoper bounds a scoping run's exploration (harness roles HR2): the harness nudges the scoper to
                   hand off at NudgeAt tool calls and ends the run at MaxToolCalls, as budget_calls. The factory
                   writes both into the scoper brief's first line, which the harness reads. Each is defaulted alone
-                  when omitted.
+                  when omitted. PlanTier picks the tier (model and run caps) the scoper runs at; unset is light.
                 properties:
                   maxToolCalls:
                     type: integer
                   nudgeAt:
                     type: integer
+                  planTier:
+                    description: |-
+                      PlanTier is the tier whose model and run caps the scoper runs at (WR6): light, standard or
+                      frontier; unset is light.
+                    enum:
+                    - light
+                    - standard
+                    - frontier
+                    type: string
                 type: object
               templates:
                 additionalProperties:
@@ -548,10 +696,19 @@ spec:
               workflows:
                 additionalProperties:
                   description: |-
-                    HarnessProfile is one workflow (WF1, WF7): the template it runs, the tier it raises a task to,
-                    whether its runs run the repository's checks, its loops row, and where a failed run steps to.
-                    Empty keeps what the factory selects today. A Factory spells the map workflows.
+                    HarnessProfile is one workflow (WF1, WF7, WR11): either the readable list form (budget and
+                    stages) or the legacy bundle (template, tier, checks and loop), plus description, step-up and
+                    per-role tuning. A Factory spells the map workflows.
                   properties:
+                    budget:
+                      description: 'Budget is the tier under the name a person reads
+                        (WR11): light, standard or frontier.'
+                      enum:
+                      - light
+                      - standard
+                      - frontier
+                      maxLength: 8
+                      type: string
                     checks:
                       type: boolean
                     description:
@@ -600,6 +757,75 @@ spec:
                         tier-light, tier-standard and tier-frontier aliases; provider aliases are public only.
                       maxProperties: 4
                       type: object
+                    stages:
+                      description: 'Stages is the workflow''s ordered stage list (WR11):
+                        mutually exclusive with template, tier and loop.'
+                      items:
+                        description: StageDef is one stage in a workflow's ordered
+                          list (WR11).
+                        properties:
+                          allowed:
+                            description: Allowed marks this stage optional for repositories
+                              to opt into via Repository.spec.workflow.addStages (WR12).
+                            type: boolean
+                          checks:
+                            type: boolean
+                          gate:
+                            description: GateDef configures an approval gate on a
+                              stage (WR11).
+                            properties:
+                              when:
+                                description: When is plan-first or always.
+                                enum:
+                                - plan-first
+                                - always
+                                maxLength: 16
+                                type: string
+                            type: object
+                          judge:
+                            description: Judge is evidence (the default completion
+                              judge) or a model alias.
+                            maxLength: 253
+                            type: string
+                          maxRounds:
+                            description: MaxRounds is the stage's one bounded loop.
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          role:
+                            maxLength: 63
+                            type: string
+                          search:
+                            type: boolean
+                          split:
+                            description: SplitDef configures task splitting on a scoper
+                              stage (WR11).
+                            properties:
+                              maxParts:
+                                description: 'MaxParts is the most parts a split may
+                                  hold: 2 to 5.'
+                                format: int32
+                                maximum: 5
+                                minimum: 2
+                                type: integer
+                            type: object
+                          stall:
+                            type: boolean
+                          when:
+                            description: When is an optional condition on the stage
+                              (e.g. repository.testFirst).
+                            maxLength: 63
+                            type: string
+                        type: object
+                      maxItems: 8
+                      type: array
+                    stepUp:
+                      description: |-
+                        StepUp is the workflow a task runs once more under when a run fails in a way a deeper
+                        workflow can help (WR4); empty goes to a maintainer. It is escalation's one-target form: set
+                        one of them.
+                      maxLength: 253
+                      type: string
                     template:
                       maxLength: 253
                       type: string
@@ -608,7 +834,7 @@ spec:
                       type: string
                   type: object
                 description: |-
-                  Workflows are the factory's workflows (WF1, WF2): quick, standard, careful and none are
+                  Workflows are the factory's workflows (WF1, WF2, WR11): quick, standard, careful and none are
                   shipped, and an entry here replaces the shipped one of its name whole. harnessProfiles, its
                   old name, was removed (WF9, WF13).
                 maxProperties: 16

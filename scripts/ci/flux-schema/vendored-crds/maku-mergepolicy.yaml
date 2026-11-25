@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.53.1 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.54.0 config/crd/maku.ogenki.io_mergepolicies.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the mergepolicy kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -28,6 +28,9 @@ spec:
     - jsonPath: .status.liveCount
       name: Live
       type: integer
+    - jsonPath: .spec.description
+      name: Description
+      type: string
     - jsonPath: .status.conditions[?(@.type=="Accepted")].status
       name: Accepted
       type: string
@@ -59,23 +62,22 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              MergePolicySpec is one reusable class definition, named by the object, that Repositories bind
-              (reusable merge policies B1). The per-repository shape (repositoryRef, classes, merge) was
-              removed in the release after N (B8): the API server prunes those fields on read.
+            description: MergePolicySpec is one reusable policy definition, named
+              by the object, that Repositories bind.
             properties:
               allowedFiles:
                 description: 'AllowedFiles: every changed path matches one of these
                   regular expressions.'
                 items:
                   maxLength: 512
+                  pattern: ^\^.*\$$
                   type: string
                 maxItems: 64
                 type: array
               author:
-                description: |-
-                  Author is how the class's pull requests are authored (MC1's author row): absent, the agents
-                  App through a task's runs; Adopt, another author's pull requests the factory adopts (MC10).
+                description: 'Author is how the class''s pull requests are authored:
+                  absent, the agents App through a task''s runs; Adopt, another author''s
+                  pull requests the factory adopts.'
                 properties:
                   adopt:
                     description: |-
@@ -112,44 +114,53 @@ spec:
                 maxLength: 280
                 type: string
               diffShape:
-                description: 'DiffShape is a shape every changed line must have: links-only
-                  is R52''s LinksOnly.'
+                description: DiffShape is the mechanical shape every changed line
+                  must have.
+                enum:
+                - links-only
+                - semver-patch
+                - semver-minor
+                - added-entry
                 maxLength: 512
                 type: string
               evidence:
+                default: standard
                 description: |-
-                  Evidence is how many clean shadow decisions a promotion needs (MR4): low is 5, for a class
-                  whose diff a shape or an oracle checks mechanically; standard, the default, is 20.
+                  Evidence is the clean shadow decisions a promotion needs: low is 5 when a shape or oracle
+                  checks the diff mechanically; standard, the default, is 20.
                 enum:
                 - low
                 - standard
                 type: string
               holdoutChecks:
-                description: |-
-                  HoldoutChecks are checks GitHub Actions must report SUCCESS on the head; their workflow is
-                  a gate path, so the pull request cannot change them (loops L7).
+                description: HoldoutChecks are checks GitHub Actions must report SUCCESS
+                  on the head; their workflow is a gate path, so the pull request
+                  cannot change them.
                 items:
                   maxLength: 1024
                   type: string
                 maxItems: 64
                 type: array
               maxModifiedLines:
+                minimum: 0
                 type: integer
               maxPatchFiles:
                 description: |-
                   MaxPatchFiles caps the changed files and MaxModifiedLines their additions plus deletions,
-                  as GitHub counts them (policy-bot's modified_lines); 0 is no cap.
+                  as GitHub counts them; 0 is no cap.
+                minimum: 0
                 type: integer
               maxPerDay:
                 description: MaxPerDay caps this class's merges a day, under merge.maxPerDay;
                   0 is no cap of its own.
+                minimum: 0
                 type: integer
               modifyOnly:
                 description: 'ModifyOnly: no file is added, deleted, renamed or copied.'
                 type: boolean
               monitor:
                 description: |-
-                  Monitor watches each merge of the class after it lands (merge gate classes MC7): main's CI
+                  Monitor watches each merge of the class after it lands: main's CI
                   for every merge, the detector's next runs for an oracle class, Flux on the factory's cluster,
                   and follow-up fixes for FollowUpWindow. Absent: no monitor, as before.
                 properties:
@@ -193,7 +204,7 @@ spec:
                 type: object
               narrowedFiles:
                 description: |-
-                  NarrowedFiles is a binding's allowedFiles over a policy that has its own (MR3): every changed
+                  NarrowedFiles is a binding's allowedFiles over a policy that has its own: every changed
                   path matches one of these too. Set only by resolving a binding; refused on a MergePolicy.
                 items:
                   maxLength: 512
@@ -201,9 +212,9 @@ spec:
                 maxItems: 64
                 type: array
               oracle:
-                description: |-
-                  Oracle makes the class oracle-backed (MC4–MC6): its tasks are a detector's findings, and its
-                  gate holds only when the head no longer holds them and changes nothing else.
+                description: 'Oracle makes the class oracle-backed: its tasks are
+                  a detector''s findings, and its gate holds only when the head no
+                  longer holds them and changes nothing else.'
                 properties:
                   maxFindings:
                     type: integer
@@ -225,21 +236,33 @@ spec:
                 maxItems: 64
                 type: array
               releaseAgeCheck:
-                description: |-
-                  ReleaseAgeCheck names the commit status that holds the release age (MC11), posted by an
-                  adopted login: Renovate's renovate/stability-days.
+                description: 'ReleaseAgeCheck names the commit status that holds the
+                  release age, posted by an adopted login: Renovate''s renovate/stability-days.'
                 maxLength: 1024
                 type: string
               requiredLabel:
-                description: |-
-                  RequiredLabel is the label an adopted pull request must carry, set by an adopted login, for
-                  the factory to adopt it (K11): RunLore's ready-to-merge.
+                description: 'RequiredLabel is the label an adopted pull request must
+                  carry, set by an adopted login, for the factory to adopt it: RunLore''s
+                  ready-to-merge.'
                 maxLength: 253
                 type: string
-              requiresApproval:
+              requires:
                 description: |-
-                  RequiresApproval asks a human about a pull request touching one of its paths, even in a live
-                  class (merge policies MP12).
+                  Requires names workflow stages that every task touching this class's paths must run (WR6):
+                  plan, tests, judge, review. Adds stages to any workflow and never removes one.
+                items:
+                  enum:
+                  - plan
+                  - tests
+                  - judge
+                  - review
+                  maxLength: 16
+                  type: string
+                maxItems: 4
+                type: array
+              requiresApproval:
+                description: RequiresApproval asks a human about a pull request touching
+                  one of its paths, even in a live class.
                 items:
                   description: ApprovalLeaf asks a human about a pull request touching
                     one of its paths, even in a live class.
@@ -258,12 +281,14 @@ spec:
             - message: 'oracle.workflow is the repository''s: set oracleWorkflow on
                 the binding'
               rule: '!has(self.oracle) || !has(self.oracle.workflow)'
-            - message: 'the Flux source is the repository''s: Repository.spec.merge.fluxSource
-                (B2)'
+            - message: 'the Flux source is the repository''s: Repository.spec.merge.fluxSource'
               rule: '!has(self.monitor) || !has(self.monitor.flux) || !has(self.monitor.flux.source)'
             - message: 'narrowedFiles is set by a binding''s allowedFiles: set allowedFiles
                 on the policy'
               rule: '!has(self.narrowedFiles)'
+            - message: 'evidence: low needs diffShape or oracle: set one, or use evidence:
+                standard'
+              rule: self.evidence != 'low' || has(self.diffShape) || has(self.oracle)
           status:
             description: 'MergePolicyStatus is what the factory made of its MergePolicy
               (B10): Accepted, and its consumers.'
