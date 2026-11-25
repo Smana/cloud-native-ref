@@ -54,7 +54,7 @@ globals {
   # Enforced by ./scripts/ci/validate-idp-topology.sh.
   #
   # "gcp" again since 2026-11-25 (also 2026-10-17 and 2026-11-11): aws-0 is torn down and gcp-0 runs alone, restoring
-  # its own directory from the zitadel-20260828 seed (ADR-0027: a GCP-only
+  # its own directory from the zitadel-20261114-b7ee8335 seed (ADR-0027: a GCP-only
   # platform makes GCP primary).
   primary_cloud = "gcp"
 

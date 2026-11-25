@@ -18,7 +18,7 @@
 # ── ACTIVE: this cluster hosts the identity provider ──────────────────────────
 # ZITADEL is a primary-cloud singleton (ADR-0027) and GCP is primary
 # (global.primary_cloud in opentofu/config.tm.hcl): aws-0 is torn down and this
-# cluster runs alone, restoring its directory from the zitadel-20260828 seed
+# cluster runs alone, restoring its directory from the zitadel-20261114-b7ee8335 seed
 # (security/gcp-0/zitadel). Every consumer here reads auth.<gcp public domain>
 # from identity_provider_url in the cluster vars ConfigMap.
 #

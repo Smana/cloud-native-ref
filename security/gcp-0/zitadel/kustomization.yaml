@@ -114,7 +114,7 @@ patches:
         value: ${project_id}-ogenki-cnpg-backups
       - op: replace
         path: /spec/objectStoreRecovery/path
-        value: zitadel-20260828
+        value: zitadel-20261114-b7ee8335
       - op: replace
         path: /spec/backup/bucketName
         value: ${project_id}-ogenki-cnpg-backups
