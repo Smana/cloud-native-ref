@@ -677,7 +677,7 @@ data:
             resources: ["agentruns"]
             verbs: ["list", "watch"]
           - apiGroups: ["maku.ogenki.io"]
-            resources: ["agentruns"]
+            resources: ["agentruns", "repositories"]
             verbs: ["list", "watch"]
       customResourceState:
         enabled: true
@@ -832,6 +832,27 @@ data:
                       gauge:
                         path: [status, finishedAt]
                         nilIsZero: true
+              # Maku's Repository conditions, for the agent factory's AgentFactoryBindingRefused and
+              # AgentFactoryPolicyPausedLong alerts. No metricNamePrefix: the series is
+              # kube_customresource_status_condition. The condition's status is the value (True 1,
+              # False or Unknown 0), never a label.
+              - groupVersionKind:
+                  group: maku.ogenki.io
+                  version: v1alpha1
+                  kind: Repository
+                labelsFromPath:
+                  namespace: [metadata, namespace]
+                  name: [metadata, name]
+                metrics:
+                  - name: status_condition
+                    help: "A Repository condition: 1 when True, 0 when False or Unknown"
+                    each:
+                      type: Gauge
+                      gauge:
+                        path: [status, conditions]
+                        labelsFromPath:
+                          type: [type]
+                        valueFrom: [status]
 
     # Deployed with all the other CRDs, flux kustomization
     crds:
