@@ -19,3 +19,9 @@ public_domain_name  = "cloud.ogenki.io"
 # Flux sync configuration
 flux_sync_url = "https://github.com/Smana/cloud-native-ref.git"
 # flux_git_ref defaults to refs/heads/main (can be overridden via TF_VAR_flux_git_ref)
+
+# Gemini on Vertex AI for the model gateway: outputs of
+# opentofu/shared/aws-gcp-federation (vertex.tf). 323586397743 is ogenki-435905's
+# project number.
+gcp_project_id          = "ogenki-435905"
+gcp_vertex_wif_audience = "//iam.googleapis.com/projects/323586397743/locations/global/workloadIdentityPools/aws-workloads/providers/aws-account"
