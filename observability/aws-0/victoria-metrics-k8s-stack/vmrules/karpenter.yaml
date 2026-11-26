@@ -39,7 +39,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Cloud provider errors detected by Karpenter.
+            summary: Cloud provider errors detected by Karpenter while launching nodes.
             description: |
               Karpenter received an error during an API call to the cloud provider.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
