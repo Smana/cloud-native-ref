@@ -148,6 +148,8 @@ FIXTURE_VARS = {
     "workload_pool": "ogenki-435905.svc.id.goog",
     # gcp-0 only: the custom DNS role's full name, generation suffix included.
     "gcp_dns_editor_role": "projects/ogenki-435905/roles/xplane_dns_editor_v3",
+    # gcp-0 only: the model gateway's Vertex AI prediction role (ai-native-ref).
+    "gcp_vertex_predict_role": "projects/ogenki-435905/roles/xplane_vertex_predict_v3",
     "zone": "europe-west4-a",
     "network_name": "vpc-foobar",
     # Federated Route53 path (workstream 12). GCP-only: aws-0 authenticates to

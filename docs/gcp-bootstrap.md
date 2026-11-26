@@ -136,6 +136,17 @@ The secret ID must stay flat and dash-separated — GCP Secret Manager forbids `
 which is why this value differs in shape from `aws-0`'s path-style
 `/platform/llm/hf_token` (same split as `openbao_snapshot_secret`, for the same reason).
 
+## Agent Factory (opt-in): the Vertex AI API, for Gemini
+
+Only needed for Gemini through ai-native-ref's model gateway. The gateway calls Vertex AI with its
+own Workload Identity, which `xplane_vertex_predict` grants (`opentofu/gcp/gke/init/iam.tf`), so
+there is no key to create. The API itself is enabled by hand, once per project (done for
+`ogenki-435905` on 2026-11-26):
+
+```bash
+gcloud services enable aiplatform.googleapis.com --project=ogenki-435905
+```
+
 ## Rebuilding gcp-0 as the primary cloud
 
 The site's [Get started on GCP](../website/content/docs/get-started/gcp/_index.md) owns
