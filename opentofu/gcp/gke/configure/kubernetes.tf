@@ -64,7 +64,8 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # GCP-specific.
       # Custom role names carry a generation suffix (gke/init var.custom_role_suffix),
       # so claims read the name rather than spelling it.
-      gcp_dns_editor_role = local.init.dns_editor_role
+      gcp_dns_editor_role     = local.init.dns_editor_role
+      gcp_vertex_predict_role = local.init.vertex_predict_role
 
       # The agents' token issuer (GCP parity GP-12). Same keys as eks-aws-0-vars,
       # GKE-shaped values: agent-router, agent-mcp and octo-sts read these.

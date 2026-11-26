@@ -99,3 +99,8 @@ output "dns_editor_role" {
   description = "Full name of the custom DNS role, suffix included, for GCPWorkloadIdentity claims"
   value       = google_project_iam_custom_role.crossplane_dns.name
 }
+
+output "vertex_predict_role" {
+  description = "Full name of the custom Vertex AI prediction role, suffix included, for GCPWorkloadIdentity claims"
+  value       = google_project_iam_custom_role.vertex_predict.name
+}

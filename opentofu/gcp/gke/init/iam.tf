@@ -157,10 +157,32 @@ resource "google_project_iam_custom_role" "crossplane_storage" {
   ]
 }
 
+# Gemini on Vertex AI for ai-native-ref's model gateway (its Gemini design, G1 and
+# G3): the proxy calls generateContent with its own Workload Identity, so no
+# Google key exists anywhere.
+#
+# NOT roles/aiplatform.user, which can also create, deploy and delete endpoints,
+# datasets and jobs. A proxy only ever predicts. If a call ever answers 403
+# naming another permission, add that one here, on evidence.
+resource "google_project_iam_custom_role" "vertex_predict" {
+  project     = var.project_id
+  role_id     = "xplane_vertex_predict${var.custom_role_suffix}"
+  title       = "Crossplane-granted Vertex AI prediction"
+  description = "Prediction only (generateContent, chat completions) for the AI model gateway. No resource management; see opentofu/gcp/gke/init/iam.tf."
+
+  permissions = [
+    "aiplatform.endpoints.predict",
+  ]
+}
+
 locals {
   # Roles Crossplane may grant. Keep tight; grow on evidence.
   crossplane_grantable_roles = [
     google_project_iam_custom_role.crossplane_dns.name,
+    # The model gateway's Gemini calls (above). Prediction is billed to the
+    # project, which is the whole blast radius: it reads nothing and changes
+    # nothing.
+    google_project_iam_custom_role.vertex_predict.name,
 
     # runlore's cloud tools, added on exactly the evidence this comment asks
     # for: its GCPWorkloadIdentity claim failed with

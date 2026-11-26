@@ -45,6 +45,8 @@ substitution_keys:
   - region
   - storage_class
   - llm_hf_token_secret
+  # Contract version 9: the model gateway's prediction-only Vertex AI role (gcp-0).
+  - gcp_vertex_predict_role
 
 # H1: host sources a child may name. Since S3 every child reads the pinned artifact.
 host_sources:
