@@ -26,7 +26,7 @@ flux2 = "2.10.1"
 helm = "4.3.2"
 
 # scripts/ci/ai-overlay.sh verifies the pinned ai-native-ref artifact before CI renders it.
-cosign = "3.1.4"
+cosign = "3.1.5"
 
 # Polaris audits the RENDERED bundle (scripts/ci/validate-manifests.sh, gate 2).
 #
