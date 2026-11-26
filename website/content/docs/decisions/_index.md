@@ -103,5 +103,6 @@ are numbered there.
 | [0054 ↗](https://airef.ogenki.io/docs/decisions/0054-agent-model-providers-anthropic-direct/) | Internal agent work calls the Anthropic API directly; public work stays on Z.ai, with OpenRouter optional | Accepted | 2026-10-01 |
 | [0056 ↗](https://airef.ogenki.io/docs/decisions/0056-local-first-factory-ux/) | The factory is driven from the developer's local agent through a skill and `maku` (then `roomctl`), and a room is as visible as its repo on GitHub | Accepted | 2026-10-08 |
 | [0057 ↗](https://airef.ogenki.io/docs/decisions/0057-ai-platform-own-repository/) | The AI platform moves to its own repository, consumed by cloud-native-ref as a pinned artifact | Accepted | 2026-10-12 |
+| [0063]({{< relref "/docs/decisions/0063-aws-to-gcp-workload-identity-federation.md" >}}) | aws-0 reaches Vertex AI through Workload Identity Federation on an AWS role | Proposed | 2026-11-26 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

@@ -22,3 +22,8 @@ output "openbao_snapshot_mirror_role_arn" {
   description = "Set as aws_mirror_role_arn in opentofu/gcp/openbao/lineage/variables.tfvars. Empty until gcp_transfer_agent_subject_id is set."
   value       = length(aws_iam_role.mirror) == 0 ? "" : aws_iam_role.mirror[0].arn
 }
+
+output "vertex_wif_audience" {
+  description = "The external_account `audience` aws-0's model gateway presents. Set as gcp_vertex_wif_audience in opentofu/aws/eks/configure/variables.tfvars. Empty with vertex_federation_enabled off."
+  value       = length(google_iam_workload_identity_pool_provider.aws) == 0 ? "" : "//iam.googleapis.com/projects/${data.google_project.vertex[0].number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.aws[0].workload_identity_pool_id}/providers/${google_iam_workload_identity_pool_provider.aws[0].workload_identity_pool_provider_id}"
+}

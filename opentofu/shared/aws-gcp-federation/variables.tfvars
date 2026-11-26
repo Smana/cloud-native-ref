@@ -7,3 +7,7 @@ gcp_project_id = "ogenki-435905"
 # until then, which skips the two Google-identity roles.
 gcp_openbao_standby_sa_unique_id = "110583515827251510802"
 gcp_transfer_agent_subject_id    = "103642011123339318159"
+
+# Vertex AI for aws-0's model gateway (vertex.tf): needs Google credentials at
+# deploy time, and gke/init's xplane_vertex_predict_v3 role to exist.
+vertex_federation_enabled = true

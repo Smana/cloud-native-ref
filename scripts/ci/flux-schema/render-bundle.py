@@ -150,6 +150,10 @@ FIXTURE_VARS = {
     "gcp_dns_editor_role": "projects/ogenki-435905/roles/xplane_dns_editor_v3",
     # gcp-0 only: the model gateway's Vertex AI prediction role (ai-native-ref).
     "gcp_vertex_predict_role": "projects/ogenki-435905/roles/xplane_vertex_predict_v3",
+    # aws-0 only: the Vertex AI project and the Workload Identity Federation
+    # audience of the model gateway's external_account credential (ai-native-ref).
+    "gcp_project_id": "ogenki-435905",
+    "gcp_vertex_wif_audience": "//iam.googleapis.com/projects/323586397743/locations/global/workloadIdentityPools/aws-workloads/providers/aws-account",
     "zone": "europe-west4-a",
     "network_name": "vpc-foobar",
     # Federated Route53 path (workstream 12). GCP-only: aws-0 authenticates to

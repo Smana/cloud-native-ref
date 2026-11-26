@@ -117,6 +117,13 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       llm_hf_token_secret    = "/platform/llm/hf_token" # pragma: allowlist secret
       karpenter_queue_name   = local.karpenter_queue_name
       route53_public_zone_id = data.aws_route53_zone.public.zone_id
+      # Gemini on Vertex AI for ai-native-ref's model gateway (contract H3): the
+      # project it calls and the federation audience its external_account
+      # credential presents. GCP trusts the gateway's AWS role, not this
+      # cluster, so a rebuild changes neither -- see
+      # opentofu/shared/aws-gcp-federation/vertex.tf.
+      gcp_project_id          = var.gcp_project_id
+      gcp_vertex_wif_audience = var.gcp_vertex_wif_audience
     }
   })
   server_side_apply = true

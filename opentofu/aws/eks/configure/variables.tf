@@ -141,3 +141,25 @@ variable "openbao_target_ip" {
   type        = string
   default     = ""
 }
+
+# Gemini on Vertex AI for ai-native-ref's model gateway on this cluster: the GCP
+# side of the trust lives in opentofu/shared/aws-gcp-federation/vertex.tf. Pinned
+# literally from that stack's outputs, like gke/configure pins route53_role_arn,
+# so this AWS stack reads no Google state. Empty leaves the gateway with no
+# Google identity, which is what an AWS-only platform wants.
+variable "gcp_project_id" {
+  description = "GCP project the model gateway calls Vertex AI in (cluster var gcp_project_id)"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_vertex_wif_audience" {
+  description = "shared/aws-gcp-federation output vertex_wif_audience: the external_account audience the model gateway presents (cluster var gcp_vertex_wif_audience)"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.gcp_vertex_wif_audience == "" || can(regex("^//iam\\.googleapis\\.com/projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+/providers/[a-z0-9-]+$", var.gcp_vertex_wif_audience))
+    error_message = "Must be the provider's full resource name, by project NUMBER, or empty."
+  }
+}

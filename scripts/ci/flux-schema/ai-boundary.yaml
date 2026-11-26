@@ -47,6 +47,9 @@ substitution_keys:
   - llm_hf_token_secret
   # Contract version 9: the model gateway's prediction-only Vertex AI role (gcp-0).
   - gcp_vertex_predict_role
+  # Contract version 10: Vertex AI from aws-0 through Workload Identity Federation.
+  - gcp_project_id
+  - gcp_vertex_wif_audience
 
 # H1: host sources a child may name. Since S3 every child reads the pinned artifact.
 host_sources:

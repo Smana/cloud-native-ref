@@ -67,6 +67,8 @@ What `cloud-native-ref` guarantees, and `ai-native-ref` may rely on. This sectio
 `HOST-CONTRACT.md` into `ai-native-ref` at the split. Changing an item is a breaking change for
 both repositories: it lands with a version bump of the pin and a note in both.
 
+**Contract version 10** (Gemini on Vertex AI from aws-0, 2026-11-26). H3 adds `gcp_project_id` and `gcp_vertex_wif_audience` (aws); H5 Workload identity: GCP trusts the AWS role of `EPI xplane-model-gateway` (`xplane-model-gateway-iam-role`) with the same prediction-only role, through Workload Identity Federation ([design](2026-11-26-aws-vertex-federation-design.md)).
+
 **Contract version 9** (Gemini on Vertex AI, 2026-11-26). H3 adds `gcp_vertex_predict_role`; H5 Workload identity names the prediction-only Vertex AI role a `GCPWorkloadIdentity` claim may request on gcp-0.
 
 **Contract version 8** (the Slack App on aws-0, 2026-11-07). H4 Gateways: the `factory-slack` listener for `agent-system` is on both clouds' `platform-public`, no longer gcp-0's alone.
@@ -116,6 +118,7 @@ Children use `postBuild.substituteFrom` the ConfigMap `<eks|gke>-<cluster>-vars`
 | `environment` | Karpenter subnet and security-group discovery |
 | `project_id` (gcp) | The model bucket and its volume, room-broker backups, the Vertex AI project the model gateway calls |
 | `gcp_vertex_predict_role` (gcp) | The prediction-only Vertex AI role, for the model gateway's `GCPWorkloadIdentity` claim |
+| `gcp_project_id`, `gcp_vertex_wif_audience` (aws) | The Vertex AI project the model gateway calls on aws-0, and the `audience` of its `external_account` credential |
 | `private_domain_name`, `public_domain_name` | Hostnames on the tailnet and public Gateways |
 | `identity_provider_url` | ZITADEL issuer for humans (rooms, run API) |
 | `oidc_issuer_url`, `oidc_issuer_host`, `oidc_jwks_uri`, `oidc_jwks_host` | The cluster's ServiceAccount issuer, for run tokens at the gateway, octo-sts and the broker |
@@ -142,7 +145,7 @@ Grafana dashboard variables (`${datasource}`, `${model}`) are not Flux substitut
 | Stores | `ai-native-ref` creates its own namespaced stores (`agents-secrets`, `merge-gate-secrets`); it reads the cluster-wide `openbao-platform` store only where it does today, and the CA from `openbao-ca` |
 | ZITADEL | The rooms and `roomctl` OIDC clients, the `factory-slack-app` machine user (client credentials, no project role; its client id, secret and project id at `agents/factory-slack-principal`), the `runlore` machine user (client credentials, no project role; its full key at `platform/runlore/factory-principal`, its client id and project id at `agents/runlore-principal`), and the link-only GitHub IdP, provisioned by the host's scripts |
 | PKI | The OpenBao PKI role signs certificates for the broker's in-cluster and private names (F7), and for the factory's (`agent-factory.agent-system.svc[.cluster.local]`): the role's additional allowed domains are `agent-system.svc.cluster.local` and `agent-system.svc` on both clouds, subdomains allowed. The issuer is `ClusterIssuer/openbao` on both clouds; the CA chain is `certificates/${private_domain_name}/ca-chain` (`ca`, aws-0) or `openbao-priv-gcp-ca-chain` (raw PEM, gcp-0) |
-| Workload identity | EKS Pod Identity (never IRSA) and GKE Workload Identity, through the `EPI` and `GCPWorkloadIdentity` compositions. On gcp-0 a claim may request `${gcp_vertex_predict_role}` (`aiplatform.endpoints.predict` only, `opentofu/gcp/gke/init/iam.tf`), the model gateway's Gemini calls |
+| Workload identity | EKS Pod Identity (never IRSA) and GKE Workload Identity, through the `EPI` and `GCPWorkloadIdentity` compositions. On gcp-0 a claim may request `${gcp_vertex_predict_role}` (`aiplatform.endpoints.predict` only, `opentofu/gcp/gke/init/iam.tf`), the model gateway's Gemini calls. On aws-0 GCP trusts one role, `xplane-model-gateway-iam-role` (the role `EPI xplane-model-gateway` creates for `agent-gateway/model-gateway`), with that same role and nothing else (`opentofu/shared/aws-gcp-federation/vertex.tf`) |
 
 ### H6 · Compute
 

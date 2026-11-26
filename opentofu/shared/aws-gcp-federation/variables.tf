@@ -79,3 +79,28 @@ variable "openbao_snapshot_key_alias" {
   type        = string
   default     = "alias/xplane-openbao-snapshot"
 }
+
+# --- Vertex AI for aws-0's model gateway (vertex.tf) -------------------------
+
+variable "vertex_federation_enabled" {
+  description = "Create the GCP pool that trusts aws-0's model gateway role, and its Vertex AI grant. Off: the stack uses no google provider, so an AWS-only deploy needs no Google credentials."
+  type        = bool
+  default     = false
+}
+
+variable "model_gateway_aws_role_name" {
+  description = "The AWS role GCP trusts: ai-native-ref's `EPI xplane-model-gateway` names it <claim>-iam-role. Changing the claim's name changes this."
+  type        = string
+  default     = "xplane-model-gateway-iam-role"
+
+  validation {
+    condition     = can(regex("^xplane-[a-z0-9-]+$", var.model_gateway_aws_role_name))
+    error_message = "Must be a Crossplane-created role name (xplane-...)."
+  }
+}
+
+variable "gcp_vertex_predict_role_id" {
+  description = "The prediction-only custom role opentofu/gcp/gke/init creates: xplane_vertex_predict plus its custom_role_suffix."
+  type        = string
+  default     = "xplane_vertex_predict_v3"
+}
