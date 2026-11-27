@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.57.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.57.2 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the factory kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -118,6 +118,12 @@ spec:
                       enabled:
                         type: boolean
                     type: object
+                  upkeepDailyUSD:
+                    description: |-
+                      UpkeepDailyUSD bounds cron routine spend under system:upkeep (Q15). Omitted:
+                      min(10.00, 0.25*FactoryDailyUSD). Explicit 0 disables cron routine spend.
+                    minimum: 0
+                    type: number
                 type: object
               caps:
                 description: Caps bound the factory's throughput (§6.2).
@@ -155,6 +161,12 @@ spec:
                       a limit, and nothing is reserved — a first run gives up one slot-time. Off by default.
                     type: boolean
                   tasksPerDay:
+                    type: integer
+                  upkeepAwaitingHumanWIP:
+                    description: |-
+                      UpkeepAwaitingHumanWIP bounds routine tasks waiting on a human review; defaults to
+                      max(1, AwaitingHumanWIP/2).
+                    minimum: 0
                     type: integer
                 type: object
               control:
