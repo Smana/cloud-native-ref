@@ -12,8 +12,8 @@ spec:
   # Flux pulls the digest. A feature-branch cluster pins a pre-release here, on its branch (D2).
   # scripts/ci/ai-overlay.sh reads this pin: CI renders exactly what the cluster applies.
   ref:
-    tag: "v4.1.16"
-    digest: sha256:c75c807b42dc729913987aeba390b5faec4653fb8d9574d8714590d9835ead20
+    tag: "v4.1.17"
+    digest: sha256:30d5b3a93a9e30f956731eafb8550ada804fd157d9eca30907c3ad07e451fcd6
   verify:
     provider: cosign
     # One entry: Flux's cosign keyless refuses several ("multiple identities are not supported
