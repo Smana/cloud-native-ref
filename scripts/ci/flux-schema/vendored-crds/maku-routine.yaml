@@ -1,0 +1,317 @@
+# VENDORED, NOT APPLIED. Maku v0.57.2 config/crd/maku.ogenki.io_routines.yaml, copied verbatim below.
+# It exists so `flux schema validate` knows the routine kind (maku.ogenki.io/v1alpha1) that the
+# agent-factory chart renders (its starter Routine catalog); the CRD itself is installed with Maku, not from here.
+# Refresh it when Maku bumps and a field you need is missing.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: routines.maku.ogenki.io
+spec:
+  group: maku.ogenki.io
+  names:
+    kind: Routine
+    listKind: RoutineList
+    plural: routines
+    singular: routine
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.consumerCount
+      name: Consumers
+      type: integer
+    - jsonPath: .status.activeCount
+      name: Active
+      type: integer
+    - jsonPath: .status.pausedCount
+      name: Paused
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Routine is one reusable upkeep routine definition, bound by Repositories.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: 'RoutineSpec is a Routine''s reusable upkeep definition:
+              config.RoutineSpec.'
+            properties:
+              breaker:
+                description: BreakerSpec configures a routine's rolling yield circuit
+                  breaker.
+                properties:
+                  maxConsecutiveClosed:
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+                  maxConsecutiveFailures:
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+                  minMergeRate:
+                    maximum: 1
+                    minimum: 0
+                    type: number
+                  minSamples:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                  window:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                type: object
+              cooldown:
+                maxLength: 32
+                pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                type: string
+              dataClass:
+                enum:
+                - public
+                - internal
+                maxLength: 16
+                type: string
+              defaultPrompt:
+                maxLength: 14336
+                minLength: 1
+                type: string
+              description:
+                maxLength: 280
+                type: string
+              egress:
+                items:
+                  enum:
+                  - pypi
+                  - npm
+                  - golang
+                  - crates
+                  maxLength: 16
+                  type: string
+                maxItems: 4
+                type: array
+              maxCostUSD:
+                minimum: 0
+                type: number
+              maxOpenPRs:
+                maximum: 5
+                minimum: 1
+                type: integer
+              oracleClass:
+                maxLength: 63
+                type: string
+              probe:
+                description: ProbeSpec configures a routine's pre-run CI or repository
+                  probe.
+                properties:
+                  kind:
+                    description: Kind is none, actions-findings, dead-links, or renovate-red.
+                    enum:
+                    - none
+                    - actions-findings
+                    - dead-links
+                    - renovate-red
+                    maxLength: 32
+                    type: string
+                  maxFindings:
+                    description: MaxFindings is the maximum findings batched into
+                      one task (1..16; default 1).
+                    maximum: 16
+                    minimum: 1
+                    type: integer
+                  requireConsecutive:
+                    description: RequireConsecutive is how many newest qualifying
+                      workflow runs must report a finding before it triggers.
+                    maximum: 5
+                    minimum: 1
+                    type: integer
+                required:
+                - kind
+                type: object
+              probeArtifact:
+                maxLength: 128
+                type: string
+              probeAuthor:
+                maxLength: 253
+                type: string
+              probeFile:
+                maxLength: 253
+                type: string
+              probeWorkflow:
+                maxLength: 1024
+                type: string
+              protectedPaths:
+                items:
+                  maxLength: 512
+                  type: string
+                maxItems: 64
+                type: array
+              requires:
+                items:
+                  enum:
+                  - probeWorkflow
+                  - probeArtifact
+                  - probeFile
+                  - probeAuthor
+                  - oracleClass
+                  maxLength: 32
+                  type: string
+                maxItems: 8
+                type: array
+              workflow:
+                maxLength: 253
+                type: string
+            required:
+            - defaultPrompt
+            type: object
+          status:
+            description: 'RoutineStatus is what the factory made of its Routine: Accepted,
+              counts, and consumers.'
+            properties:
+              activeCount:
+                minimum: 0
+                type: integer
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                maxItems: 8
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              consumerCount:
+                description: |-
+                  ConsumerCount, ActiveCount, and PausedCount are always serialized, zero included: the
+                  printer columns read them.
+                minimum: 0
+                type: integer
+              consumers:
+                description: Consumers are the Repositories that bind this Routine.
+                items:
+                  description: RoutineConsumerStatus is one Repository's binding of
+                    a Routine.
+                  properties:
+                    accepted:
+                      description: Accepted is always serialized, false included.
+                      type: boolean
+                    mode:
+                      enum:
+                      - propose
+                      - draft
+                      - pr
+                      - disabled
+                      type: string
+                    paused:
+                      description: Paused records whether this consumer is currently
+                        paused operationally or by breaker.
+                      type: boolean
+                    reason:
+                      maxLength: 64
+                      type: string
+                    repository:
+                      description: Repository is the Repository object's name.
+                      maxLength: 253
+                      type: string
+                    servedGeneration:
+                      format: int64
+                      type: integer
+                  required:
+                  - repository
+                  type: object
+                maxItems: 64
+                type: array
+                x-kubernetes-list-map-keys:
+                - repository
+                x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
+              pausedCount:
+                minimum: 0
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: a Routine's name must match ^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$
+          rule: self.metadata.name.matches('^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$')
+    served: true
+    storage: true
+    subresources:
+      status: {}

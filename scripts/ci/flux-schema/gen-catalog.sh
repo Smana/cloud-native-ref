@@ -18,7 +18,7 @@
 #   5. agent-sandbox CRDs              -> agents.x-k8s.io/*
 #      (the chart and its CRDs exist only in the git repository, SP1 S2)
 #   6. Room CRD -> maku.ogenki.io/* (vendored, SP2; agents.ogenki.io/* before maku v0.31.0)
-#      Factory, Repository, MergePolicy -> maku.ogenki.io/v1alpha1 (vendored from maku v0.53.1
+#      Factory, Repository, MergePolicy, Routine -> maku.ogenki.io/v1alpha1 (vendored from maku v0.53.1
 #      under vendored-crds/; the Task CRD is not vendored)
 #   7. agentgateway CRDs               -> agentgateway.dev/*
 #      (PRESENT in the hosted ecosystem catalog, but that tracks upstream daily,
@@ -269,9 +269,10 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
 # The Room CRD (SP2), vendored beside the broker that serves it (ruling P16).
 "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/infrastructure/base/room-broker/crd-rooms.yaml" -d "${build_dir}"
-# Factory, Repository and MergePolicy (maku v0.53.1), committed under vendored-crds/ because
+# Factory, Repository, MergePolicy and Routine (maku v0.53.1; Routine since v0.57.2, whose
+# agent-factory chart renders its starter Routine catalog), committed under vendored-crds/ because
 # ai-native-ref commits manifests of those kinds and so cannot supply the CRDs to its own check.
-for kind in factory repository mergepolicy; do
+for kind in factory repository mergepolicy routine; do
   "${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/ci/flux-schema/vendored-crds/maku-${kind}.yaml" -d "${build_dir}"
 done
 
@@ -322,7 +323,7 @@ if [[ ! -s "${build_dir}/maku.ogenki.io/room_v1alpha1.json" && ! -s "${build_dir
   exit 1
 fi
 
-for kind in factory repository mergepolicy; do
+for kind in factory repository mergepolicy routine; do
   if [[ ! -s "${build_dir}/maku.ogenki.io/${kind}_v1alpha1.json" ]]; then
     echo "error: catalog build produced no maku.ogenki.io/${kind}_v1alpha1.json (scripts/ci/flux-schema/vendored-crds/maku-${kind}.yaml)" >&2
     exit 1
