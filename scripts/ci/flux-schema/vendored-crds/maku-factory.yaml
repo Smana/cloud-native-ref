@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.56.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.57.0 config/crd/maku.ogenki.io_factories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the factory kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -212,6 +212,22 @@ spec:
                     - openhands
                     - opencode
                     type: string
+                  treatmentModel:
+                    description: |-
+                      TreatmentModel puts the treatment cohort's TreatmentRoles on a gateway alias (Gemini plan A8),
+                      changing nothing else: workflow, template, harness, effort and caps stay the control's. A
+                      provider alias applies to public tasks only. The measurement's one variable: it is refused
+                      beside treatmentHarness or a treatment workflow.
+                    maxLength: 64
+                    type: string
+                  treatmentRoles:
+                    description: TreatmentRoles are the roles TreatmentModel moves;
+                      unset, the implementer.
+                    items:
+                      maxLength: 32
+                      type: string
+                    maxItems: 4
+                    type: array
                 type: object
               facts:
                 description: |-
