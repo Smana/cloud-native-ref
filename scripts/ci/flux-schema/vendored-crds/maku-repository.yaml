@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.58.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.58.1 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
