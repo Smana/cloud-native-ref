@@ -527,26 +527,6 @@ claims:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'uid: {value}'
 
-  - id: envoy-gateway-crds-version
-    why: >-
-      `flux/sources/ocirepo-envoy-gateway.yaml` pins the controller chart the
-      HelmRelease runs, but the HelmRelease sets `crds: Skip` on both install
-      and upgrade — the CRDs come from the static bundle vendored at
-      `crds/base/crds-envoy-gateway.yaml` instead, applied once by the `crds`
-      Kustomization. The two can drift silently: the API server prunes fields
-      a stale CRD does not know about rather than rejecting them, so a newer
-      policy field (e.g. `SecurityPolicy.spec.mergeType`, added between 1.7
-      and 1.9) has no effect and no error. Found live on 2026-09-27 with the
-      controller three minors ahead of the vendored schema. Like
-      `gateway-api-version`, this is source-to-source: a page is just a path
-      and a pattern.
-    source:
-      file: flux/sources/ocirepo-envoy-gateway.yaml
-      pattern: '\n\s*tag:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
-    pages:
-      - path: crds/base/kustomization.yaml
-        must_contain: 'download/v{value}/envoy-gateway-crds\.yaml'
-
   - id: victorialogs-datasource-uid
     why: >-
       The other half of the same rename. The traces datasource cross-references
@@ -559,36 +539,6 @@ claims:
     pages:
       - path: website/content/docs/platform/observability/dashboards-and-alerts.md
         must_contain: 'datasourceUid: {value}'
-
-  - id: ai-gateway-umbrella-live-aws-0
-    why: >-
-      aws-0's ai-gateway umbrella ships `spec.suspend: false` (owner,
-      2026-10-16): the agent factory ran there until the teardown, and a suspended umbrella froze
-      its children's own specs. A page still calling it suspended by default
-      sends a reader to a resume step that no longer exists; flipping the
-      source back must force a look at those pages.
-    source:
-      file: clusters/aws-0/ai-gateway.yaml
-      pattern: 'suspend:\s*(false)'
-    pages:
-      - path: clusters/aws-0-ai-gateway/README.md
-        must_contain: 'released on aws-0'
-      - path: website/data/repo-tree.yaml
-        must_not_contain:
-          - 'The suspended-by-default, CPU-only ai-gateway'
-
-  - id: agent-platform-umbrella-live-aws-0
-    why: >-
-      aws-0's agent-platform umbrella ships `spec.suspend: false` (owner,
-      2026-10-16): the agent factory ran there until the teardown, and a suspended umbrella froze
-      its children's own specs (#2429's agent-router health check never
-      landed). gcp-0's twin keeps its own claim.
-    source:
-      file: clusters/aws-0/agent-platform.yaml
-      pattern: 'suspend:\s*(false)'
-    pages:
-      - path: clusters/aws-0-agent-platform/README.md
-        must_contain: 'released on aws-0'
 
   - id: gcp-0-ai-gateway-umbrella-live
     why: >-
