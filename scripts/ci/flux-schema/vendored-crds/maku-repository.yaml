@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.54.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.56.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -377,6 +377,33 @@ spec:
                   type: object
                 maxItems: 16
                 type: array
+              screenshots:
+                description: |-
+                  Screenshots gives the repository's implementer and tester runs a loopback-only browser (v5
+                  Q16); off by default. Only a maintainer sets it, here: never an issue, a label or a run request.
+                properties:
+                  enabled:
+                    description: Enabled gives the repository's implementer and tester
+                      runs a loopback-only browser.
+                    type: boolean
+                  maxScreenshots:
+                    description: 'MaxScreenshots caps a run''s screenshots; empty:
+                      10.'
+                    format: int32
+                    maximum: 25
+                    minimum: 1
+                    type: integer
+                  roles:
+                    description: 'Roles narrows the roles that get the browser; empty:
+                      implementer and tester.'
+                    items:
+                      enum:
+                      - implementer
+                      - tester
+                      type: string
+                    maxItems: 2
+                    type: array
+                type: object
               triggerLabel:
                 maxLength: 50
                 type: string
