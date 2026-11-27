@@ -1,4 +1,4 @@
-# VENDORED, NOT APPLIED. Maku v0.57.0 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
+# VENDORED, NOT APPLIED. Maku v0.57.2 config/crd/maku.ogenki.io_repositories.yaml, copied verbatim below.
 # It exists so `flux schema validate` knows the repository kind (maku.ogenki.io/v1alpha1) that
 # ai-native-ref commits; the CRD itself is installed with Maku, not from here.
 # Refresh it when Maku bumps and a field you need is missing.
@@ -70,6 +70,21 @@ spec:
               RepositorySpec is one repository served (D3): today's repositories[] entry, with its merge
               settings and the MergePolicies it binds (reusable merge policies B2, B3).
             properties:
+              access:
+                description: |-
+                  Access is who may start a task: maintainers (the default), or write, which lets anyone with
+                  write access start one where the factory enforces per-person daily caps.
+                properties:
+                  start:
+                    description: |-
+                      Start is maintainers (the default) or write. Write takes effect only where per-person daily
+                      caps are enforced (budgets.perPerson.enabled and budgets.enforcePrincipal): every start is then
+                      charged to the developer who made it, within their own day (owner decision D1).
+                    enum:
+                    - maintainers
+                    - write
+                    type: string
+                type: object
               checks:
                 description: |-
                   Checks is what a check-enabled run of the repository requests beyond github (v3 feature 3,
@@ -339,6 +354,162 @@ spec:
                 maxLength: 140
                 pattern: ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$
                 type: string
+              routines:
+                description: Routines binds reusable Routine objects this repository
+                  runs on a schedule.
+                items:
+                  description: |-
+                    RoutineBinding is one Repository's binding of a Routine (UP2). A binding fills parameters and
+                    tightens bounds; it never widens what the Routine says.
+                  properties:
+                    breaker:
+                      description: BreakerSpec configures a routine's rolling yield
+                        circuit breaker.
+                      properties:
+                        maxConsecutiveClosed:
+                          maximum: 50
+                          minimum: 1
+                          type: integer
+                        maxConsecutiveFailures:
+                          maximum: 50
+                          minimum: 1
+                          type: integer
+                        minMergeRate:
+                          maximum: 1
+                          minimum: 0
+                          type: number
+                        minSamples:
+                          maximum: 100
+                          minimum: 1
+                          type: integer
+                        window:
+                          maximum: 100
+                          minimum: 1
+                          type: integer
+                      type: object
+                    cooldown:
+                      maxLength: 32
+                      pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                      type: string
+                    cron:
+                      maxLength: 1024
+                      type: string
+                    dataClass:
+                      enum:
+                      - public
+                      - internal
+                      maxLength: 16
+                      type: string
+                    egress:
+                      items:
+                        enum:
+                        - pypi
+                        - npm
+                        - golang
+                        - crates
+                        maxLength: 16
+                        type: string
+                      maxItems: 4
+                      type: array
+                    maxCostUSD:
+                      minimum: 0
+                      type: number
+                    maxFindings:
+                      maximum: 16
+                      minimum: 1
+                      type: integer
+                    maxOpenPRs:
+                      maximum: 5
+                      minimum: 1
+                      type: integer
+                    mode:
+                      enum:
+                      - propose
+                      - draft
+                      - pr
+                      - disabled
+                      maxLength: 16
+                      type: string
+                    name:
+                      maxLength: 40
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$
+                      type: string
+                    oracleClass:
+                      maxLength: 63
+                      type: string
+                    paused:
+                      type: boolean
+                    probeArtifact:
+                      maxLength: 128
+                      type: string
+                    probeAuthor:
+                      maxLength: 253
+                      type: string
+                    probeFile:
+                      maxLength: 253
+                      type: string
+                    probeWorkflow:
+                      maxLength: 1024
+                      type: string
+                    protectedPaths:
+                      items:
+                        maxLength: 512
+                        type: string
+                      maxItems: 64
+                      type: array
+                    repoPrompt:
+                      type: boolean
+                    skill:
+                      maxLength: 64
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,62}[a-z0-9])?$
+                      type: string
+                    workflow:
+                      maxLength: 253
+                      type: string
+                  required:
+                  - mode
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              runtime:
+                description: |-
+                  Runtime is the image and size of the repository's implementer, tester and reviewer runs. The
+                  image is built from the harness image, pinned by digest, and allowed by the run-controller's
+                  runtime.allowedImages; the network stays the named profiles of checks.egress.
+                properties:
+                  image:
+                    description: 'Image replaces the harness image, pinned by digest:
+                      registry/name@sha256:<64 hex>.'
+                    maxLength: 512
+                    pattern: ^[a-z0-9][a-z0-9._/:-]*@sha256:[a-f0-9]{64}$
+                    type: string
+                  services:
+                    description: |-
+                      Services are loopback-only sidecars the runs' tests reach on 127.0.0.1: postgres on 5432,
+                      redis on 6379. Each is empty at every run's start; it holds no secret and reaches nothing.
+                    items:
+                      description: |-
+                        Service names a loopback service sidecar a repository's runs may take (developer review gap 3,
+                        owner decision D3).
+                      enum:
+                      - postgres
+                      - redis
+                      type: string
+                    maxItems: 2
+                    type: array
+                    x-kubernetes-list-type: set
+                  size:
+                    description: Size is small (the default), medium or large.
+                    enum:
+                    - small
+                    - medium
+                    - large
+                    type: string
+                type: object
               schedules:
                 items:
                   description: Schedule starts a task from config (§1). The config
@@ -751,6 +922,72 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              routines:
+                description: Routines is one entry per routine binding.
+                items:
+                  description: RoutineBindingStatus is one Routine binding on a Repository,
+                    with its resolution and yield state.
+                  properties:
+                    accepted:
+                      description: Accepted is always serialized, false included.
+                      type: boolean
+                    breakerReason:
+                      maxLength: 64
+                      type: string
+                    breakerState:
+                      enum:
+                      - ok
+                      - half_open
+                      - paused
+                      type: string
+                    lastOutcome:
+                      maxLength: 64
+                      type: string
+                    lastRunAt:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 1024
+                      type: string
+                    mode:
+                      enum:
+                      - propose
+                      - draft
+                      - pr
+                      - disabled
+                      type: string
+                    name:
+                      maxLength: 40
+                      type: string
+                    openCount:
+                      minimum: 0
+                      type: integer
+                    promptSHA:
+                      maxLength: 64
+                      type: string
+                    reason:
+                      maxLength: 64
+                      type: string
+                    rollingClosed:
+                      minimum: 0
+                      type: integer
+                    rollingMerged:
+                      minimum: 0
+                      type: integer
+                    rollingNoOp:
+                      minimum: 0
+                      type: integer
+                    routineGeneration:
+                      format: int64
+                      type: integer
+                  required:
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             type: object
         required:
         - spec
