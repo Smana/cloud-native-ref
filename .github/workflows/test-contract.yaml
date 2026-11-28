@@ -36,7 +36,7 @@ jobs:
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Judge the contract
-        uses: Smana/maku/.github/actions/test-contract@e52a38ecef9d648272586a843d9dcf942edfb751 # v0.56.0
+        uses: Smana/maku/.github/actions/test-contract@f63b35d993a802bb51f7d6fe707fe66cc059d2d4 # v0.57.0
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
